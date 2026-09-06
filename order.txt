@@ -1,0 +1,1519 @@
+# DAVIS-PCPフルスタック版継続実装指示
+
+ライブラリの`/DAVIS-PCP`を基準資料として、現在の静的Iris版をベースにPythonバックエンド付きのシステムとして開発してください。
+
+設計案やタスク一覧だけを作成して終了してはいけません。既存実装の解析、バックエンド構築、フロントエンド移行、残存機能の実装、回帰試験、追加E2E、パッケージ作成、ライブラリへの格納までを一括して完了させてください。
+
+妥当な設計判断を自律的に行い、不明点があっても作業を停止せず、推定仕様と現代拡張を明示的に区分して実装してください。
+
+## 1. 最初に行う資料参照
+
+検索キーワードによるチャンク検索から始めてはいけません。
+
+最初にFilesの一覧取得機能で`/DAVIS-PCP`以下を再帰的に列挙し、既存資料と成果物をすべて確認してください。その後、テキスト資料は先頭から末尾まで全文を読み、PDFは全ページ、画像は全画像、JARはアーカイブ全体と対象クラスを確認してください。
+
+過去会話の記憶ではなく、ライブラリ内の現物を仕様根拠としてください。
+
+最低限、次を全文参照してください。
+
+```text
+/DAVIS-PCP/00_README.md
+/DAVIS-PCP/01_DAVIS調査サマリー.md
+/DAVIS-PCP/02_PCP先行実装方針.md
+/DAVIS-PCP/03_一次資料・参考資料一覧.md
+/DAVIS-PCP/04_Data_Exploration_with_DAVIS_発表資料記録.md
+/DAVIS-PCP/07_PCPクローン_現代GUI設計書.md
+/DAVIS-PCP/08_初版JAR_バイトコード解析と互換アルゴリズム設計.md
+/DAVIS-PCP/09_2002_DAVIS原論文解析.md
+/DAVIS-PCP/10_2004_LINE_MOSAIC_PLOT解析.md
+/DAVIS-PCP/11_原典反映_DAVIS_PCP仕様確定差分.md
+/DAVIS-PCP/13_2002原論文と初版JAR照合.md
+/DAVIS-PCP/sources/
+/DAVIS-PCP/screenshots/
+/DAVIS-PCP/wayback-crawl-2003/
+/DAVIS-PCP/davis-pcp-iris-static-v1.0.0/
+```
+
+現在の静的版については、少なくとも次をコードまで読んでください。
+
+```text
+davis-pcp-iris.html
+index.html
+app.js
+iris-data.js
+styles.css
+DESIGN_AND_TRACEABILITY.md
+FEATURE_TRACEABILITY.csv
+SOURCE_REVIEW_LOG.md
+TEST_REPORT.md
+tests/e2e.py
+tests/property_oracle.py
+tests/static_validation.py
+test-results/
+```
+
+## 2. 資料の規範優先順位
+
+資料間に食い違いがある場合は、次の順で扱ってください。
+
+1. 初版JARの実バイトコード、原論文本文、当時の実画面
+2. `08`、`09`、`11`、`13`の解析文書
+3. 現在の静的v1.0.0実装、トレーサビリティ、回帰試験
+4. `07_PCPクローン_現代GUI設計書.md`のアーキテクチャ
+5. それ以前の調査サマリーや推定
+
+特に、`07`は初版JARの詳細解析より前に作られた文書です。次の古い記述をそのまま採用してはいけません。
+
+* DAVISブラシをfreehand strokeとする推定
+* Delete／Focus／Undoの意味が未確定であるという記述
+* ComponentOrderの二段相関が未確定であるという記述
+* Jitterのraw振幅が不明であるという記述
+
+初版互換モードでは、後続解析で確定した次を採用してください。
+
+* ブラシは矩形
+* hit-testは線分交差ではなく、各軸上の頂点包含OR
+* 初版既定の連続ブラシはgroup 1への加算
+* PermuteOrderは全順列ではなく`ceil(p/2)`候補
+* PermuteOrderはmin-max正規化後の列間Euclidean distanceを使用
+* 候補評価は隣接距離合計
+* 同点比較は厳密な`<`であり、先行候補を維持
+* ComponentOrder初版互換は`corr(X)`の後、反復ごとに`corr(R_sub)`を固有分解する二段相関
+* 初版Jitterの意図はraw cellへの一様乱数`[-0.1,+0.1)`だが、描画経路の不具合は機能仕様として再現しない
+* 初版Undo相当は多段Undoではなく基準データへの全復帰
+* 初版の`User define` orderingは実質no-op
+* group 0はcontext、group 1はbrush group、group 2以上はcluster等に使用
+* 初版固定パレットはlight gray、red、green、cyan、magenta、orange、pink、yellowの8色
+
+## 3. 今回の最終目標
+
+現在の固定Iris単一HTMLを単にFastAPIから配信するだけでは不十分です。
+
+次を満たすフルスタック版`DAVIS-PCP Fullstack v2.0.0`を完成させてください。
+
+```text
+任意の表形式データを取り込む
+    ↓
+スキーマとrow identityを確認・修正する
+    ↓
+PCP、Data Table、Box Plot、Dendrogramで同じrowを共有する
+    ↓
+DAVIS由来の軸順をPythonで計算する
+    ↓
+selection、group、cluster、outlierを全ビューへ即時伝播する
+    ↓
+Focus、Delete／Exclude、Identify、Undo／Redoを行う
+    ↓
+解析状態をサーバーへ永続保存する
+    ↓
+再起動・別ブラウザから同じ解析状態を復元する
+    ↓
+データ、状態、画像、解析結果を書き出す
+```
+
+既存の静的版は削除、上書き、破壊しないでください。新しい成果物は次へ格納してください。
+
+```text
+/DAVIS-PCP/davis-pcp-fullstack-v2.0.0/
+```
+
+配布ZIPは次の名称としてください。
+
+```text
+/DAVIS-PCP/DAVIS-PCP-Fullstack-v2.0.0.zip
+```
+
+## 4. 今回の実装範囲
+
+今回実装する「残る機能」は、PCPと直接結び付く次の機能です。
+
+### 4.1 必須範囲
+
+* Python分析バックエンド
+* 任意データ取込
+* スキーマ推定・修正Wizard
+* stable row identity
+* Python版DAVIS軸順アルゴリズム
+* Arrow IPCによるデータ転送
+* 永続dataset／project／session
+* バックグラウンドjob、進捗、キャンセル、キャッシュ
+* descriptive statistics、selection summary
+* categorical axis
+* missing value表示
+* 複数scale
+* 大規模データ向けsampling／LOD
+* clustering
+* row-level group layer
+* outlier detection
+* linked Dendrogram
+* 高解像度・データ・セッション出力
+* session更新通知
+* static v1状態ファイルからのmigration
+* React／TypeScript／Ant DesignへのGUI移行
+* 既存51試験を基準とする完全回帰試験
+* 新規バックエンド・統合・E2E・性能・セキュリティ試験
+
+### 4.2 今回は別製品モジュールとして残すもの
+
+次はPCPを完成させるための直接機能ではないため、今回のv2.0.0へ偽のメニューや未実装ボタンを置かないでください。
+
+* Grand Tour／Tracking Grand Tour
+* Scatterplot Matrix
+* Mosaic Plot／Line Mosaic Plot
+* Textile Plot
+* PCA Plot
+* Decision Tree
+* Variable Ranking
+* DAVIS全体のMDI外観
+
+ただし、将来これらを追加できるよう、dataset、row identity、selection、group、sessionの公開インターフェースをplot非依存にしてください。
+
+Dendrogram、clustering、outlier detectionはPCPとのlinked interactionが資料で確認されているため、今回の対象に含めます。
+
+## 5. 固定する技術構成
+
+`07_PCPクローン_現代GUI設計書.md`の採用技術を基本的に維持してください。実装時点のminor／patchをlockfileへ固定し、勝手に別系統へ置換しないでください。
+
+### 5.1 フロントエンド
+
+```text
+React
+TypeScript strict
+Vite
+Ant Design
+Redux Toolkit
+RTK Query
+dnd-kit
+Apache ECharts
+Canvas 2D＋SVG＋DOM overlay
+Web Worker
+Playwright
+Vitest
+Testing Library
+axe-core
+```
+
+PCPのpolyline描画は専用rendererを使用して構いませんが、一般GUIをCSSで模造してはいけません。
+
+次はAnt Design等の実コンポーネントを使用してください。
+
+* Layout
+* Splitter
+* Table
+* Upload.Dragger
+* Modal
+* Drawer
+* Form
+* Steps
+* Segmented
+* Select
+* Switch
+* Slider
+* InputNumber
+* Dropdown
+* Tabs
+* Descriptions
+* Collapse
+* Progress
+* Alert
+* Result
+* Empty
+* Badge
+* Tag
+* notification
+* Popconfirm
+* Tooltip
+
+クリック可能な`div`をbutton、tab、select、checkboxの代用品として追加してはいけません。
+
+### 5.2 Pythonバックエンド
+
+```text
+FastAPI
+Pydantic
+Polars
+NumPy
+PyArrow
+SciPy
+scikit-learn
+SQLite
+pytest
+Hypothesis
+httpx
+```
+
+KMedoids等で追加依存が必要な場合は、保守状況を確認して固定するか、PAMの小さな参照実装を内部に持たせてください。依存を追加した場合は採用理由をADRへ記録してください。
+
+### 5.3 通信
+
+* 通常操作はREST
+* 大量表データはArrow IPC
+* job progressとcancel通知はWebSocket
+* session更新はversion通知だけをWebSocketまたはSSEで送る
+* pointer move、hover、brush previewをサーバーへ送らない
+* ブラシ確定は小〜中規模データではブラウザWorker
+* 大規模データでは必要に応じてbackend exact hit-testを選択可能にする
+
+### 5.4 配布
+
+開発環境だけでなく、ローカルPCで起動できる配布形態を作ってください。
+
+最低限、次を用意してください。
+
+```text
+run-dev.sh
+run-dev.ps1
+run-production.sh
+run-production.ps1
+build-release.py
+pyproject.toml
+Python lockfile
+package.json
+frontend lockfile
+.env.example
+```
+
+Dockerを追加しても構いませんが、Dockerだけを起動方法にしてはいけません。
+
+productionではFastAPIがビルド済みfrontendを配信し、原則として1つのlocalhost URLで利用できるようにしてください。
+
+## 6. リポジトリ構造
+
+次を基準にしてください。合理的な変更はADRへ記録してください。
+
+```text
+davis-pcp-fullstack-v2.0.0/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── api/
+│   │   │   ├── health.py
+│   │   │   ├── datasets.py
+│   │   │   ├── orderings.py
+│   │   │   ├── summaries.py
+│   │   │   ├── groups.py
+│   │   │   ├── clusters.py
+│   │   │   ├── outliers.py
+│   │   │   ├── dendrograms.py
+│   │   │   ├── sessions.py
+│   │   │   ├── exports.py
+│   │   │   └── jobs.py
+│   │   ├── domain/
+│   │   │   ├── models.py
+│   │   │   ├── commands.py
+│   │   │   ├── evidence.py
+│   │   │   └── errors.py
+│   │   ├── algorithms/
+│   │   │   ├── ordering/
+│   │   │   ├── clustering/
+│   │   │   ├── outliers/
+│   │   │   ├── summaries/
+│   │   │   └── geometry/
+│   │   ├── services/
+│   │   ├── storage/
+│   │   ├── jobs/
+│   │   └── migrations/
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   ├── features/
+│   │   │   ├── dataset/
+│   │   │   ├── pcp/
+│   │   │   ├── selection/
+│   │   │   ├── table/
+│   │   │   ├── boxplot/
+│   │   │   ├── dendrogram/
+│   │   │   ├── groups/
+│   │   │   ├── clustering/
+│   │   │   ├── outliers/
+│   │   │   ├── sessions/
+│   │   │   └── jobs/
+│   │   ├── workers/
+│   │   ├── api/
+│   │   └── theme/
+│   └── tests/
+├── fixtures/
+├── scripts/
+├── docs/
+├── e2e/
+├── benchmark/
+├── workspace/
+├── README.md
+├── ARCHITECTURE.md
+├── API_SPEC.md
+├── MIGRATION_FROM_STATIC_V1.md
+├── FEATURE_TRACEABILITY.csv
+├── TEST_REPORT.md
+├── SOURCE_REVIEW_LOG.md
+├── RELEASE_NOTES.md
+├── release-manifest.json
+└── checksums.sha256
+```
+
+## 7. 既存静的版の扱い
+
+静的v1.0.0を捨てて新しいUIをゼロから推測してはいけません。
+
+現在の`app.js`、HTML、テストを次の用途で利用してください。
+
+* 操作仕様のgolden master
+* 初版JAR由来アルゴリズムの比較対象
+* Canvas／SVG幾何の比較対象
+* 状態遷移の比較対象
+* static state schema v1のmigration fixture
+* E2E回帰fixture
+* visual regressionのbaseline
+
+静的版で実装済みの次をすべて維持してください。
+
+* Iris 150行fixture
+* Speciesを含む5軸
+* Horizontal／Vertical
+* Database／NoOrder
+* ComponentOrder初版JAR互換
+* ComponentOrder原論文解釈
+* PermuteOrder初版JAR互換
+* 相関セリエーション
+* manual axis order
+* 軸drag、移動ボタン、反転、表示切替
+* legacy vertex brush
+* segment intersection brush
+* Add／Replace／Subtract／Toggle
+* line click
+* hover tooltip
+* double-click clear
+* Identify
+* Focus
+* Delete
+* Reset to Base Data
+* 多段Undo／Redo
+* context menu
+* keyboard shortcuts
+* linked table
+* linked boxplot
+* selection summary
+* ordering diagnostics
+* deterministic jitter
+* legacy raw jitter
+* JSON／CSV／PNG export
+* snapshot
+* dark theme
+* responsive layout
+* accessibility
+
+ただし、既存の固定データ依存コードは一般化し、React component、domain state、Worker、backend APIへ分離してください。
+
+単一HTML版もデモ／fallbackとして残して構いませんが、フルスタック版の主UIを既存単一HTMLのiframeにしてはいけません。
+
+## 8. データ取込
+
+Import Wizardを完全実装してください。
+
+### 8.1 対応形式
+
+最低限、次を実装してください。
+
+* CSV
+* TSV
+* Parquet
+* Arrow IPC／Feather
+* ARFF
+* SQLite database fileからのtable選択
+
+Irisは組込みsample datasetとして残してください。
+
+### 8.2 probe
+
+ファイル確定前にbackendで次をprobeしてください。
+
+* contentによるformat確認
+* encoding候補
+* delimiter
+* quote
+* header有無
+* row数・column数の概算
+* physical type
+* semantic type
+* missing count
+* unique count
+* min／max
+* sample values
+* constant column
+* unique ID候補
+* parse warning
+
+filename拡張子だけでformatを信用してはいけません。
+
+### 8.3 schema Wizard
+
+Ant Designの`Steps`、`Table`、`Form`を使い、ユーザーが次を修正できるようにしてください。
+
+* column name
+* physical／semantic type
+* role
+* numeric axis
+* categorical axis
+* row ID
+* label
+* ignored
+* category order
+* missing value policy
+* date parse
+* decimal separator
+* encoding
+
+### 8.4 row identity
+
+優先順位は次です。
+
+1. ユーザー指定のunique ID column
+2. probeで確認したunique column
+3. import時に一度だけ生成してcanonical datasetへ保存するimmutable ID
+
+generated IDを現在のrow ordinalから毎回再生成してはいけません。
+
+sort、filter、Focus、Delete、session save、reload、cluster、export後も同じrowを同じIDで識別できるようにしてください。
+
+### 8.5 canonical storage
+
+import完了後は、元データをそのまま繰り返しparseせず、canonical ParquetまたはArrowへ変換してください。
+
+dataset fingerprintは少なくとも次から決定論的に生成してください。
+
+* canonical schema
+* canonical row identity
+* canonical values
+* import normalization options
+
+## 9. categorical、missing、scale
+
+これらは初版DAVISの厳密仕様が確認できないため、`MODERN-EXTENSION`または`RECONSTRUCTED`として実装してください。
+
+### 9.1 categorical axis
+
+次の順序方式を持たせてください。
+
+* imported order
+* alphabetical
+* frequency
+* manual
+* class／group order
+
+categoryから軸位置へのmappingはsessionへ保存してください。
+
+### 9.2 missing value
+
+少なくとも次を実装してください。
+
+* missing専用位置へ表示
+* missing区間でpolylineを切る
+* 対象軸についてrowを一時非表示
+* backendでの明示的なimputation結果を別派生datasetとして作る
+
+imputationを無言で行ってはいけません。
+
+### 9.3 scale
+
+数値軸は少なくとも次を実装してください。
+
+* linear
+* log
+* symlog
+* z-score
+* quantile
+
+不正なscale適用、定数列、非正値logにはrecoverable errorと推奨操作を返してください。
+
+## 10. Python版軸順アルゴリズム
+
+Python側を軸順計算のauthoritative implementationとしてください。
+
+現在のJavaScript版は削除せず、cross-language oracleまたはoffline fallbackとして残してください。
+
+### 10.1 必須アルゴリズム
+
+```text
+NoOrder
+ComponentOrder / INITIAL_JAR_COMPAT
+ComponentOrder / PAPER_INTERPRETATION
+PermuteOrder / INITIAL_JAR_COMPAT
+Correlation Seriation / MODERN
+Manual Order
+```
+
+### 10.2 API結果
+
+結果には最低限、次を含めてください。
+
+```text
+algorithm
+variant
+algorithmVersion
+evidenceClass
+inputColumnIds
+outputColumnIds
+parameters
+seed
+warnings
+candidateOrders
+candidateScores
+iterationTrace
+datasetFingerprint
+createdAt
+runtimeMs
+```
+
+### 10.3 golden tests
+
+静的版およびJAR解析資料にある次を回帰fixtureとして固定してください。
+
+* JAR golden Component order
+* JAR golden Permute order
+* Iris 5軸結果
+* Iris数値4軸のPermute候補score
+* strict tie保持
+* 2変数以下のComponent処理
+* constant column
+* missing values
+* categoryを含む場合の明示的なhandling
+
+同じアルゴリズム名で別アルゴリズムへ置換してはいけません。
+
+## 11. selectionとgroupの状態モデル
+
+初版の整数group IDと、現代版の一時selectionを分離してください。
+
+```text
+RowVisualState
+  rowId
+  active
+  selected
+  hidden
+  groupIds
+  importedClass
+  clusterMemberships
+  outlierFlags
+```
+
+selection、group、cluster、outlierを単一の色値へ潰してはいけません。
+
+選択行はgroup colorを保持し、その上にselection halo／強調を重ねてください。
+
+### 11.1 compatibility profile
+
+最低限、次のprofileを用意してください。
+
+```text
+Initial JAR reconstruction
+Modern exploration
+```
+
+Initial JAR reconstructionでは、次をテスト可能にしてください。
+
+* legacy vertex brush
+* add selection既定
+* group 1への投影
+* 8色DAVIS palette
+* Delete group 1
+* Focus nonzero group
+* Reset to Base Data
+* legacy raw jitter intent
+* initial ordering variants
+
+Modern explorationでは、次を既定として構いません。
+
+* selectionとgroupの分離
+* Add／Replace／Subtract／Toggle
+* reversible Exclude
+* multi-step Undo／Redo
+* scalable palette
+* axis range filters
+* deterministic jitter
+* modern scales
+
+両profileの意味をUI、API、sessionで混同しないでください。
+
+## 12. clustering
+
+資料とJARの対象packageを追加解析したうえで実装してください。
+
+アルゴリズムのexact specificationをJARから確定できた場合は`INITIAL_JAR_COMPAT`、確定できない場合は`RECONSTRUCTED`または`MODERN-EXTENSION`としてください。
+
+### 12.1 必須方式
+
+* KMeans
+* KMedoids
+* Divisive clustering
+* Gaussian Mixture／EM
+* ClassVariable grouping
+* Agglomerative hierarchical clustering
+
+### 12.2 Dendrogramのlinkage／distance
+
+少なくとも資料で確認できる次を実装してください。
+
+Linkage：
+
+* Nearest
+* Farthest
+* Average
+* Group Average
+
+Distance：
+
+* Euclidean
+* Standard Euclidean
+* City-block
+
+名称と現代ライブラリの対応が一意でない場合は、内部algorithm IDを明示し、根拠と対応関係を文書化してください。
+
+### 12.3 clustering設定
+
+* input columns
+* scaling
+* missing policy
+* cluster count
+* seed
+* maximum iterations
+* convergence tolerance
+* initialization
+* distance
+* linkage
+
+### 12.4 diagnostics
+
+方式に応じて次を表示してください。
+
+* inertia
+* silhouette
+* AIC
+* BIC
+* convergence
+* iteration count
+* cluster size
+* warning
+* seed
+* input fingerprint
+
+cluster label番号の置換だけでテストを失敗させず、partition equivalenceで比較してください。
+
+### 12.5 linked group
+
+clustering結果を`GroupDefinition`として保存し、PCP、Box Plot、Data Table、Dendrogramへ同じrow-level group colorを伝播してください。
+
+複数のclustering結果を保存し、active resultを切り替えられるようにしてください。
+
+## 13. outlier detection
+
+後年DAVIS資料ではoutlier／subset colorがPCPとBox Plotへ伝播することは確認できますが、exact algorithmは確定していません。
+
+したがって、方式ごとに`MODERN-EXTENSION`を明示してください。
+
+最低限、次を実装してください。
+
+* Box Plot IQR rule
+* robust z-score／MAD
+* Isolation Forest
+* Local Outlier Factor
+
+次を設定可能にしてください。
+
+* input columns
+* scaling
+* contamination
+* per-axis／multivariate
+* missing policy
+* seed
+
+outlier結果はnamed groupまたはflagとして保存し、PCP、Box Plot、Table、summaryへ伝播してください。
+
+outlier行に対して、Identify、select all、Focus、Exclude、group化が行えるようにしてください。
+
+## 14. linked Dendrogram
+
+Dendrogramを単なる画像として追加してはいけません。
+
+次を実装してください。
+
+* clustering resultからの描画
+* branch／leaf hover
+* leaf selection
+* subtree selection
+* PCPからのselection highlight
+* Tableからのselection highlight
+* group color
+* cut threshold
+* cluster count cut
+* 大規模データ時のscroll
+* row identityの維持
+* keyboardによるleaf／branch移動
+* tooltip
+* reduced motion対応
+
+PCP、Dendrogram、Box Plot、Tableが互いに直接eventを送り合わず、中央のselection／group stateをprojectionしてください。
+
+## 15. summaryと統計
+
+backendでactive／selected／groupごとのsummaryを計算してください。
+
+最低限、次を含めてください。
+
+数値列：
+
+* count
+* missing
+* min
+* max
+* mean
+* median
+* standard deviation
+* quartiles
+* IQR
+
+カテゴリ列：
+
+* count
+* missing
+* category frequency
+* unique count
+
+多変量：
+
+* correlation
+* covariance
+* selectedとactiveの差
+* group別summary
+
+大量データでは結果cacheを使用し、dataset fingerprint、active set version、selected set version、column setをcache keyへ含めてください。
+
+## 16. job system
+
+次の状態を持つ永続job systemを作ってください。
+
+```text
+queued
+running
+completed
+failed
+cancelled
+```
+
+対象：
+
+* import
+* ordering
+* clustering
+* outlier
+* summary
+* high-resolution export
+
+実装要件：
+
+* FastAPI event loopをCPU計算でblockしない
+* process poolを使用
+* progress phase
+* completed units／total units
+* cancel endpoint
+* WebSocket progress
+* polling fallback
+* 同一dataset／parameter result cache
+* server再起動後の状態整合
+* failure detail
+* recoverable action
+* job result provenance
+* stale result検出
+
+キャンセル済みjobが後からcompletedへ戻らないことを試験してください。
+
+## 17. 永続project／session
+
+SQLiteをmetadata、session、job、version管理に使用し、dataset本体はParquet／Arrowで保存してください。
+
+### 17.1 session内容
+
+* dataset IDとfingerprint
+* import schema
+* visible columns
+* axis order result
+* manual order
+* orientation
+* axis direction
+* scale
+* category mapping
+* jitter
+* rendering settings
+* active set
+* selected set
+* groups
+* clustering results
+* outlier results
+* identified row
+* panel sizes
+* theme
+* compatibility profile
+* operation history
+* evidence／provenance
+* schema version
+
+### 17.2 versioning
+
+* optimistic concurrency
+* revision number
+* ETagまたは同等のversion token
+* stale update拒否
+* conflict内容の表示
+* atomic write
+* migration
+* corrupted session隔離
+
+### 17.3 static v1 migration
+
+静的版の`schemaVersion: 1`状態JSONを読み込み、新しいsession schemaへ変換してください。
+
+Iris以外のdatasetへ誤適用しないよう、fixture identityとfingerprintを検証してください。
+
+migration前後で次を維持してください。
+
+* active rows
+* selected rows
+* axis order
+* visible axes
+* orientation
+* axis reversal
+* jitter
+* rendering settings
+* table settings
+
+### 17.4 session同期
+
+別タブ／別ブラウザでは、pointer move等を同期せず、保存済みsession revisionの更新通知だけを送ってください。
+
+受信側は次から選べるようにしてください。
+
+* reload
+* compare
+* keep local
+* save as copy
+
+## 18. API
+
+OpenAPIをsource of truthとし、TypeScript型を自動生成してください。
+
+最低限、次を実装してください。
+
+```text
+GET    /api/v1/health
+
+GET    /api/v1/datasets
+POST   /api/v1/datasets/import
+GET    /api/v1/datasets/{dataset_id}
+PATCH  /api/v1/datasets/{dataset_id}/schema
+POST   /api/v1/datasets/{dataset_id}/view
+DELETE /api/v1/datasets/{dataset_id}
+
+POST   /api/v1/orderings
+GET    /api/v1/orderings/{result_id}
+
+POST   /api/v1/summaries
+
+GET    /api/v1/groups
+POST   /api/v1/groups
+PATCH  /api/v1/groups/{group_id}
+DELETE /api/v1/groups/{group_id}
+
+POST   /api/v1/clusters
+GET    /api/v1/clusters/{result_id}
+
+POST   /api/v1/outliers
+GET    /api/v1/outliers/{result_id}
+
+POST   /api/v1/dendrograms
+GET    /api/v1/dendrograms/{result_id}
+
+GET    /api/v1/sessions
+POST   /api/v1/sessions
+GET    /api/v1/sessions/{session_id}
+PUT    /api/v1/sessions/{session_id}
+DELETE /api/v1/sessions/{session_id}
+
+POST   /api/v1/exports
+
+GET    /api/v1/jobs/{job_id}
+POST   /api/v1/jobs/{job_id}/cancel
+WS     /api/v1/jobs/{job_id}/events
+```
+
+合理的な統合や分割は可能ですが、API仕様書、OpenAPI、frontend client、試験を同時に更新してください。
+
+### 18.1 error contract
+
+すべての業務エラーは、少なくとも次の形式で返してください。
+
+```json
+{
+  "error": {
+    "code": "ORDERING_CONSTANT_COLUMN",
+    "message": "PermuteOrderを計算できない定数列があります。",
+    "details": {
+      "columnIds": ["col_7"]
+    },
+    "evidenceClass": "MODERN-EXTENSION",
+    "recoverable": true,
+    "suggestedActions": [
+      "定数列をordering対象から外す",
+      "NoOrderを使用する"
+    ],
+    "traceId": "..."
+  }
+}
+```
+
+通常GUIへPython stack traceを表示してはいけません。
+
+## 19. frontend GUI
+
+現在の静的GUIの機能を保ちながら、次のworkspaceへ再構成してください。
+
+```text
+Project Header
+Analysis Command Bar
+Variable／Schema Panel
+PCP Workspace
+Inspector Panel
+Linked Views
+Data Table
+Job Center
+History
+```
+
+### 19.1 Project Header
+
+* dataset／project切替
+* Import
+* Save
+* Save As
+* Undo
+* Redo
+* job status
+* Settings
+* Help
+
+### 19.2 Command Bar
+
+* orientation
+* ordering
+* brush semantics
+* selection operation
+* Identify
+* Focus
+* Delete／Exclude
+* Reset
+* clustering
+* outlier
+* export
+
+### 19.3 Variable Panel
+
+* visibility
+* reorder
+* reverse
+* scale
+* category order
+* missing policy
+* ordering input inclusion
+* type／role
+* summary
+
+### 19.4 Inspector
+
+* selection
+* record
+* algorithm trace
+* cluster diagnostics
+* outlier diagnostics
+* group manager
+* provenance
+* history
+
+### 19.5 Linked Views
+
+* Box Plot
+* Dendrogram
+* Data Table
+* selection summary
+* group legend
+
+実装されていない機能のbutton、tab、menuを置いてはいけません。
+
+## 20. 大規模データ
+
+Iris専用の全再描画だけで終了しないでください。
+
+最低限、100,000行×30軸の生成fixtureで次を検証してください。
+
+* import
+* schema inference
+* Arrow transfer
+* PCP initial render
+* hover preview
+* brush preview
+* exact selection
+* table paging
+* summary
+* ordering job
+* save／reload
+
+実装方針：
+
+* browser Worker
+* typed arrays
+* bitset
+* adaptive sampling
+* selected／group rowsを優先描画
+* viewport sampling diagnostics
+* backend exact operation
+* request cancellation
+* incremental progress
+* renderer abstraction
+
+Canvas 2Dを維持し、必要ならWebGL rendererを追加してください。性能根拠なくWebGLへ全面置換してはいけません。
+
+sampling時は、表示対象行数と全体行数をGUIへ明示してください。
+
+## 21. セキュリティとローカル性
+
+* 既定bindは`127.0.0.1`
+* 外部telemetry禁止
+* 外部CDN禁止
+* runtimeでdatasetを外部へ送信しない
+* upload size limit
+* row／column limit
+* temporary storage quota
+* content-based file validation
+* filename sanitization
+* path traversal対策
+* zip bomb対策
+* SQLite fileの危険なextension／attach禁止
+* CSV formula injection neutralization
+* JSON schema validation
+* Arrow／Parquet malformed input処理
+* CORSをlocalhostへ限定
+* stack trace非表示
+* secretをfrontendへ埋め込まない
+* atomic file replacement
+* workspace外への書込み禁止
+
+試験では、通常実行時の通信先がlocalhostだけであることを確認してください。
+
+## 22. 出力
+
+最低限、次を実装してください。
+
+* selected CSV
+* active CSV
+* all rows CSV
+* Parquet
+* Arrow IPC
+* group／cluster assignment CSV
+* summary JSON
+* session JSON
+* portable session bundle ZIP
+* viewport PNG
+* high-resolution PNG
+* SVGまたはPDF
+* ordering trace JSON
+* clustering diagnostics JSON
+* outlier diagnostics JSON
+
+高解像度plot exportは、可能なら同じfrontend rendererをheadless browserから使用し、画面と別実装の図が乖離しないようにしてください。
+
+## 23. E2Eと試験
+
+「画面が開いた」で完了としてはいけません。
+
+現在の51試験をすべて回帰基準として移植または継続実行し、さらにフルスタック試験を追加してください。
+
+試験数の水増しではなく、`FEATURE_TRACEABILITY.csv`の各機能にunit、integration、E2E、inspectionのいずれかを紐付けてください。
+
+### 23.1 Python unit／property test
+
+* PermuteOrder候補生成
+* score
+* strict tie
+* ComponentOrder両variant
+* NumPy独立オラクル
+* constant／missing処理
+* set invariant
+* row identity
+* session migration
+* clustering partition
+* dendrogram distance／linkage
+* outlier result
+* CSV neutralization
+* dataset fingerprint
+* cache key
+* job state transition
+
+Hypothesisで生成fixtureを使ってください。
+
+### 23.2 API integration
+
+* 全endpoint success／error
+* multipart upload
+* Arrow response
+* schema override
+* invalid dataset ID
+* concurrent session update
+* cancel
+* stale result
+* corrupted input
+* quota
+* restart後のsession／job整合
+
+### 23.3 frontend unit／component
+
+* Ant Design controlのrole
+* fake control禁止
+* controlled Table selection
+* Splitter persistence
+* Import Wizard
+* Algorithm Inspector
+* Group Manager
+* Job progress
+* conflict dialog
+* keyboard focus
+* drag alternative
+* error recovery
+
+### 23.4 E2E基本シナリオ
+
+実ファイルuploadから次を一続きで操作してください。
+
+1. Iris CSVをimport
+2. schema確認
+3. row ID確定
+4. 5軸PCP表示
+5. NoOrder
+6. ComponentOrder両variant
+7. PermuteOrder
+8. Horizontal／Vertical
+9. legacy vertex brushでsetosa 50行
+10. TableとBox Plotのlinked selection確認
+11. Focus
+12. Undo
+13. Delete／Exclude
+14. Reset
+15. KMeans
+16. EM 3 groups
+17. Dendrogram subtree selection
+18. outlier detection
+19. group colorの全ビュー伝播
+20. session保存
+21. server再起動
+22. session復元
+    23.別ブラウザでrevision通知
+23. CSV／Parquet／PNG／session bundle出力
+
+### 23.5 import matrix
+
+* UTF-8 CSV
+* BOM付きCSV
+* Shift_JIS CSV
+* TSV
+* quoted delimiter
+* missing header
+* duplicate column name
+* empty file
+* malformed row
+* constant column
+* all missing column
+* high-cardinality category
+* Parquet
+* Arrow
+* ARFF
+* SQLite複数table
+
+### 23.6 geometry
+
+* horizontal／vertical
+* DPR 1／2
+* legacy vertex OR
+* segment intersection
+* segment-only fixture
+* Add／Replace／Subtract／Toggle
+* axis reverse
+* category axis
+* missing position
+* jitter determinism
+* resize後のselection維持
+
+### 23.7 clustering／outlier
+
+* seed再現性
+* label permutationを除くpartition一致
+* empty cluster
+* singular covariance
+* missing rows
+* constant column
+* class variable group
+* group色伝播
+* inactive row handling
+* job cancel
+* cache hit
+* Dendrogram cut
+
+### 23.8 accessibility
+
+* axe-core
+* keyboard-only E2E
+* focus order
+* skip link
+* live region
+* 200% zoom
+* high contrast
+* reduced motion
+* drag代替
+* accessible name
+* dialog focus trap
+
+### 23.9 visual regression
+
+最低限、次の証跡画像を保存してください。
+
+* initial Iris
+* vertical PCP
+* setosa 50行selection
+* dark theme
+* 1024px
+* 4K
+* imported arbitrary CSV
+* categorical／missing
+* 3 cluster groups
+* outlier group
+* linked Dendrogram
+* job progress
+* import error
+* session conflict
+
+### 23.10 browser
+
+利用可能な範囲でChromium、Firefox、WebKitを試験してください。
+
+特定ブラウザを実行できなかった場合は、未実行を合格扱いせず、環境制約として明記してください。
+
+### 23.11 性能
+
+実測値を`BENCHMARK_REPORT.md`へ記録してください。
+
+最低限、次を測定してください。
+
+* import時間
+* canonical化時間
+* Arrow転送量
+* initial render
+* brush preview p50／p95
+* exact selection
+* ordering
+* clustering
+* summary
+* session save／reload
+* memory
+* main-thread long task
+
+性能上の都合でsamplingした場合は、sample方式、seed、表示行数、全行数、選択計算がsampleか全体かを記録してください。
+
+## 24. ソース復元の追加作業
+
+clustering、Dendrogram、outlier、missing value処理については、初版JARの関連packageを対象に追加のbytecode解析を行ってください。
+
+解析結果を次の文書へまとめてください。
+
+```text
+docs/14_クラスタリング_Dendrogram_外れ値_JAR解析.md
+```
+
+少なくとも次を区分してください。
+
+* バイトコードから確定
+* 原論文から確定
+* 後年画面から確認
+* 資料から推定
+* 現代版として追加
+
+JARから回収できなかった仕様を、DAVIS初版仕様として断定してはいけません。
+
+## 25. 文書とトレーサビリティ
+
+既存の証拠区分を維持し、必要に応じて次へ整理してください。
+
+```text
+JAR-INITIAL
+PAPER-2002
+LATER-DAVIS
+RECONSTRUCTED
+MODERN-EXTENSION
+SCOPE-REQUIREMENT
+```
+
+API結果、session、Algorithm Inspector、cluster／outlier diagnosticsのすべてに、適切な`evidenceClass`と`algorithmVersion`を残してください。
+
+`FEATURE_TRACEABILITY.csv`は既存F001〜F059を失わず、次を追加してください。
+
+* import formats
+* schema inference
+* row identity
+* categorical
+* missing
+* scales
+* persistent sessions
+* jobs
+* Arrow transport
+* clustering各方式
+* Dendrogram
+* outlier各方式
+* high-resolution export
+* session sync
+* security
+* performance
+
+各行に次を含めてください。
+
+```text
+feature ID
+feature
+evidence class
+source basis
+implementation
+unit test
+integration test
+E2E
+visual evidence
+status
+```
+
+## 26. 完了条件
+
+次をすべて満たすまで「完了」としないでください。
+
+1. 現在の静的v1.0.0を破壊していない。
+2. 既存51試験相当が全件合格する。
+3. 任意データをimportできる。
+4. Python版DAVIS軸順がgolden fixtureと一致する。
+5. row identityが全操作・保存・再読込で維持される。
+6. PCP、Table、Box Plot、Dendrogramが同じselectionを共有する。
+7. selectionとgroupが分離されている。
+8. clustering結果が全ビューへ伝播する。
+9. outlier結果が全ビューへ伝播する。
+10. Focus、Delete／Exclude、Reset、Undo／Redoが動作する。
+11. project／sessionを永続保存・復元できる。
+12. static v1状態JSONをmigrationできる。
+13. job progress、cancel、cacheが動作する。
+14. malformed inputからGUIが復旧できる。
+15. 一般GUIに偽コンポーネントがない。
+16. localhost以外へのruntime通信がない。
+17. セキュリティ試験を通過する。
+18. E2Eで実ポインター、実キーボード、upload、download、再起動復元を確認する。
+19. visual evidenceが保存されている。
+20. test reportに失敗、skip、未実行を正確に記録している。
+21. release ZIPを展開して起動できる。
+22. checksumsとrelease manifestが一致する。
+23. `/DAVIS-PCP`ライブラリへ成果物が格納されている。
+24. 未実装の偽ボタン、空endpoint、TODOだけのserviceがない。
+25. 設計書だけでなく、実際に動作するコードが完成している。
+
+## 27. 最終成果物
+
+次を作成してください。
+
+```text
+/DAVIS-PCP/davis-pcp-fullstack-v2.0.0/
+/DAVIS-PCP/DAVIS-PCP-Fullstack-v2.0.0.zip
+/DAVIS-PCP/DAVIS-PCP-Fullstack-v2.0.0.zip.sha256
+```
+
+展開フォルダには少なくとも次を含めてください。
+
+```text
+frontend source
+backend source
+lockfiles
+launch scripts
+build scripts
+migration
+fixtures
+unit tests
+integration tests
+E2E
+visual screenshots
+benchmark data
+raw test reports
+JUnit XML
+coverage reports
+OpenAPI
+README
+ARCHITECTURE
+API_SPEC
+SOURCE_REVIEW_LOG
+JAR追加解析
+FEATURE_TRACEABILITY
+TEST_REPORT
+BENCHMARK_REPORT
+SECURITY_REPORT
+RELEASE_NOTES
+release-manifest
+checksums
+```
+
+ライブラリへの格納後、Filesで再度一覧を取得し、ファイルが実在することを確認してください。
+
+## 28. 最終報告
+
+最終回答では、抽象的な「実装しました」だけで終えず、次を具体的に報告してください。
+
+* 実装した機能
+* DAVIS初版互換機能
+* 原論文解釈機能
+* 後年DAVIS由来機能
+* 現代拡張
+* API一覧
+* 対応import形式
+* clustering／outlier方式
+* session保存方式
+* E2Eの具体的操作経路
+* unit／integration／E2E／visual／accessibility／security／performanceの件数
+* pass／fail／skip／未実行
+* 実測performance
+* 既知の制約
+* 単一の起動方法
+* ライブラリ格納先
+* ZIPのリンク
+* SHA-256
+
+失敗または未実行の試験がある場合は隠さず記載してください。ただし、一部の困難だけを理由に作業全体を停止せず、実装可能な範囲をすべて完成させてください。
+
+# ユーザーからの追加指示
+
+Viewをページ分けする
+PCP：Parallel CoordinatesとPlot structure
+Table：Data table
+サイドバー：Selected rows
+Distribution lens
+
+Distribution lensをPCP同様範囲選択できるようにする
+Sessionは上部に集めて操作部として共通表示する：モダンなUIとしてデザインを徹底的に検討してください。ShadcnのButton Groupなど
+サイドバーは折りたたみ可能にする
+
+EDAに必要な機能を適切にページ分けして追加する
+ファセットプロット
+相関係数ヒートマップ
+など
+DAVISの特徴であるデータを選択したものが別グラフでもハイライトされている機構はこれらにも適用する
+
+クラスタリングとそれに付随するビジュアル化を追加する
+階層的クラスタリング
+k平均クラスタリング
+決定木分析
+ランダムフォレスト
+これらも選択データハイライト機構を適用する。決定木のリーフを選択するとそれらを別グラフで確認できる等

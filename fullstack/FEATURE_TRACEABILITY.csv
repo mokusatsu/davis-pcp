@@ -1,0 +1,90 @@
+﻿id,feature,evidence_class,source_basis,implementation,verification
+F001,Fixed Iris 150 rows,PAPER-2002 / fixture,2002 original paper Iris example; embedded canonical fixture,Implemented as immutable JSON with stable IRIS-001..150 IDs,data: canonical fixed Iris fixture integrity
+F002,Five axes including Species,PAPER-2002,2002 original paper Iris PCP figure,Default five-axis schema,boot; ordering Iris five-axis modes
+F003,Horizontal PCP,JAR-INITIAL,Initial JAR and presentation screenshots,Canvas geometry horizontal mode,boot; orientation toggle
+F004,Vertical PCP,JAR-INITIAL,Initial JAR and presentation materials,Canvas geometry vertical mode,orientation toggle; vertical pointer brush
+F005,Database/NoOrder,JAR-INITIAL,Initial JAR ordering mode,Input order preserved,Iris five-axis modes
+F006,ComponentOrder double correlation,JAR-INITIAL,Initial JAR bytecode analysis,"corr(X), then corr(R_sub) per iteration",golden fixture; NumPy eigen oracle
+F007,ComponentOrder direct correlation,PAPER-INTERPRETATION,Natural interpretation of original algorithm text,R_sub direct eigendecomposition,Iris modes; NumPy eigen oracle
+F008,PermuteOrder candidate generator,JAR-INITIAL,Initial JAR bytecode analysis,ceil(p/2) Wegman/Huh candidates,golden fixture; Python oracle
+F009,PermuteOrder score,JAR-INITIAL,Initial JAR bytecode analysis,"Min-max columns, Euclidean distance, adjacent sum",four-axis fixture; Python oracle
+F010,Strict tie retention,JAR-INITIAL,Initial JAR strict < comparison,Earlier candidate retained on tie,Python oracle generated cases
+F011,Exhaustive correlation seriation,MODERN-EXTENSION,No initial DAVIS evidence,"All p! orders, minimize sum(1-|r|)",exhaustive-correlation diagnostics
+F012,Manual axis drag,MODERN-EXTENSION,Initial User define path was no-op,HTML5 DnD reorder,drag-and-drop manual reorder
+F013,Accessible axis move buttons,MODERN-EXTENSION,Keyboard accessibility addition,Previous/next axis buttons,drag-and-drop and button reorder
+F014,Per-axis reversal,DAVIS / MODERN PRESENTATION,DAVIS axis manipulation family,Mirror normalized coordinate,per-axis reversal geometry
+F015,Reverse all axes,MODERN-EXTENSION,Explicit modern command,Reverse visible axis sequence,correlation diagnostics and reverse-all
+F016,Axis visibility,DAVIS / MODERN PRESENTATION,PCP options screenshots,Checkbox visibility manager,visibility manager
+F017,Minimum two axes,MODERN-EXTENSION,Invariant required for polyline PCP,Proactive disabled visible checkboxes,visibility manager
+F018,Legacy vertex brush,JAR-INITIAL,Initial JAR bytecode,Any axis vertex inside rectangle,real-pointer DAVIS vertex brush; geometry oracle
+F019,Segment-intersection brush,MODERN-EXTENSION,Not initial JAR behavior,Liang-Barsky rectangle intersection,legacy-vs-segment; UI segment mode; geometry oracle
+F020,Add selection,JAR-INITIAL,Initial group assignment behavior,Set union,set operations; set algebra oracle
+F021,Replace selection,MODERN-EXTENSION,Explicit modern selection operation,Set replacement,set operations
+F022,Subtract selection,MODERN-EXTENSION,Explicit modern selection operation,Set difference,set operations
+F023,Toggle selection,MODERN-EXTENSION,Explicit modern selection operation,Symmetric difference,set operations; set algebra oracle
+F024,Double-click clear,JAR-INITIAL,Initial JAR mouse handler,Clear shared selection,set operations and double-click clear
+F025,Line hover tooltip,LATER-DAVIS / MODERN,Later DAVIS interaction evidence,Nearest segment distance tooltip,UI segment mode and line hover
+F026,Line click selection,MODERN-EXTENSION,Direct manipulation addition,Nearest row toggle on short pointer gesture,UI segment mode and line click
+F027,Identify,DAVIS,DAVIS operation materials,Native dialog with selected rows,identify dialog; context menu full path
+F028,Focus selected,JAR-INITIAL,Initial JAR operation,active becomes selected subset,Focus Undo Redo Reset; context menu; keyboard
+F029,Delete selected,JAR-INITIAL,Initial JAR operation,Remove selected from active; preserve base fixture,Delete undo; delete-all edge; context menu
+F030,Reset to Base Data,JAR-INITIAL semantics,Initial Undo reset behavior,Restore all 150 rows and clear selection,Focus Undo Redo Reset; delete-all edge
+F031,Multi-step Undo/Redo,MODERN-EXTENSION,Initial JAR lacked multi-step history,"Snapshot before/after commands, max 100",Focus Undo Redo; keyboard history
+F032,Command history view,MODERN-EXTENSION,Auditability addition,Latest 12 commands rendered,summaries diagnostics history; jitter history
+F033,Linked data table,DAVIS linked views / MODERN UI,Original linked brushing concept,Shared row-ID checkboxes and highlight,table bidirectional selection
+F034,Table search/filter/sort/page,MODERN-EXTENSION,Modern data grid behavior,Client-side filtering and pagination,table tests
+F035,Selected-only table,MODERN-EXTENSION,Modern inspection aid,Filter active rows by selected set,selected-only test
+F036,Distribution lens,DAVIS linked views / MODERN UI,Linked multiple views,SVG box/whisker plus all points,boxplot linking
+F037,Selection summary,MODERN-EXTENSION,Modern analytical feedback,"Counts, species composition, means, IDs",summaries diagnostics history
+F038,Ordering diagnostics,MODERN-EXTENSION,Traceability requirement,"Evidence, candidates, scores, loadings",ordering modes; diagnostics test
+F039,Species colors,PAPER-2002 / LATER-DAVIS,Class distinction in figures,Three category colors,boot; rendering controls
+F040,Context visibility,MODERN-EXTENSION,Focus+context usability,Toggle non-selected lines,rendering controls
+F041,Line opacity/width,MODERN-EXTENSION,Modern rendering control,Immediate Canvas redraw,rendering controls
+F042,High-DPI rendering,MODERN-EXTENSION,Modern display support,Device pixel ratio scaling,rendering controls DPR=2
+F043,Deterministic pixel jitter,MODERN FIX,Initial jitter intent but broken path,Seeded per-row/per-axis pixel displacement,jitter determinism; geometry oracle
+F044,Legacy raw jitter,JAR intent / MODERN FIX,Initial ±0.1 intent,Raw value displacement without overwrite bug,jitter determinism; geometry oracle
+F045,Snapshot save/load,MODERN-EXTENSION,Static app persistence,localStorage with memory fallback,snapshot round-trip
+F046,JSON state export/import,MODERN-EXTENSION,Portable session state,Schema v1 validation,JSON export/import; invalid import recovery
+F047,CSV selected export,MODERN-EXTENSION,Portable selected data,UTF-8 BOM CSV,JSON/CSV/PNG export
+F048,PNG export,MODERN-EXTENSION,Portable plot image,Canvas PNG blob,JSON/CSV/PNG export
+F049,Right-click command menu,DAVIS interaction / MODERN UI,DAVIS command operations,Native event-driven menu,context menu tests
+F050,Keyboard commands,MODERN-EXTENSION,Accessibility and efficiency,Undo/redo/clear/focus/delete/escape,keyboard tests
+F051,Dark theme,MODERN-EXTENSION,Modern UI preference,CSS variables and redraw,dark-mode geometry preservation
+F052,Responsive layout,MODERN-EXTENSION,Browser GUI requirement,1280 and 1024 layouts,layout breakpoints
+F053,Accessible names and landmarks,MODERN-EXTENSION,Accessibility requirement,"Native controls, labels, skip link, aria-live",accessibility tests
+F054,Offline zero-network runtime,SCOPE REQUIREMENT,Backend-free initial version,No external assets/network APIs,offline E2E; static validation
+F055,Reproducible single-file build,MODERN-EXTENSION,Release engineering,Verbatim module embedding,static reproducible build
+F056,Interactive clustering,LATER-DAVIS,Later screenshots and papers,OUT-OF-SCOPE: no analysis backend,Not rendered as fake control
+F057,Outlier detection,LATER-DAVIS,Later screenshot,OUT-OF-SCOPE: no analysis backend,Not rendered as fake control
+F058,Arbitrary data import,OUT-OF-SCOPE,Requires generalized schema and validation,Not implemented in fixed-Iris version,Scope assertion in documentation
+F059,Python backend/API,OUT-OF-SCOPE,Explicit initial-version constraint,No backend or fetch,offline/static validation
+F060,Arbitrary data import (CSV/TSV/Parquet/Arrow/ARFF/SQLite),SCOPE-REQUIREMENT,order.txt section 8,backend/app/services/import_service.py + api/datasets.py,tests/unit/test_import.py,tests/api/test_api.py,E2E import via UI,import screenshot,IMPLEMENTED
+F061,Content-based format probe,SCOPE-REQUIREMENT,order.txt 8.2,magic-byte + content sniffing,tests/unit/test_import.py::TestFormatDetection,test upload,,-,IMPLEMENTED
+F062,Schema inference and patch,MODERN-EXTENSION,order.txt 8.3,probe_table + PATCH schema,tests/unit/test_import.py,tests/api/test_api.py,Overview page,,-,IMPLEMENTED
+F063,Stable row identity (3-tier),SCOPE-REQUIREMENT,order.txt 8.4,assign_row_identity,tests/unit/test_import.py::TestRowIdentity,tests/api/test_api.py,Overview rowIdentity display,,-,IMPLEMENTED
+F064,Canonical Parquet storage + fingerprint,SCOPE-REQUIREMENT,order.txt 8.5,DatasetStore + values_fingerprint,tests/unit/test_import.py::TestFingerprint,fingerprint in summaries cache,,-,IMPLEMENTED
+F065,Persistent sessions (SQLite + revision),SCOPE-REQUIREMENT,order.txt 17,SessionStore,tests/unit/test_session_jobs.py,tests/api/test_api.py::TestSessions,session save E2E,,-,IMPLEMENTED
+F066,Static v1 migration,SCOPE-REQUIREMENT,order.txt 17.3,api/sessions.py migrate-static-v1,tests/api/test_api.py::TestSessions,migration round trip,,-,IMPLEMENTED
+F067,Job system (cancel guard),SCOPE-REQUIREMENT,order.txt 16,JobStore.transition terminal guard,tests/unit/test_session_jobs.py,tests/api/test_api.py::TestJobs,,-,IMPLEMENTED
+F068,Arrow IPC transport,SCOPE-REQUIREMENT,order.txt 5.3,dataset view endpoint,tests/api/test_api.py::TestDatasets,E2E boot,,-,IMPLEMENTED
+F069,KMeans/KMedoids/Divisive/GMM/ClassVar clustering,SCOPE-REQUIREMENT,order.txt 12,algorithms/clustering/core.py,tests/unit/test_clustering_outliers.py,tests/api/test_api.py,Clusters E2E,clusters screenshot,IMPLEMENTED
+F070,Hierarchical clustering + Dendrogram,LATER-DAVIS,order.txt 14,agglomerative + DendrogramPanel,tests/unit/test_clustering_outliers.py,tests/api/test_api.py,dendrogram E2E,,-,IMPLEMENTED
+F071,Silhouette diagnostics,MODERN-EXTENSION,user request 2026-08-22,silhouette_summary + SilhouettePlot,unit clustering tests,clusters API test,Clusters page,silhouette screenshot,IMPLEMENTED
+F072,PCA 2D cluster scatter,MODERN-EXTENSION,user request 2026-08-22,pcaProjection + PcaScatterPlot,clusters API test,Clusters page,PCA screenshot,,-,IMPLEMENTED
+F073,Outlier detection (4 methods),MODERN-EXTENSION,order.txt 13,algorithms/outliers/core.py,tests/unit/test_clustering_outliers.py,tests/api/test_api.py,,-,IMPLEMENTED
+F074,Decision tree structure + leaf selection,MODERN-EXTENSION,user request 2026-08-22,models API treeStructures + TreeDiagram,tests/api/test_api.py::TestModels,models E2E leaf select,tree screenshot,,-,IMPLEMENTED
+F075,Random Forest + importance,MODERN-EXTENSION,order.txt / user request,models API forest,tests/api/test_api.py,Models page,importance bars,,-,IMPLEMENTED
+F076,Pair plot,MODERN-EXTENSION,user request 2026-08-22,RelationshipsPage pair-plot,frontend unit,relationships E2E,pair plot screenshot,,-,IMPLEMENTED
+F077,Correlation heatmap (labeled),MODERN-EXTENSION,user request 2026-08-22,RelationshipsPage heatmap,relationships E2E,heatmap click test,heatmap screenshot,,-,IMPLEMENTED
+F078,Facet plot linked selection,MODERN-EXTENSION,user request,RelationshipsPage facet,facet E2E,,-,,-,IMPLEMENTED
+F079,Statistics page (table+histograms),MODERN-EXTENSION,user request 2026-08-22,StatisticsPage,statistics E2E,,-,stats screenshot,IMPLEMENTED
+F080,Distribution v1-style boxplot + color-by,SCOPE-REQUIREMENT,user feedback (v1 parity),DistributionPage rewrite,distribution E2E,rect brush browser test,distribution screenshot,,-,IMPLEMENTED
+F081,Rectangular range brush (Distribution),SCOPE-REQUIREMENT,user feedback 2026-08-22,2D rect brush + dragRef,distribution E2E,add-mode browser test,,-,IMPLEMENTED
+F082,Validated categorical palette,MODERN-EXTENSION,user feedback (readability),theme/viz.ts (dataviz validated),frontend unit palette tests,,-,PCP screenshot,IMPLEMENTED
+F083,On-axis controls (v1 parity),SCOPE-REQUIREMENT,user feedback (v1 parity),PcpPage axis-control overlay,E2E five axes,,-,axis controls screenshot,IMPLEMENTED
+F084,Jitter legacyRaw ±0.1 + pixel,JAR intent / MODERN FIX,static v1 app.js:472,geometry.ts applyRawJitter,frontend unit jitter tests,,-,jitter screenshot,IMPLEMENTED
+F085,Categorical axis jitter,SCOPE-REQUIREMENT,user feedback,geometry.ts pixel jitter all axes,,-,,-,,-,IMPLEMENTED
+F086,Selection sidebar (collapsible right-aligned),SCOPE-REQUIREMENT,user request,AppShell toggle button placement,E2E sidebar usage,,-,,-,IMPLEMENTED
+F087,SPA history fallback,MODERN-EXTENSION,routing requirement,main.py spa_fallback,E2E direct /pcp load,,-,,-,IMPLEMENTED
+F088,CSV formula injection neutralization,SCOPE-REQUIREMENT,order.txt 21,exports _neutralize,tests/api/test_api.py,,-,,-,IMPLEMENTED
+F089,Security (limits/no-trace/localhost),SCOPE-REQUIREMENT,order.txt 21,config limits + error handler,tests/api/test_api.py::TestSecurity,,-,,-,IMPLEMENTED

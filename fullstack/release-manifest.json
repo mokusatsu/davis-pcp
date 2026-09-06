@@ -1,0 +1,12 @@
+{
+  "artifact": "DAVIS-PCP-Fullstack-v2.0.0.zip",
+  "version": "2.0.0",
+  "generatedAt": "2026-08-22T02:26:27Z",
+  "fileCount": 92,
+  "components": {
+    "backend": "FastAPI + Polars/scikit-learn/scipy (Python authoritative ordering)",
+    "frontend": "React 18 + TypeScript strict + Ant Design 5 + Vite",
+    "storage": "canonical Parquet datasets + SQLite sessions/jobs"
+  },
+  "checksumsFile": "checksums.sha256"
+}

@@ -1,0 +1,1 @@
+"""Penalty-Reward Analysis package."""

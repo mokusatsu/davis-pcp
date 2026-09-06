@@ -1,0 +1,63 @@
+/* Base reset to ensure 100vh layout without window-level scrollbars */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* AGENTS.md R10: prevent accidental text selection while brushing.
+
+   Chart surfaces opt out of text selection; UI copy outside plots is unaffected. */
+[data-testid="plot-frame"],
+[data-testid="plot-overlay"],
+[data-testid="distribution-svg"],
+[data-testid="pair-plot"],
+[data-testid="correlation-heatmap"],
+[data-testid="facet-plot"],
+[data-testid="pca-svg"],
+[data-testid="silhouette-svg"],
+[data-testid="dendrogram-svg"],
+[data-testid^="tree-diagram-"],
+svg[data-testid^="histogram-"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Audit recheck #3: cover svgs without dedicated testids. */
+svg[class*="recharts"], .ant-upload-drag-hidden + svg,
+svg[width="40"], svg:not([data-testid]) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Focus Mode and Zoom Scaling */
+.focus-target-active {
+  width: 100%;
+  height: 100%;
+}
+
+.focus-target-fit {
+  overflow: auto;
+}
+
+.focus-target-fit svg {
+  max-width: 100% !important;
+}
+
+[data-testid="focus-scaled"] svg {
+  max-width: none !important;
+}
+
+[data-testid="focus-scaled"] > svg,
+[data-testid="focus-scaled"] > div > svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+

@@ -1,0 +1,86 @@
+const BASE = '/api/v1'
+
+export interface ApiError {
+  code: string
+  message: string
+  details: Record<string, unknown>
+  recoverable: boolean
+  suggestedActions: string[]
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE}${path}`, init)
+  if (!response.ok) {
+    let error: ApiError = { code: 'HTTP_ERROR', message: `HTTP ${response.status}`, details: {}, recoverable: true, suggestedActions: [] }
+    try {
+      const body = await response.json()
+      if (body.error) error = body.error
+    } catch { /* keep default */ }
+    throw error
+  }
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('json')) return response.json()
+  return response as unknown as T
+}
+
+export const api = {
+  get: <T>(path: string) => request<T>(path),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  put: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  upload: async <T>(path: string, file: File, extra: Record<string, string> = {}) => {
+    const form = new FormData()
+    form.append('file', file)
+    for (const [key, value] of Object.entries(extra)) form.append(key, value)
+    const response = await fetch(`${BASE}${path}`, { method: 'POST', body: form })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw body?.error ?? { code: 'UPLOAD_FAILED', message: 'uploadに失敗しました', details: {}, recoverable: true, suggestedActions: [] }
+    }
+    return response.json() as Promise<T>
+  },
+}
+
+export async function fetchArrowView(datasetId: string, columns?: string[], rowIds?: string[]): Promise<Record<string, unknown[]>> {
+  const response = await fetch(`${BASE}/datasets/${datasetId}/view`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ columns, rowIds }),
+  })
+  if (!response.ok) throw new Error(`view failed: ${response.status}`)
+  const { tableFromIPC } = await import('apache-arrow')
+  const table = tableFromIPC(await response.arrayBuffer())
+  const result: Record<string, unknown[]> = {}
+  for (const column of table.schema.fields) {
+    result[column.name] = Array.from(table.getChild(column.name)?.toArray() ?? [])
+  }
+  return result
+}
+
+export async function downloadExport(datasetId: string, scope: 'selected' | 'active' | 'all', format: 'csv' | 'parquet' | 'arrow', rowIds?: string[]) {
+  const response = await fetch(`${BASE}/exports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ datasetId, scope, format, rowIds }),
+  })
+  if (!response.ok) throw new Error('export failed')
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = match?.[1] ?? `export.${format}`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

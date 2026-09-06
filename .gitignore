@@ -1,0 +1,71 @@
+# User-specified exclusion
+/base/
+
+# Runtime data & temporary audit files
+/workspace/
+/audit_tmp/
+/_iris_fixture.json
+recheck*.py
+recheck*.txt
+
+# Local agent & editor settings
+.claude/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js & Frontend build
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.eslintcache
+*.tsbuildinfo
+dist/
+
+# Rust / WebAssembly build artifacts
+target/
+Cargo.lock
+
+# Scratch & runtime artifacts
+scratch/
+
+# SQLite databases & logs
+*.sqlite3
+*.sqlite
+*.db
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini

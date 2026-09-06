@@ -1,0 +1,1048 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSelector, useDispatch } from 'react-redux'
+import {
+  Alert, Button, Dropdown, InputNumber, Segmented, Select, Slider, Space, Spin,
+  Switch, Table, Tag, Typography,
+} from 'antd'
+import { DownOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, CaretUpOutlined, CaretLeftOutlined } from '@ant-design/icons'
+import type { RootState, AppDispatch } from '../../app/store'
+import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, pcpStateChanged, l2ColorToggled } from '../../app/store'
+import type { PcpAxis } from './geometry'
+import { normalizedRect, type Rect } from './brush'
+import { graphEngine } from '../../engine/graphClient'
+import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
+import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes, l1CandidatesOf } from './usePcpPipeline'
+import { useColumnarData } from './useDatasetColumns'
+import { api } from '../../api/client'
+import { vizTheme } from '../../theme/viz'
+import SelectionMenu from '../selection/SelectionMenu'
+import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
+import { getSvgPoint } from '../../utils/svgCoordinates'
+import EmptyStatePanel from '../common/EmptyStatePanel'
+
+/** Palette tokens as a plain array for the packed-slot color resolver. */
+function buildPalette(theme: ReturnType<typeof vizTheme>): string[] {
+  return [...theme.categorical]
+}
+
+/** Paint the spec on an OffscreenCanvas inside the shared graph worker.
+ *  Falls back to main-thread painting when Workers are unavailable.
+ *  The offscreen canvas is NOT transferred — it stays owned by this thread so
+ *  the previous frame remains visible until the new paint completes (no blank
+ *  flash between renders). */
+async function paintOnWorker(offscreen: OffscreenCanvas, spec: PcpRenderSpec): Promise<void> {
+  const w = ensurePaintWorker()
+  if (!w) throw new Error('paint worker unavailable')
+  const id = ++paintRequestId
+  return new Promise((resolve, reject) => {
+    const entry = paintPending.get(id)
+    void entry
+    paintPending.set(id, { resolve, reject })
+    w.postMessage({ id, op: 'renderPcp', canvas: offscreen, spec })
+  })
+}
+
+let paintWorker: Worker | null = null
+let paintRequestBroken = false
+let paintRequestId = 0
+const paintPending = new Map<number, { resolve: () => void; reject: (e: Error) => void }>()
+
+function ensurePaintWorker(): Worker | null {
+  if (paintWorker) return paintWorker
+  if (paintRequestBroken) return null
+  try {
+    paintWorker = new Worker(new URL('../../engine/graph.worker.ts', import.meta.url), { type: 'module' })
+    paintWorker.onmessage = (event: MessageEvent) => {
+      const data = event.data as { id: number; ok: boolean; error?: string }
+      const entry = paintPending.get(data.id)
+      if (entry) {
+        paintPending.delete(data.id)
+        if (data.ok) entry.resolve()
+        else entry.reject(new Error(data.error ?? 'worker paint failed'))
+      }
+    }
+    paintWorker.onerror = () => {
+      paintRequestBroken = true
+      paintWorker = null
+      for (const [, entry] of paintPending) entry.reject(new Error('paint worker crashed'))
+      paintPending.clear()
+    }
+    // The OffscreenCanvas transfers away after first use; keep one canvas per
+    // request instead — a fresh worker per page mount is acceptable here since
+    // the module-level singleton below persists across renders.
+    return paintWorker
+  } catch {
+    paintRequestBroken = true
+    return null
+  }
+}
+
+export interface OrderingDiagnostics {
+  method: string
+  evidenceClass: string
+  outputColumnIds: string[]
+  candidateOrders: string[][]
+  candidateScores: (number | null)[]
+  iterationTrace: { step: number; selected?: string; rule?: string; loading?: number[] }[]
+}
+
+
+export default function PcpPage() {
+  const dispatch = useDispatch<AppDispatch>()
+  const selection = useSelector((s: RootState) => s.selection)
+  const pcp = useSelector((s: RootState) => s.pcp)
+  const data = useColumnarData(selection.datasetId)
+  const theme = vizTheme(false)
+  /** OffscreenCanvas mirror of the visible canvas — painted in the worker. */
+  const offscreenRef = useRef<OffscreenCanvas | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const overlayRef = useRef<SVGSVGElement>(null)
+  const brushRectRef = useRef<SVGRectElement>(null)
+  const frameNodeRef = useRef<HTMLDivElement | null>(null)
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
+  const brushState = useRef<{ start: { x: number; y: number }; pointerId: number } | null>(null)
+  const [diagnostics, setDiagnostics] = useState<OrderingDiagnostics | null>(null)
+  const [orderError, setOrderError] = useState<{ message: string; suggestedActions: string[] } | null>(null)
+  const [orderingLoading, setOrderingLoading] = useState(false)
+  const [firstFrameRendered, setFirstFrameRendered] = useState(false)
+  const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
+
+  // Build axis metadata from schema (O(cols) via precomputed min/max/cats).
+  const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data) : []), [data])
+  const l1Candidates = useMemo(() => l1CandidatesOf(axes), [axes])
+
+  // Dataset switch: drop the previous geometry immediately so axis controls
+  // never render positions from a different dataset (audit #3).
+  useEffect(() => {
+    offscreenRef.current = null
+    setFirstFrameRendered(false)
+    if (frameNodeRef.current) {
+      frameNodeRef.current.scrollLeft = 0
+      frameNodeRef.current.scrollTop = 0
+    }
+  }, [selection.datasetId])
+
+  // Initialize order/visibility/colorBy on dataset load.
+  useEffect(() => {
+    if (!axes.length || !data) return
+    const columns = data.columns
+    const rowIds = data.rowIds
+    let defaultColorBy: string | null = null
+    if (l1Candidates.length === 1) {
+      defaultColorBy = l1Candidates[0].key
+    } else if (l1Candidates.length > 1) {
+      // Auto-pick the candidate with the lowest normalized entropy (most
+      // class-representative) — it separates lines best.
+      let bestKey: string | null = null
+      let bestScore = Infinity
+      for (const key of l1Candidates.map((a) => a.key)) {
+        const values = rowIds.map((_, i) => String(columns[key]?.[i] ?? ''))
+        const counts = new Map<string, number>()
+        for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1)
+        const n = values.length
+        const entropy = -[...counts.values()].reduce((sum, c) => {
+          const p = c / n
+          return sum + p * Math.log2(p)
+        }, 0)
+        const score = entropy / Math.log2(counts.size)
+        if (score < bestScore) {
+          bestScore = score
+          bestKey = key
+        }
+      }
+      defaultColorBy = bestKey ?? l1Candidates[0].key as string
+    }
+    dispatch(pcpStateChanged({
+      order: axes.map((a) => a.key),
+      visibleColumns: axes.map((a) => a.key),
+      reversed: Object.fromEntries(axes.map((a) => [a.key, false])),
+      colorBy: defaultColorBy,
+    }))
+  }, [axes, l1Candidates, dispatch])
+
+  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const orderedVisibleAxes = useMemo(() => {
+    const activeVarIds = globalVars?.activeVariableIds?.length > 0 ? globalVars.activeVariableIds : pcp.visibleColumns
+    return pcp.order
+      .filter((key) => activeVarIds.includes(key))
+      .map((key) => axes.find((a) => a.key === key))
+      .filter((a): a is PcpAxis => Boolean(a))
+  }, [pcp.order, pcp.visibleColumns, globalVars?.activeVariableIds, axes])
+
+  const activeRowIndexes = useActiveRows()
+
+  // K-Medoids draw simplification: >500 rows draw cluster representatives
+  // (medoids ∪ selected rows) instead of every active row. Runs BEFORE the
+  // geometry call so color slots / selection flags / hit tests all see the
+  // reduced row set and stay consistent by construction.
+  const simplification = usePcpSimplification({ orderedVisibleAxes, activeRowIndexes })
+  const drawRowIndexes = simplification?.drawRowIndexes ?? activeRowIndexes
+
+  // Minimum pixel width/height per axis: below this, labels/ticks collide and the
+  // plot becomes unreadable, so the frame scrolls instead.
+  const MIN_AXIS_WIDTH = 90
+  const MIN_AXIS_HEIGHT = 48
+
+  const isVertical = pcp.orientation === 'vertical'
+
+  const virtualWidth = useMemo(() => {
+    if (!orderedVisibleAxes.length) return 0
+    if (isVertical) return Math.max(frameSize.width, 1)
+    return Math.max(frameSize.width, orderedVisibleAxes.length * MIN_AXIS_WIDTH)
+  }, [orderedVisibleAxes, frameSize.width, isVertical])
+
+  const virtualHeight = useMemo(() => {
+    if (!orderedVisibleAxes.length) return 0
+    if (!isVertical) return Math.max(frameSize.height, 1)
+    return Math.max(frameSize.height, orderedVisibleAxes.length * MIN_AXIS_HEIGHT)
+  }, [orderedVisibleAxes, frameSize.height, isVertical])
+
+  const geometry = usePcpGeometry({
+    // Geometry must span the FULL virtual span — not just the visible frame —
+    // or axis spacing collapses and the canvas coordinate space diverges
+    // from the scrollable area (student_performance: 33 axes drew at 12.8px
+    // pitch inside a 2970px scroll area in horizontal mode, or squashed into
+    // 14px in vertical mode).
+    width: virtualWidth,
+    height: virtualHeight,
+    orderedVisibleAxes,
+    activeRowIndexes: drawRowIndexes,
+  })
+
+  /** Handlers must always see the latest geometry even when a stale event
+   *  closure survives a React bailout — closures over `geometry` went stale
+   *  (hover/brush dead after remount), so input paths read through this ref. */
+  const geometryRef = useRef<ReturnType<typeof usePcpGeometry>>(null)
+  useEffect(() => {
+    geometryRef.current = geometry
+  }, [geometry])
+
+  /** Same stale-closure guard for the simplification result (hit expansion). */
+  const simplificationRef = useRef<ReturnType<typeof usePcpSimplification>>(null)
+  useEffect(() => {
+    simplificationRef.current = simplification
+  }, [simplification])
+
+  /** Geometry rows are keyed by position; keep id↔row maps for hit tests/hover. */
+  const rowIndexByGeometryRow = useMemo(
+    () => (geometry ? geometry.rowIds : []),
+    [geometry],
+  )
+  void rowIndexByGeometryRow
+
+  /** Per-geometry-row packed color slots (L1 slot | L2 group), context gray sentinel. */
+  const rowColorSlots = useMemo(() => {
+    if (!geometry) return null
+    const slots = new Uint16Array(geometry.nRows)
+    const l2GroupOfId = new Map<string, number>()
+    if (selection.l2ColorEnabled) {
+      selection.groups.forEach((group, index) => {
+        group.rowIds.forEach((id) => { if (!l2GroupOfId.has(id)) l2GroupOfId.set(id, index) })
+      })
+    }
+    const colorKey = pcp.colorBy
+    if (colorKey && data) {
+      const values = data.columns[colorKey] ?? []
+      const categories = data.categories[colorKey] ?? []
+      // Pre-build category → index map for O(1) lookup instead of indexOf
+      const catMap = new Map<string, number>()
+      categories.forEach((cat, i) => catMap.set(cat, i))
+      for (let r = 0; r < geometry.nRows; r += 1) {
+        const id = geometry.rowIds[r]
+        const index = data.rowIndex.get(id)
+        if (index === undefined) continue
+        const catIndex = catMap.get(String(values[index])) ?? -1
+        const l1Slot = catIndex >= 0 ? catIndex + 1 : 0
+        const l2Group = l2GroupOfId.get(id)
+        slots[r] = ((l2Group !== undefined && selection.l2ColorEnabled) ? (1 << 15) | ((l2Group & 0x7f) << 8) : 0) | (l1Slot & 0xff)
+      }
+    } else {
+      for (let r = 0; r < geometry.nRows; r += 1) {
+        const id = geometry.rowIds[r]
+        const l2Group = l2GroupOfId.get(id)
+        slots[r] = ((l2Group !== undefined && selection.l2ColorEnabled) ? (1 << 15) | ((l2Group & 0x7f) << 8) : 0) | (0xff & 0xff)
+      }
+    }
+    return slots
+  }, [geometry, selection.groups, selection.l2ColorEnabled, pcp.colorBy, data])
+
+  const selectedFlags = useMemo(() => {
+    if (!geometry) return null
+    const flags = new Uint8Array(geometry.nRows)
+    const selectedSet = new Set(selection.selectedRowIds)
+    geometry.rowIds.forEach((id, r) => { flags[r] = selectedSet.has(id) ? 1 : 0 })
+    return flags
+  }, [geometry, selection.selectedRowIds])
+
+  const hoveredGeometryRow = useMemo(() => {
+    if (!geometry || !selection.hoveredRowId) return -1
+    return geometry.rowIds.indexOf(selection.hoveredRowId)
+  }, [geometry, selection.hoveredRowId])
+
+  /** True while data is present but the first frame has not been painted yet —
+   *  drives the "描画準備中" indicator in place of a blank plot. */
+  const preparingFirstFrame = Boolean(data && orderedVisibleAxes.length && (!geometry || !rowColorSlots || !selectedFlags))
+  const isPlotLoading = Boolean(data && orderedVisibleAxes.length && (preparingFirstFrame || orderingLoading || !firstFrameRendered))
+
+  /**
+   * Render pipeline: geometry (WASM in worker) → paint spec → worker paints on
+   * OffscreenCanvas; main thread only transfers the canvas and input events.
+   * Falls back to painting locally when OffscreenCanvas/Worker unavailable.
+   * While one paint is in flight, newer requests REPLACE the queued one (only
+   * the latest state is painted when the worker frees up) so rapid pointer
+   * movement can't pile up a lagging update queue.
+   */
+  const renderBusyRef = useRef(false)
+  const pendingRenderRef = useRef(false)
+  /** Always-current renderPlot reference — the pending follow-up must run the
+   *  LATEST closure (fresh frameSize/geometry), not the one that was busy. */
+  const renderPlotRef = useRef<() => void>(() => {})
+  const renderPlot = useCallback(async () => {
+    renderPlotRef.current = () => { void renderPlot() }
+    if (renderBusyRef.current) {
+      pendingRenderRef.current = true
+      return
+    }
+    renderBusyRef.current = true
+    try {
+      await doRenderPlot()
+    } finally {
+      renderBusyRef.current = false
+      // A request arrived while painting: run exactly ONE follow-up through
+      // the latest closure so it picks up the newest frameSize/geometry.
+      if (pendingRenderRef.current) {
+        pendingRenderRef.current = false
+        renderPlotRef.current()
+      }
+    }
+    async function doRenderPlot() {
+    const canvas = canvasRef.current
+    if (!canvas || !geometry || !rowColorSlots || !selectedFlags) return
+    // The canvas is FRAME-SIZED and shows the scrolled window of the plot:
+    // browsers silently disable canvases wider than ~32k px (kaggle's 369
+    // axes × 90px × dpr2 = 66k px painted nothing), so the full virtual span
+    // can never be one bitmap. Geometry stays in virtual coords; the renderer
+    // translates by -viewportX so lines land in viewport-local positions.
+    const width = Math.max(1, frameSize.width)
+    const height = Math.max(1, frameSize.height)
+    const dpr = Math.max(1, window.devicePixelRatio || 1)
+    const deviceW = Math.round(width * dpr)
+    const deviceH = Math.round(height * dpr)
+    // Resize (and only resize) clears the visible canvas; same-size repaints
+    // keep the previous frame until the new one is ready.
+    if (canvas.width !== deviceW || canvas.height !== deviceH) {
+      canvas.width = deviceW
+      canvas.height = deviceH
+      offscreenRef.current = null
+    }
+    canvas.style.width = `${width}px`
+    canvas.style.height = `${height}px`
+    const scrollLeft = frameNodeRef.current?.scrollLeft ?? 0
+    const scrollTop = frameNodeRef.current?.scrollTop ?? 0
+
+    const axesSpec = orderedVisibleAxes.map((a) => ({
+      key: a.key,
+      label: a.label,
+      isCategorical: a.type === 'categorical',
+      min: a.min,
+      max: a.max,
+      categories: a.categories,
+    }))
+    const spec: PcpRenderSpec = {
+      width,
+      height,
+      dpr,
+      orientation: pcp.orientation,
+      points: geometry.points,
+      nRows: geometry.nRows,
+      nAxes: geometry.nAxes,
+      axisPos: geometry.axisPos,
+      bounds: geometry.bounds,
+      axes: axesSpec,
+      reversed: pcp.reversed,
+      style: {
+        showContext: pcp.showContext,
+        lineOpacity: pcp.lineOpacity,
+        lineWidth: pcp.lineWidth,
+        selectedLineWidthBoost: 1.3,
+      },
+      rowColorSlots,
+      categoricalPalette: buildPalette(theme),
+      selectedFlags,
+      hoveredRow: hoveredGeometryRow,
+      // Density controls: cap context rows so huge datasets (kaggle 921×369)
+      // stay responsive; off-viewport segments are skipped losslessly.
+      // Selected/hovered rows are never decimated.
+      maxContextRows: 4000,
+      viewportX: scrollLeft,
+      viewportY: scrollTop,
+      clusterSizes: simplification?.clusterSizes ?? null,
+    }
+
+    let offscreen = offscreenRef.current
+    const canOffscreen = typeof OffscreenCanvas !== 'undefined' && graphEngine.kind !== undefined
+    if (canOffscreen) {
+      try {
+        if (!offscreen || offscreen.width !== deviceW || offscreen.height !== deviceH) {
+          offscreen = new OffscreenCanvas(deviceW, deviceH)
+          offscreenRef.current = offscreen
+        } else {
+          // Reuse the same buffer: the worker clears it before painting.
+        }
+        await paintOnWorker(offscreen, spec)
+        // Blit only AFTER the fresh frame is complete — the visible canvas
+        // keeps showing the previous frame until this moment (no blank).
+        const ctx = canvas.getContext('2d')!
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(offscreen as unknown as CanvasImageSource, 0, 0)
+        setFirstFrameRendered(true)
+        return
+      } catch {
+        // Worker paint failed — fall back to a synchronous local repaint below.
+      }
+    }
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    renderPcp(ctx, spec)
+    setFirstFrameRendered(true)
+    }
+  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme])
+
+  useEffect(() => { void renderPlot() }, [renderPlot])
+
+  const [measureNode, setMeasureNode] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const frame = measureNode
+    // The frame div mounts only after datasetId is set (the loading state
+    // early-returns before it), and FocusTarget's zoom wrapper can remount it.
+    // Re-run this effect whenever the frame node is (re)created — keying on
+    // the node via a ref callback keeps the observer/interval attached to the
+    // CURRENT frame; keying on datasetId alone left a dead closure when the
+    // node was replaced (frameSize froze at the pre-zoom size).
+    if (!frame) return
+    const measure = () => {
+      // Read layout synchronously: a 0-width frame (hidden viewport at mount)
+      // must not stick — re-measure on the next frames until real size lands,
+      // because ResizeObserver may never fire in that state (audit #1).
+      const width = Math.max(1, frame.clientWidth)
+      const height = Math.max(1, frame.clientHeight)
+      setFrameSize(prev => (prev.width !== width || prev.height !== height ? { width, height } : prev))
+      return width > 1
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(frame)
+    let raf = 0
+    let tries = 0
+    const tick = () => {
+      tries += 1
+      if (measure() || tries >= 120) return
+      raf = requestAnimationFrame(tick)
+    }
+    if (!measure()) raf = requestAnimationFrame(tick)
+    // Hidden viewports throttle rAF (and even window resize events) to zero,
+    // so the frame-size poll can stall before layout lands. Keep a slow
+    // interval recheck running until a real size is measured — it self-stops
+    // once the frame has a size or after a bounded number of tries.
+    // Permanent low-frequency poll: ResizeObserver misses size changes inside
+    // transformed (zoom) wrappers, and rAF/resize events freeze in hidden
+    // viewports. Reading clientWidth twice a second is negligible CPU and
+    // keeps frameSize converging in every environment.
+    const interval = setInterval(measure, 500)
+    const recheck = () => { measure() }
+    document.addEventListener('visibilitychange', recheck)
+    window.addEventListener('resize', recheck)
+    window.addEventListener('focus', recheck)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(raf)
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', recheck)
+      window.removeEventListener('resize', recheck)
+      window.removeEventListener('focus', recheck)
+    }
+  }, [measureNode, selection.datasetId])
+
+  /** The frame-sized canvas shows the scrolled window of the virtual-width
+   *  plot; on scroll it repaints translated by -scrollLeft (sticky keeps it
+   *  pinned in the frame during native scrolling between frames). */
+  useEffect(() => {
+    const frame = measureNode
+    if (!frame) return
+    frameNodeRef.current = frame
+    let raf = 0
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        renderPlotRef.current()
+      })
+    }
+    frame.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      frame.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [measureNode])
+
+  const eventPoint = (event: React.PointerEvent | React.MouseEvent): { x: number; y: number } => {
+    const overlay = overlayRef.current
+    const g = geometryRef.current
+    if (!overlay || !g) return { x: NaN, y: NaN }
+    return getSvgPoint(overlay, event, { width: virtualWidth, height: virtualHeight })
+  }
+
+  const applySelectionIds = useCallback((ids: string[], operation: typeof pcp.brushOperation, label: string) => {
+    dispatch(selectionApplied({ rowIds: ids, operation, label }))
+  }, [dispatch])
+
+  /** Hover via engine nearest-row (worker). Falls back silently to no-op.
+   *  Optimizations for huge datasets:
+   *  - in-flight RPC coalescing: a newer pointermove supersedes the pending
+   *    query (only the latest point is answered);
+   *  - points outside the plot band are rejected locally (no RPC at all);
+   *  - the active mask is cached per-geometry instead of rebuilt per event. */
+  const hoverSeqRef = useRef(0)
+  const activeMaskRef = useRef<{ nRows: number; mask: Uint8Array } | null>(null)
+  const updateHover = useCallback(async (point: { x: number; y: number }) => {
+    const g = geometryRef.current
+    if (!g) return
+    // Outside the plot band → no line can be within threshold; skip the RPC.
+    const { bounds } = g
+    const pad = 8
+    if (point.x < bounds.left - pad || point.x > bounds.right + pad
+      || point.y < bounds.top - pad || point.y > bounds.bottom + pad) {
+      hoverSeqRef.current += 1
+      if (selection.hoveredRowId !== null) dispatch(hoverAction(null))
+      setTooltip(null)
+      return
+    }
+    const seq = ++hoverSeqRef.current
+    let mask = activeMaskRef.current
+    if (!mask || mask.nRows !== g.nRows) {
+      const m = new Uint8Array(g.nRows).fill(1)
+      activeMaskRef.current = { nRows: g.nRows, mask: m }
+      mask = activeMaskRef.current!
+    }
+    const nearestIndex = await graphEngine.nearest(
+      g.points, g.nRows, g.nAxes,
+      point.x, point.y, 7, mask.mask,
+    )
+    // A newer pointermove superseded this query — drop the stale answer.
+    if (seq !== hoverSeqRef.current) return
+    const id = nearestIndex >= 0 ? g.rowIds[nearestIndex] : null
+    if (id !== selection.hoveredRowId) dispatch(hoverAction(id))
+    setTooltip(id ? { id, x: lastClientPoint.current.x, y: lastClientPoint.current.y } : null)
+  }, [selection.hoveredRowId, dispatch])
+
+  const lastClientPoint = useRef({ x: 0, y: 0 })
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return
+    const point = eventPoint(event)
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return
+    brushState.current = { start: point, pointerId: event.pointerId }
+    try { overlayRef.current?.setPointerCapture(event.pointerId) } catch { /* synthetic pointer */ }
+    brushRectRef.current?.setAttribute('visibility', 'visible')
+    brushRectRef.current?.setAttribute('x', String(point.x))
+    brushRectRef.current?.setAttribute('y', String(point.y))
+    brushRectRef.current?.setAttribute('width', '0')
+    brushRectRef.current?.setAttribute('height', '0')
+  }
+
+  const onPointerMove = (event: React.PointerEvent) => {
+    if (!geometryRef.current) return
+    const point = eventPoint(event)
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return
+    lastClientPoint.current = { x: event.clientX, y: event.clientY }
+    if (brushState.current) {
+      const rect = normalizedRect(brushState.current.start, point)
+      brushRectRef.current?.setAttribute('x', String(rect.x1))
+      brushRectRef.current?.setAttribute('y', String(rect.y1))
+      brushRectRef.current?.setAttribute('width', String(rect.x2 - rect.x1))
+      brushRectRef.current?.setAttribute('height', String(rect.y2 - rect.y1))
+      return
+    }
+    void updateHover(point)
+  }
+
+  const onPointerUp = async (event: React.PointerEvent) => {
+    if (!brushState.current || !geometryRef.current) return
+    const g = geometryRef.current
+    const current = eventPoint(event)
+    const rect = normalizedRect(brushState.current.start, current)
+    const distance = Math.hypot(current.x - brushState.current.start.x, current.y - brushState.current.start.y)
+    brushRectRef.current?.setAttribute('visibility', 'hidden')
+    try { overlayRef.current?.releasePointerCapture(brushState.current.pointerId) } catch { /* already released */ }
+    brushState.current = null
+
+    // Under draw simplification a drawn line represents a whole cluster:
+    // expand every hit to the full member set so selections retroactively
+    // cover the source rows (other views operate on real rows, not medoids).
+    const members = simplificationRef.current?.membersOfDrawnRow
+    const expand = (hitRows: number[]): string[] => {
+      if (!members) return hitRows.map((i) => g.rowIds[i])
+      const ids: string[] = []
+      for (const i of hitRows) ids.push(...(members[i] ?? []).map((src) => data?.rowIds[src] ?? ''))
+      return ids.filter(Boolean)
+    }
+
+    if (distance < 4) {
+      // Point-click toggle via engine nearest-row.
+      const active = new Uint8Array(g.nRows).fill(1)
+      const nearestIndex = await graphEngine.nearest(
+        g.points, g.nRows, g.nAxes,
+        current.x, current.y, 8, active,
+      )
+      if (nearestIndex >= 0) {
+        applySelectionIds(
+          expand([nearestIndex]),
+          pcp.brushOperation === 'add' ? 'toggle' : pcp.brushOperation,
+          '線をクリック選択',
+        )
+      }
+      return
+    }
+    // Worker-based exact hit-test over the polyline buffer.
+    const active = new Uint8Array(g.nRows).fill(1)
+    const hits = await graphEngine.polylineHit(
+      g.points, g.nRows, g.nAxes,
+      rect as Rect, pcp.hitMode, active,
+    )
+    const modeLabel = pcp.hitMode === 'legacyVertex' ? 'DAVIS頂点ブラシ' : '線分交差ブラシ'
+    applySelectionIds(expand(hits), pcp.brushOperation, modeLabel)
+  }
+
+  const runOrdering = async (mode: string) => {
+    if (!selection.datasetId) return
+    dispatch(pcpStateChanged({ orderMode: mode }))
+    if (mode === 'manual' || mode === 'database') {
+      setDiagnostics(null)
+      setOrderError(null)
+      if (mode === 'database') {
+        const inputOrder = axes.map((a) => a.key)
+        dispatch(pcpStateChanged({ order: inputOrder }))
+      }
+      return
+    }
+    setOrderingLoading(true)
+    try {
+      const result = await api.post<OrderingDiagnostics & { outputColumnIds: string[] }>('/orderings', {
+        datasetId: selection.datasetId,
+        mode,
+      })
+      setDiagnostics({ ...result })
+      setOrderError(null)
+      dispatch(pcpStateChanged({
+        order: [
+          ...result.outputColumnIds,
+          ...pcp.order.filter((k) => !result.outputColumnIds.includes(k)),
+        ],
+      }))
+    } catch (error) {
+      const err = error as { message: string; suggestedActions?: string[] }
+      setOrderError({ message: err.message, suggestedActions: err.suggestedActions ?? [] })
+    } finally {
+      setOrderingLoading(false)
+    }
+  }
+
+  const moveAxis = (key: string, targetIndex: number) => {
+    const visible = pcp.order.filter((k) => pcp.visibleColumns.includes(k))
+    const from = visible.indexOf(key)
+    if (from < 0) return
+    const target = Math.min(Math.max(targetIndex, 0), visible.length - 1)
+    if (from === target) return
+    visible.splice(from, 1)
+    visible.splice(target, 0, key)
+    const hidden = pcp.order.filter((k) => !pcp.visibleColumns.includes(k))
+    dispatch(pcpStateChanged({ order: [...visible, ...hidden], orderMode: 'manual' }))
+  }
+
+  const reverseAxis = (key: string) =>
+    dispatch(pcpStateChanged({ reversed: { ...pcp.reversed, [key]: !pcp.reversed[key] } }))
+
+  const tooltipContent = useMemo(() => {
+    if (!tooltip || !data) return null
+    const index = data.rowIndex.get(tooltip.id)
+    if (index === undefined) return null
+    // Under simplification the hovered line represents a whole cluster —
+    // say so instead of presenting the medoid as a lone row.
+    const members = simplificationRef.current?.membersOfDrawnRow
+    const geometryRows = geometryRef.current?.rowIds ?? []
+    const geomIndex = geometryRows.indexOf(tooltip.id)
+    const memberCount = members && geomIndex >= 0 ? (members[geomIndex]?.length ?? 1) : 1
+    return (
+      <div>
+        <strong>{tooltip.id}</strong>
+        {memberCount > 1 && (
+          <div style={{ color: '#888' }}>代表行: {memberCount}行のクラスタ</div>
+        )}
+        {data.schema.slice(0, 6).map((c) => (
+          <div key={c.columnId}>{`${c.name}: ${String(data.columns[c.name]?.[index] ?? '')}`}</div>
+        ))}
+      </div>
+    )
+  }, [tooltip, data])
+
+  const orderMenu = (
+    <div style={{ padding: 12, width: 260, background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+      <div>
+        <Typography.Text strong style={{ fontSize: 12 }}>軸順</Typography.Text>
+        <Select
+          data-testid="order-mode"
+          size="small"
+          value={pcp.orderMode}
+          style={{ width: '100%', marginTop: 4 }}
+          onChange={runOrdering}
+          options={[
+            { value: 'database', label: 'NoOrder（入力順）' },
+            { value: 'componentJar', label: 'Component／JAR初版互換' },
+            { value: 'componentPaper', label: 'Component／原論文解釈' },
+            { value: 'permute', label: 'PermuteOrder' },
+            { value: 'correlation', label: '相関セリエーション' },
+            { value: 'manual', label: 'Manual Order' },
+          ]}
+        />
+        <Space size="small" style={{ marginTop: 6 }}>
+          <Segmented
+            size="small"
+            data-testid="orientation"
+            options={[{ label: '水平', value: 'horizontal' }, { label: '垂直', value: 'vertical' }]}
+            value={pcp.orientation}
+            onChange={(value) => dispatch(pcpStateChanged({ orientation: value as 'horizontal' | 'vertical' }))}
+          />
+        </Space>
+      </div>
+    </div>
+  )
+
+  const renderSettingsMenu = (
+    <div style={{ padding: 12, width: 280, background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+      <div>
+        <Typography.Text strong style={{ fontSize: 12 }}>L1色分け：名義尺度で色分け</Typography.Text>
+        <Select
+          data-testid="color-by"
+          size="small"
+          allowClear
+          placeholder="なし（単色）"
+          style={{ width: '100%', marginTop: 4 }}
+          value={pcp.colorBy}
+          onChange={(value) => dispatch(pcpStateChanged({ colorBy: value ?? null }))}
+          options={l1Candidates.map((a) => ({ value: a.key, label: a.label }))}
+        />
+      </div>
+      {selection.groups.length > 0 && (
+        <div>
+          <label>
+            <Switch
+              size="small"
+              data-testid="l2-color-toggle"
+              checked={selection.l2ColorEnabled}
+              onChange={(checked) => dispatch(l2ColorToggled(checked))}
+            />{' '}
+            L2色分け：解析グループ（{selection.groups[0].source?.startsWith('clustering') ? 'クラスタ' : 'グループ'} {selection.groups.length}件）
+          </label>
+        </div>
+      )}
+      <div>
+        <Typography.Text style={{ fontSize: 12 }}>文脈線の不透明度 {Math.round(pcp.lineOpacity * 100)}%</Typography.Text>
+        <Slider data-testid="line-opacity" min={4} max={70} value={Math.round(pcp.lineOpacity * 100)} style={{ margin: '0' }}
+          onChange={(v) => dispatch(pcpStateChanged({ lineOpacity: v / 100 }))} />
+        <Typography.Text style={{ fontSize: 12 }}>線幅 {pcp.lineWidth.toFixed(1)} px</Typography.Text>
+        <Slider data-testid="line-width" min={5} max={30} value={Math.round(pcp.lineWidth * 10)} style={{ margin: '0' }}
+          onChange={(v) => dispatch(pcpStateChanged({ lineWidth: v / 10 }))} />
+      </div>
+      <Space size="middle" wrap>
+        <label><Switch size="small" data-testid="show-context" checked={pcp.showContext} onChange={(c) => dispatch(pcpStateChanged({ showContext: c }))} /> 選択外を表示</label>
+        <label><Switch size="small" data-testid="high-quality" checked={pcp.highQuality} onChange={(c) => dispatch(pcpStateChanged({ highQuality: c }))} /> 高品質</label>
+      </Space>
+      <div>
+        <Typography.Text style={{ fontSize: 12 }}>描画簡略化</Typography.Text>
+        <Select
+          data-testid="simplify-mode"
+          size="small"
+          style={{ width: '100%', marginTop: 4 }}
+          value={pcp.simplifyMode}
+          onChange={(value) => dispatch(pcpStateChanged({ simplifyMode: value }))}
+          options={[
+            { value: 'kmedoids', label: 'K-Medoids（300サンプル）' },
+            { value: 'off', label: 'OFF' },
+          ]}
+        />
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          500行超で適用／代表行（メドイド）のみ描画。ブラシ・ホバーは代表行にのみ反応します。
+        </Typography.Text>
+        {simplification && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {simplification.medoidCount}本の代表線で描画中（{activeRowIndexes.length}行をクラスタリング）
+          </Typography.Text>
+        )}
+      </div>
+      <div>
+        <label><Switch size="small" data-testid="jitter-enabled" checked={pcp.jitterEnabled} onChange={(c) => dispatch(pcpStateChanged({ jitterEnabled: c }))} /> Jittering</label>
+        {pcp.jitterEnabled && (
+          <Space direction="vertical" size={4} style={{ width: '100%', marginTop: 4 }}>
+            <Select
+              data-testid="jitter-mode"
+              size="small"
+              style={{ width: '100%' }}
+              value={pcp.jitterMode}
+              onChange={(value) => dispatch(pcpStateChanged({ jitterMode: value }))}
+              options={[
+                { value: 'pixel', label: '決定的pixel jitter' },
+                { value: 'legacyRaw', label: '初版raw ±0.1' },
+              ]}
+            />
+            <InputNumber data-testid="jitter-amount" size="small" min={0} max={16} disabled={pcp.jitterMode === 'legacyRaw'} value={pcp.jitterAmount} onChange={(v) => dispatch(pcpStateChanged({ jitterAmount: Number(v) ?? 0 }))} addonAfter="px" style={{ width: '100%' }} />
+            <InputNumber data-testid="jitter-seed" size="small" min={0} max={2147483647} value={pcp.jitterSeed} onChange={(v) => dispatch(pcpStateChanged({ jitterSeed: Number(v) ?? 0 }))} addonBefore="seed" style={{ width: '100%' }} />
+          </Space>
+        )}
+      </div>
+    </div>
+  )
+
+  const hitModeSelector = (
+    <div>
+      <Typography.Text strong style={{ fontSize: 12 }}>ヒット判定</Typography.Text>
+      <Select
+        data-testid="hit-mode"
+        size="small"
+        value={pcp.hitMode}
+        style={{ width: '100%', marginTop: 4 }}
+        onChange={(value) => dispatch(pcpStateChanged({ hitMode: value }))}
+        options={[
+          { value: 'legacyVertex', label: 'DAVIS頂点包含OR' },
+          { value: 'segment', label: '線分交差' },
+        ]}
+      />
+    </div>
+  )
+
+  const contextMenuItems = [
+    {
+      key: 'focus',
+      label: 'Focus Selected (選択行のみに絞り込み)',
+      disabled: selection.selectedRowIds.length === 0,
+      onClick: () => dispatch(focusSelected()),
+    },
+    {
+      key: 'delete',
+      label: 'Delete Selected (選択行を一時除外)',
+      disabled: selection.selectedRowIds.length === 0,
+      onClick: () => dispatch(deleteSelected()),
+    },
+    {
+      key: 'clear',
+      label: 'Clear Selection (選択解除)',
+      disabled: selection.selectedRowIds.length === 0,
+      onClick: () => dispatch(selectionCleared()),
+    },
+    {
+      key: 'reset',
+      label: 'Reset to Base Data (全データ復帰)',
+      onClick: () => dispatch(resetWorkingSet()),
+    },
+  ]
+
+  if (!selection.datasetId) {
+    return <Alert type="info" showIcon message="データセットを読み込んでください。" description="上部のImportからCSV等を取り込むか、Irisサンプルを選択してください。" />
+  }
+
+  if (orderedVisibleAxes.filter((a) => a.type === 'numeric').length < 2) {
+    return (
+      <EmptyStatePanel
+        message="平行座標プロットには2つ以上の数値変数が必要です。上部の変数セレクタから追加してください。"
+        minVariables={2}
+      />
+    )
+  }
+
+  return (
+    <div data-testid="pcp-page" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%', flex: 1, minHeight: 400 }}>
+      <Space size="small" wrap>
+        <Dropdown popupRender={() => orderMenu} trigger={['click']} disabled={orderingLoading}>
+          <Button data-testid="axis-order-menu" loading={orderingLoading}>軸順 <DownOutlined /></Button>
+        </Dropdown>
+        <Dropdown popupRender={() => renderSettingsMenu} trigger={['click']}>
+          <Button data-testid="axis-settings">描画設定 <DownOutlined /></Button>
+        </Dropdown>
+        <SelectionMenu
+          testId="selection-menu"
+          extraContent={hitModeSelector}
+          buttonSize="middle"
+          op={pcp.brushOperation}
+          onOpChange={(op) => dispatch(pcpStateChanged({ brushOperation: op }))}
+        />
+        <FocusEnterButton targetId="pcp" title="平行座標プロット (PCP)" />
+        {selection.selectedRowIds.length > 0 && (
+          <Typography.Text type="secondary">選択 {selection.selectedRowIds.length}行</Typography.Text>
+        )}
+        {diagnostics && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {diagnostics.evidenceClass}
+          </Typography.Text>
+        )}
+      </Space>
+
+        {orderError && (
+          <Alert
+            type="warning"
+            showIcon
+            closable
+            message={orderError.message}
+            description={<ul>{orderError.suggestedActions.map((action) => <li key={action}>{action}</li>)}</ul>}
+            onClose={() => setOrderError(null)}
+          />
+        )}
+
+        <FocusTarget id="pcp" title="平行座標プロット (PCP)">
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <div ref={setMeasureNode} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', overflowX: isPlotLoading ? 'hidden' : (isVertical ? 'hidden' : 'auto'), overflowY: isPlotLoading ? 'hidden' : (isVertical ? 'auto' : 'hidden'), userSelect: 'none' }}>
+          <div data-testid="plot-canvas-area" style={{ position: 'relative', width: isPlotLoading ? '100%' : (isVertical ? '100%' : Math.max(virtualWidth, 1)), height: isPlotLoading ? '100%' : (isVertical ? Math.max(virtualHeight, 1) : '100%'), minWidth: '100%', minHeight: '100%' }}>
+          {orderingLoading && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                position: 'absolute', inset: 0, zIndex: 30,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(2px)',
+                gap: 12,
+              }}
+            >
+              <Spin size="large" tip="軸順を最適化中..." />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                相関セリエーション / 最適順序を計算しています
+              </Typography.Text>
+            </div>
+          )}
+          {(preparingFirstFrame || !firstFrameRendered) && !orderingLoading && (
+            <div
+              data-testid="pcp-preparing"
+              role="status"
+              aria-live="polite"
+              style={{
+                position: 'absolute', inset: 0, zIndex: 20,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 10, color: theme.inkMuted, pointerEvents: 'none',
+                background: 'rgba(255, 255, 255, 0.6)',
+              }}
+            >
+              <Spin size="large" tip="平行座標プロットを描画準備中…" />
+            </div>
+          )}
+          <canvas ref={canvasRef} data-testid="pcp-canvas" role="img" aria-label="Parallel coordinates plot"
+            style={{ position: 'sticky', left: 0, top: 0, display: 'block' }} />
+          <svg
+            ref={overlayRef}
+            data-testid="plot-overlay"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={() => { dispatch(hoverAction(null)); setTooltip(null) }}
+            onDoubleClick={() => dispatch(selectionCleared())}
+          >
+            <rect ref={brushRectRef} fill="rgba(42,120,214,0.15)" strokeWidth={1.5} style={{ pointerEvents: 'none' }} stroke="#2a78d6" visibility="hidden" />
+          </svg>
+          {/* v1-style on-axis controls: move/reverse buttons near each axis.
+              Horizontal: controls sit in a row ABOVE the plot. Vertical: axes
+              stack along y, controls sit to the RIGHT of each axis line,
+              aligned in a column along the right side of the plot. */}
+          {!isPlotLoading && geometry && orderedVisibleAxes.map((axis, index) => {
+            const visibleIndex = index
+            const vertical = pcp.orientation === 'vertical'
+            const left = vertical
+              ? geometry.bounds.right + 8
+              : (geometry.axisPos[index] ?? 0)
+            const top = vertical
+              ? (geometry.axisPos[index] ?? 0)
+              : 8
+            return (
+              <div
+                key={axis.key}
+                className="axis-control"
+                data-testid={`axis-control-${axis.key}`}
+                style={{
+                  position: 'absolute', left, top,
+                  transform: vertical ? 'translateY(-50%)' : 'translateX(-50%)',
+                  display: 'flex', flexDirection: 'row',
+                  gap: 2, alignItems: 'center',
+                  background: 'rgba(255,255,255,0.92)', border: '1px solid #d9d9d9', borderRadius: 6,
+                  padding: '2px 4px', zIndex: 10,
+                }}
+              >
+                {pcp.colorBy === axis.key && (
+                  <span title={`この軸（${axis.label}）で色分け中`} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    {theme.categorical.slice(1, 5).map((c) => (
+                      <span key={c} style={{ width: 5, height: 12, background: c, marginRight: 1, borderRadius: 1 }} />
+                    ))}
+                  </span>
+                )}
+                {vertical ? (
+                  <>
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<ArrowUpOutlined />} disabled={visibleIndex === 0}
+                      aria-label={`${axis.label}を前へ移動`} onClick={() => moveAxis(axis.key, visibleIndex - 1)} />
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<CaretLeftOutlined />} aria-label={`${axis.label}を反転`}
+                      onClick={() => reverseAxis(axis.key)} />
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<ArrowDownOutlined />} disabled={visibleIndex === orderedVisibleAxes.length - 1}
+                      aria-label={`${axis.label}を次へ移動`} onClick={() => moveAxis(axis.key, visibleIndex + 1)} />
+                  </>
+                ) : (
+                  <>
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<ArrowLeftOutlined />} disabled={visibleIndex === 0}
+                      aria-label={`${axis.label}を前へ移動`} onClick={() => moveAxis(axis.key, visibleIndex - 1)} />
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<CaretUpOutlined />} aria-label={`${axis.label}を反転`}
+                      onClick={() => reverseAxis(axis.key)} />
+                    <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
+                      icon={<ArrowRightOutlined />} disabled={visibleIndex === orderedVisibleAxes.length - 1}
+                      aria-label={`${axis.label}を次へ移動`} onClick={() => moveAxis(axis.key, visibleIndex + 1)} />
+                  </>
+                )}
+              </div>
+            )
+          })}
+          {tooltip && (
+            <div role="tooltip" style={{ position: 'fixed', left: tooltip.x + 14, top: tooltip.y + 14, zIndex: 100, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.15)', pointerEvents: 'none' }}>
+              {tooltipContent}
+            </div>
+          )}
+          </div>
+        </div>
+        </Dropdown>
+        </FocusTarget>
+
+        {diagnostics && (
+          <div data-testid="ordering-diagnostics">
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={diagnostics.iterationTrace.map((item) => ({ ...item, key: item.step }))}
+              columns={[
+                { title: 'Step', dataIndex: 'step', key: 'step', width: 60 },
+                { title: '選択軸', dataIndex: 'selected', key: 'selected' },
+                { title: '規則', dataIndex: 'rule', key: 'rule' },
+                {
+                  title: 'loading',
+                  dataIndex: 'loading',
+                  key: 'loading',
+                  render: (v?: number[]) => (v?.length ? v.map((x) => x.toFixed(4)).join(', ') : '—'),
+                },
+              ]}
+            />
+            <Typography.Text type="secondary">
+              候補: {diagnostics.candidateOrders.length ? diagnostics.candidateOrders.map((order, i) => `(${order.join('→')}: ${diagnostics.candidateScores[i]})`).join(' ') : 'なし'}
+            </Typography.Text>
+            <Tag color="blue" style={{ marginLeft: 8 }}>{diagnostics.evidenceClass}</Tag>
+          </div>
+        )}
+    </div>
+  )
+}
