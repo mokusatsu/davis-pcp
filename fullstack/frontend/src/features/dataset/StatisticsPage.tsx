@@ -8,7 +8,7 @@ import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { vizTheme, entityColor, signedNoiseViz } from '../../theme/viz'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 
@@ -193,7 +193,6 @@ export default function StatisticsPage() {
                   value={statsScope}
                   onChange={(v) => dispatch(statsScopeSet(v as 'active' | 'selected'))}
                 />
-                <SelectionMenu testId="stats-selection-menu" />
               </Space>
             </Col>
             <Col>

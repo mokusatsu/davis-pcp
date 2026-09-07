@@ -9,7 +9,6 @@ import { useColumnarData } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { MosaicControlPanel } from './MosaicControlPanel'
 import { LineMosaicCanvas } from './LineMosaicCanvas'
-import SelectionMenu from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
 
@@ -157,7 +156,6 @@ export default function LineMosaicPage() {
             ドラッグで矩形範囲選択 · 右クリックで Focus/Delete
           </Typography.Text>
           <Space>
-            <SelectionMenu testId="mosaic-selection-menu" />
             <FocusEnterButton targetId="line-mosaic" title="Line Mosaic Plot" />
           </Space>
         </div>

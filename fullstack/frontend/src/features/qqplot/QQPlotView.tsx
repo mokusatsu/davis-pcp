@@ -7,8 +7,9 @@ import { api } from '../../api/client'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import EmptyStatePanel from '../common/EmptyStatePanel'
+import { truncateText } from '../../utils/textUtils'
 
 interface QQPoint {
   rowId: string
@@ -182,7 +183,7 @@ export default function QQPlotView() {
     ctx.textAlign = 'center'
     ctx.fillStyle = '#374151'
     ctx.font = '600 12px sans-serif'
-    ctx.fillText(`サンプル分位点 (${qqData.column})`, 0, 0)
+    ctx.fillText(`サンプル分位点 (${truncateText(qqData.column, 24)})`, 0, 0)
     ctx.restore()
 
     // Robust Reference Line (Q1 - Q3)
@@ -349,7 +350,6 @@ export default function QQPlotView() {
               options={numericColumns.map((c) => ({ label: c, value: c }))}
               data-testid="qqplot-column-select"
             />
-            <SelectionMenu testId="qqplot-selection-menu" />
             <FocusEnterButton targetId="qqplot" title="正規Q-Qプロット" />
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -370,7 +370,7 @@ export default function QQPlotView() {
           }}
         >
           {/* Canvas Plot */}
-          <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+          <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
             <div
               style={{
                 border: focused ? 'none' : '1px solid #e5e7eb',
@@ -389,6 +389,7 @@ export default function QQPlotView() {
             >
               <canvas
                 ref={canvasRef}
+                title={`正規Q-Qプロット: ${qqData?.column ?? ''}`}
                 style={{
                   width: focused ? '100%' : width,
                   height: focused ? '100%' : height,

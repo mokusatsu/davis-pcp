@@ -4,6 +4,7 @@
  * per-row cost is one Path2D segment add instead of a styled stroke call.
  */
 import { vizTheme, composedColor } from '../theme/viz'
+import { truncateText } from '../utils/textUtils'
 
 export interface PcpRenderSpec {
   width: number
@@ -292,14 +293,19 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
         ctx.stroke()
         ctx.textAlign = 'right'
         ctx.textBaseline = 'middle'
-        const label = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const rawLabel = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
         ctx.fillText(label, anchor - 7, y)
       }
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
+      ctx.save()
+      ctx.translate(anchor, bounds.bottom + 8)
+      ctx.rotate(-Math.PI / 4)
+      ctx.textAlign = 'right'
+      ctx.textBaseline = 'middle'
       ctx.fillStyle = theme.inkPrimary
-      ctx.font = '700 12px system-ui, sans-serif'
-      ctx.fillText(axis.label, anchor, bounds.bottom + 8)
+      ctx.font = '700 11px system-ui, sans-serif'
+      ctx.fillText(truncateText(axis.label, 18), 0, 0)
+      ctx.restore()
       ctx.font = '10px sans-serif'
     } else {
       ctx.beginPath()
@@ -319,14 +325,15 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
         ctx.stroke()
         ctx.textAlign = 'center'
         ctx.textBaseline = 'bottom'
-        const label = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const rawLabel = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
         ctx.fillText(label, x, anchor - 4)
       }
       ctx.textAlign = 'right'
       ctx.textBaseline = 'middle'
       ctx.fillStyle = theme.inkPrimary
-      ctx.font = '700 12px system-ui, sans-serif'
-      ctx.fillText(axis.label, bounds.left - 10, anchor)
+      ctx.font = '700 11px system-ui, sans-serif'
+      ctx.fillText(truncateText(axis.label, 14), bounds.left - 10, anchor)
       ctx.font = '10px sans-serif'
     }
   }

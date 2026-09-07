@@ -15,6 +15,8 @@ class ColumnRole(str, Enum):
     ROW_ID = "row_id"
     LABEL = "label"
     IGNORED = "ignored"
+    QUESTION = "question"
+    ATTRIBUTE = "attribute"
 
 
 class ColumnSchema(BaseModel):
@@ -25,8 +27,8 @@ class ColumnSchema(BaseModel):
     role: ColumnRole = ColumnRole.NUMERIC_AXIS
     missingCount: int = 0
     uniqueCount: int = 0
-    min: float | None = None
-    max: float | None = None
+    min: int | float | None = None
+    max: int | float | None = None
     categories: list[str] | None = None
     categoryOrder: Literal["imported", "alphabetical", "frequency", "manual", "class"] = "imported"
     manualCategories: list[str] | None = None

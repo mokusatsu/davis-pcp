@@ -71,15 +71,17 @@ export const ScreePlot: FC<ScreePlotProps> = ({
   return (
     <Card
       size="small"
-      title="1. スクリープロット (Scree Plot & Variance Explained)"
-      extra={
-        <Space>
-          <Tag color="blue">
-            Kaiser基準推奨: {pcaData.kaiserThresholdComponents} 主成分
-          </Tag>
-          <FocusEnterButton targetId="pca-scree" title="スクリープロット" />
-        </Space>
+      title={
+        <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0' }}>
+          <span>1. スクリープロット (Scree Plot & Variance Explained)</span>
+          <Space wrap size={8}>
+            <Tag color="blue" style={{ margin: 0 }}>
+              Kaiser基準推奨: {pcaData.kaiserThresholdComponents} 主成分
+            </Tag>
+          </Space>
+        </div>
       }
+      extra={<FocusEnterButton targetId="pca-scree" title="スクリープロット" />}
       style={{
         width: '100%',
         height: active ? '100%' : undefined,

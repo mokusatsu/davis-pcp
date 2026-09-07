@@ -465,16 +465,18 @@ export default function FeatureRankingPage() {
           <Col xs={24} lg={12}>
             <Card
               size="small"
-              title="手法別スコア比較 (Normalized Scores [0, 1])"
-              extra={
-                <Space size={8}>
-                  {Object.entries(METHOD_COLORS).map(([m, color]) => (
-                    <span key={m} style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 10, height: 10, backgroundColor: color, borderRadius: 2 }} />
-                      {m}
-                    </span>
-                  ))}
-                </Space>
+              title={
+                <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
+                  <span>手法別スコア比較 (Normalized Scores [0, 1])</span>
+                  <Space wrap size={8}>
+                    {Object.entries(METHOD_COLORS).map(([m, color]) => (
+                      <span key={m} style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ width: 10, height: 10, backgroundColor: color, borderRadius: 2 }} />
+                        {m}
+                      </span>
+                    ))}
+                  </Space>
+                </div>
               }
               data-testid="ranking-bar-card"
             >

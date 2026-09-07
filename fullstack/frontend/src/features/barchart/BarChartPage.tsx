@@ -4,9 +4,10 @@ import { Dropdown, Radio, Select, Space, Tag, Typography } from 'antd'
 import { BarChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
-import SelectionMenu, { useBrushOp } from '../selection/SelectionMenu'
+import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { useColumnarData } from '../pcp/useDatasetColumns'
+import { truncateText } from '../../utils/textUtils'
 
 interface BarItem {
   category: string
@@ -237,7 +238,6 @@ export default function BarChartPage() {
           </Space>
 
           <Space size={12}>
-            <SelectionMenu testId="barchart-selection-menu" />
             <FocusEnterButton targetId="barchart-container" title="対話型棒グラフ" />
           </Space>
         </div>
@@ -245,7 +245,7 @@ export default function BarChartPage() {
 
       {/* Main Chart Card */}
       <FocusTarget id="barchart-container" title="対話型棒グラフ">
-        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
           <div
             style={{
               border: focused ? 'none' : '1px solid #e5e7eb',
@@ -313,7 +313,8 @@ export default function BarChartPage() {
                       textAnchor="end"
                       style={{ fontSize: 12, fontWeight: 500, fill: '#374151' }}
                     >
-                      {item.category.length > 18 ? `${item.category.slice(0, 18)}...` : item.category}
+                      <title>{item.category}</title>
+                      {truncateText(item.category, 18)}
                     </text>
 
                     {/* Base Bar (Unselected / Total) */}

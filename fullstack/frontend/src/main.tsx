@@ -1,7 +1,7 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, createHashRouter, RouterProvider } from 'react-router-dom'
 import { ConfigProvider, theme as antdTheme } from 'antd'
 import jaJP from 'antd/locale/ja_JP'
 import AppShell from './app/AppShell'
@@ -30,46 +30,70 @@ import LogisticRegressionPage from './features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from './features/models/DiscriminantAnalysisPage'
 import { store } from './app/store'
 import { FocusModeProvider } from './features/common/FocusMode'
+import { IS_STATIC_BUILD } from './api/client'
+import { WasmLoadingScreen } from './app/WasmLoadingScreen'
+import { pyodideClient } from './engine/pyodideClient'
 import './theme/viz.css'
 
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <AppShell />,
-    children: [
-      { index: true, element: <PcpPage /> },
-      { path: 'pcp', element: <PcpPage /> },
-      { path: 'table', element: <TablePage /> },
-      { path: 'distribution', element: <DistributionPage /> },
-      { path: 'relationships', element: <RelationshipsPage /> },
-      { path: 'clusters', element: <ClustersPage /> },
-      { path: 'models', element: <ModelsPage /> },
-      { path: 'pca', element: <PcaPage /> },
-      { path: 'touring', element: <TgtPage /> },
-      { path: 'mosaic', element: <LineMosaicPage /> },
-      { path: 'overview', element: <OverviewPage /> },
-      { path: 'statistics', element: <StatisticsPage /> },
-      { path: 'ranking', element: <FeatureRankingPage /> },
-      { path: 'subgroups', element: <SubgroupMiningPage /> },
-      { path: 'associations', element: <SurpriseAssociationView /> },
-      { path: 'robustness', element: <RobustnessPage /> },
-      { path: 'key-drivers', element: <KeyDriverAnalysisPage /> },
-      { path: 'penalty-reward', element: <PenaltyRewardPage /> },
-      { path: 'fedf', element: <FedfPage /> },
-      { path: 'barchart', element: <BarChartPage /> },
-      { path: 'loess', element: <LoessPlotPage /> },
-      { path: 'covariance', element: <CovariancePage /> },
-      { path: 'logistic', element: <LogisticRegressionPage /> },
-      { path: 'discriminant', element: <DiscriminantAnalysisPage /> },
-    ],
-  },
-])
+const routeChildren = [
+  { index: true, element: <PcpPage /> },
+  { path: 'pcp', element: <PcpPage /> },
+  { path: 'table', element: <TablePage /> },
+  { path: 'distribution', element: <DistributionPage /> },
+  { path: 'relationships', element: <RelationshipsPage /> },
+  { path: 'clusters', element: <ClustersPage /> },
+  { path: 'models', element: <ModelsPage /> },
+  { path: 'pca', element: <PcaPage /> },
+  { path: 'touring', element: <TgtPage /> },
+  { path: 'mosaic', element: <LineMosaicPage /> },
+  { path: 'overview', element: <OverviewPage /> },
+  { path: 'statistics', element: <StatisticsPage /> },
+  { path: 'ranking', element: <FeatureRankingPage /> },
+  { path: 'subgroups', element: <SubgroupMiningPage /> },
+  { path: 'associations', element: <SurpriseAssociationView /> },
+  { path: 'robustness', element: <RobustnessPage /> },
+  { path: 'key-drivers', element: <KeyDriverAnalysisPage /> },
+  { path: 'penalty-reward', element: <PenaltyRewardPage /> },
+  { path: 'fedf', element: <FedfPage /> },
+  { path: 'barchart', element: <BarChartPage /> },
+  { path: 'loess', element: <LoessPlotPage /> },
+  { path: 'covariance', element: <CovariancePage /> },
+  { path: 'logistic', element: <LogisticRegressionPage /> },
+  { path: 'discriminant', element: <DiscriminantAnalysisPage /> },
+]
 
+const router = IS_STATIC_BUILD
+  ? createHashRouter([
+      {
+        path: '/',
+        element: <AppShell />,
+        children: routeChildren,
+      },
+    ])
+  : createBrowserRouter([
+      {
+        path: '/',
+        element: <AppShell />,
+        children: routeChildren,
+      },
+    ])
 
+const AppRoot: React.FC = () => {
+  const [isReady, setIsReady] = useState(!IS_STATIC_BUILD)
 
+  useEffect(() => {
+    if (IS_STATIC_BUILD) {
+      if (pyodideClient.getStatus().stage === 'ready') {
+        setIsReady(true)
+      }
+    }
+  }, [])
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  if (IS_STATIC_BUILD && !isReady) {
+    return <WasmLoadingScreen onReady={() => setIsReady(true)} />
+  }
+
+  return (
     <Provider store={store}>
       <ConfigProvider locale={jaJP} theme={{ algorithm: antdTheme.defaultAlgorithm }}>
         <FocusModeProvider>
@@ -77,5 +101,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </FocusModeProvider>
       </ConfigProvider>
     </Provider>
+  )
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <AppRoot />
   </React.StrictMode>,
 )

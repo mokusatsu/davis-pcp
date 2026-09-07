@@ -87,6 +87,22 @@ def run_subgroup_mining(
     if weights:
         w.update(weights)
 
+    if df.height < 2:
+        return {
+            "run_id": str(uuid.uuid4()),
+            "generated_at": datetime.datetime.now().isoformat(),
+            "config": {"alpha": alpha, "min_group_size": min_group_size, "min_pct_diff": min_pct_diff},
+            "summary": {
+                "n_subgroup_vars": 0,
+                "n_questions": 0,
+                "n_tests_run": 0,
+                "n_significant_fdr": 0,
+                "n_significant_bonferroni": 0,
+                "n_insights_after_filters": 0,
+            },
+            "insights": [],
+        }
+
     # Determine row IDs column
     row_id_col = "__rowId__" if "__rowId__" in df.columns else None
     if not row_id_col:
@@ -103,7 +119,10 @@ def run_subgroup_mining(
     meta_by_col: dict[str, dict[str, Any]] = {}
     if column_meta:
         for m in column_meta:
-            meta_by_col[m.get("columnId") or m.get("name", "")] = m
+            if m.get("columnId"):
+                meta_by_col[m["columnId"]] = m
+            if m.get("name"):
+                meta_by_col[m["name"]] = m
 
     # Detect attribute columns if not given
     # Attributes: categorical, ordinal, or discrete integer columns (unique <= max_subgroup_levels)

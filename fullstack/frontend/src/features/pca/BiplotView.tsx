@@ -5,8 +5,9 @@ import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import type { PcaResponse } from './types'
+import { truncateText } from '../../utils/textUtils'
 
 interface BiplotViewProps {
   pcaData: PcaResponse | null
@@ -208,7 +209,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
         const textOffset = 6
         const textX = endX + Math.cos(angle) * textOffset
         const textY = endY + Math.sin(angle) * textOffset
-        ctx.fillText(col, textX, textY)
+        ctx.fillText(truncateText(col, 14), textX, textY)
         ctx.restore()
       }
     }
@@ -416,14 +417,13 @@ export const BiplotView: FC<BiplotViewProps> = ({
             </Checkbox>
           </Space>
           <Space wrap>
-            <SelectionMenu testId="pca-selection-menu" />
             <FocusEnterButton targetId="pca-biplot" title="PCAバイプロット" />
           </Space>
         </Space>
       )}
 
       <FocusTarget id="pca-biplot" title="PCAバイプロット">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
           <div
             style={{
               border: '1px solid #e5e7eb',
@@ -442,6 +442,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
           >
             <canvas
               ref={canvasRef}
+              title="PCAバイプロット"
               width={width}
               height={height}
               style={{

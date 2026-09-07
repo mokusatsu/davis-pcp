@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Badge, Button, Dropdown, Input, Layout, List, Modal, Segmented,
   Select, Space, Tag, Tooltip, Typography, Upload, notification,
 } from 'antd'
 import {
-  BarChartOutlined, ClearOutlined, DownloadOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined,
+  BarChartOutlined, ClearOutlined, DownloadOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch, VariableMetaItem } from './store'
 import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, statsScopeSet, variablesInitialized } from './store'
 import { api, downloadExport } from '../api/client'
 import { FocusBar, useFocusMode } from '../features/common/FocusMode'
 import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar'
+import LicenseModal from '../features/common/LicenseModal'
+import KeepAliveOutlet from './KeepAliveOutlet'
 
 interface DatasetListItem {
   datasetId: string
@@ -67,6 +69,7 @@ export default function AppShell() {
   const [sessionName, setSessionName] = useState('')
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [revision, setRevision] = useState(0)
+  const [licenseModalOpen, setLicenseModalOpen] = useState(false)
 
   const refreshDatasets = useCallback(async () => {
     const result = await api.get<{ datasets: DatasetListItem[] }>('/datasets').catch(() => ({ datasets: [] }))
@@ -97,7 +100,7 @@ export default function AppShell() {
         semanticType: (c.semanticType as any) || 'numeric',
         physicalType: c.physicalType || 'Float64',
         missingCount: c.missingCount || 0,
-        isTargetCandidate: c.semanticType === 'nominal' || c.semanticType === 'ordinal',
+        isTargetCandidate: c.semanticType === 'nominal' || c.semanticType === 'ordinal' || c.semanticType === 'categorical',
       }
     })
     dispatch(variablesInitialized({ variables: colNames, meta: varMeta }))
@@ -258,6 +261,8 @@ export default function AppShell() {
         flexDirection: 'column',
         gap: 8,
         flexShrink: 0,
+        position: 'relative',
+        zIndex: 100,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
           <Typography.Title level={4} style={{ margin: 0, whiteSpace: 'nowrap' }}>DAVIS-PCP</Typography.Title>
@@ -270,6 +275,7 @@ export default function AppShell() {
             value={selection.datasetId ?? undefined}
             options={datasets.map((d) => ({ value: d.datasetId, label: `${d.name} (${d.rowCount}行)` }))}
             onChange={(value) => void onDatasetSelected(value)}
+            getPopupContainer={() => document.body}
           />
           <Upload
             accept=".csv,.tsv,.parquet,.arff,.arrow,.feather,.db,.sqlite"
@@ -288,6 +294,7 @@ export default function AppShell() {
             <Button icon={<DownloadOutlined />} onClick={() => void saveAsCopy()} disabled={!selection.datasetId}>Save As</Button>
           </Tooltip>
           <Dropdown
+            getPopupContainer={() => document.body}
             menu={{
               items: [
                 {
@@ -320,6 +327,15 @@ export default function AppShell() {
             <Button data-testid="export-button" icon={<DownloadOutlined />} disabled={!selection.datasetId}>Export</Button>
           </Dropdown>
           {currentSessionId && <Badge count={`r${revision}`} style={{ backgroundColor: '#52c41a' }} />}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+            <Button
+              data-testid="license-button"
+              icon={<SafetyCertificateOutlined />}
+              onClick={() => setLicenseModalOpen(true)}
+            >
+              License
+            </Button>
+          </div>
         </div>
         {selection.datasetId && <GlobalHeaderControlBar />}
         <div data-testid="main-nav" style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
@@ -328,7 +344,7 @@ export default function AppShell() {
             <Segmented
               size="small"
               options={VIS_NAV_ITEMS.map((item) => ({ label: item.label, value: item.key }))}
-              value={VIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : undefined}
+              value={VIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : ''}
               onChange={(value) => navigate(String(value))}
             />
           </div>
@@ -337,7 +353,7 @@ export default function AppShell() {
             <Segmented
               size="small"
               options={ANALYSIS_NAV_ITEMS.map((item) => ({ label: item.label, value: item.key }))}
-              value={ANALYSIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : undefined}
+              value={ANALYSIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : ''}
               onChange={(value) => navigate(String(value))}
             />
           </div>
@@ -352,7 +368,7 @@ export default function AppShell() {
         overflow: 'hidden',
       }}>
         <div style={{ flex: 1, minWidth: 0, overflowX: 'hidden', overflowY: focused ? 'hidden' : 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Outlet />
+          <KeepAliveOutlet />
         </div>
         {!focused && (
         <>
@@ -383,6 +399,7 @@ export default function AppShell() {
       >
         <Input data-testid="session-name" placeholder="セッション名" value={sessionName} onChange={(e) => setSessionName(e.target.value)} />
       </Modal>
+      <LicenseModal open={licenseModalOpen} onClose={() => setLicenseModalOpen(false)} />
     </Layout>
   )
 }

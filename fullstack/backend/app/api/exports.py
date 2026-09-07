@@ -26,10 +26,20 @@ class ExportRequest(BaseModel):
     format: Literal["csv", "parquet", "arrow"] = "csv"
 
 
-def _neutralize(value: str) -> str:
-    """CSV formula injection neutralization."""
-    if value and value[0] in "=+-@\t\r":
-        return f"'{value}"
+import csv
+import urllib.parse
+
+
+def _neutralize(value: Any) -> Any:
+    """CSV formula injection neutralization for strings only."""
+    if isinstance(value, str) and value:
+        try:
+            float(value)
+            return value
+        except ValueError:
+            pass
+        if value[0] in "=+-@\t\r":
+            return f"'{value}"
     return value
 
 
@@ -38,9 +48,11 @@ def _subset_df(req: ExportRequest) -> pl.DataFrame:
     if req.scope == "selected" or req.rowIds is not None:
         ids = req.rowIds if req.rowIds is not None else []
         if not ids:
-            return df.head(0)
+            return df.head(0).drop("__rowId__", strict=False)
         wanted = set(ids)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
+    if "__rowId__" in df.columns:
+        df = df.drop("__rowId__")
     return df
 
 
@@ -48,26 +60,42 @@ def _subset_df(req: ExportRequest) -> pl.DataFrame:
 def export(req: ExportRequest) -> Response:
     df = _subset_df(req)
     safe_name = (store.get_meta(req.datasetId)["name"].split(":")[0])[:40].replace('"', "") or "export"
+    filename_base = f"{safe_name}-{req.scope}"
+    encoded_csv = urllib.parse.quote(f"{filename_base}.csv")
+    cd_csv = f'attachment; filename="export-{req.scope}.csv"; filename*=UTF-8\'\'{encoded_csv}'
+
     if req.format == "csv":
-        lines = [",".join(f'"{_neutralize(str(c))}"' for c in df.columns)]
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow([_neutralize(c) for c in df.columns])
         for row in df.iter_rows():
             cells = []
             for value in row:
-                s = "" if value is None else str(value)
-                cells.append(f'"{_neutralize(s)}"' if any(ch in s for ch in ',"\n\r') else _neutralize(s))
-            lines.append(",".join(cells))
-        payload = ("﻿" + "\n".join(lines)).encode("utf-8")
+                if value is None:
+                    cells.append("")
+                elif isinstance(value, (int, float)):
+                    cells.append(value)
+                else:
+                    cells.append(_neutralize(str(value)))
+            writer.writerow(cells)
+        payload = ("\ufeff" + out.getvalue()).encode("utf-8")
         return Response(content=payload, media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{safe_name}-{req.scope}.csv"'})
+                        headers={"Content-Disposition": cd_csv})
     buffer = io.BytesIO()
     if req.format == "parquet":
-        df.write_parquet(buffer)
+        try:
+            df.write_parquet(buffer)
+        except Exception:
+            import pyarrow.parquet as pq
+            pq.write_table(df.to_arrow(), buffer)
         media = "application/vnd.apache.parquet"
         ext = "parquet"
     else:
         return dataframe_to_arrow_response(df)
+    encoded_other = urllib.parse.quote(f"{filename_base}.{ext}")
+    cd_other = f'attachment; filename="export-{req.scope}.{ext}"; filename*=UTF-8\'\'{encoded_other}'
     return Response(content=buffer.getvalue(), media_type=media,
-                    headers={"Content-Disposition": f'attachment; filename="{safe_name}-{req.scope}.{ext}"'})
+                    headers={"Content-Disposition": cd_other})
 
 
 @router.get("/exports/session/{session_id}")

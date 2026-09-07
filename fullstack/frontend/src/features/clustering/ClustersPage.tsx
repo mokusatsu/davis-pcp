@@ -11,7 +11,7 @@ import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { api } from '../../api/client'
 import { vizTheme, composedColor } from '../../theme/viz'
-import SelectionMenu, { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 
@@ -301,12 +301,9 @@ export default function ClustersPage() {
         <>
           {!focused && <ClusterSummaryPanel result={stored} onSelect={selectCluster} />}
           {!focused && (
-            <Space wrap>
-              <SelectionMenu testId="clusters-selection-menu" />
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                クラスタボタン/凡例/シルエット/樹形図クリック=この集合演算で反映
-              </Typography.Text>
-            </Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              クラスタボタン/凡例/シルエット/樹形図クリック=集合演算で反映
+            </Typography.Text>
           )}
           {stored.pcaProjection && (!focused || isTargetActive('pca')) && (
             <FocusTarget id="pca" title="主成分散布図 (PCA)">
@@ -464,7 +461,6 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
           <Typography.Title level={5} style={{ margin: 0 }}>
             主成分散布図（PC1 {`${(pca.varianceRatio[0] * 100).toFixed(1)}%`} ／ PC2 {(pca.varianceRatio[1] * 100).toFixed(1)}% 分散）
           </Typography.Title>
-          <SelectionMenu testId="pca-selection-menu" />
           <FocusEnterButton targetId="pca" title="主成分散布図 (PCA)" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>ドラッグ=矩形選択 · 点クリック=toggle · 右クリックで操作</Typography.Text>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import {
   Alert, Button, Dropdown, InputNumber, Segmented, Select, Slider, Space, Spin,
-  Switch, Table, Tag, Typography,
+  Switch, Table, Tag, Tooltip, Typography,
 } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, CaretUpOutlined, CaretLeftOutlined } from '@ant-design/icons'
@@ -16,7 +16,6 @@ import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes, l1Candi
 import { useColumnarData } from './useDatasetColumns'
 import { api } from '../../api/client'
 import { vizTheme } from '../../theme/viz'
-import SelectionMenu from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import EmptyStatePanel from '../common/EmptyStatePanel'
@@ -490,7 +489,7 @@ export default function PcpPage() {
     const overlay = overlayRef.current
     const g = geometryRef.current
     if (!overlay || !g) return { x: NaN, y: NaN }
-    return getSvgPoint(overlay, event, { width: virtualWidth, height: virtualHeight })
+    return getSvgPoint(overlay, event, { width: Math.max(virtualWidth, 1), height: Math.max(virtualHeight, 1) })
   }
 
   const applySelectionIds = useCallback((ids: string[], operation: typeof pcp.brushOperation, label: string) => {
@@ -803,23 +802,6 @@ export default function PcpPage() {
     </div>
   )
 
-  const hitModeSelector = (
-    <div>
-      <Typography.Text strong style={{ fontSize: 12 }}>ヒット判定</Typography.Text>
-      <Select
-        data-testid="hit-mode"
-        size="small"
-        value={pcp.hitMode}
-        style={{ width: '100%', marginTop: 4 }}
-        onChange={(value) => dispatch(pcpStateChanged({ hitMode: value }))}
-        options={[
-          { value: 'legacyVertex', label: 'DAVIS頂点包含OR' },
-          { value: 'segment', label: '線分交差' },
-        ]}
-      />
-    </div>
-  )
-
   const contextMenuItems = [
     {
       key: 'focus',
@@ -862,19 +844,12 @@ export default function PcpPage() {
   return (
     <div data-testid="pcp-page" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%', flex: 1, minHeight: 400 }}>
       <Space size="small" wrap>
-        <Dropdown popupRender={() => orderMenu} trigger={['click']} disabled={orderingLoading}>
+        <Dropdown popupRender={() => orderMenu} trigger={['click']} disabled={orderingLoading} getPopupContainer={() => document.body}>
           <Button data-testid="axis-order-menu" loading={orderingLoading}>軸順 <DownOutlined /></Button>
         </Dropdown>
-        <Dropdown popupRender={() => renderSettingsMenu} trigger={['click']}>
+        <Dropdown popupRender={() => renderSettingsMenu} trigger={['click']} getPopupContainer={() => document.body}>
           <Button data-testid="axis-settings">描画設定 <DownOutlined /></Button>
         </Dropdown>
-        <SelectionMenu
-          testId="selection-menu"
-          extraContent={hitModeSelector}
-          buttonSize="middle"
-          op={pcp.brushOperation}
-          onOpChange={(op) => dispatch(pcpStateChanged({ brushOperation: op }))}
-        />
         <FocusEnterButton targetId="pcp" title="平行座標プロット (PCP)" />
         {selection.selectedRowIds.length > 0 && (
           <Typography.Text type="secondary">選択 {selection.selectedRowIds.length}行</Typography.Text>
@@ -898,7 +873,7 @@ export default function PcpPage() {
         )}
 
         <FocusTarget id="pcp" title="平行座標プロット (PCP)">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
         <div ref={setMeasureNode} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', overflowX: isPlotLoading ? 'hidden' : (isVertical ? 'hidden' : 'auto'), overflowY: isPlotLoading ? 'hidden' : (isVertical ? 'auto' : 'hidden'), userSelect: 'none' }}>
           <div data-testid="plot-canvas-area" style={{ position: 'relative', width: isPlotLoading ? '100%' : (isVertical ? '100%' : Math.max(virtualWidth, 1)), height: isPlotLoading ? '100%' : (isVertical ? Math.max(virtualHeight, 1) : '100%'), minWidth: '100%', minHeight: '100%' }}>
           {orderingLoading && (
@@ -938,6 +913,9 @@ export default function PcpPage() {
           <svg
             ref={overlayRef}
             data-testid="plot-overlay"
+            viewBox={`0 0 ${Math.max(virtualWidth, 1)} ${Math.max(virtualHeight, 1)}`}
+            width={Math.max(virtualWidth, 1)}
+            height={Math.max(virtualHeight, 1)}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -961,19 +939,20 @@ export default function PcpPage() {
               ? (geometry.axisPos[index] ?? 0)
               : 8
             return (
-              <div
-                key={axis.key}
-                className="axis-control"
-                data-testid={`axis-control-${axis.key}`}
-                style={{
-                  position: 'absolute', left, top,
-                  transform: vertical ? 'translateY(-50%)' : 'translateX(-50%)',
-                  display: 'flex', flexDirection: 'row',
-                  gap: 2, alignItems: 'center',
-                  background: 'rgba(255,255,255,0.92)', border: '1px solid #d9d9d9', borderRadius: 6,
-                  padding: '2px 4px', zIndex: 10,
-                }}
-              >
+              <Tooltip key={axis.key} title={axis.label} placement={vertical ? 'right' : 'top'}>
+                <div
+                  className="axis-control"
+                  data-testid={`axis-control-${axis.key}`}
+                  title={axis.label}
+                  style={{
+                    position: 'absolute', left, top,
+                    transform: vertical ? 'translateY(-50%)' : 'translateX(-50%)',
+                    display: 'flex', flexDirection: 'row',
+                    gap: 2, alignItems: 'center',
+                    background: 'rgba(255,255,255,0.92)', border: '1px solid #d9d9d9', borderRadius: 6,
+                    padding: '2px 4px', zIndex: 10,
+                  }}
+                >
                 {pcp.colorBy === axis.key && (
                   <span title={`この軸（${axis.label}）で色分け中`} style={{ display: 'inline-flex', alignItems: 'center' }}>
                     {theme.categorical.slice(1, 5).map((c) => (
@@ -1007,8 +986,9 @@ export default function PcpPage() {
                   </>
                 )}
               </div>
-            )
-          })}
+            </Tooltip>
+          )
+        })}
           {tooltip && (
             <div role="tooltip" style={{ position: 'fixed', left: tooltip.x + 14, top: tooltip.y + 14, zIndex: 100, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.15)', pointerEvents: 'none' }}>
               {tooltipContent}

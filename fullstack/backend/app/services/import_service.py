@@ -34,6 +34,11 @@ def _sniff_encoding(raw: bytes) -> str:
     except UnicodeDecodeError:
         pass
     try:
+        raw.decode("cp932")
+        return "cp932"
+    except UnicodeDecodeError:
+        pass
+    try:
         raw.decode("shift_jis")
         return "shift_jis"
     except UnicodeDecodeError:
@@ -124,16 +129,29 @@ def _split_arff_line(line: str) -> list[str]:
     return fields
 
 
-def _parse_value(token: str) -> Any:
+def _parse_value(token: str, options: ImportOptions | None = None) -> Any:
     token = token.strip()
-    if token.lower() in MISSING_TOKENS or token in MISSING_TOKENS:
+    missing_tokens = set(options.missingTokens) if (options and options.missingTokens is not None) else MISSING_TOKENS
+    missing_lower = {t.lower() for t in missing_tokens}
+    if token in missing_tokens or token.lower() in missing_lower:
         return None
+
+    dec_sep = options.decimalSeparator if options and options.decimalSeparator else "."
+    check_val = token[1:] if token.startswith("-") or token.startswith("+") else token
+    # Preserve leading zeros as strings (codes like "001", "01"), except "0", "0.xxx", "0,xxx"
+    if check_val.startswith("0") and len(check_val) > 1 and not check_val.startswith(f"0{dec_sep}"):
+        return token
+
+    num_token = token
+    if dec_sep != ".":
+        num_token = token.replace(dec_sep, ".")
+
     try:
-        return int(token)
+        return int(num_token)
     except ValueError:
         pass
     try:
-        return float(token)
+        return float(num_token)
     except ValueError:
         return token
 
@@ -162,8 +180,14 @@ def probe_table(
             else:
                 physical = "float" if dtype.is_float() else "int"
                 semantic = "numeric"
-                min_v = float(non_null.min()) if len(non_null) else None
-                max_v = float(non_null.max()) if len(non_null) else None
+                if len(non_null):
+                    raw_min = non_null.min()
+                    raw_max = non_null.max()
+                    min_v = int(raw_min) if physical == "int" else float(raw_min)
+                    max_v = int(raw_max) if physical == "int" else float(raw_max)
+                else:
+                    min_v = None
+                    max_v = None
                 categories = None
         else:
             physical = "string"
@@ -182,7 +206,7 @@ def probe_table(
             columnId=new_id("col"),
             name=name,
             physicalType=physical,
-            semanticType="identifier" if unique == row_count and missing == 0 and semantic != "ignored" else semantic,
+            semanticType=semantic,
             role=ColumnRole.IGNORED if semantic == "ignored" else (ColumnRole.NUMERIC_AXIS if semantic == "numeric" else ColumnRole.CATEGORICAL_AXIS),
             missingCount=missing,
             uniqueCount=unique,
@@ -209,7 +233,8 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
     if options and options.delimiter:
         delimiter = options.delimiter
     has_header = options.hasHeader if options else True
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter, quotechar='"')
+    quotechar = options.quote if (options and options.quote) else '"'
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter, quotechar=quotechar)
     rows = [row for row in reader if any(cell.strip() for cell in row)]
     if not rows:
         raise BizError("IMPORT_EMPTY_FILE", "ファイルにデータ行がありません。",
@@ -219,14 +244,23 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
     if not has_header:
         width = len(rows[0])
         header = [f"col_{i}" for i in range(width)]
-    # Duplicate column names get suffixes.
-    seen: dict[str, int] = {}
+    # Duplicate column names get suffixes without colliding with existing headers
+    raw_names = [name.strip().strip('"').strip("'") or "column" for name in header]
+    existing_names = set(raw_names)
+    allocated: set[str] = set()
     final_header = []
-    for name in header:
-        name = name.strip().strip('"') or "column"
-        count = seen.get(name, 0)
-        seen[name] = count + 1
-        final_header.append(name if count == 0 else f"{name}_{count}")
+    for idx, name in enumerate(raw_names):
+        if name not in allocated:
+            cand = name
+        else:
+            count = 1
+            cand = f"{name}_{count}"
+            while cand in allocated or cand in existing_names:
+                count += 1
+                cand = f"{name}_{count}"
+        allocated.add(cand)
+        final_header.append(cand)
+
     width = len(final_header)
     normalized = []
     for row in data_rows:
@@ -237,20 +271,42 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
                 details={"row": row[:5]},
                 suggested_actions=["引用符や区切り文字を確認してください"],
             )
-        normalized.append([_parse_value(cell) for cell in row])
-    columns = {}
+        normalized.append([_parse_value(cell, options=options) for cell in row])
+    series_list = []
     for i, name in enumerate(final_header):
         col_vals = [row[i] for row in normalized]
         is_num = all(isinstance(v, (int, float)) or v is None for v in col_vals)
-        columns[name] = pl.Series(name, col_vals, dtype=pl.Float64 if is_num else pl.String, strict=False)
-    return pl.DataFrame(columns)
+        is_int = (
+            is_num
+            and any(isinstance(v, int) and not isinstance(v, bool) for v in col_vals)
+            and all((isinstance(v, int) and not isinstance(v, bool)) or v is None for v in col_vals)
+        )
+        if is_int:
+            non_null_ints = [v for v in col_vals if v is not None]
+            min_int = min(non_null_ints)
+            max_int = max(non_null_ints)
+            if -9223372036854775808 <= min_int and max_int <= 9223372036854775807:
+                dtype = pl.Int64
+            else:
+                dtype = pl.String
+        elif is_num:
+            dtype = pl.Float64
+        else:
+            dtype = pl.String
+        series_list.append(pl.Series(name, col_vals, dtype=dtype, strict=False))
+    return pl.DataFrame(series_list)
+
 
 
 def load_dataframe_from_upload(filename: str, raw: bytes, options: ImportOptions | None = None) -> tuple[pl.DataFrame, str]:
     fmt = detect_format(filename, raw[:1024] + raw[-16:])
     if fmt == "parquet":
         try:
-            df = pl.read_parquet(io.BytesIO(raw))
+            try:
+                df = pl.read_parquet(io.BytesIO(raw))
+            except Exception:
+                import pyarrow.parquet as pq
+                df = pl.from_arrow(pq.read_table(io.BytesIO(raw)))
         except Exception as exc:
             raise BizError("IMPORT_MALFORMED_PARQUET", "Parquetファイルを読み込めませんでした。",
                            details={"reason": str(exc)[:200]},
@@ -270,7 +326,24 @@ def load_dataframe_from_upload(filename: str, raw: bytes, options: ImportOptions
         for i, name in enumerate(names):
             col_vals = [row[i] if i < len(row) else None for row in parsed]
             is_num = all(isinstance(v, (int, float)) or v is None for v in col_vals)
-            columns[name] = pl.Series(name, col_vals, dtype=pl.Float64 if is_num else pl.String)
+            is_int = (
+                is_num
+                and any(isinstance(v, int) and not isinstance(v, bool) for v in col_vals)
+                and all((isinstance(v, int) and not isinstance(v, bool)) or v is None for v in col_vals)
+            )
+            if is_int:
+                non_null_ints = [v for v in col_vals if v is not None]
+                min_int = min(non_null_ints)
+                max_int = max(non_null_ints)
+                if -9223372036854775808 <= min_int and max_int <= 9223372036854775807:
+                    dtype = pl.Int64
+                else:
+                    dtype = pl.String
+            elif is_num:
+                dtype = pl.Float64
+            else:
+                dtype = pl.String
+            columns[name] = pl.Series(name, col_vals, dtype=dtype)
         df = pl.DataFrame(columns)
         fmt = "arff"
     elif fmt == "tsv":
@@ -317,15 +390,39 @@ def sqlite_tables(raw: bytes) -> list[str]:
 
 
 def build_builtin_iris() -> pl.DataFrame:
-    fixture_path = Path(__file__).resolve().parents[3] / "fixtures" / "iris_fixture.json"
-    rows = json.loads(fixture_path.read_text(encoding="utf-8"))
+    candidates = [
+        Path(__file__).resolve().parents[3] / "fixtures" / "iris_fixture.json",
+        Path(__file__).resolve().parents[2] / "fixtures" / "iris_fixture.json",
+        Path(__file__).resolve().parents[1] / "fixtures" / "iris_fixture.json",
+        Path("/fixtures/iris_fixture.json"),
+        Path("/app/fixtures/iris_fixture.json"),
+        Path("/_iris_fixture.json"),
+        Path("/app/_iris_fixture.json"),
+    ]
+    fixture_path = next((p for p in candidates if p.exists()), None)
+    if fixture_path:
+        rows = json.loads(fixture_path.read_text(encoding="utf-8"))
+        return pl.DataFrame({
+            "id": pl.Series([r["id"] for r in rows], dtype=pl.String),
+            "sepal_length_cm": pl.Series([float(r["sepalLength"]) for r in rows], dtype=pl.Float64),
+            "sepal_width_cm": pl.Series([float(r["sepalWidth"]) for r in rows], dtype=pl.Float64),
+            "petal_length_cm": pl.Series([float(r["petalLength"]) for r in rows], dtype=pl.Float64),
+            "petal_width_cm": pl.Series([float(r["petalWidth"]) for r in rows], dtype=pl.Float64),
+            "species": pl.Series([r["species"] for r in rows], dtype=pl.String),
+        })
+
+    # Built-in fallback via scikit-learn
+    from sklearn.datasets import load_iris
+    raw = load_iris(as_frame=True)
+    target_names = list(raw.target_names)
+    n = len(raw.target)
     return pl.DataFrame({
-        "id": pl.Series([r["id"] for r in rows], dtype=pl.String),
-        "sepal_length_cm": pl.Series([float(r["sepalLength"]) for r in rows], dtype=pl.Float64),
-        "sepal_width_cm": pl.Series([float(r["sepalWidth"]) for r in rows], dtype=pl.Float64),
-        "petal_length_cm": pl.Series([float(r["petalLength"]) for r in rows], dtype=pl.Float64),
-        "petal_width_cm": pl.Series([float(r["petalWidth"]) for r in rows], dtype=pl.Float64),
-        "species": pl.Series([r["species"] for r in rows], dtype=pl.String),
+        "id": pl.Series([f"iris_{i+1:03d}" for i in range(n)], dtype=pl.String),
+        "sepal_length_cm": pl.Series(raw.data["sepal length (cm)"].to_list(), dtype=pl.Float64),
+        "sepal_width_cm": pl.Series(raw.data["sepal width (cm)"].to_list(), dtype=pl.Float64),
+        "petal_length_cm": pl.Series(raw.data["petal length (cm)"].to_list(), dtype=pl.Float64),
+        "petal_width_cm": pl.Series(raw.data["petal width (cm)"].to_list(), dtype=pl.Float64),
+        "species": pl.Series([target_names[t] for t in raw.target], dtype=pl.String),
     })
 
 

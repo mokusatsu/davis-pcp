@@ -1,4 +1,10 @@
+import { pyodideClient } from '../engine/pyodideClient'
+
 const BASE = '/api/v1'
+
+export const IS_STATIC_BUILD =
+  import.meta.env.VITE_STATIC_BUILD === 'true' ||
+  (typeof window !== 'undefined' && (window as any).__DAVIS_PCP_STATIC__ === true)
 
 export interface ApiError {
   code: string
@@ -9,6 +15,10 @@ export interface ApiError {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (IS_STATIC_BUILD) {
+    return pyodideClient.request<T>(path, init)
+  }
+
   const response = await fetch(`${BASE}${path}`, init)
   if (!response.ok) {
     let error: ApiError = { code: 'HTTP_ERROR', message: `HTTP ${response.status}`, details: {}, recoverable: true, suggestedActions: [] }
@@ -37,6 +47,10 @@ export const api = {
     request<T>(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   upload: async <T>(path: string, file: File, extra: Record<string, string> = {}) => {
+    if (IS_STATIC_BUILD) {
+      return pyodideClient.upload<T>(path, file, extra)
+    }
+
     const form = new FormData()
     form.append('file', file)
     for (const [key, value] of Object.entries(extra)) form.append(key, value)
@@ -50,6 +64,10 @@ export const api = {
 }
 
 export async function fetchArrowView(datasetId: string, columns?: string[], rowIds?: string[]): Promise<Record<string, unknown[]>> {
+  if (IS_STATIC_BUILD) {
+    return pyodideClient.fetchArrowView(datasetId, columns, rowIds)
+  }
+
   const response = await fetch(`${BASE}/datasets/${datasetId}/view`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -66,6 +84,10 @@ export async function fetchArrowView(datasetId: string, columns?: string[], rowI
 }
 
 export async function downloadExport(datasetId: string, scope: 'selected' | 'active' | 'all', format: 'csv' | 'parquet' | 'arrow', rowIds?: string[]) {
+  if (IS_STATIC_BUILD) {
+    return pyodideClient.downloadExport(datasetId, scope, format, rowIds)
+  }
+
   const response = await fetch(`${BASE}/exports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -430,28 +430,28 @@ export default function SurpriseAssociationView() {
                 <Card
                   size="small"
                   title={
-                    <Typography.Text strong style={{ fontSize: 15 }}>
-                      {currentPair.x.name} × {currentPair.y.name}
-                    </Typography.Text>
-                  }
-                  extra={
-                    <Space>
-                      <Button
-                        type="primary"
-                        icon={<AimOutlined />}
-                        onClick={() => handleSelectLiftRowsInPcp(currentPair)}
-                        data-testid="select-lift-pcp"
-                        disabled={!currentPair.top_lift?.row_ids?.length}
-                      >
-                        Select Lift Cell Rows in PCP
-                      </Button>
-                      <Button
-                        icon={<ArrowRightOutlined />}
-                        onClick={() => handleFocusPcp(currentPair)}
-                      >
-                        Focus PCP
-                      </Button>
-                    </Space>
+                    <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+                      <Typography.Text strong style={{ fontSize: 15, wordBreak: 'break-all', lineHeight: 1.3 }}>
+                        {currentPair.x.name} × {currentPair.y.name}
+                      </Typography.Text>
+                      <Space wrap size={8}>
+                        <Button
+                          type="primary"
+                          icon={<AimOutlined />}
+                          onClick={() => handleSelectLiftRowsInPcp(currentPair)}
+                          data-testid="select-lift-pcp"
+                          disabled={!currentPair.top_lift?.row_ids?.length}
+                        >
+                          Select Lift Cell Rows in PCP
+                        </Button>
+                        <Button
+                          icon={<ArrowRightOutlined />}
+                          onClick={() => handleFocusPcp(currentPair)}
+                        >
+                          Focus PCP
+                        </Button>
+                      </Space>
+                    </div>
                   }
                 >
                   <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>

@@ -48,7 +48,7 @@ def run_pca(req: PcaRequest) -> dict[str, Any]:
     if use_corr is None:
         use_corr = True
     n_comp = req.nComponents if req.n_components is None else req.n_components
-    row_ids = req.rowIds or req.row_ids
+    row_ids = req.rowIds if req.rowIds is not None else req.row_ids
 
     result = compute_pca(
         df=df,
@@ -202,26 +202,35 @@ def create_model(req: ModelRequest) -> dict:
     forest_agreement: float | None = None
     tree_agreements: list[float] | None = None
     if req.modelType == "random_forest":
-        # Individual trees predict float class indices ("1.0") while the forest
-        # predicts the label itself ("Iris-setosa"). Map tree indices through
-        # classes_ before comparing; regressors both emit numbers.
-        def _norm(values: list[Any]) -> list[str]:
-            out = []
-            for v in values:
-                if isinstance(v, str):
-                    out.append(v)
-                elif float(v).is_integer():
-                    idx = int(v)
-                    out.append(class_labels[idx] if class_labels and 0 <= idx < len(class_labels) else str(idx))
-                else:
-                    out.append(str(v))
-            return out
+        if task == "classification":
+            forest_pred = [str(v) for v in model.predict(X)]
 
-        forest_pred = _norm(list(model.predict(X)))
-        agreements = []
-        for tree in trees:
-            tree_pred = _norm(list(tree.predict(X)))
-            agreements.append(float(np.mean([a == b for a, b in zip(tree_pred, forest_pred)])))
+            def _decode_tree_preds(raw_preds: Any) -> list[str]:
+                decoded = []
+                for val in raw_preds:
+                    try:
+                        idx = int(round(float(val)))
+                        if class_labels and 0 <= idx < len(class_labels):
+                            decoded.append(class_labels[idx])
+                        else:
+                            decoded.append(str(val))
+                    except (ValueError, TypeError):
+                        decoded.append(str(val))
+                return decoded
+
+            agreements = []
+            for tree in trees:
+                tree_pred = _decode_tree_preds(tree.predict(X))
+                agreements.append(float(np.mean([a == b for a, b in zip(tree_pred, forest_pred)])))
+        else:
+            def _norm_reg(values: list[Any]) -> list[str]:
+                return [str(round(float(v), 4)) for v in values]
+
+            forest_pred = _norm_reg(list(model.predict(X)))
+            agreements = []
+            for tree in trees:
+                tree_pred = _norm_reg(list(tree.predict(X)))
+                agreements.append(float(np.mean([a == b for a, b in zip(tree_pred, forest_pred)])))
         tree_agreements = [round(a, 4) for a in agreements]
         representative_index = int(np.argmax(agreements))
         forest_agreement = round(agreements[representative_index], 4)

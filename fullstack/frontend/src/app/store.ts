@@ -212,7 +212,7 @@ export const { pcpStateChanged } = pcpSlice.actions
 
 export interface VariableMetaItem {
   name: string
-  semanticType: 'numeric' | 'nominal' | 'ordinal' | 'text'
+  semanticType: 'numeric' | 'nominal' | 'ordinal' | 'text' | 'categorical' | 'identifier' | 'label' | 'ignored'
   physicalType: string
   missingCount: number
   isTargetCandidate: boolean

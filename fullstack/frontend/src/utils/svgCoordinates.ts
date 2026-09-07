@@ -41,14 +41,15 @@ export function getSvgPoint(
   const rect = svg.getBoundingClientRect()
   if (!rect.width || !rect.height) return { x: NaN, y: NaN }
 
-  const vbMinX = fallbackViewBox?.minX ?? svg.viewBox?.baseVal?.x ?? 0
-  const vbMinY = fallbackViewBox?.minY ?? svg.viewBox?.baseVal?.y ?? 0
-  const vbW = fallbackViewBox?.width || svg.viewBox?.baseVal?.width || rect.width
-  const vbH = fallbackViewBox?.height || svg.viewBox?.baseVal?.height || rect.height
+  const hasSvgViewBox = Boolean(svg.viewBox?.baseVal && svg.viewBox.baseVal.width > 0 && svg.viewBox.baseVal.height > 0)
+  const vbMinX = hasSvgViewBox ? svg.viewBox.baseVal.x : (fallbackViewBox?.minX ?? 0)
+  const vbMinY = hasSvgViewBox ? svg.viewBox.baseVal.y : (fallbackViewBox?.minY ?? 0)
+  const vbW = (hasSvgViewBox ? svg.viewBox.baseVal.width : fallbackViewBox?.width) || rect.width
+  const vbH = (hasSvgViewBox ? svg.viewBox.baseVal.height : fallbackViewBox?.height) || rect.height
 
   // If no viewBox was specified on svg nor in fallback, or preserveAspectRatio is "none"
   const preserve = svg.getAttribute('preserveAspectRatio')
-  const hasViewBox = Boolean(svg.viewBox?.baseVal?.width || fallbackViewBox)
+  const hasViewBox = hasSvgViewBox || Boolean(fallbackViewBox)
   if (!hasViewBox || (preserve && preserve.includes('none'))) {
     const scaleX = vbW / rect.width
     const scaleY = vbH / rect.height

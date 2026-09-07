@@ -13,7 +13,7 @@ class Settings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8420
     workspace_dir: Path = Field(default_factory=lambda: Path(
-        os.environ.get("DAVIS_PCP_WORKSPACE", Path(__file__).resolve().parents[3] / "workspace")
+        os.environ.get("DAVIS_PCP_WORKSPACE", "/workspace" if os.environ.get("DAVIS_PCP_WASM") == "1" or __import__("sys").platform == "emscripten" else Path(__file__).resolve().parents[3] / "workspace")
     ))
     max_upload_bytes: int = int(os.environ.get("DAVIS_PCP_MAX_UPLOAD", 256 * 1024 * 1024))
     max_rows: int = int(os.environ.get("DAVIS_PCP_MAX_ROWS", 5_000_000))

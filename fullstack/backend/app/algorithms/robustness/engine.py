@@ -108,17 +108,34 @@ def evaluate_robustness(
         compare_groups = conc.get("compare_groups")
 
         # Define evaluation function for this conclusion given row mask
+        subgroup_ids_set = set(conc.get("subgroup_row_ids") or [])
+
         def eval_metric(mask: np.ndarray) -> float:
             sub_df = df_with_id.filter(pl.Series(mask))
             if sub_df.height < 3:
                 return 0.0
 
-            if c_type == "subgroup_diff" and group_c and compare_groups and len(compare_groups) >= 2:
-                g1_data = sub_df.filter(pl.col(group_c).cast(pl.String) == str(compare_groups[0]))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
-                g2_data = sub_df.filter(pl.col(group_c).cast(pl.String) == str(compare_groups[1]))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
-                m1 = float(np.mean(g1_data)) if len(g1_data) > 0 else 0.0
-                m2 = float(np.mean(g2_data)) if len(g2_data) > 0 else 0.0
-                return float(m1 - m2)
+            if c_type == "subgroup_diff":
+                if subgroup_ids_set:
+                    current_ids = set(sub_df["__rowId__"].to_list())
+                    in_sub_ids = current_ids.intersection(subgroup_ids_set)
+                    comp_ids = current_ids - subgroup_ids_set
+                    if not in_sub_ids or not comp_ids:
+                        return 0.0
+                    g1_data = sub_df.filter(pl.col("__rowId__").is_in(list(in_sub_ids)))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
+                    g2_data = sub_df.filter(pl.col("__rowId__").is_in(list(comp_ids)))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
+                    m1 = float(np.mean(g1_data)) if len(g1_data) > 0 else 0.0
+                    m2 = float(np.mean(g2_data)) if len(g2_data) > 0 else 0.0
+                    return float(m1 - m2)
+                elif group_c and compare_groups and len(compare_groups) >= 2:
+                    g1_data = sub_df.filter(pl.col(group_c).cast(pl.String) == str(compare_groups[0]))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
+                    g2_data = sub_df.filter(pl.col(group_c).cast(pl.String) == str(compare_groups[1]))[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
+                    m1 = float(np.mean(g1_data)) if len(g1_data) > 0 else 0.0
+                    m2 = float(np.mean(g2_data)) if len(g2_data) > 0 else 0.0
+                    return float(m1 - m2)
+                else:
+                    vals = sub_df[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
+                    return float(np.mean(vals)) if len(vals) > 0 else 0.0
             else:
                 # KPI mean
                 vals = sub_df[target_c].cast(pl.Float64, strict=False).drop_nulls().to_numpy()
@@ -183,12 +200,13 @@ def evaluate_robustness(
         influences = []
 
         if c_type == "kpi":
-            # For mean: influence of respondent i is (mean - x_i) / (n - 1)
+            # For mean: influence of respondent i is (x_i - mean) / (n - 1)
+            # so that full_estimate - influence = mean_{-i}
             valid_indices = [i for i, v in enumerate(target_series) if not np.isnan(v)]
             v_arr = target_series[valid_indices]
             mean_v = float(np.mean(v_arr)) if len(v_arr) > 0 else 0.0
             n_v = len(v_arr)
-            diffs = (mean_v - v_arr) / max(1, n_v - 1)
+            diffs = (v_arr - mean_v) / max(1, n_v - 1)
 
             for idx, inf in zip(valid_indices, diffs):
                 influences.append({
@@ -201,12 +219,16 @@ def evaluate_robustness(
             # Subgroup diff: exact analytic influence function
             # delta = (m1 - m2) - (m1_{-i} - m2) = (x_i - m1) / (n1 - 1) for i in G1
             # delta = (m1 - m2) - (m1 - m2_{-i}) = (m2 - x_i) / (n2 - 1) for i in G2
-            g_series = [str(x) if x is not None else "" for x in df_with_id[group_c].to_list()] if group_c else []
-            g1_target = str(compare_groups[0]) if compare_groups else ""
-            g2_target = str(compare_groups[1]) if compare_groups and len(compare_groups) > 1 else ""
+            if subgroup_ids_set:
+                g1_indices = [i for i, (rid, v) in enumerate(zip(all_row_ids, target_series)) if rid in subgroup_ids_set and not np.isnan(v)]
+                g2_indices = [i for i, (rid, v) in enumerate(zip(all_row_ids, target_series)) if rid not in subgroup_ids_set and not np.isnan(v)]
+            else:
+                g_series = [str(x) if x is not None else "" for x in df_with_id[group_c].to_list()] if group_c else []
+                g1_target = str(compare_groups[0]) if compare_groups else ""
+                g2_target = str(compare_groups[1]) if compare_groups and len(compare_groups) > 1 else ""
 
-            g1_indices = [i for i, (g, v) in enumerate(zip(g_series, target_series)) if g == g1_target and not np.isnan(v)]
-            g2_indices = [i for i, (g, v) in enumerate(zip(g_series, target_series)) if g == g2_target and not np.isnan(v)]
+                g1_indices = [i for i, (g, v) in enumerate(zip(g_series, target_series)) if g == g1_target and not np.isnan(v)]
+                g2_indices = [i for i, (g, v) in enumerate(zip(g_series, target_series)) if g == g2_target and not np.isnan(v)]
             n1 = len(g1_indices)
             n2 = len(g2_indices)
             m1 = float(np.mean(target_series[g1_indices])) if n1 > 0 else 0.0
@@ -258,10 +280,16 @@ def evaluate_robustness(
                 boot_estimates.append(float(np.mean(v_arr)) if len(v_arr) > 0 else full_estimate)
             else:
                 # Subgroup sample using actual resampled distribution
-                resample_g = [g_series[i] for i in resample_idx] if group_c else []
-                resample_v = target_series[resample_idx]
-                g1_b = [v for g, v in zip(resample_g, resample_v) if g == g1_target and not np.isnan(v)]
-                g2_b = [v for g, v in zip(resample_g, resample_v) if g == g2_target and not np.isnan(v)]
+                if subgroup_ids_set:
+                    resample_rids = [all_row_ids[i] for i in resample_idx]
+                    resample_v = target_series[resample_idx]
+                    g1_b = [v for rid, v in zip(resample_rids, resample_v) if rid in subgroup_ids_set and not np.isnan(v)]
+                    g2_b = [v for rid, v in zip(resample_rids, resample_v) if rid not in subgroup_ids_set and not np.isnan(v)]
+                else:
+                    resample_g = [g_series[i] for i in resample_idx] if group_c else []
+                    resample_v = target_series[resample_idx]
+                    g1_b = [v for g, v in zip(resample_g, resample_v) if g == g1_target and not np.isnan(v)]
+                    g2_b = [v for g, v in zip(resample_g, resample_v) if g == g2_target and not np.isnan(v)]
                 m1_b = float(np.mean(g1_b)) if len(g1_b) > 0 else full_estimate
                 m2_b = float(np.mean(g2_b)) if len(g2_b) > 0 else 0.0
                 boot_estimates.append(float(m1_b - m2_b))

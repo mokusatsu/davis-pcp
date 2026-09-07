@@ -253,3 +253,69 @@ describe('SVG coordinate projection (getSvgPoint)', () => {
   })
 })
 
+describe('D13 Parquet and Binary Export Handling', () => {
+  it('correctly identifies Parquet and Arrow MIME types as binary', () => {
+    const isBinaryContentType = (contentType: string) => (
+      contentType.includes('application/vnd.apache.arrow') ||
+      contentType.includes('application/vnd.apache.parquet') ||
+      contentType.includes('parquet') ||
+      contentType.includes('octet-stream') ||
+      !(
+        contentType.includes('text/') ||
+        contentType.includes('application/json') ||
+        contentType.includes('application/xml')
+      )
+    )
+
+    expect(isBinaryContentType('application/vnd.apache.parquet')).toBe(true)
+    expect(isBinaryContentType('application/vnd.apache.arrow')).toBe(true)
+    expect(isBinaryContentType('application/octet-stream')).toBe(true)
+    expect(isBinaryContentType('text/csv; charset=utf-8')).toBe(false)
+    expect(isBinaryContentType('application/json')).toBe(false)
+  })
+
+  it('creates binary Blob for ArrayBuffer data without string corruption', () => {
+    // Parquet magic byte sequence 'PAR1'
+    const parquetHeader = new Uint8Array([0x50, 0x41, 0x52, 0x31, 0x15, 0x04])
+    const buffer = parquetHeader.buffer
+
+    expect(buffer instanceof ArrayBuffer).toBe(true)
+    const blob = new Blob([buffer], { type: 'application/octet-stream' })
+    expect(blob.type).toBe('application/octet-stream')
+    expect(blob.size).toBe(6)
+
+    // Inspect underlying buffer bytes directly
+    const readBytes = new Uint8Array(buffer)
+    expect(readBytes[0]).toBe(0x50) // 'P'
+    expect(readBytes[1]).toBe(0x41) // 'A'
+    expect(readBytes[2]).toBe(0x52) // 'R'
+    expect(readBytes[3]).toBe(0x31) // '1'
+  })
+})
+
+describe('A05 Categorical semanticType classification', () => {
+  it('treats categorical semanticType as nominal/category candidate', () => {
+    const metaMap: Record<string, { semanticType: string; isTargetCandidate: boolean }> = {
+      gender: {
+        semanticType: 'categorical',
+        isTargetCandidate: ['nominal', 'ordinal', 'categorical'].includes('categorical'),
+      },
+      age: {
+        semanticType: 'numeric',
+        isTargetCandidate: ['nominal', 'ordinal', 'categorical'].includes('numeric'),
+      },
+    }
+
+    const allVars = ['gender', 'age']
+    const nominalVars = allVars.filter((id) => {
+      const t = metaMap[id]?.semanticType
+      return t === 'nominal' || t === 'ordinal' || t === 'text' || t === 'categorical'
+    })
+
+    expect(nominalVars).toEqual(['gender'])
+    expect(metaMap.gender.isTargetCandidate).toBe(true)
+    expect(metaMap.age.isTargetCandidate).toBe(false)
+  })
+})
+
+

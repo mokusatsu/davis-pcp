@@ -5,11 +5,12 @@ import { DotChartOutlined, FilterOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
-import SelectionMenu, { useBrushOp } from '../selection/SelectionMenu'
+import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import { truncateText } from '../../utils/textUtils'
 
 interface LoessPoint {
   id: string
@@ -303,7 +304,6 @@ export default function LoessPlotPage() {
           </Space>
 
           <Space size={12}>
-            <SelectionMenu testId="loess-selection-menu" />
             <FocusEnterButton targetId="loess-container" />
           </Space>
         </div>
@@ -311,7 +311,7 @@ export default function LoessPlotPage() {
 
       {/* Main Plot Card */}
       <FocusTarget id="loess-container">
-        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
           <div
             style={{
               border: focused ? 'none' : '1px solid #e5e7eb',
@@ -451,7 +451,8 @@ export default function LoessPlotPage() {
                   textAnchor="middle"
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
-                  {xCol}
+                  <title>{xCol}</title>
+                  {truncateText(xCol, 20)}
                 </text>
                 <text
                   x={20}
@@ -460,7 +461,8 @@ export default function LoessPlotPage() {
                   transform={`rotate(-90 20 ${MARGIN_TOP + PLOT_HEIGHT / 2})`}
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
-                  {yCol}
+                  <title>{yCol}</title>
+                  {truncateText(yCol, 20)}
                 </text>
 
                 {/* Drag Box Selection Overlay */}

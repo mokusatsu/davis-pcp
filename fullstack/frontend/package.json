@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "build": "npm run check:licenses && tsc -b && vite build",
+    "build:static": "npm run check:licenses && tsc -b && vite build --mode static",
     "preview": "vite preview",
     "test": "vitest run"
   },

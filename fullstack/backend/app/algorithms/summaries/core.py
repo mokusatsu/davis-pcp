@@ -51,12 +51,39 @@ def summarize(df: pl.DataFrame, column_types: dict[str, str]) -> dict:
     return result
 
 
-def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[float]]:
-    data = np.array([
-        [np.nan if v is None else float(v) for v in df[c].to_list()] for c in columns
-    ])
-    if data.shape[1] < 2:
-        return [[1.0] * len(columns) for _ in columns]
-    corr = np.corrcoef(data)
-    corr = np.nan_to_num(corr, nan=0.0)
-    return corr.tolist()
+def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[float | None]]:
+    p = len(columns)
+    if p == 0:
+        return []
+    if df.height == 0:
+        return [[None] * p for _ in range(p)]
+
+    # Extract numeric columns as float numpy arrays
+    col_arrays = []
+    for c in columns:
+        col_arrays.append(np.array([np.nan if v is None else float(v) for v in df[c].to_list()], dtype=np.float64))
+
+    mat: list[list[float | None]] = [[None] * p for _ in range(p)]
+
+    for i in range(p):
+        valid_i = ~np.isnan(col_arrays[i])
+        if np.sum(valid_i) >= 2 and np.std(col_arrays[i][valid_i]) > 1e-12:
+            mat[i][i] = 1.0
+        else:
+            mat[i][i] = None
+
+    for i in range(p):
+        for j in range(i + 1, p):
+            valid = ~np.isnan(col_arrays[i]) & ~np.isnan(col_arrays[j])
+            if np.sum(valid) >= 2:
+                xi = col_arrays[i][valid]
+                xj = col_arrays[j][valid]
+                std_i = float(np.std(xi, ddof=1))
+                std_j = float(np.std(xj, ddof=1))
+                if std_i > 1e-12 and std_j > 1e-12:
+                    r = float(np.corrcoef(xi, xj)[0, 1])
+                    if not np.isnan(r):
+                        mat[i][j] = round(r, 4)
+                        mat[j][i] = round(r, 4)
+    return mat
+

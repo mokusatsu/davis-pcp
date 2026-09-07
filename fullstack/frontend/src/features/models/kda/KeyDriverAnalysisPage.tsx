@@ -411,40 +411,40 @@ export default function KeyDriverAnalysisPage() {
               size="small"
               style={{ marginTop: 16, flexShrink: 0 }}
               title={
-                <Space>
-                  <ExperimentOutlined />
-                  <Typography.Text strong>
-                    インタラクティブ改善シミュレーター (What-If Simulator)
-                  </Typography.Text>
-                </Space>
+                <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+                  <Space>
+                    <ExperimentOutlined />
+                    <Typography.Text strong>
+                      インタラクティブ改善シミュレーター (What-If Simulator)
+                    </Typography.Text>
+                  </Space>
+                  <Space wrap size={8}>
+                    <Button
+                      type="primary"
+                      icon={<ArrowRightOutlined />}
+                      onClick={handleProjectPcp}
+                      data-testid="project-pcp-axes-btn"
+                    >
+                      Project Top 3 Drivers to PCP Axes
+                    </Button>
+                    <Button
+                      icon={<RocketOutlined />}
+                      onClick={handleSendToPenaltyReward}
+                      data-testid="send-pra-btn"
+                    >
+                      Send to Penalty-Reward
+                    </Button>
+                    <Button
+                      icon={<ThunderboltOutlined />}
+                      onClick={handleSendToRobustness}
+                      data-testid="send-robustness-btn"
+                    >
+                      Check Robustness
+                    </Button>
+                  </Space>
+                </div>
               }
               data-testid="kda-whatif-simulator"
-              extra={
-                <Space>
-                  <Button
-                    type="primary"
-                    icon={<ArrowRightOutlined />}
-                    onClick={handleProjectPcp}
-                    data-testid="project-pcp-axes-btn"
-                  >
-                    Project Top 3 Drivers to PCP Axes
-                  </Button>
-                  <Button
-                    icon={<RocketOutlined />}
-                    onClick={handleSendToPenaltyReward}
-                    data-testid="send-pra-btn"
-                  >
-                    Send to Penalty-Reward
-                  </Button>
-                  <Button
-                    icon={<ThunderboltOutlined />}
-                    onClick={handleSendToRobustness}
-                    data-testid="send-robustness-btn"
-                  >
-                    Check Robustness
-                  </Button>
-                </Space>
-              }
             >
               {predictedOutcome && (
                 <Row gutter={[16, 16]} align="middle" style={{ marginBottom: 12 }}>

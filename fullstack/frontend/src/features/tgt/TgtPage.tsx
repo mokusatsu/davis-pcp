@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useLocation } from 'react-router-dom'
 import { Space, Spin, Typography } from 'antd'
 import type { RootState } from '../../app/store'
 import { selectEffectiveRowIds } from '../../app/store'
@@ -8,7 +9,6 @@ import { GeodesicEngine } from './geodesicEngine'
 import { TgtCanvas } from './TgtCanvas'
 import { ProjectionCircle } from './ProjectionCircle'
 import { TgtControlPanel } from './TgtControlPanel'
-import SelectionMenu from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 
@@ -133,9 +133,13 @@ export default function TgtPage() {
     setIsPlaying((p) => !p)
   }, [])
 
-  // Global keyboard shortcuts
+  const location = useLocation()
+  const isTouringActive = location.pathname === '/touring'
+
+  // Global keyboard shortcuts (only active when on /touring tab)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isTouringActive) return
       // Don't trigger if user is typing in an input/select
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return
 
@@ -153,7 +157,7 @@ export default function TgtPage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleTogglePlay, handleStep, handleReset])
+  }, [handleTogglePlay, handleStep, handleReset, isTouringActive])
 
   const handleBasisUpdate = useCallback((newAlpha: number[], newBeta: number[]) => {
     setBasis({ alpha: newAlpha, beta: newBeta })
@@ -215,7 +219,6 @@ export default function TgtPage() {
             💡 ショートカット: <strong>Space</strong> (再生/一時停止) · <strong>.</strong> (1コマ送り) · <strong>R</strong> (視点リセット) · 一時停止中にドラッグで矩形選択
           </Typography.Text>
           <Space>
-            <SelectionMenu testId="tgt-selection-menu" />
             <FocusEnterButton targetId="tgt-canvas" title="Tracking Grand Tour" />
           </Space>
         </div>
@@ -242,7 +245,7 @@ export default function TgtPage() {
               engine={engine}
               rowIds={rowIds}
               dataMatrix={dataMatrix}
-              isPlaying={isPlaying}
+              isPlaying={isPlaying && isTouringActive}
               isTracking={isTracking}
               onBasisUpdate={handleBasisUpdate}
             />

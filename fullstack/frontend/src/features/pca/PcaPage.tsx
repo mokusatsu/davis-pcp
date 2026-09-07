@@ -194,7 +194,7 @@ export default function PcaPage() {
           }}
         >
           {!focused && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <Typography.Title level={5} style={{ margin: 0 }}>
                 3. 主成分射影ビュー (Projection & Biplot)
               </Typography.Title>

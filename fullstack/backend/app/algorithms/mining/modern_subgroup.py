@@ -11,6 +11,7 @@ Implements Feature 11 & Omnipresent Auto-Mining:
 """
 from __future__ import annotations
 
+import datetime
 import itertools
 import math
 import uuid
@@ -19,6 +20,17 @@ from typing import Any, Literal
 import numpy as np
 import polars as pl
 from scipy import stats
+
+
+def _format_threshold(val: float) -> str:
+    """Format numeric threshold cleanly without losing meaning or showing scientific notation unnecessarily."""
+    if abs(val - round(val)) < 1e-9 and abs(val) < 1e12:
+        return str(int(round(val)))
+    for prec in (4, 6, 8):
+        s = f"{val:.{prec}g}"
+        if abs(float(s) - val) < 1e-9:
+            return s
+    return f"{val:g}"
 
 
 @dataclass
@@ -36,6 +48,62 @@ class Condition:
             "label": self.label,
         }
 
+    def evaluate(self, df: pl.DataFrame) -> np.ndarray:
+        series = df[self.column]
+        is_valid = ~series.is_null().to_numpy()
+        col_vals = series.to_numpy()
+        if self.operator == "<":
+            return is_valid & (col_vals < float(self.value))
+        elif self.operator == ">=":
+            return is_valid & (col_vals >= float(self.value))
+        elif self.operator == "between":
+            low, high = float(self.value[0]), float(self.value[1])
+            return is_valid & (col_vals >= low) & (col_vals < high)
+        elif self.operator == "==":
+            col_list = series.to_list()
+            val_str = str(self.value)
+            return np.array([v == self.value or str(v) == val_str for v in col_list], dtype=bool)
+        return np.zeros(len(df), dtype=bool)
+
+
+def evaluate_condition_dict(cond: dict[str, Any], df: pl.DataFrame) -> np.ndarray:
+    col = cond["column"]
+    op = cond["operator"]
+    val = cond["value"]
+    series = df[col]
+    is_valid = ~series.is_null().to_numpy()
+    col_vals = series.to_numpy()
+    if op == "<":
+        return is_valid & (col_vals < float(val))
+    elif op == ">=":
+        return is_valid & (col_vals >= float(val))
+    elif op == "between":
+        low, high = float(val[0]), float(val[1])
+        return is_valid & (col_vals >= low) & (col_vals < high)
+    elif op == "==":
+        col_list = series.to_list()
+        val_str = str(val)
+        return np.array([v == val or str(v) == val_str for v in col_list], dtype=bool)
+    return np.zeros(len(df), dtype=bool)
+
+
+def evaluate_rule(rule: RuleCandidate | dict[str, Any], df: pl.DataFrame) -> list[str]:
+    """Evaluate a RuleCandidate or rule dictionary against DataFrame and return matching __rowId__ list."""
+    if isinstance(rule, RuleCandidate):
+        mask = rule.evaluate(df)
+    elif isinstance(rule, dict) and "operator" in rule and "column" in rule:
+        mask = evaluate_condition_dict(rule, df)
+    else:
+        conds = rule.get("conditions", []) if isinstance(rule, dict) else []
+        mask = np.ones(len(df), dtype=bool)
+        for c in conds:
+            mask &= evaluate_condition_dict(c, df)
+    
+    if "__rowId__" in df.columns:
+        row_ids = df["__rowId__"].to_list()
+        return [str(row_ids[i]) for i in range(len(df)) if mask[i]]
+    return [str(i) for i in range(len(df)) if mask[i]]
+
 
 @dataclass
 class RuleCandidate:
@@ -52,9 +120,16 @@ class RuleCandidate:
     target_question: str | None = None
     target_pair: list[str] | None = None
     complete_separation: bool = False
-    emm_stats: dict[str, Any] | None = None
     parent_insight_id: str | None = None
     parent_delta_mean: float | None = None
+    emm_stats: dict[str, Any] | None = None
+    id: str | None = None
+
+    def evaluate(self, df: pl.DataFrame) -> np.ndarray:
+        mask = np.ones(len(df), dtype=bool)
+        for cond in self.conditions:
+            mask &= cond.evaluate(df)
+        return mask
 
 
 def generate_descriptors(
@@ -96,37 +171,38 @@ def generate_descriptors(
 
             # Generate one-sided: < t, >= t
             for t in unique_cuts:
-                mask_lt = is_valid & (col_vals < t)
+                val_float = float(t)
+                mask_lt = is_valid & (col_vals < val_float)
                 if 0 < np.sum(mask_lt) < n_rows:
                     cond_lt = Condition(
                         column=col,
                         operator="<",
-                        value=round(t, 2),
-                        label=f"{col} < {round(t, 2)}",
+                        value=val_float,
+                        label=f"{col} < {_format_threshold(val_float)}",
                     )
                     descriptors.append((cond_lt, mask_lt))
 
-                mask_ge = is_valid & (col_vals >= t)
+                mask_ge = is_valid & (col_vals >= val_float)
                 if 0 < np.sum(mask_ge) < n_rows:
                     cond_ge = Condition(
                         column=col,
                         operator=">=",
-                        value=round(t, 2),
-                        label=f"{col} >= {round(t, 2)}",
+                        value=val_float,
+                        label=f"{col} >= {_format_threshold(val_float)}",
                     )
                     descriptors.append((cond_ge, mask_ge))
 
             # Generate interval conditions: t_i <= A < t_j
             for i in range(len(unique_cuts)):
                 for j in range(i + 1, len(unique_cuts)):
-                    t_low, t_high = unique_cuts[i], unique_cuts[j]
+                    t_low, t_high = float(unique_cuts[i]), float(unique_cuts[j])
                     mask_between = is_valid & (col_vals >= t_low) & (col_vals < t_high)
                     if 0 < np.sum(mask_between) < n_rows:
                         cond_between = Condition(
                             column=col,
                             operator="between",
-                            value=(round(t_low, 2), round(t_high, 2)),
-                            label=f"{round(t_low, 2)} <= {col} < {round(t_high, 2)}",
+                            value=(t_low, t_high),
+                            label=f"{_format_threshold(t_low)} <= {col} < {_format_threshold(t_high)}",
                         )
                         descriptors.append((cond_between, mask_between))
         else:
@@ -465,6 +541,24 @@ def run_modern_subgroup_mining(
     """Omnipresent Auto-Mining pipeline.
     If target_questions is None or empty, automatically evaluates all questions & prominent pairs.
     """
+    if df.height < 2:
+        return {
+            "run_id": str(uuid.uuid4()),
+            "generated_at": datetime.datetime.now().isoformat(),
+            "config": {
+                "max_depth": max_depth,
+                "beam_width": beam_width,
+                "min_group_size": min_group_size,
+                "top_k": top_k,
+            },
+            "summary": {
+                "n_candidates_evaluated": 0,
+                "n_insights_returned": 0,
+                "effective_min_group_size": min_group_size,
+            },
+            "insights": [],
+        }
+
     actual_row_id = row_id_col
     if not actual_row_id:
         for c in ["__rowId__", "id", "ID", "row_id", "rowId"]:
@@ -479,7 +573,10 @@ def run_modern_subgroup_mining(
     meta_by_col: dict[str, dict[str, Any]] = {}
     if column_meta:
         for m in column_meta:
-            meta_by_col[m.get("columnId") or m.get("name", "")] = m
+            if m.get("columnId"):
+                meta_by_col[m["columnId"]] = m
+            if m.get("name"):
+                meta_by_col[m["name"]] = m
 
     all_cols = [c for c in df.columns if c != actual_row_id]
 
@@ -538,14 +635,22 @@ def run_modern_subgroup_mining(
     if df.height < min_group_size * 3:
         effective_min_group_size = max(3, df.height // 6)
 
-    # Pre-generate attribute descriptors (strictly exclude questions)
-    excluded = set(eval_questions)
+    # Pre-generate attribute descriptors
+    # Only explicitly designated question columns (role == "question") are strictly excluded from attribute descriptors,
+    # as long as there are attributes available.
+    explicit_questions = {c for c in eval_questions if meta_by_col.get(c, {}).get("role") == "question"}
+    if target_questions and not attribute_cols:
+        explicit_questions.update(target_questions)
+    excluded = explicit_questions if len(explicit_questions) < len(attribute_cols) else set()
     descriptors = generate_descriptors(df_with_id, attribute_cols, excluded)
 
     # Build rule candidate tree up to max_depth
     # Each item: (conditions, mask)
     generated_rules: list[tuple[list[Condition], np.ndarray]] = []
-    seen_rules: set[frozenset[str]] = set()
+    def _rule_canonical_key(conds: list[Condition]) -> tuple:
+        return tuple(sorted(((c.column, c.operator, c.value) for c in conds), key=lambda x: (x[0], x[1], str(x[2]))))
+
+    seen_rules: set[tuple] = set()
 
     # Depth 1 rules
     current_rule_beam: list[tuple[list[Condition], np.ndarray, int]] = []
@@ -553,7 +658,7 @@ def run_modern_subgroup_mining(
         sub_n = int(np.sum(mask))
         if sub_n < effective_min_group_size:
             continue
-        rule_key = frozenset([cond.label])
+        rule_key = _rule_canonical_key([cond])
         if rule_key in seen_rules:
             continue
         seen_rules.add(rule_key)
@@ -574,7 +679,7 @@ def run_modern_subgroup_mining(
                 if child_n < effective_min_group_size:
                     continue
                 child_conds = parent_conds + [desc_cond]
-                rule_key = frozenset([c.label for c in child_conds])
+                rule_key = _rule_canonical_key(child_conds)
                 if rule_key in seen_rules:
                     continue
                 seen_rules.add(rule_key)
@@ -640,6 +745,8 @@ def run_modern_subgroup_mining(
     if mode in ("auto", "standard"):
         for q, (arr, is_binary, q_sd) in question_arrays.items():
             for conds, mask in generated_rules:
+                if any(c.column == q for c in conds):
+                    continue
                 complexity = len(conds)
                 if is_binary:
                     res = compute_binary_score(
@@ -720,6 +827,8 @@ def run_modern_subgroup_mining(
                 arr2, _, _ = question_arrays[q2]
 
                 for conds, mask in generated_rules:
+                    if any(c.column in (q1, q2) for c in conds):
+                        continue
                     complexity = len(conds)
                     res_emm = compute_kendall_emm_score(
                         x=arr1,

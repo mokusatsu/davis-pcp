@@ -42,7 +42,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
     if (searchTerm && !varName.toLowerCase().includes(searchTerm.toLowerCase())) return false
     const meta = globalVars.variableMeta[varName]
     if (typeFilter === 'numeric') return meta?.semanticType === 'numeric'
-    if (typeFilter === 'nominal') return meta?.semanticType === 'nominal' || meta?.semanticType === 'ordinal' || meta?.semanticType === 'text'
+    if (typeFilter === 'nominal') return meta?.semanticType === 'nominal' || meta?.semanticType === 'ordinal' || meta?.semanticType === 'text' || meta?.semanticType === 'categorical'
     return true
   }
 

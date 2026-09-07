@@ -32,7 +32,8 @@ def summaries(req: SummaryRequest) -> dict:
         wanted = set(req.rowIds)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
     columns = req.columns or [c for c in df.columns if c != "__rowId__"]
-    key = (req.datasetId, tuple(sorted(req.rowIds)) if req.rowIds else None,
+    row_ids_key = tuple(sorted(req.rowIds)) if req.rowIds is not None else None
+    key = (req.datasetId, row_ids_key,
            tuple(sorted(columns)), req.correlation, meta["fingerprint"])
     if key in _cache:
         return {**_cache[key], "cacheHit": True}

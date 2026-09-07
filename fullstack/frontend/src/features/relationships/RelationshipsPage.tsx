@@ -7,9 +7,10 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { vizTheme } from '../../theme/viz'
-import SelectionMenu, { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import { truncateText } from '../../utils/textUtils'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 
@@ -172,7 +173,7 @@ export default function RelationshipsPage() {
     })()
     : null
 
-  const shortName = (name: string) => name.replace(/_cm$/, '').replace(/_/g, ' ')
+  const shortName = (name: string, maxLen: number = 8) => truncateText(name.replace(/_cm$/, '').replace(/_/g, ' '), maxLen)
 
   /** Pair plot: scatter matrix over numeric columns; diagonal = histogram.
    *  'fit': whole matrix scales down to fit (cells shrink for many columns).
@@ -400,7 +401,6 @@ export default function RelationshipsPage() {
     return (
       <div data-testid="relationships-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Space wrap>
-          <SelectionMenu testId="selection-menu" />
           <FocusEnterButton />
         </Space>
         <EmptyStatePanel
@@ -434,7 +434,6 @@ export default function RelationshipsPage() {
           <Row gutter={[12, 8]} align="middle" justify="space-between">
             <Col>
               <Space wrap align="center">
-                <SelectionMenu testId="selection-menu" />
                 <Segmented
                   data-testid="pair-size-mode"
                   size="small"
@@ -535,7 +534,7 @@ export default function RelationshipsPage() {
           </Space>
         )}
         <FocusTarget id="pair-plot" title="ペアプロット（散布図行列）">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
         <div
           data-testid="pair-plot-scroll"
           style={{
@@ -670,8 +669,14 @@ export default function RelationshipsPage() {
           {/* axis labels */}
           {numericColumns.map((col, i) => (
             <g key={`lbl-${col}`}>
-              <text x={pairLabel + i * pairCell + pairCell / 2} y={14} textAnchor="middle" fontSize={11} fontWeight={600} fill="#52514e">{shortName(col)}</text>
-              <text x={12} y={pairLabel + i * pairCell + pairCell / 2} fontSize={11} fontWeight={600} fill="#52514e">{shortName(col)}</text>
+              <text x={pairLabel + i * pairCell + pairCell / 2} y={14} textAnchor="middle" fontSize={11} fontWeight={600} fill="#52514e">
+                <title>{col}</title>
+                {shortName(col, 8)}
+              </text>
+              <text x={12} y={pairLabel + i * pairCell + pairCell / 2} fontSize={11} fontWeight={600} fill="#52514e">
+                <title>{col}</title>
+                {shortName(col, 8)}
+              </text>
             </g>
           ))}
           {/* drag rect on TOP of everything so it stays visible while brushing */}
@@ -795,7 +800,8 @@ export default function RelationshipsPage() {
               fill="#374151"
               transform={`rotate(-45 ${labelMargin + j * cellSize + cellSize / 2} ${labelMargin - 8})`}
             >
-              {shortName(col)}
+              <title>{col}</title>
+              {shortName(col, 12)}
             </text>
           ))}
           {corr?.columns.map((col, i) => (
@@ -808,7 +814,8 @@ export default function RelationshipsPage() {
               fontWeight={600}
               fill="#374151"
             >
-              {shortName(col)}
+              <title>{col}</title>
+              {shortName(col, 12)}
             </text>
           ))}
         </svg>
@@ -821,7 +828,6 @@ export default function RelationshipsPage() {
       <div style={{ flex: isTargetActive('facet-plot') ? 1 : 'none', flexShrink: 0, width: '100%', height: isTargetActive('facet-plot') ? '100%' : undefined, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {!focused && (
           <Space wrap align="center" style={{ marginBottom: 4 }}>
-            <SelectionMenu testId="facet-selection-menu" />
             <Typography.Title level={5} style={{ margin: 0 }}>ファセットプロット</Typography.Title>
             <FocusEnterButton targetId="facet-plot" title="ファセットプロット" />
           </Space>
@@ -847,7 +853,7 @@ export default function RelationshipsPage() {
         </Space>
         </div>
         <FocusTarget id="facet-plot" title="ファセットプロット">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
         <svg
           ref={facetSvgRef}
           data-testid="facet-plot" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
@@ -923,8 +929,14 @@ export default function RelationshipsPage() {
                 <text x={plotPadding - 8} y={size - plotPadding - plotWidth + 8} textAnchor="end" fontSize={tickFontSize} fill="#6b7280">{yMax}</text>
 
                 {/* Axis titles */}
-                <text x={plotPadding + plotWidth / 2} y={size - 6} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="#374151">{focusPair[0]}</text>
-                <text x={14} y={size - plotPadding - plotWidth / 2} fontSize={labelFontSize} fontWeight={600} fill="#374151" textAnchor="middle" transform={`rotate(-90 14 ${size - plotPadding - plotWidth / 2})`}>{focusPair[1]}</text>
+                <text x={plotPadding + plotWidth / 2} y={size - 6} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="#374151">
+                  <title>{focusPair[0]}</title>
+                  {truncateText(focusPair[0], 20)}
+                </text>
+                <text x={14} y={size - plotPadding - plotWidth / 2} fontSize={labelFontSize} fontWeight={600} fill="#374151" textAnchor="middle" transform={`rotate(-90 14 ${size - plotPadding - plotWidth / 2})`}>
+                  <title>{focusPair[1]}</title>
+                  {truncateText(focusPair[1], 20)}
+                </text>
               </g>
             )
           })()}

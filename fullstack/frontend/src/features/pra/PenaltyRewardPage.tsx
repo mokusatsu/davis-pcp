@@ -12,6 +12,7 @@ import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, pcpStateChanged } from '../../app/store'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import { truncateText } from '../../utils/textUtils'
 
 export interface PraAttribute {
   name: string
@@ -391,7 +392,8 @@ export default function PenaltyRewardPage() {
                                   stroke="#ffffff"
                                   strokeWidth={3}
                                 >
-                                  {a.label}
+                                  <title>{a.label}</title>
+                                  {isSelected ? a.label : truncateText(a.label, 10)}
                                 </text>
                               </g>
                             )
@@ -444,7 +446,7 @@ export default function PenaltyRewardPage() {
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                                <Typography.Text strong>{a.label}</Typography.Text>
+                                <Typography.Text strong ellipsis={{ tooltip: a.label }}>{a.label}</Typography.Text>
                                 <Tag color={getKanoColor(a.classification)}>{a.class_label}</Tag>
                               </div>
                               <div style={{ display: 'flex', height: 16, background: '#f0f0f0', borderRadius: 8, overflow: 'hidden' }}>

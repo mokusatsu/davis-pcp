@@ -102,7 +102,7 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
 
     # Filter by selected row IDs if provided (active population connection contract)
     filter_ids = req.selectedRowIds if req.selected_row_ids is None else req.selected_row_ids
-    if filter_ids:
+    if filter_ids is not None:
         id_col = None
         for c in ["__rowId__", "id", "ID", "row_id", "rowId"]:
             if c in df.columns:

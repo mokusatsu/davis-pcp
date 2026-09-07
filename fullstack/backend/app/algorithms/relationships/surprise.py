@@ -44,7 +44,10 @@ def compute_phik_and_surprise(
     meta_by_col: dict[str, dict[str, Any]] = {}
     if column_meta:
         for m in column_meta:
-            meta_by_col[m.get("columnId") or m.get("name", "")] = m
+            if m.get("columnId"):
+                meta_by_col[m["columnId"]] = m
+            if m.get("name"):
+                meta_by_col[m["name"]] = m
 
     target_cols = columns or [c for c in df.columns if c != actual_row_id]
     # Filter out columns with 0 variance or all null

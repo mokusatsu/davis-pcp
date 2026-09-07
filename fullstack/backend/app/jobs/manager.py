@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
+import os
+import sys
 import uuid
 from typing import Any, Callable
 
@@ -15,7 +17,10 @@ from ..storage.session_store import JobStore
 class JobManager:
     def __init__(self) -> None:
         self.store = JobStore()
-        self.pool = concurrent.futures.ProcessPoolExecutor(max_workers=2)
+        if sys.platform == "emscripten" or os.environ.get("DAVIS_PCP_WASM") == "1":
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        else:
+            self.pool = concurrent.futures.ProcessPoolExecutor(max_workers=2)
         self.subscribers: dict[str, set[WebSocket]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         # result cache keyed by (job_type, dataset_id, params-canonical-json)

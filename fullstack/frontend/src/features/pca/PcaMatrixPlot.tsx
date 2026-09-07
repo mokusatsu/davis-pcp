@@ -5,7 +5,7 @@ import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import type { PcaResponse } from './types'
 
 interface PcaMatrixPlotProps {
@@ -294,7 +294,6 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
         <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
           <Typography.Text strong>主成分散布図行列 (PC1〜PC{k})</Typography.Text>
           <Space wrap>
-            <SelectionMenu testId="pca-matrix-selection-menu" />
             <FocusEnterButton targetId="pca-matrix" title="PCA主成分散布図行列" />
           </Space>
         </Space>

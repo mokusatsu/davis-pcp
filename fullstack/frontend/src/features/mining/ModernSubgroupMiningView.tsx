@@ -648,6 +648,26 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   >
                     このセグメントと対象質問をPCPで可視化
                   </Button>
+                  <Button
+                    block
+                    icon={<ThunderboltOutlined />}
+                    onClick={() => {
+                      const targetCol = selectedInsight.target_question || (selectedInsight.target_pair ? selectedInsight.target_pair[0] : undefined)
+                      if (!targetCol) return
+                      const conclusion = {
+                        id: `modern_${selectedInsight.id}`,
+                        type: 'subgroup_diff',
+                        metric: `subgroup_diff_${targetCol}`,
+                        label: selectedInsight.narrative.slice(0, 60),
+                        target_col: targetCol,
+                        subgroup_row_ids: selectedInsight.coverage.row_ids,
+                      }
+                      navigate('/robustness', { state: { conclusion } })
+                    }}
+                    data-testid="modern-send-to-robustness-btn"
+                  >
+                    この結論の頑健性を検証 (Send to Robustness)
+                  </Button>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     ※クリックすると、PCP上で該当データ行がシアン色で太線ハイライトされ、該当質問軸が自動でフォーカス配置されます。
                   </Typography.Text>

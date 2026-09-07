@@ -35,6 +35,7 @@ import {
 } from '../../app/store'
 import VariableSelectionModal from './VariableSelectionModal'
 import ObservationModal from './ObservationModal'
+import PointerSelectionDropdown from './PointerSelectionDropdown'
 
 export const GlobalHeaderControlBar: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>()
@@ -81,7 +82,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
   )
   const nominalVars = globalVars.allVariables.filter((id) => {
     const t = globalVars.variableMeta[id]?.semanticType
-    return t === 'nominal' || t === 'ordinal' || t === 'text'
+    return t === 'nominal' || t === 'ordinal' || t === 'text' || t === 'categorical'
   })
 
   const filteredVars = globalVars.allVariables.filter((id) =>
@@ -108,14 +109,32 @@ export const GlobalHeaderControlBar: React.FC = () => {
         </Button>
         <Button
           size="small"
-          onClick={() => dispatch(activeVariablesSet(numericVars.length > 0 ? numericVars : globalVars.allVariables))}
+          onClick={() => {
+            if (numericVars.length > 0) {
+              dispatch(activeVariablesSet(numericVars))
+            } else {
+              notification.info({
+                message: '数値変数がありません',
+                description: '現在のデータセットに数値型変数は見つかりませんでした。',
+              })
+            }
+          }}
           data-testid="var-quick-numeric"
         >
           数値のみ
         </Button>
         <Button
           size="small"
-          onClick={() => dispatch(activeVariablesSet(nominalVars.length > 0 ? nominalVars : globalVars.allVariables))}
+          onClick={() => {
+            if (nominalVars.length > 0) {
+              dispatch(activeVariablesSet(nominalVars))
+            } else {
+              notification.info({
+                message: 'カテゴリ変数がありません',
+                description: '現在のデータセットにカテゴリ/名義型変数は見つかりませんでした。',
+              })
+            }
+          }}
           data-testid="var-quick-nominal"
         >
           カテゴリのみ
@@ -196,6 +215,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           open={varPopoverOpen}
           onOpenChange={setVarPopoverOpen}
           placement="bottomLeft"
+          getPopupContainer={() => document.body}
         >
           <Button
             size="small"
@@ -272,10 +292,11 @@ export const GlobalHeaderControlBar: React.FC = () => {
         </Space>
 
         {/* Selection actions */}
-        <Space size={2}>
+        <Space size={4}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             選択: {selectedRowCount}行
           </Typography.Text>
+          <PointerSelectionDropdown buttonSize="small" testId="header-pointer-selection" />
           <Button
             size="small"
             icon={<ClearOutlined />}

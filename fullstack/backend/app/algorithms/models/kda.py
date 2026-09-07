@@ -28,7 +28,10 @@ def run_kda(
     meta_by_col: dict[str, dict[str, Any]] = {}
     if column_meta:
         for m in column_meta:
-            meta_by_col[m.get("columnId") or m.get("name", "")] = m
+            if m.get("columnId"):
+                meta_by_col[m["columnId"]] = m
+            if m.get("name"):
+                meta_by_col[m["name"]] = m
 
     # Filter out outcome and get numeric columns if drivers not given
     actual_drivers = drivers or []

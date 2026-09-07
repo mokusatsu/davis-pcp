@@ -117,19 +117,37 @@ async def import_sqlite(file: UploadFile = File(...), table: str = Form(...)) ->
     return await import_sqlite_common(raw, table, file.filename or "database.sqlite")
 
 
+def _derive_dataset_schema(df: pl.DataFrame, source_schema: list[dict] | None = None) -> list[dict]:
+    frame = df.drop("__rowId__") if "__rowId__" in df.columns else df
+    canonical_schemas = [s.model_dump(mode="json") for s in probe_table(frame, frame.height)]
+    if not source_schema:
+        return canonical_schemas
+    existing_by_name = {c["name"]: dict(c) for c in source_schema if isinstance(c, dict) and "name" in c}
+    schema_payload = []
+    for s in canonical_schemas:
+        cname = s["name"]
+        if cname in existing_by_name:
+            orig = existing_by_name[cname]
+            merged = {**s, **{k: orig[k] for k in ["columnId", "semanticType", "role", "categoryOrder", "manualCategories"] if k in orig}}
+            schema_payload.append(merged)
+        else:
+            schema_payload.append(s)
+    return schema_payload
+
+
 def _finalize_dataset(
     dataset_id: str,
     name: str,
     fmt: str,
     df: pl.DataFrame,
     options: ImportOptions | None,
+    source_schema: list[dict] | None = None,
 ) -> dict:
     schemas = probe_table(df, df.height)
-    id_column = next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
+    id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
     df, identity_source = assign_row_identity(df, id_column, schemas)
-    # Re-probe on the canonical frame so row counts align with __rowId__.
-    canonical_schemas = [s for s in probe_table(df.drop("__rowId__"), df.height)]
-    schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    # Re-probe on the canonical frame so row counts align with __rowId__, preserving schema metadata if available.
+    schema_payload = _derive_dataset_schema(df, source_schema)
     fingerprint_material = {
         "schema": schema_payload,
         "options": options.model_dump(mode="json") if options else {},
@@ -183,6 +201,17 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
                 df = df.rename({old: override["newName"]})
         updated.append(column_meta)
     meta["schema"] = updated
+    meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
+    fingerprint_material = {
+        "schema": updated,
+        "options": meta.get("importOptions", {}),
+        "format": meta.get("format", "csv"),
+        "schemaRevision": meta["schemaRevision"],
+    }
+    fingerprint_seed = values_fingerprint(df)
+    meta["fingerprint"] = hashlib.sha256(
+        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+    ).hexdigest()
     store.save(dataset_id, meta, df)
     meta.pop("rowIds", None)
     return meta
@@ -335,8 +364,7 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
     )
 
     if request.inPlace:
-        canonical_schemas = [s for s in probe_table(imputed_df.drop("__rowId__"), imputed_df.height)]
-        schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+        schema_payload = _derive_dataset_schema(imputed_df, meta.get("schema", []))
         fingerprint_seed = values_fingerprint(imputed_df)
         meta["fingerprint"] = hashlib.sha256(
             json.dumps(schema_payload, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
@@ -344,6 +372,7 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         meta["schema"] = schema_payload
         meta["columnCount"] = imputed_df.width - 1
         meta["revision"] = meta.get("revision", 1) + 1
+        meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
 
         store.save(dataset_id, meta, imputed_df)
         meta.pop("rowIds", None)
@@ -353,8 +382,15 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         }
     else:
         new_dataset_id = new_id("ds")
-        new_name = f"{meta.name}_imputed"
-        new_meta = _finalize_dataset(new_dataset_id, new_name, meta.get("format", "csv"), imputed_df, None)
+        new_name = f"{meta['name']}_imputed"
+        new_meta = _finalize_dataset(
+            new_dataset_id,
+            new_name,
+            meta.get("format", "csv"),
+            imputed_df,
+            None,
+            source_schema=meta.get("schema", []),
+        )
         return {
             **new_meta,
             "diagnostics": diagnostics,
@@ -395,8 +431,7 @@ def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> di
         new_column_name=request.columnName,
     )
 
-    canonical_schemas = [s for s in probe_table(updated_df.drop("__rowId__"), updated_df.height)]
-    schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    schema_payload = _derive_dataset_schema(updated_df, meta.get("schema", []))
     fingerprint_seed = values_fingerprint(updated_df)
     meta["fingerprint"] = hashlib.sha256(
         json.dumps(schema_payload, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
@@ -438,11 +473,7 @@ def dataset_view(dataset_id: str, body: dict) -> Response:
         df = df.slice(offset, limit)
     elif offset:
         df = df.slice(offset)
-    table = df.to_arrow()
-    sink = pa.BufferOutputStream()
-    with ipc.new_stream(sink, table.schema) as writer:
-        writer.write_table(table)
-    return Response(content=sink.getvalue().to_pybytes(), media_type="application/vnd.apache.arrow.stream")
+    return Response(content=_serialize_dataframe_to_arrow_bytes(df), media_type="application/vnd.apache.arrow.stream")
 
 
 @router.delete("/datasets/{dataset_id}")
@@ -451,9 +482,19 @@ def delete_dataset(dataset_id: str) -> dict:
     return {"deleted": dataset_id}
 
 
+def _serialize_dataframe_to_arrow_bytes(df: pl.DataFrame) -> bytes:
+    try:
+        pydict = df.to_dict(as_series=False)
+        table = pa.Table.from_pydict(pydict)
+        sink = pa.BufferOutputStream()
+        with ipc.new_stream(sink, table.schema) as writer:
+            writer.write_table(table)
+        return sink.getvalue().to_pybytes()
+    except Exception:
+        buf = io.BytesIO()
+        df.write_ipc_stream(buf)
+        return buf.getvalue()
+
+
 def dataframe_to_arrow_response(df: pl.DataFrame) -> Response:
-    table = df.to_arrow()
-    sink = pa.BufferOutputStream()
-    with ipc.new_stream(sink, table.schema) as writer:
-        writer.write_table(table)
-    return Response(content=sink.getvalue().to_pybytes(), media_type="application/vnd.apache.arrow.stream")
+    return Response(content=_serialize_dataframe_to_arrow_bytes(df), media_type="application/vnd.apache.arrow.stream")

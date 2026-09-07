@@ -113,16 +113,22 @@ def create_cluster(req: ClusterRequest) -> dict:
         columns_used = [req.classColumn]
         row_ids = df["__rowId__"].to_list()
     else:
-        if not req.columns:
-            raise BizError("CLUSTERING_NO_COLUMNS", "クラスタリング対象の数値列がありません。",
-                           suggested_actions=["数値軸を含むデータセットを使用してください"])
-        matrix, row_ids, _meta = _numeric_matrix(req.datasetId, req.columns, scaling=req.scaling)
-        columns_used = req.columns
+        is_cat_clustering = req.method in ("cobweb", "disc") and bool(req.categoricalColumns)
+        if not req.columns and not is_cat_clustering:
+            raise BizError("CLUSTERING_NO_COLUMNS", "クラスタリング対象の列がありません。",
+                           suggested_actions=["数値軸またはカテゴリ軸を含むデータセットを使用してください"])
+
+        if req.columns:
+            matrix, row_ids, _meta = _numeric_matrix(req.datasetId, req.columns, scaling=req.scaling)
+            columns_used = req.columns
+        else:
+            matrix = None
+            df = store.get_dataframe(req.datasetId)
+            row_ids = df["__rowId__"].to_list() if "__rowId__" in df.columns else [str(i) for i in range(df.height)]
+            columns_used = req.categoricalColumns or []
+
         if len(set(row_ids)) < req.k:
-            raise BizError("CLUSTERING_TOO_FEW_ROWS", f"クラスタ数{k}に対して行が足りません。",
-                           suggested_actions=["クラスタ数を減らす"])
-        if len(set(row_ids)) < req.k:
-            raise BizError("CLUSTERING_TOO_FEW_ROWS", f"クラスタ数{k}に対して行が足りません。",
+            raise BizError("CLUSTERING_TOO_FEW_ROWS", f"クラスタ数{req.k}に対して行が足りません。",
                            suggested_actions=["クラスタ数を減らす"])
         if req.method == "kmeans":
             result = clustering.kmeans(matrix, req.k, req.seed, req.maxIter, req.tolerance)
@@ -158,7 +164,7 @@ def create_cluster(req: ClusterRequest) -> dict:
     runtime_ms = (time.perf_counter() - started) * 1000
     silhouette = None
     pca_projection = None
-    if req.method != "class_variable":
+    if req.method != "class_variable" and matrix is not None:
         if len(set(result["labels"])) >= 2:
             try:
                 silhouette = silhouette_summary(matrix, result["labels"])

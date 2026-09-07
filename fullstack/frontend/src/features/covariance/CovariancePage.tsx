@@ -8,6 +8,7 @@ import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { useColumnarData } from '../pcp/useDatasetColumns'
+import { truncateText } from '../../utils/textUtils'
 
 interface CovarianceResponse {
   columns: string[]
@@ -277,6 +278,7 @@ export default function CovariancePage() {
                     {covData.columns.map((col) => (
                       <th
                         key={col}
+                        title={col}
                         style={{
                           width: CELL_SIZE,
                           padding: focused ? 10 : 6,
@@ -285,9 +287,12 @@ export default function CovariancePage() {
                           color: '#374151',
                           textAlign: 'center',
                           borderBottom: '1px solid #e5e7eb',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
-                        {focused ? col : (col.length > 10 ? `${col.slice(0, 9)}..` : col)}
+                        {focused ? col : truncateText(col, 10)}
                       </th>
                     ))}
                   </tr>
@@ -296,6 +301,7 @@ export default function CovariancePage() {
                   {covData.columns.map((rCol, rIdx) => (
                     <tr key={rCol}>
                       <td
+                        title={rCol}
                         style={{
                           width: LABEL_WIDTH,
                           padding: focused ? '8px 14px' : '6px 10px',
@@ -304,9 +310,12 @@ export default function CovariancePage() {
                           color: '#374151',
                           textAlign: 'right',
                           borderRight: '1px solid #e5e7eb',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
-                        {rCol}
+                        {focused ? rCol : truncateText(rCol, 12)}
                       </td>
                       {covData.columns.map((cCol, cIdx) => {
                         const val = activeMatrix[rIdx]?.[cIdx] ?? 0

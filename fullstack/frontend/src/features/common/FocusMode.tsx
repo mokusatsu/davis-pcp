@@ -1,8 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Button, Space, Typography } from 'antd'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Button, Divider, Typography } from 'antd'
 import {
-  FullscreenOutlined, FullscreenExitOutlined, ZoomInOutlined, ZoomOutOutlined, OneToOneOutlined,
+  FullscreenOutlined, FullscreenExitOutlined, ZoomInOutlined, ZoomOutOutlined, OneToOneOutlined, ClearOutlined,
+  AimOutlined, DeleteOutlined, ReloadOutlined, HolderOutlined,
 } from '@ant-design/icons'
+import { useDispatch, useSelector } from 'react-redux'
+import type { RootState } from '../../app/store'
+import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
+import PointerSelectionDropdown from '../selection/PointerSelectionDropdown'
 
 /** Focus (fullscreen chart) mode context.
  *  Supports single-chart pages (PCP, Distribution) as well as multi-chart pages
@@ -165,9 +170,26 @@ export function FocusTarget({ id, children, className, style }: FocusTargetProps
 /** Toolbar shown when focus mode is active (fixed overlay). */
 export function FocusBar() {
   const { focused, title, zoom, exit, setZoom } = useFocusMode()
+  const dispatch = useDispatch()
+  const selectedCount = useSelector((s: RootState) => s.selection.selectedRowIds.length)
+
+  const barRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  // Drag tracking state
+  const dragInfo = useRef<{
+    startX: number
+    startY: number
+    initialBarX: number
+    initialBarY: number
+  } | null>(null)
 
   useEffect(() => {
-    if (!focused) return
+    if (!focused) {
+      setPosition(null)
+      return
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         exit()
@@ -177,26 +199,209 @@ export function FocusBar() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [focused, exit])
 
+  // Handle pointer down on the bar (or drag handle)
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement | null
+    // Avoid dragging when clicking on buttons, selects, dropdowns, inputs, etc.
+    if (target?.closest('button, input, select, a, .ant-select, .ant-dropdown, .ant-btn')) {
+      return
+    }
+
+    const barEl = barRef.current
+    if (!barEl) return
+
+    const rect = barEl.getBoundingClientRect()
+    dragInfo.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialBarX: rect.left,
+      initialBarY: rect.top,
+    }
+    setIsDragging(true)
+
+    const onMove = (moveEvt: MouseEvent | PointerEvent) => {
+      if (!dragInfo.current || !barRef.current) return
+      const dx = moveEvt.clientX - dragInfo.current.startX
+      const dy = moveEvt.clientY - dragInfo.current.startY
+
+      const barRect = barRef.current.getBoundingClientRect()
+      const barWidth = barRect.width
+      const barHeight = barRect.height
+
+      const margin = 8
+      let newX = dragInfo.current.initialBarX + dx
+      let newY = dragInfo.current.initialBarY + dy
+
+      // Clamp within viewport
+      newX = Math.max(margin, Math.min(window.innerWidth - barWidth - margin, newX))
+      newY = Math.max(margin, Math.min(window.innerHeight - barHeight - margin, newY))
+
+      setPosition({ x: newX, y: newY })
+    }
+
+    const onUp = () => {
+      dragInfo.current = null
+      setIsDragging(false)
+      window.removeEventListener('pointermove', onMove as EventListener)
+      window.removeEventListener('mousemove', onMove as EventListener)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove as EventListener)
+    window.addEventListener('mousemove', onMove as EventListener)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  // Reset to default top-right position on double-click
+  const handleResetPosition = () => {
+    setPosition(null)
+  }
+
   if (!focused) return null
   const stepIndex = zoom === null ? -1 : ZOOM_STEPS.indexOf(zoom)
 
   return (
     <div
+      ref={barRef}
       data-testid="focus-bar"
+      onPointerDown={handlePointerDown}
+      onMouseDown={handlePointerDown}
       style={{
-        position: 'fixed', top: 8, right: 16, zIndex: 2000,
-        background: '#fff', border: '1px solid #d9d9d9', borderRadius: 8,
-        boxShadow: '0 2px 10px rgba(0,0,0,.15)', padding: '4px 8px',
-        display: 'flex', alignItems: 'center',
+        position: 'fixed',
+        top: position ? position.y : 8,
+        left: position ? position.x : undefined,
+        right: position ? undefined : 16,
+        zIndex: 2000,
+        background: '#fff',
+        border: '1px solid #d9d9d9',
+        borderRadius: 8,
+        boxShadow: isDragging
+          ? '0 6px 18px rgba(0,0,0,.25)'
+          : '0 2px 10px rgba(0,0,0,.15)',
+        padding: '4px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        maxWidth: 'calc(100vw - 32px)',
+        cursor: isDragging ? 'grabbing' : 'default',
+        userSelect: isDragging ? 'none' : 'auto',
+        transition: isDragging ? 'none' : 'box-shadow 0.2s',
       }}
     >
-      <Space size="small">
-        {title && (
-          <Typography.Text strong style={{ fontSize: 12, marginRight: 2 }} data-testid="focus-title">
-            {title}
-          </Typography.Text>
-        )}
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>拡大表示</Typography.Text>
+      {/* 左端・上下中央のドラッグハンドル */}
+      <span
+        data-testid="focus-drag-handle"
+        title="ドラッグして移動（ダブルクリックで初期位置に戻す）"
+        onDoubleClick={handleResetPosition}
+        style={{
+          cursor: isDragging ? 'grabbing' : 'grab',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#8c8c8c',
+          padding: '2px 4px',
+          borderRadius: 4,
+          flexShrink: 0,
+        }}
+      >
+        <HolderOutlined style={{ fontSize: 16 }} />
+      </span>
+
+      {/* 操作コンテンツ（通常時は1行、詰まった場合は2行折り返し） */}
+      <div
+        data-testid="focus-bar-content"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: '4px 8px',
+        }}
+      >
+        {/* 選択操作グループ */}
+        <div
+          data-testid="focus-bar-selection"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            flexWrap: 'nowrap',
+          }}
+        >
+          {title && (
+            <Typography.Text
+              strong
+              style={{ fontSize: 12, marginRight: 4, cursor: isDragging ? 'grabbing' : 'grab' }}
+              data-testid="focus-title"
+            >
+              {title}
+            </Typography.Text>
+          )}
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          選択: {selectedCount}行
+        </Typography.Text>
+        <PointerSelectionDropdown buttonSize="small" testId="focus-pointer-selection" />
+        <Button
+          size="small"
+          icon={<ClearOutlined />}
+          disabled={selectedCount === 0}
+          onClick={() => dispatch(selectionCleared())}
+          title="選択解除"
+          data-testid="focus-clear-selection"
+        >
+          解除
+        </Button>
+        <Button
+          size="small"
+          icon={<AimOutlined />}
+          disabled={selectedCount === 0}
+          onClick={() => dispatch(focusSelected())}
+          title="選択行のみに絞り込み"
+          data-testid="focus-focus-selection"
+        >
+          Focus
+        </Button>
+        <Button
+          size="small"
+          danger
+          icon={<DeleteOutlined />}
+          disabled={selectedCount === 0}
+          onClick={() => dispatch(deleteSelected())}
+          title="選択行を一時除外"
+          data-testid="focus-delete-selection"
+        >
+          Delete
+        </Button>
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          onClick={() => dispatch(resetWorkingSet())}
+          title="初期ベースデータに全復帰"
+          data-testid="focus-reset-selection"
+        >
+          全復帰(Reset)
+        </Button>
+      </div>
+
+      {/* 拡大表示操作グループ */}
+      <div
+        data-testid="focus-bar-zoom"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          flexWrap: 'nowrap',
+        }}
+      >
+        <Divider type="vertical" style={{ margin: '0 4px' }} />
+        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+          拡大表示
+        </Typography.Text>
         <Button
           size="small"
           icon={<OneToOneOutlined />}
@@ -213,7 +418,10 @@ export function FocusBar() {
           disabled={stepIndex === 0}
           onClick={() => setZoom(ZOOM_STEPS[Math.max(0, stepIndex <= 0 ? 0 : stepIndex - 1)])}
         />
-        <Typography.Text data-testid="focus-zoom-label" style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>
+        <Typography.Text
+          data-testid="focus-zoom-label"
+          style={{ fontSize: 12, minWidth: 44, textAlign: 'center', whiteSpace: 'nowrap' }}
+        >
           {zoom === null ? 'フィット' : `${Math.round(zoom * 100)}%`}
         </Typography.Text>
         <Button
@@ -231,7 +439,8 @@ export function FocusBar() {
         >
           戻す
         </Button>
-      </Space>
+      </div>
+      </div>
     </div>
   )
 }

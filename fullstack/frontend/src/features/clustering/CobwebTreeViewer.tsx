@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { Button, Space, Tag, Typography } from 'antd'
 import { DownOutlined, RightOutlined } from '@ant-design/icons'
 import { FocusEnterButton, useFocusMode } from '../common/FocusMode'
-import SelectionMenu from '../selection/SelectionMenu'
 
 export interface CobwebTreeNode {
   id: string
@@ -138,7 +137,6 @@ export default function CobwebTreeViewer({
           <Typography.Title level={5} style={{ margin: 0 }}>
             Cobweb 概念階層木 (Concept Formation Hierarchy)
           </Typography.Title>
-          <SelectionMenu testId="cobweb-selection-menu" />
           <FocusEnterButton targetId="cobweb-tree" title="Cobweb 概念木" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>

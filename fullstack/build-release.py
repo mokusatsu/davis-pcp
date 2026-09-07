@@ -76,6 +76,9 @@ def main() -> int:
     parser.add_argument("--skip-tests", action="store_true")
     args = parser.parse_args()
 
+    print("[0/4] verifying OSS license coverage ...")
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "check_licenses.py")], check=True)
+
     if not args.skip_tests:
         run_tests()
     ensure_frontend_build()

@@ -79,7 +79,13 @@ class DatasetStore:
     def save(self, dataset_id: str, meta: dict[str, Any], df: pl.DataFrame) -> None:
         import io
         buffer = io.BytesIO()
-        df.write_parquet(buffer)
+        try:
+            df.write_parquet(buffer)
+        except Exception:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+            table = pa.Table.from_pydict(df.to_dict(as_series=False))
+            pq.write_table(table, buffer)
         atomic_write_bytes(self._parquet_path(dataset_id), buffer.getvalue())
         atomic_write_bytes(self._meta_path(dataset_id), json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8"))
 
@@ -95,7 +101,12 @@ class DatasetStore:
         if not path.exists():
             raise BizError("DATASET_NOT_FOUND", f"データセット {dataset_id} の本体が見つかりません。",
                            status_code=404)
-        return pl.read_parquet(path)
+        try:
+            return pl.read_parquet(path)
+        except Exception:
+            import pyarrow.parquet as pq
+            table = pq.read_table(path)
+            return pl.DataFrame(table.to_pydict())
 
     def list_datasets(self) -> list[dict[str, Any]]:
         result = []
@@ -124,7 +135,7 @@ class DatasetStore:
             parquet.unlink()
 
 
-def assign_row_identity(df: pl.DataFrame, id_column: str | None, schemas: list[Any]) -> tuple[pl.DataFrame, str]:
+def assign_row_identity(df: pl.DataFrame, id_column: str | None = None, schemas: list[Any] | None = None) -> tuple[pl.DataFrame, str]:
     """Return dataframe with a `__rowId__` first column and the identity source."""
     if id_column and id_column in df.columns and df[id_column].null_count() == 0:
         unique_count = df[id_column].n_unique()
@@ -135,14 +146,12 @@ def assign_row_identity(df: pl.DataFrame, id_column: str | None, schemas: list[A
                 details={"unique": unique_count, "rows": df.height},
                 suggested_actions=["別の列をIDにする", "生成IDを使用する"],
             )
-        out = df.with_columns(pl.col(id_column).cast(pl.String).alias("__rowId__")).drop([id_column])
+        out = df.with_columns(pl.col(id_column).cast(pl.String).alias("__rowId__"))
         return out.select(["__rowId__"] + [c for c in out.columns if c != "__rowId__"]), f"column:{id_column}"
-    candidate = next((s for s in schemas
-                      if getattr(s, "uniqueIdCandidate", False) and s.name in df.columns
-                      and s.semanticType != "numeric"), None)
-    if candidate is not None:
-        out = df.with_columns(pl.col(candidate.name).cast(pl.String).alias("__rowId__")).drop([candidate.name])
-        return out.select(["__rowId__"] + [c for c in out.columns if c != "__rowId__"]), f"column:{candidate.name}"
+    # If df already contains an existing unique __rowId__, preserve it (derived datasets / imputation / calculate)
+    if "__rowId__" in df.columns and df["__rowId__"].null_count() == 0 and df["__rowId__"].n_unique() == df.height:
+        out = df.with_columns(pl.col("__rowId__").cast(pl.String))
+        return out.select(["__rowId__"] + [c for c in out.columns if c != "__rowId__"]), "preserved"
     generated = [f"ROW-{i + 1:06d}" for i in range(df.height)]
     out = df.with_columns(pl.Series("__rowId__", generated, dtype=pl.String))
     return out.select(["__rowId__"] + [c for c in out.columns if c != "__rowId__"]), "generated"

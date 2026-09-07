@@ -2,6 +2,7 @@
 /base/
 
 # Runtime data & temporary audit files
+/.temp/
 /workspace/
 /audit_tmp/
 /_iris_fixture.json

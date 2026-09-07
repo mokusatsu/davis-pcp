@@ -7,7 +7,7 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { vizTheme, entityColor, signedNoiseViz } from '../../theme/viz'
-import SelectionMenu, { useBrushOp } from '../selection/SelectionMenu'
+import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import { useRowColorResolver } from '../../theme/useRowColor'
@@ -49,7 +49,7 @@ export default function DistributionPage() {
   const data = useColumnarData(selection.datasetId)
   const focused = useFocusMode().focused
   const svgRef = useRef<SVGSVGElement>(null)
-  const [brushOp, setBrushOp] = useBrushOp() as ['add' | 'replace' | 'subtract' | 'toggle', (v: 'add' | 'replace' | 'subtract' | 'toggle') => void]
+  const [brushOp] = useBrushOp()
   const [viewMode, setViewMode] = useState<'boxplot' | 'qqplot'>('boxplot')
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal')
   const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
@@ -476,7 +476,6 @@ export default function DistributionPage() {
                       value={orientation}
                       onChange={(v) => setOrientation(v as 'horizontal' | 'vertical')}
                     />
-                    <SelectionMenu testId="selection-menu" op={brushOp} onOpChange={setBrushOp} />
                     <FocusEnterButton targetId="distribution" title="分布・箱ひげ図" />
                   </>
                 )}

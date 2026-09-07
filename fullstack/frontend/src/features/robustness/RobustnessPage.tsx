@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Table, Tag,
   Select, Statistic, Alert, Spin, Empty, Progress,
@@ -67,20 +67,28 @@ export default function RobustnessPage() {
   const { focused, isTargetActive } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
+  const location = useLocation()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
+  const [customConclusion, setCustomConclusion] = useState<any>(
+    (location.state as any)?.conclusion || null
+  )
   const [loading, setLoading] = useState<boolean>(false)
   const [data, setData] = useState<RobustnessResponse | null>(null)
   const [selectedConclusionId, setSelectedConclusionId] = useState<string | null>(null)
 
-  const fetchRobustness = async () => {
+  const fetchRobustness = async (targetConclusion = customConclusion) => {
     if (!datasetId) return
     setLoading(true)
     try {
-      const res = await api.post<RobustnessResponse>('/robustness/evaluate', {
+      const payload: Record<string, any> = {
         datasetId,
         bootstrapB: 100,
-      })
+      }
+      if (targetConclusion) {
+        payload.conclusions = [targetConclusion]
+      }
+      const res = await api.post<RobustnessResponse>('/robustness/evaluate', payload)
       setData(res)
       if (res.conclusions.length > 0) {
         setSelectedConclusionId(res.conclusions[0].id)
@@ -157,6 +165,36 @@ export default function RobustnessPage() {
       }}
       data-testid="robustness-page"
     >
+      {/* Inherited conclusion banner */}
+      {!focused && customConclusion && (
+        <Alert
+          type="info"
+          showIcon
+          closable
+          onClose={() => {
+            setCustomConclusion(null)
+            void fetchRobustness(null)
+          }}
+          message="サブグループマイニングから引き継いだ結論を検証中"
+          description={
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+              <div><b>対象:</b> {customConclusion.label || customConclusion.metric}</div>
+              <Button
+                size="small"
+                onClick={() => {
+                  setCustomConclusion(null)
+                  void fetchRobustness(null)
+                }}
+              >
+                デフォルト全体結論に戻す
+              </Button>
+            </div>
+          }
+          style={{ marginBottom: 12 }}
+          data-testid="inherited-conclusion-alert"
+        />
+      )}
+
       {/* Top Bar */}
       {!focused && (
         <Card size="small" style={{ marginBottom: 12 }}>

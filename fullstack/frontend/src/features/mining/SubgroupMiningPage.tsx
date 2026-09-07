@@ -520,7 +520,22 @@ export default function SubgroupMiningPage() {
                   </Button>
                   <Button
                     icon={<ThunderboltOutlined />}
-                    onClick={() => navigate('/robustness')}
+                    onClick={() => {
+                      const targetCol = currentInsight.question.name
+                      const groupCol = currentInsight.subgroup.name
+                      const compareGroups = currentInsight.group_stats.slice(0, 2).map((g) => g.group)
+                      const conclusion = {
+                        id: `mining_${currentInsight.id}`,
+                        type: 'subgroup_diff',
+                        metric: `${groupCol}_diff_${targetCol}`,
+                        label: `${groupCol} のグループ差: ${targetCol}`,
+                        target_col: targetCol,
+                        group_col: groupCol,
+                        compare_groups: compareGroups.length >= 2 ? compareGroups : undefined,
+                        subgroup_row_ids: currentInsight.row_ids && compareGroups.length > 0 ? currentInsight.row_ids[compareGroups[0]] : undefined,
+                      }
+                      navigate('/robustness', { state: { conclusion } })
+                    }}
                     data-testid="send-to-robustness-btn"
                   >
                     Send to Robustness

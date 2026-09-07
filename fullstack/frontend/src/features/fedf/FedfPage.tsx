@@ -5,10 +5,11 @@ import { LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
-import SelectionMenu, { useBrushOp } from '../selection/SelectionMenu'
+import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
+import { truncateText } from '../../utils/textUtils'
 
 interface FedfCurvePoint {
   quantile: number
@@ -242,7 +243,6 @@ export default function FedfPage() {
           </Space>
 
           <Space size={12}>
-            <SelectionMenu testId="fedf-selection-menu" />
             <FocusEnterButton targetId="fedf-container" />
           </Space>
         </div>
@@ -312,7 +312,8 @@ export default function FedfPage() {
                         textAnchor="middle"
                         style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                       >
-                        {col}
+                        <title>{col}</title>
+                        {truncateText(col, 14)}
                       </text>
 
                       {/* Quick Quantile Presets */}

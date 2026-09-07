@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -83,7 +84,17 @@ app.include_router(observations_api.router, prefix="/api/v1")
 app.include_router(logistic_api.router, prefix="/api/v1")
 app.include_router(discriminant_api.router, prefix="/api/v1")
 
-_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+_frontend_env = os.environ.get("DAVIS_PCP_FRONTEND_DIST")
+_frontend_dist = Path(_frontend_env) if _frontend_env else (Path(__file__).resolve().parents[2] / "frontend" / "dist")
+if not _frontend_dist.exists():
+    for fallback in [
+        Path(__file__).resolve().parents[1] / "frontend" / "dist",
+        Path(__file__).resolve().parent / "static",
+    ]:
+        if fallback.exists():
+            _frontend_dist = fallback
+            break
+
 if _frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=_frontend_dist / "assets"), name="assets")
 
@@ -99,3 +110,25 @@ if _frontend_dist.exists():
 @app.on_event("startup")
 def startup() -> None:
     settings.ensure_dirs()
+    ready_file = os.environ.get("DAVIS_PCP_READY_FILE")
+    if ready_file:
+        try:
+            p = Path(ready_file).resolve()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("ready\n", encoding="utf-8")
+            print(f"[DAVIS-PCP] Ready flag written to {p}", flush=True)
+        except Exception as e:
+            print(f"[DAVIS-PCP ERROR] Failed to write ready file {ready_file}: {e}", flush=True)
+
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    ready_file = os.environ.get("DAVIS_PCP_READY_FILE")
+    if ready_file:
+        try:
+            p = Path(ready_file)
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass

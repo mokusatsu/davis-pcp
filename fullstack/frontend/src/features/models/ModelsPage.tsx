@@ -8,7 +8,7 @@ import type { RootState } from '../../app/store'
 import { selectionApplied, modelResultStored } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
 interface LeafMembership {
@@ -243,10 +243,7 @@ export default function ModelsPage() {
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <Typography.Title level={5} style={{ margin: 0 }}>モデル学習結果</Typography.Title>
-                  <Space wrap align="center">
-                    <SelectionMenu testId="models-selection-menu" />
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>リーフクリック=集合演算で反映</Typography.Text>
-                  </Space>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>リーフクリック=集合演算で反映</Typography.Text>
                 </div>
                 <Descriptions size="small" bordered column={2}>
                   <Descriptions.Item label="task">{result.taskType}</Descriptions.Item>

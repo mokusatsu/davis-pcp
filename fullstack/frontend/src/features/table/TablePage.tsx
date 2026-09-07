@@ -6,7 +6,6 @@ import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
-import SelectionMenu from '../selection/SelectionMenu'
 
 export default function TablePage() {
   const { focused } = useFocusMode()
@@ -155,7 +154,6 @@ export default function TablePage() {
               value={scopeFilter}
               onChange={(v) => setScopeFilter(v as 'all' | 'selected')}
             />
-            <SelectionMenu testId="table-selection-menu" />
             <FocusEnterButton targetId="table" title="データテーブル" />
           </Space>
           <Space wrap align="center">
