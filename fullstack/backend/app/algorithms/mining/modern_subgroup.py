@@ -20,6 +20,7 @@ from typing import Any, Literal
 import numpy as np
 import polars as pl
 from scipy import stats
+from ...domain.codebook_adapter import CodebookAdapter
 
 
 def _format_threshold(val: float) -> str:
@@ -137,6 +138,7 @@ def generate_descriptors(
     attribute_cols: list[str],
     excluded_cols: set[str],
     max_categories: int = 8,
+    column_meta: dict[str, dict] | None = None,
 ) -> list[tuple[Condition, np.ndarray]]:
     """Pre-generate all single-attribute selectors:
     - Categorical/Ordinal: == value
@@ -155,6 +157,9 @@ def generate_descriptors(
 
         # Check numeric vs categorical
         is_numeric = dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64) and series.n_unique() > 8
+        scale = (column_meta or {}).get(col, {}).get("scaleType")
+        if scale:
+            is_numeric = scale in ("interval", "ratio")
 
         if is_numeric:
             non_null_vals = series.drop_nulls().to_numpy()
@@ -559,6 +564,15 @@ def run_modern_subgroup_mining(
             "insights": [],
         }
 
+    adapter = CodebookAdapter(df, {"columns": column_meta or []})
+    has_codebook = any("scaleType" in c for c in (column_meta or []))
+    requested_attributes = attribute_cols
+    if has_codebook:
+        df = df.with_columns([
+            adapter.analysis_series(c) if (adapter.get_column_spec_optional(c) or {}).get("role") == "question"
+            else adapter.mask_missing_values(c)
+            for c in df.columns if adapter.get_column_spec_optional(c)
+        ])
     actual_row_id = row_id_col
     if not actual_row_id:
         for c in ["__rowId__", "id", "ID", "row_id", "rowId"]:
@@ -630,6 +644,12 @@ def run_modern_subgroup_mining(
                     # Numeric columns can also be used as selectors (quartile cuts)
                     attribute_cols.append(c)
 
+    if has_codebook:
+        allowed_questions = adapter.get_question_columns()
+        allowed_attributes = adapter.get_attribute_columns()
+        eval_questions = [c for c in (target_questions if target_questions is not None else allowed_questions) if c in allowed_questions]
+        attribute_cols = [c for c in (requested_attributes if requested_attributes is not None else allowed_attributes) if c in allowed_attributes]
+
     # Adapt effective min group size if dataset is small
     effective_min_group_size = min_group_size
     if df.height < min_group_size * 3:
@@ -641,8 +661,10 @@ def run_modern_subgroup_mining(
     explicit_questions = {c for c in eval_questions if meta_by_col.get(c, {}).get("role") == "question"}
     if target_questions and not attribute_cols:
         explicit_questions.update(target_questions)
-    excluded = explicit_questions if len(explicit_questions) < len(attribute_cols) else set()
-    descriptors = generate_descriptors(df_with_id, attribute_cols, excluded)
+    excluded = explicit_questions
+    descriptors = generate_descriptors(df_with_id, attribute_cols, excluded, column_meta=meta_by_col)
+    for cond, _ in descriptors:
+        cond.label = adapter.condition_label(cond.column, cond.operator, cond.value)
 
     # Build rule candidate tree up to max_depth
     # Each item: (conditions, mask)
@@ -692,7 +714,7 @@ def run_modern_subgroup_mining(
     question_arrays: dict[str, tuple[np.ndarray, bool, float]] = {}  # col -> (array, is_binary, overall_sd)
     for q in eval_questions:
         meta = meta_by_col.get(q, {})
-        sem_type = meta.get("semanticType")
+        sem_type = {"nominal": "categorical", "ordinal": "numeric", "interval": "numeric", "ratio": "numeric"}.get(meta.get("scaleType"), meta.get("semanticType"))
         t_series = df_with_id[q]
         dtype = t_series.dtype
 
@@ -877,7 +899,7 @@ def run_modern_subgroup_mining(
         full_text = " かつ ".join(cond_texts)
 
         if cand.target_question:
-            t_label = cand.target_question
+            t_label = (adapter.get_column_spec_optional(cand.target_question) or {}).get("label") or cand.target_question
             if "delta_proportion" in cand.target_stats:
                 narrative = (
                     f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"

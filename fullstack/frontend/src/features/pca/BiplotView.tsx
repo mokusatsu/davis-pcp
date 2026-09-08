@@ -1,6 +1,8 @@
+import { Select as AntSelect } from 'antd'
+import CanvasColumnQuestions, { type CanvasColumnRegion } from '../common/CanvasColumnQuestions'
 import { useEffect, useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Checkbox, Dropdown, Select, Space, Typography } from 'antd'
+import { Checkbox, Dropdown, Space, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
@@ -32,6 +34,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
   const [showVectors, setShowVectors] = useState(true)
   const { getColor, isSelected: isRowSelected, selectionColor } = useRowColorResolver()
 
+  const [questionRegions, setQuestionRegions] = useState<CanvasColumnRegion[]>([])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [dragBox, setDragBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const isDragging = useRef(false)
@@ -164,6 +167,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
       }
     }
 
+    const regions: CanvasColumnRegion[] = []
     // Draw loading vectors (Biplot arrows)
     if (showVectors && pcaData.loadings) {
       for (const col of pcaData.columns) {
@@ -210,10 +214,14 @@ export const BiplotView: FC<BiplotViewProps> = ({
         const textX = endX + Math.cos(angle) * textOffset
         const textY = endY + Math.sin(angle) * textOffset
         ctx.fillText(truncateText(col, 14), textX, textY)
+        const textWidth = ctx.measureText(truncateText(col, 14)).width
+        regions.push({ key: col, x: textX - (Math.cos(angle) >= 0 ? 0 : textWidth),
+          y: textY - (Math.sin(angle) >= 0 ? 0 : 13), width: Math.max(textWidth, 16), height: 16 })
         ctx.restore()
       }
     }
 
+    setQuestionRegions(old => JSON.stringify(old) === JSON.stringify(regions) ? old : regions)
     // Draw Drag Box
     if (dragBox) {
       const rx = Math.min(dragBox.x1, dragBox.x2)
@@ -392,7 +400,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
         <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
           <Space wrap>
             <Typography.Text strong>X軸: </Typography.Text>
-            <Select
+            <AntSelect
               style={{ width: 140 }}
               value={selectedX}
               onChange={onSelectX}
@@ -400,7 +408,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
               data-testid="pca-axis-x"
             />
             <Typography.Text strong style={{ marginLeft: 8 }}>Y軸: </Typography.Text>
-            <Select
+            <AntSelect
               style={{ width: 140 }}
               value={selectedY}
               onChange={onSelectY}
@@ -426,6 +434,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
           <div
             style={{
+              position: 'relative',
               border: '1px solid #e5e7eb',
               borderRadius: 6,
               background: '#ffffff',
@@ -459,6 +468,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
               onMouseUp={handleMouseUp}
               data-testid="pca-biplot-canvas"
             />
+            <CanvasColumnQuestions canvasRef={canvasRef} regions={pcaData && showVectors ? questionRegions : []} width={width} height={height} />
           </div>
         </Dropdown>
       </FocusTarget>

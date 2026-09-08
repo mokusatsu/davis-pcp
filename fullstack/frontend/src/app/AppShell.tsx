@@ -6,7 +6,7 @@ import {
   Select, Space, Tag, Tooltip, Typography, Upload, notification,
 } from 'antd'
 import {
-  BarChartOutlined, ClearOutlined, DownloadOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined,
+  BarChartOutlined, ClearOutlined, DownloadOutlined, FileTextOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch, VariableMetaItem } from './store'
 import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, statsScopeSet, variablesInitialized } from './store'
@@ -15,6 +15,9 @@ import { FocusBar, useFocusMode } from '../features/common/FocusMode'
 import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar'
 import LicenseModal from '../features/common/LicenseModal'
 import KeepAliveOutlet from './KeepAliveOutlet'
+import CodebookEditorModal from '../features/dataset/CodebookEditorModal'
+import * as codebookSlice from '../features/dataset/codebookSlice'
+import { useL1Selection } from '../theme/useL1Selection'
 
 interface DatasetListItem {
   datasetId: string
@@ -54,13 +57,16 @@ export const ANALYSIS_NAV_ITEMS = [
 
 export const NAV_ITEMS = [...VIS_NAV_ITEMS, ...ANALYSIS_NAV_ITEMS]
 
-
-
+type ExportFormat = 'csv' | 'parquet' | 'arrow' | 'xlsx'
+type ExportScope = 'selected' | 'active' | 'all'
 
 export default function AppShell() {
+  useL1Selection()
+  const [notificationApi, notificationHolder] = notification.useNotification()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const location = useLocation()
+  useEffect(() => { window.dispatchEvent(new Event('davis:close-column-questions')) }, [location.pathname])
   const selection = useSelector((s: RootState) => s.selection)
   const focused = useFocusMode().focused
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
@@ -138,10 +144,10 @@ export default function AppShell() {
       const meta = await api.upload<{ datasetId: string; name: string }>('/datasets/import', file)
       await refreshDatasets()
       await onDatasetSelected(meta.datasetId)
-      notification.success({ message: 'import完了', description: `${meta.name} を取り込みました。` })
+      notificationApi.success({ message: 'import完了', description: `${meta.name} を取り込みました。` })
     } catch (error) {
       const err = error as { message: string; suggestedActions?: string[] }
-      notification.error({ message: 'import失敗', description: err.message, duration: 0 })
+      notificationApi.error({ message: 'import失敗', description: err.message, duration: 0 })
     }
   }
 
@@ -157,7 +163,7 @@ export default function AppShell() {
       try {
         const updated = await api.put<{ revision: number }>(`/sessions/${currentSessionId}`, { state })
         setRevision(updated.revision)
-        notification.success({ message: `保存済み (revision ${updated.revision})` })
+        notificationApi.success({ message: `保存済み (revision ${updated.revision})` })
       } catch (error) {
         const err = error as { code: string; message: string; details?: { state?: unknown } }
         if (err.code === 'SESSION_CONFLICT') {
@@ -168,7 +174,7 @@ export default function AppShell() {
             cancelText: 'コピーとして保存',
             onOk: async () => {
               const server = await api.get<{ state: unknown }>(`/sessions/${currentSessionId}`)
-              notification.info({ message: 'サーバー状態を再読込しました。' })
+              notificationApi.info({ message: 'サーバー状態を再読込しました。' })
               return server
             },
             onCancel: () => { void saveAsCopy() },
@@ -183,7 +189,7 @@ export default function AppShell() {
       })
       setCurrentSessionId(created.sessionId)
       setRevision(created.revision)
-      notification.success({ message: `セッション保存 (revision ${created.revision})` })
+      notificationApi.success({ message: `セッション保存 (revision ${created.revision})` })
     }
     setSaveModal(false)
   }
@@ -203,6 +209,34 @@ export default function AppShell() {
   const totalCount = selection.allRowIds.length
 
   const selectedIdsPreview = selection.selectedRowIds.slice(0, 500)
+
+  useEffect(() => {
+    if (!selection.datasetId) {
+      dispatch(codebookSlice.codebookReset())
+      return
+    }
+    void dispatch(codebookSlice.fetchCodebookThunk(selection.datasetId))
+  }, [selection.datasetId, selection.revision, dispatch])
+
+  const exportData = useCallback(async (
+    datasetId: string,
+    scope: ExportScope,
+    format: ExportFormat,
+    rowIds?: string[],
+    useValueLabels = false,
+  ) => {
+    return downloadExport(datasetId, scope, format, rowIds, useValueLabels)
+  }, [])
+
+  const handleExport = useCallback((
+    scope: ExportScope,
+    format: ExportFormat,
+    rowIds?: string[],
+    useValueLabels = false,
+  ) => {
+    if (!selection.datasetId) return
+    void exportData(selection.datasetId, scope, format, rowIds, useValueLabels).catch(error => notificationApi.error({ message: 'エクスポートに失敗しました', description: String(error) }))
+  }, [selection.datasetId, exportData])
 
   const sidebarContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
@@ -228,7 +262,7 @@ export default function AppShell() {
         size="small"
         icon={<DownloadOutlined />}
         disabled={!selectedCount}
-        onClick={() => selection.datasetId && downloadExport(selection.datasetId, 'selected', 'csv', selection.selectedRowIds)}
+        onClick={() => selection.datasetId && handleExport('selected', 'csv', selection.selectedRowIds)}
       >
         選択行CSV
       </Button>
@@ -249,6 +283,7 @@ export default function AppShell() {
 
   return (
     <Layout style={{ height: '100vh', minHeight: '100vh', display: 'flex', flexDirection: 'column' }} data-testid="app-shell">
+      {notificationHolder}
       {!focused && (
       <Layout.Header style={{
         background: '#fff',
@@ -301,31 +336,59 @@ export default function AppShell() {
                   key: 'export-csv-all',
                   label: '全行 CSV',
                   icon: <DownloadOutlined />,
-                  onClick: () => selection.datasetId && downloadExport(selection.datasetId, 'all', 'csv'),
+                  onClick: () => handleExport('all', 'csv'),
                 },
                 {
                   key: 'export-csv-selected',
                   label: `選択行 CSV (${selection.selectedRowIds.length}行)`,
                   icon: <DownloadOutlined />,
                   disabled: selection.selectedRowIds.length === 0,
-                  onClick: () => selection.datasetId && downloadExport(selection.datasetId, 'selected', 'csv', selection.selectedRowIds),
+                  onClick: () => handleExport('selected', 'csv', selection.selectedRowIds),
+                },
+                {
+                  key: 'export-csv-selected-value-label',
+                  label: `選択行 CSV (値ラベル付き) (${selection.selectedRowIds.length}行)`,
+                  icon: <DownloadOutlined />,
+                  disabled: selection.selectedRowIds.length === 0,
+                  onClick: () => handleExport('selected', 'csv', selection.selectedRowIds, true),
+                },
+                {
+                  key: 'export-csv-all-value-label',
+                  label: '全行 CSV (値ラベル付き)',
+                  icon: <DownloadOutlined />,
+                  onClick: () => handleExport('all', 'csv', undefined, true),
+                },
+                {
+                  key: 'export-xlsx-all-value-label',
+                  label: '全行 Excel (値ラベル付き)',
+                  icon: <DownloadOutlined />,
+                  onClick: () => handleExport('all', 'xlsx', undefined, true),
                 },
                 { type: 'divider' },
                 {
                   key: 'export-parquet',
                   label: '全行 Parquet',
-                  onClick: () => selection.datasetId && downloadExport(selection.datasetId, 'all', 'parquet'),
+                  onClick: () => handleExport('all', 'parquet'),
                 },
                 {
                   key: 'export-arrow',
                   label: '全行 Arrow IPC',
-                  onClick: () => selection.datasetId && downloadExport(selection.datasetId, 'all', 'arrow'),
+                  onClick: () => handleExport('all', 'arrow'),
                 },
               ],
             }}
           >
             <Button data-testid="export-button" icon={<DownloadOutlined />} disabled={!selection.datasetId}>Export</Button>
           </Dropdown>
+          <Button
+            data-testid="codebook-button"
+            icon={<FileTextOutlined />}
+            style={{ borderColor: '#8b5cf6', color: '#7c3aed' }}
+            disabled={!selection.datasetId}
+            onClick={() => dispatch(codebookSlice.editorModalOpened())}
+          >
+            コードブック
+          </Button>
           {currentSessionId && <Badge count={`r${revision}`} style={{ backgroundColor: '#52c41a' }} />}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
             <Button
@@ -400,6 +463,7 @@ export default function AppShell() {
         <Input data-testid="session-name" placeholder="セッション名" value={sessionName} onChange={(e) => setSessionName(e.target.value)} />
       </Modal>
       <LicenseModal open={licenseModalOpen} onClose={() => setLicenseModalOpen(false)} />
+      <CodebookEditorModal />
     </Layout>
   )
 }

@@ -103,6 +103,17 @@ def run_subgroup_mining(
             "insights": [],
         }
 
+    from ...domain.codebook_adapter import CodebookAdapter
+    adapter = CodebookAdapter(df, {"columns": column_meta or []})
+    has_codebook = any("scaleType" in c for c in (column_meta or []))
+    requested_attributes, requested_questions = attribute_cols, question_cols
+    if has_codebook:
+        df = df.with_columns([
+            adapter.analysis_series(c) if (adapter.get_column_spec_optional(c) or {}).get("role") == "question"
+            else adapter.mask_missing_values(c)
+            for c in df.columns if adapter.get_column_spec_optional(c)
+        ])
+
     # Determine row IDs column
     row_id_col = "__rowId__" if "__rowId__" in df.columns else None
     if not row_id_col:
@@ -143,6 +154,11 @@ def run_subgroup_mining(
     
     if not question_cols:
         question_cols = [c for c in all_cols if c not in attribute_cols]
+
+    if has_codebook:
+        allowed_attributes, allowed_questions = adapter.get_attribute_columns(), adapter.get_question_columns()
+        attribute_cols = [c for c in (requested_attributes if requested_attributes is not None else allowed_attributes) if c in allowed_attributes]
+        question_cols = [c for c in (requested_questions if requested_questions is not None else allowed_questions) if c in allowed_questions]
 
     # Effective min group size adjustments for small datasets
     effective_min_group_size = min_group_size
@@ -189,7 +205,7 @@ def run_subgroup_mining(
                 continue
             q_series = df_with_id[q]
             meta = meta_by_col.get(q, {})
-            q_type = meta.get("semanticType")
+            q_type = {"ordinal": "ordinal", "nominal": "categorical", "ratio": "numeric", "interval": "numeric"}.get(meta.get("scaleType"), meta.get("semanticType"))
             if not q_type:
                 if q_series.dtype in (pl.Float32, pl.Float64):
                     q_type = "numeric"
@@ -286,7 +302,7 @@ def run_subgroup_mining(
         }
 
         # Narrative description
-        narrative = _generate_narrative(t)
+        narrative = _generate_narrative({**t, "attr": (adapter.get_column_spec_optional(t["attr"]) or {}).get("label") or t["attr"], "q": (adapter.get_column_spec_optional(t["q"]) or {}).get("label") or t["q"]})
 
         insight_obj = {
             "id": f"ins_{i+1:03d}",
@@ -309,6 +325,7 @@ def run_subgroup_mining(
             },
             "effect": t["effect"],
             "group_stats": t["group_stats"],
+            "valueLabels": {level: adapter.label_for_value(t["attr"], level) for level in t.get("row_ids", {})},
             "contingency": t.get("contingency"),
             "direction": t["direction"],
             "posthoc": t.get("posthoc", []),

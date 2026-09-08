@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { Select as AntSelect } from 'antd'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Card, Button, Select, Typography, Space, Tag, Row, Col,
+  Card, Button, Typography, Space, Tag, Row, Col,
   Statistic, Spin, Empty, InputNumber, Radio, Divider, Alert, Checkbox,
 } from 'antd'
 import {
@@ -12,6 +15,7 @@ import {
 import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, pcpStateChanged } from '../../app/store'
 import { api } from '../../api/client'
+import { useCodebook } from '../dataset/useCodebookColumn'
 
 export interface ModernCondition {
   column: string
@@ -90,6 +94,17 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
+  const { schemaRevision, getColumn, formatValueLabel } = useCodebook()
+  const requestVersion = useRef(0)
+  const resultContext = useRef('')
+  const context = `${datasetId}:${schemaRevision}`
+  resultContext.current = context
+  const conditionLabel = (c: ModernCondition) => {
+    const title = getColumn(c.column)?.label || c.column
+    const value = ['==', '!=', 'in'].includes(c.operator)
+      ? `「${formatValueLabel(c.column, c.value)}」` : String(c.value)
+    return `${title} ${c.operator} ${value}`
+  }
 
   const [columns, setColumns] = useState<ColumnMeta[]>([])
   const [miningMode, setMiningMode] = useState<'auto' | 'standard' | 'emm_kendall'>('auto')
@@ -121,11 +136,21 @@ export const ModernSubgroupMiningView: React.FC = () => {
         console.error('Failed to load dataset columns', err)
       })
     return () => { active = false }
-  }, [datasetId])
+  }, [datasetId, schemaRevision])
+
+  useEffect(() => {
+    requestVersion.current += 1
+    setResult(null)
+    setSelectedInsightId(null)
+    setLoading(false)
+    setError(null)
+  }, [datasetId, schemaRevision])
 
   // Omnipresent Auto-mining runner
   const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall', overrideFilterSelection?: boolean) => {
     if (!datasetId) return
+    const version = ++requestVersion.current
+    const startedContext = resultContext.current
     setLoading(true)
     setError(null)
     try {
@@ -136,10 +161,11 @@ export const ModernSubgroupMiningView: React.FC = () => {
         maxDepth,
         minGroupSize,
         topK,
-        selectedRowIds: shouldUseFilter && selectedRowIds && selectedRowIds.length > 0 ? selectedRowIds : undefined,
+        selectedRowIds: shouldUseFilter ? selectedRowIds : undefined,
       }
 
       const res = await api.post<ModernMiningResult>('/mining/modern-subgroup', payload)
+      if (version !== requestVersion.current || startedContext !== resultContext.current) return
       setResult(res)
       if (res.insights.length > 0) {
         setSelectedInsightId(res.insights[0].id)
@@ -147,22 +173,23 @@ export const ModernSubgroupMiningView: React.FC = () => {
         setSelectedInsightId(null)
       }
     } catch (e: any) {
+      if (version !== requestVersion.current || startedContext !== resultContext.current) return
       console.error('Failed to run omnipresent auto mining', e)
       const msg = e?.message || e?.detail || 'マイニング処理中にエラーが発生しました。'
       const details = typeof e?.details === 'object' ? JSON.stringify(e.details, null, 2) : (e?.details ? String(e.details) : undefined)
       const actions = Array.isArray(e?.suggestedActions) ? e.suggestedActions : undefined
       setError({ message: msg, details, suggestedActions: actions })
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current && startedContext === resultContext.current) setLoading(false)
     }
   }
 
   // Automatically run auto-mining on initial load once columns & dataset are ready!
   useEffect(() => {
-    if (datasetId && columns.length > 0 && !result && !loading) {
+    if (datasetId && columns.length > 0) {
       void runAutoMining('auto')
     }
-  }, [datasetId, columns.length])
+  }, [datasetId, columns.length, schemaRevision])
 
   // Extract all distinct questions present in results for filtering
   const availableQuestionsInResults = useMemo(() => {
@@ -253,7 +280,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
           <Col xs={12} md={3}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>最大深さ:</Typography.Text>
-            <Select
+            <AntSelect
               style={{ width: '100%' }}
               size="small"
               value={maxDepth}
@@ -431,7 +458,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
       {loading && (
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <Spin tip="全質問変数を対象に網羅的な自動マイニングを実行中..." size="large" />
+          <Spin tip="全質問変数を対象に網羅的な自動マイニングを実行中..." size="large"><div style={{ height: 80 }} /></Spin>
         </div>
       )}
 
@@ -466,19 +493,19 @@ export const ModernSubgroupMiningView: React.FC = () => {
                         cursor: 'pointer',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                        <div>
-                          <Space size={6} wrap>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
                             <Tag color="blue">#{idx + 1}</Tag>
                             {/* Target Question / Pair Badge */}
                             {ins.target_question && (
-                              <Tag color="geekblue" style={{ fontWeight: 'bold' }}>
-                                対象: 【{ins.target_question}】
+                              <Tag color="geekblue" style={{ fontWeight: 'bold', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                                対象: 【<ColumnQuestionTooltip nameOrId={ins.target_question!}>{ins.target_question}</ColumnQuestionTooltip>】
                               </Tag>
                             )}
                             {ins.target_pair && (
-                              <Tag color="volcano" style={{ fontWeight: 'bold' }}>
-                                対象ペア: 【{ins.target_pair[0]} × {ins.target_pair[1]}】
+                              <Tag color="volcano" style={{ fontWeight: 'bold', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                                対象ペア: 【<ColumnQuestionTooltip nameOrId={ins.target_pair[0]}>{ins.target_pair[0]}</ColumnQuestionTooltip> × <ColumnQuestionTooltip nameOrId={ins.target_pair[1]}>{ins.target_pair[1]}</ColumnQuestionTooltip>】
                               </Tag>
                             )}
                             {ins.parent_insight_id && (
@@ -488,11 +515,12 @@ export const ModernSubgroupMiningView: React.FC = () => {
                             )}
                             {/* Condition chips */}
                             {ins.rule.conditions.map((c, ci) => (
-                              <Tag key={ci} color="cyan">{c.label}</Tag>
+                              <Tag key={ci} color="cyan" style={{ maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}><ColumnQuestionTooltip nameOrId={c.column}>{conditionLabel(c)}</ColumnQuestionTooltip></Tag>
                             ))}
-                          </Space>
+                          </div>
                         </div>
                         <Button
+                          style={{ flexShrink: 0, maxWidth: '100%' }}
                           size="small"
                           type="primary"
                           ghost
@@ -611,12 +639,12 @@ export const ModernSubgroupMiningView: React.FC = () => {
                 <div style={{ marginTop: 4, marginBottom: 12 }}>
                   {selectedInsight.target_question && (
                     <Tag color="geekblue" style={{ fontSize: 13, padding: '4px 8px' }}>
-                      【質問変数】{selectedInsight.target_question}
+                      【質問変数】<ColumnQuestionTooltip nameOrId={selectedInsight.target_question!}>{selectedInsight.target_question}</ColumnQuestionTooltip>
                     </Tag>
                   )}
                   {selectedInsight.target_pair && (
                     <Tag color="volcano" style={{ fontSize: 13, padding: '4px 8px' }}>
-                      【質問ペア】{selectedInsight.target_pair[0]} × {selectedInsight.target_pair[1]}
+                      【質問ペア】<ColumnQuestionTooltip nameOrId={selectedInsight.target_pair[0]}>{selectedInsight.target_pair[0]}</ColumnQuestionTooltip> × <ColumnQuestionTooltip nameOrId={selectedInsight.target_pair[1]}>{selectedInsight.target_pair[1]}</ColumnQuestionTooltip>
                     </Tag>
                   )}
                 </div>
@@ -625,7 +653,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                 <ul style={{ paddingLeft: 20, marginTop: 4 }}>
                   {selectedInsight.rule.conditions.map((c, i) => (
                     <li key={i}>
-                      <code>{c.label}</code>
+                      <code><ColumnQuestionTooltip nameOrId={c.column}>{conditionLabel(c)}</ColumnQuestionTooltip></code>
                     </li>
                   ))}
                 </ul>

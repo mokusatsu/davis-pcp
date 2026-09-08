@@ -1,0 +1,4685 @@
+{
+  "columns": [
+    {
+      "name": "ID",
+      "label": "ID",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q1",
+      "label": "あなたがお住まいの地域は何区ですか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "青葉区",
+        "2": "旭区",
+        "3": "泉区",
+        "4": "磯子区",
+        "5": "神奈川区",
+        "6": "金沢区",
+        "7": "港南区",
+        "8": "港北区",
+        "9": "栄区",
+        "10": "瀬谷区",
+        "11": "都筑区",
+        "12": "鶴見区",
+        "13": "戸塚区",
+        "14": "中区",
+        "15": "西区",
+        "16": "保土ケ谷区",
+        "17": "緑区",
+        "18": "南区",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q2",
+      "label": "あなたの普段の選挙での投票行動について、最もあてはまるのは次のどれですか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "必ず投票する",
+        "2": "投票することもあれば、しないこともある",
+        "3": "投票しない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q3",
+      "label": "あなたは、今回の横浜市長選挙で、投票（※投票日当日の他、期日前投票や不在者投票を含む）しましたか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "投票した（投票日当日）",
+        "2": "投票した（期日前・不在者）",
+        "3": "投票しなかった",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q3s1c1",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【当選させたい候補者がいたから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c2",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【支持する政党の候補者がいたから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c3",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【生活をよくするために投票することが大切だから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c4",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【今回の選挙に関心があったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c5",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【知りあいの人、団体、組織にたのまれたから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c6",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【家族に勧められたから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c7",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【啓発キャラクターに関心があったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c8",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【投票のご案内が届いたから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s1c9",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）あなたが投票したのは、どのような考えからですか。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s1"
+    },
+    {
+      "name": "q3s2c1",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【選挙公約の内容】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c2",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【これまでの実績や経歴】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c3",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【演説など身近で接した時の印象】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c4",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【外見や年齢などからくる印象】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c5",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【家族や友人の意見・評価】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c6",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【支持政党の推薦】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c7",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【自分と同じ世代や職業の人たちの意見】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c8",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【新聞・テレビなどでの報道内容】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c9",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【ＳＮＳやネット上での評判】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c10",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【特にない（なんとなく選んだ）】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s2c11",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）候補者に投票する際、どんな点を一番重視しましたか。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s2"
+    },
+    {
+      "name": "q3s3",
+      "label": "（問3で「2投票した（期日前・不在者）」とお答えの方に）期日前・不在者投票制度を利用した主な理由は何ですか。（〇は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "選挙当日に予定があったから",
+        "2": "期日前投票所が、通勤・通学・買い物などの生活動線上にあり、立ち寄りやすかったから",
+        "3": "期日前投票所の方が当日投票所よりも行きやすいから",
+        "4": "早く投票をしたかったから",
+        "5": "投票日当日は混むと思ったから",
+        "6": "入院や施設にいる等の理由で当日投票所へ行くことが困難だったから",
+        "7": "期日前投票所に駐車場があるから",
+        "8": "その他",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q3s4c1",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【病気（看護を含む）だったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c2",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【仕事など他の予定があった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c3",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【投票したい候補者がいなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c4",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【誰に投票したらよいかわからなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c5",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【支持政党の候補者がいなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c6",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【選挙の盛り上がりを感じなかったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c7",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【政治に関心がないから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c8",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【自分の一票では結果が変わらないと思ったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c9",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【投票所が遠くて不便だった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c10",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【投票所が混んで時間がかかると思ったから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c11",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【今住んでいる所に選挙権がないから】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c12",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【選挙があることを知らなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q3s4c13",
+      "label": "（問3で「3投票しなかった」とお答えの方に）あなたが投票しなかった主な理由は何ですか。（〇は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q3s4"
+    },
+    {
+      "name": "q4",
+      "label": "「投票のご案内」がなくても本人確認ができれば投票できることをご存じでしたか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "知っていた",
+        "2": "知っていたが、「投票のご案内」がないと投票する際、不安である",
+        "3": "知らなかった",
+        "4": "その他",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q5",
+      "label": "今回の横浜市長選挙では、ＰＲキャラクターとして、特に若年層に人気のあるバーチャルライバーの社築（やしろきずく）さん、魁星（かいせい）さんを起用しました。このことについて、あなたの考えに近いものを1つ選んでください。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "よい取組だと思う",
+        "2": "どちらかと言えばよい取組だと思う",
+        "3": "どちらともいえない",
+        "4": "どちらかと言えばよい取組だと思わない",
+        "5": "よい取組だと思わない",
+        "6": "よくわからない・知らない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q6s1c1",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【テレビ・新聞・ラジオ・雑誌などの報道】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c2",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【インターネット上での報道】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c3",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【候補者の選挙運動（街頭演説、候補者の選挙カーなど）】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c4",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【公営ポスター掲示場の候補者ポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c5",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【自治会・町内会掲示板・大学・保育園・幼稚園・郵便局・スーパー・行政機関等に貼られた啓発ポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c6",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【商店街、歩道橋、行政機関、大学・市立学校などに掲示された、横断幕・懸垂幕・看板など】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c7",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【横浜市のホームページや「広報よこはま（7月号）」】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c8",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【「投票のご案内（封書で世帯ごとに郵送）」】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c9",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【横浜市公式LINEアカウントからの通知】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c10",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【選挙公報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c11",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【X（旧Twitter）などSNSでの話題や投稿】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c12",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【啓発キャラクターがデザインされた投票証明書】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c13",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【駅や鉄道・バス車内の啓発ポスター、CM動画】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c14",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【ゴミ収集車の放送】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c15",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【ラッピング電気自動車（デコレンタ）による広報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c16",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【家族や友人・知人から聞いて】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c17",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【見たり聞いたりしたものはない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c19",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【選挙があることを知らなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s1c20",
+      "label": "あなたが、今回の選挙に関して見たり聞いたりしたものをすべてあげてください。（〇はいくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s1"
+    },
+    {
+      "name": "q6s2c1",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【テレビ・新聞・ラジオ・雑誌などの報道】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c2",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【インターネット上での報道】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c3",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【候補者の選挙運動（街頭演説、候補者の選挙カーなど）】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c4",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【公営ポスター掲示場の候補者ポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c5",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【自治会・町内会掲示板・大学・保育園・幼稚園・郵便局・スーパー・行政機関等に貼られた啓発ポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c6",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【商店街、歩道橋、行政機関、大学・市立学校などに掲示された、横断幕・懸垂幕・看板など】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c7",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【横浜市のホームページや「広報よこはま（7月号）」】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c8",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【「投票のご案内（封書で世帯ごとに郵送）」】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c9",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【横浜市公式LINEアカウントからの通知】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c10",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【選挙公報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c11",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【X（旧Twitter）などSNSでの話題や投稿】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c12",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【啓発キャラクターがデザインされた投票証明書】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c13",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【駅や鉄道・バス車内の啓発ポスター、CM動画】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c14",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【ゴミ収集車の放送】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c15",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【ラッピング電気自動車（デコレンタ）による広報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c16",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【家族や友人・知人から聞いて】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c18",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【印象の強かったものはない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q6s2c20",
+      "label": "その中で、特に印象が強かったものを3つまでお選びください。（〇は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q6s2"
+    },
+    {
+      "name": "q7s1c1",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者のインターネットによる選挙運動（ホームページ、電子メール等）】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c2",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者のSNSによる情報発信】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c3",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者の街頭演説や個人演説会】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c4",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者のポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c5",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者の選挙運動用はがき】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c6",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者の選挙運動用自動車や街頭における氏名の連呼】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c7",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【候補者の選挙運動用ビラ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c8",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【政党、後援会などの推せん】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c9",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【知人・友人・親類などからの勧め】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c10",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【家族との話しあい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c11",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【選挙公報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c12",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【新聞、テレビ、ラジオ、雑誌などの選挙報道・評論】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c13",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【YouTube、X（旧Twitter）、TikTok、InstagramなどSNSによる選挙の情報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c14",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【電話による勧誘】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c15",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s1c16",
+      "label": "今回の横浜市長選挙で、候補者に関してあなたが見たり聞いたり、また、すすめられたものがありましたら、すべてあげてください。【どれにも接しなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q7s1"
+    },
+    {
+      "name": "q7s2c1",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者のインターネットによる選挙運動（ホームページ、電子メール等）】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c2",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者のSNSによる情報発信】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c3",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者の街頭演説や個人演説会】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c4",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者のポスター】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c5",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者の選挙運動用はがき】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c6",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者の選挙運動用自動車や街頭における氏名の連呼】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c7",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【候補者の選挙運動用ビラ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c8",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【政党、後援会などの推せん】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c9",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【知人・友人・親類などからの勧め】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c10",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【家族との話しあい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c11",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【選挙公報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c12",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【新聞、テレビ、ラジオ、雑誌などの選挙報道・評論】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c13",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【YouTube、X（旧Twitter）、TikTok、InstagramなどSNSによる選挙の情報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c14",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【電話による勧誘】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c15",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q7s2c17",
+      "label": "（問3で「1投票した（投票日当日）」「2投票した（期日前・不在者）」とお答えの方に）それらのうち、投票する候補者を決めるのに役に立ったものがありましたら、いくつでもあげてください。（○はいくつでも）【役に立ったものはない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q7s2"
+    },
+    {
+      "name": "q8",
+      "label": "あなたは、現在支持する政党がありますか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ある",
+        "2": "ない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q9s1",
+      "label": "横浜市政について、(1)から(3)のそれぞれについて、あなたの考えに近いものを1つずつ選んでください。（〇は1つずつ）(1)横浜市の財政状況や施策について関心を持っている",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "そうは思わない",
+        "2": "あまりそうは思わない",
+        "3": "どちらともいえない",
+        "4": "ややそう思う",
+        "5": "そう思う",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q9s2",
+      "label": "横浜市政について、(1)から(3)のそれぞれについて、あなたの考えに近いものを1つずつ選んでください。（〇は1つずつ）(2)市長や市議会議員の活動や職務について理解している",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "そうは思わない",
+        "2": "あまりそうは思わない",
+        "3": "どちらともいえない",
+        "4": "ややそう思う",
+        "5": "そう思う",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q9s3",
+      "label": "横浜市政について、(1)から(3)のそれぞれについて、あなたの考えに近いものを1つずつ選んでください。（〇は1つずつ）(3)横浜市政には有権者の声が反映されている",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "そうは思わない",
+        "2": "あまりそうは思わない",
+        "3": "どちらともいえない",
+        "4": "ややそう思う",
+        "5": "そう思う",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q10",
+      "label": "あなたは、政治上の問題、できごと、行政の動きなどについて、「国政レベル」「県政レベル」「市政レベル」の三段階に分けた場合、もっとも関心を持っているものはどれですか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "国政レベル",
+        "2": "県政レベル",
+        "3": "市政レベル",
+        "4": "どれも同じように関心がある",
+        "5": "どれにも関心がない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q11c1",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【自宅からより近い場所で投票できたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c2",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【自家用車などで投票所に行けたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c3",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【普段使っている駅やショッピングセンターの近くで投票できたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c4",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【投票日当日に、区内の投票所であればどこでも投票できたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c5",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【夜間・早朝など、投票できる時間が今より増えたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c6",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【投票所の空いている時間を把握でき、待ち時間なく投票できたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c7",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【バリアフリー対応が整備されていたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c8",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【空調設備が整備されていたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c9",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【タブレット等を用いた電子投票ができたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c10",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【スマートフォンなどでネット投票ができたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c11",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【投票したいと思える候補者がいたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c12",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【関心のあることが選挙の争点になっていたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c13",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【候補者の政策や人柄などをもっとよく知る方法があったら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c14",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【投票に行くことで割引などお得になる制度があれば】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c15",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【好みの啓発キャラクターが起用されていたら】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q11c16",
+      "label": "選挙の投票率が低いことが課題としてあげられていますが、どのような条件が整えば投票に行く人が増える（投票率が上がる）と思いますか。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q11"
+    },
+    {
+      "name": "q12c1",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【政治や選挙について学校等での主権者教育の充実】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c2",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【政治や選挙に関する家庭内での話し合い】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c3",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【家族が投票に行く】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c4",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【新聞やテレビ等での政治や選挙についての報道】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c5",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【政党や政治団体などが行う活動との接触】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c6",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【投票所の従事者や立会人として、運営に携わる】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c7",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【選挙管理委員会による広報の充実】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q12c8",
+      "label": "全体の投票率から見ると、若年層の投票率は平均より10ポイント以上低い状況が続いていますが、若年層の投票への意識を高めるためには、どのようにしたらよいと思いますか。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q12"
+    },
+    {
+      "name": "q13",
+      "label": "あなたは学校教育で、以下に示すような、政治や選挙に関する授業などを受けたことがありますか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "受けたことがある",
+        "2": "受けたことはない",
+        "3": "分からない・覚えていない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q13s1",
+      "label": "政治や選挙に関する授業などを受けたことは、有権者となったときに投票に行くことに繋がったと思いますか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "そうは思わない",
+        "2": "あまりそうは思わない",
+        "3": "どちらともいえない",
+        "4": "ややそう思う",
+        "5": "そう思う",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q14",
+      "label": "投票所の施設などについて、何か不満に感じることがありますか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ある",
+        "2": "ない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q14s1c1",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所までの距離が遠い】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c2",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【有権者が多く、並んで待たなければならない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c3",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【空いている時間が分からない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c4",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【従事者の応対が悪い】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c5",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所の雰囲気が堅苦しい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c6",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所が建物の2階以上にある】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c7",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所の場所がわかりにくい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c8",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所内の案内表示がわかりにくい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c9",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【バリアフリー対応が整備されていない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c10",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【空調設備が整備されていない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c11",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【不満はない・わからない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s1c12",
+      "label": "（問14で「1ある」とお答えの方に）あなたが当日投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s1"
+    },
+    {
+      "name": "q14s2c1",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所が行きづらいところにある】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c2",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所の場所が駅から遠い】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c3",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【有権者が多く、並んで待たなければならない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c4",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【空いている時間が分からない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c5",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【駐車場が狭い・混んでいる】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c6",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【従事者の応対が悪い】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c7",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所の雰囲気が堅苦しい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c8",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所が建物の2階以上にある】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c9",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所の場所がわかりにくい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c10",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【投票所内の案内表示がわかりにくい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c11",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【バリアフリー対応が整備されていない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c12",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【不満はない・わからない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q14s2c13",
+      "label": "（問14で「1ある」とお答えの方に）あなたが期日前投票所に対して不満に思うことを、次の中から3つまで選んでください。（○は3つまで）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": "q14s2"
+    },
+    {
+      "name": "q15",
+      "label": "現在、選挙当日の投票時間は「午前7時から午後8時」ですが、終了時刻が1～2時間早まった場合、あなたの投票行動に影響はありますか。（○は1つだけ）（※期日前投票の投票終了時刻は午後8時のままで変更ない場合。）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "影響はない",
+        "2": "投票に行けなくなる可能性がある",
+        "3": "わからない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q16",
+      "label": "あなたは、身体に重度の障害のある方や要介護5の方が自宅等で郵便により投票ができること（郵便投票制度）や、都道府県選挙管理委員会が指定した病院や老人ホーム等に入院、入所している方がその施設で投票ができること（不在者投票制度）をご存じでしたか。（〇は1つだけ）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "いずれの制度も知っていた",
+        "2": "郵便投票制度のみ知っていた",
+        "3": "不在者投票制度のみ知っていた",
+        "4": "いずれの制度も知らなかった",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "q17c1",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【お歳暮やお中元、おみやげ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "q17c2",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【葬式の花輪、供花】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "q17c3",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【秘書等が代理で出席する場合の葬式の香典】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "q17c4",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【お祭りへの寄附や差し入れ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "q17c5",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【地域の運動会やスポーツ大会への差し入れ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "q17c6",
+      "label": "政治家が選挙区内の人に寄附をすることは禁止されており、原則として罰則の対象となりますが、次の中で、禁止されている寄附として知っているものをすべてお選びください。（○はいくつでも）【政治家による寄附が禁止されていることを知らなかった】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "q17"
+    },
+    {
+      "name": "qF1",
+      "label": "あなたの性別はどれにあたりますか。（○は1つだけ）※自由回答",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "男",
+        "2": "女",
+        "3": "その他・答えたくない",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF2",
+      "label": "あなたの年齢は何歳ですか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "18～19歳",
+        "2": "20～24歳",
+        "3": "25～29歳",
+        "4": "30～34歳",
+        "5": "35～39歳",
+        "6": "40～44歳",
+        "7": "45～49歳",
+        "8": "50～54歳",
+        "9": "55～59歳",
+        "10": "60～64歳",
+        "11": "65～69歳",
+        "12": "70～74歳",
+        "13": "75～79歳",
+        "14": "80歳以上",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF3",
+      "label": "あなたは、横浜市にお住みになって何年になりますか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "1年未満",
+        "2": "1年以上～3年未満",
+        "3": "3年以上～5年未満",
+        "4": "5年以上～10年未満",
+        "5": "10年以上～20年未満",
+        "6": "20年以上～30年未満",
+        "7": "30年以上",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF4",
+      "label": "あなたの御職業は何ですか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "自営者・家族従業者（商工サービス業・農林水産業など）",
+        "2": "経営者、会社役員",
+        "3": "正社員、正規職員等のフルタイム勤務",
+        "4": "アルバイト、嘱託員、臨時等の短時間勤務",
+        "5": "学生",
+        "6": "家事専業",
+        "7": "無職、年金生活者、その他",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF4s1",
+      "label": "（Ｆ4で「1」～「5」とお答えの方に）あなたの職場・学校などはどちらですか。（○は1つだけ）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "横浜市内",
+        "2": "横浜市以外の神奈川県内",
+        "3": "東京都内",
+        "4": "その他",
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "98",
+        "99"
+      ],
+      "missingReasons": {
+        "98": "非該当",
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF5c1",
+      "label": "同居しているお子さん（18歳未満）の就学状況は、次のうちどれに当てはまりますか。お子さんが2人以上の場合は、当てはまるものをすべて選択してください。【いない】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF5"
+    },
+    {
+      "name": "qF5c2",
+      "label": "同居しているお子さん（18歳未満）の就学状況は、次のうちどれに当てはまりますか。お子さんが2人以上の場合は、当てはまるものをすべて選択してください。【未就学児】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF5"
+    },
+    {
+      "name": "qF5c3",
+      "label": "同居しているお子さん（18歳未満）の就学状況は、次のうちどれに当てはまりますか。お子さんが2人以上の場合は、当てはまるものをすべて選択してください。【小学生】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF5"
+    },
+    {
+      "name": "qF5c4",
+      "label": "同居しているお子さん（18歳未満）の就学状況は、次のうちどれに当てはまりますか。お子さんが2人以上の場合は、当てはまるものをすべて選択してください。【中学生・高校生】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF5"
+    },
+    {
+      "name": "qF5c5",
+      "label": "同居しているお子さん（18歳未満）の就学状況は、次のうちどれに当てはまりますか。お子さんが2人以上の場合は、当てはまるものをすべて選択してください。【その他】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF5"
+    },
+    {
+      "name": "qF6c1",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【LINE】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c2",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【YouTube】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c3",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【Twitter】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c4",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【Instagram】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c5",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【Facebook】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c6",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【TikTok】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c7",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【普段SNSは使わない】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF6c8",
+      "label": "あなたが普段よく使うSNSは次のうちどれですか。（○はいくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF6"
+    },
+    {
+      "name": "qF7c1",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【自治会や町内会の役員】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c2",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【民生委員・児童委員、スポーツ推進委員、青少年指導員、消費生活推進員など】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c3",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【子供会、女性団体、老人クラブ、ＰＴＡなどの役員】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c4",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【ＮＰＯ、住民運動、消費者運動、市民運動などの活動】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c5",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【ボランティアや福祉活動】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c6",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【明るい選挙推進協議会の推進委員、推進員】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c7",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【宗教・政治活動の役員】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c8",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【その他の地域活動の幹事・役員など】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF7c9",
+      "label": "あなたは、ふだん、次にあげるようなことを行っていますか。行っているものがありましたら、すべてあげてください。（○はいくつでも）【どれもない】",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "非選択",
+        "1": "選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "qF7"
+    },
+    {
+      "name": "qF8",
+      "label": "あなたの家から当日投票所までは歩いてどのくらいかかりますか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "5分以内",
+        "2": "10分以内",
+        "3": "15分以内",
+        "4": "20分以内",
+        "5": "30分以内",
+        "6": "30分超",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF9",
+      "label": "あなたは、今の生活に満足していますか。それとも、不満がありますか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "満足している",
+        "2": "まあ満足している",
+        "3": "どちらともいえない",
+        "4": "やや不満がある",
+        "5": "不満がある",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF10",
+      "label": "あなたは、今後も横浜市に住み続けたいと思いますか。（○は1つだけ）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "住み続けたい",
+        "2": "どちらかといえば住み続けたい",
+        "3": "どちらともいえない",
+        "4": "どちらかといえば他の市に移りたい",
+        "5": "他の市に移りたい",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF11s1",
+      "label": "次の選挙に関して投票をしましたか。（〇は1つずつ）令和7年7月20日参議院議員選挙",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "投票した",
+        "2": "投票しなかった",
+        "3": "覚えていない",
+        "4": "その他（選挙権がなかったなど）",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF11s2",
+      "label": "次の選挙に関して投票をしましたか。（〇は1つずつ）令和6年10月27日衆議院議員選挙",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "投票した",
+        "2": "投票しなかった",
+        "3": "覚えていない",
+        "4": "その他（選挙権がなかったなど）",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF11s3",
+      "label": "次の選挙に関して投票をしましたか。（〇は1つずつ）令和5年4月9日統一地方選挙",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "投票した",
+        "2": "投票しなかった",
+        "3": "覚えていない",
+        "4": "その他（選挙権がなかったなど）",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "qF11s4",
+      "label": "次の選挙に関して投票をしましたか。（〇は1つずつ）令和3年8月22日横浜市長選挙",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "投票した",
+        "2": "投票しなかった",
+        "3": "覚えていない",
+        "4": "その他（選挙権がなかったなど）",
+        "99": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "99"
+      ],
+      "missingReasons": {
+        "99": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null
+    },
+    {
+      "name": "response_mode",
+      "label": "response_mode",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "web": "web",
+        "paper": "paper"
+      },
+      "categoryOrder": [
+        "web",
+        "paper"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null
+    }
+  ]
+}

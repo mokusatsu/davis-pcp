@@ -1,9 +1,12 @@
+import Table from '../common/ColumnTable'
+import { QuestionTooltip, useQuestionText } from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Card, Row, Col, Typography, Space, Button, Table, Tag,
-  Select, Statistic, Alert, Spin, Empty, Progress,
+  Card, Row, Col, Typography, Space, Button, Tag,
+  Statistic, Alert, Spin, Empty, Progress,
 } from 'antd'
 import {
   AlertOutlined, AimOutlined,
@@ -64,6 +67,9 @@ export interface RobustnessResponse {
 }
 
 export default function RobustnessPage() {
+  const questionText = useQuestionText()
+  const conclusionQuestions = (c: { target_col?: string; group_col?: string }) =>
+    [c.target_col, c.group_col].filter((name): name is string => Boolean(name)).map(questionText).join('\n')
   const { focused, isTargetActive } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
@@ -178,7 +184,7 @@ export default function RobustnessPage() {
           message="サブグループマイニングから引き継いだ結論を検証中"
           description={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-              <div><b>対象:</b> {customConclusion.label || customConclusion.metric}</div>
+              <div><b>対象:</b> <QuestionTooltip nameOrId={customConclusion.target_col ?? '結論'} question={conclusionQuestions(customConclusion)}>{customConclusion.label || customConclusion.metric}</QuestionTooltip></div>
               <Button
                 size="small"
                 onClick={() => {
@@ -209,6 +215,8 @@ export default function RobustnessPage() {
                   onChange={setSelectedConclusionId}
                   options={data?.conclusions.map((c) => ({
                     label: `${c.label} [${c.robustness.grade_label}]`,
+                    questionName: [c.target_col, c.group_col].filter(Boolean).join(' / '),
+                    questionText: conclusionQuestions(c),
                     value: c.id,
                   }))}
                 />

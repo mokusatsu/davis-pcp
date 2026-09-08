@@ -3,7 +3,7 @@
  * Replaces useDatasetData's per-row object building (O(rows×cols) objects and
  * O(n²) indexOf lookups) with typed column arrays + rowId→index maps.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
 import { api, fetchArrowView } from '../../api/client'
@@ -27,16 +27,20 @@ export interface ColumnarData {
 }
 
 let cache: { key: string | null; data: ColumnarData | null } = { key: null, data: null }
+let pending: { key: string; promise: Promise<ColumnarData> } | null = null
 
 export function invalidateColumnarCache() {
   cache = { key: null, data: null }
+  pending = null
 }
 
 export function useColumnarData(datasetId: string | null): ColumnarData | null {
   const revision = useSelector((s: RootState) => s.selection.revision ?? 0)
-  const cacheKey = datasetId ? `${datasetId}:${revision}` : null
+  const schemaRevision = useSelector((s: RootState) => s.codebook?.datasetId === datasetId ? s.codebook.schemaRevision : 0)
+  const cacheKey = datasetId ? `${datasetId}:${revision}:${schemaRevision}` : null
   const [data, setData] = useState<ColumnarData | null>(() =>
     cache.key === cacheKey ? cache.data : null)
+  const loadedKey = useRef(cache.key === cacheKey ? cacheKey : null)
 
   useEffect(() => {
     if (!datasetId || !cacheKey) {
@@ -44,20 +48,30 @@ export function useColumnarData(datasetId: string | null): ColumnarData | null {
       return
     }
     if (cache.key === cacheKey && cache.data) {
+      loadedKey.current = cacheKey
       setData(cache.data)
       return
     }
     let cancelled = false
-    ;(async () => {
-      const meta = await api.get<{ schema: SchemaColumn[] }>(`/datasets/${datasetId}`)
-      const view = await fetchArrowView(datasetId)
-      const built = buildColumnar(view.__rowId__ as string[], meta.schema, view)
-      cache = { key: cacheKey, data: built }
-      if (!cancelled) setData(built)
-    })().catch(() => undefined)
+    setData(null)
+    if (pending?.key !== cacheKey) {
+      const request = {
+        key: cacheKey,
+        promise: Promise.all([
+          api.get<{ schema: SchemaColumn[] }>(`/datasets/${datasetId}`), fetchArrowView(datasetId),
+        ]).then(([meta, view]) => buildColumnar(view.__rowId__ as string[], meta.schema, view)),
+      }
+      pending = request
+      void request.promise.then(built => {
+        if (pending === request) cache = { key: cacheKey, data: built }
+      }).catch(() => undefined).finally(() => { if (pending === request) pending = null })
+    }
+    void pending.promise.then(built => {
+      if (!cancelled) { loadedKey.current = cacheKey; setData(built) }
+    }).catch(() => undefined)
     return () => { cancelled = true }
   }, [datasetId, cacheKey, revision])
-  return data
+  return loadedKey.current === cacheKey ? data : null
 }
 
 function buildColumnar(rowIds: string[], schema: SchemaColumn[], view: Record<string, unknown[]>): ColumnarData {
@@ -74,7 +88,7 @@ function buildColumnar(rowIds: string[], schema: SchemaColumn[], view: Record<st
       let max = -Infinity
       let has = false
       for (let i = 0; i < raw.length; i += 1) {
-        const v = typeof raw[i] === 'number' ? raw[i] as number : Number(raw[i])
+        const v = raw[i] == null ? NaN : typeof raw[i] === 'number' ? raw[i] as number : Number(raw[i])
         arr[i] = Number.isFinite(v) ? v : NaN
         if (Number.isFinite(v)) {
           has = true

@@ -201,7 +201,7 @@ class PyodideClient {
     const table = tableFromIPC(rawBuffer)
     const result: Record<string, unknown[]> = {}
     for (const column of table.schema.fields) {
-      result[column.name] = Array.from(table.getChild(column.name)?.toArray() ?? [])
+      result[column.name] = Array.from(table.getChild(column.name) ?? [])
     }
     return result
   }
@@ -209,15 +209,16 @@ class PyodideClient {
   public async downloadExport(
     datasetId: string,
     scope: 'selected' | 'active' | 'all',
-    format: 'csv' | 'parquet' | 'arrow',
+    format: 'csv' | 'parquet' | 'arrow' | 'xlsx',
     rowIds?: string[],
+    useValueLabels = false,
   ) {
     await this.waitForReady()
 
     const data = await this.request<any>('/exports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ datasetId, scope, format, rowIds }),
+      body: JSON.stringify({ datasetId, scope, format, rowIds, useValueLabels }),
     })
 
     let blob: Blob

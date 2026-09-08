@@ -1,6 +1,7 @@
 """Dataset import, schema, and view APIs."""
 from __future__ import annotations
 
+import csv
 import hashlib
 import io
 import json
@@ -135,6 +136,52 @@ def _derive_dataset_schema(df: pl.DataFrame, source_schema: list[dict] | None = 
     return schema_payload
 
 
+def _sync_codebook(
+    dataset_id: str,
+    df: pl.DataFrame,
+    source_schema: list[dict] | None = None,
+    source_dataset_id: str | None = None,
+) -> dict[str, Any]:
+    from ..services.dataset_service import generate_initial_codebook
+    existing_cb = None
+    if source_dataset_id:
+        existing_cb = store.load_codebook(source_dataset_id)
+    if not existing_cb:
+        existing_cb = store.load_codebook(dataset_id)
+
+    frame_without_row_id = df.drop("__rowId__") if "__rowId__" in df.columns else df
+    existing_names = {c["name"] for c in (existing_cb or {}).get("columns", [])}
+    new_names = [c for c in frame_without_row_id.columns if c not in existing_names]
+    new_frame = frame_without_row_id.select(new_names)
+    schemas = [s.model_dump(mode="json") for s in probe_table(new_frame, new_frame.height)] if new_names else []
+    initial_cb = generate_initial_codebook(dataset_id, schemas)
+
+    if existing_cb and "columns" in existing_cb:
+        by_name = {c["name"]: dict(c) for c in existing_cb["columns"]}
+        by_id = {c["columnId"]: dict(c) for c in existing_cb["columns"]}
+        merged_cols = []
+        initial_by_name = {c["name"]: c for c in initial_cb["columns"]}
+        for cname in frame_without_row_id.columns:
+            init_col = initial_by_name.get(cname) or by_name[cname]
+            cname = init_col["name"]
+            orig = by_name.get(cname) or by_id.get(init_col["columnId"])
+            if orig:
+                merged = {**init_col, **orig, "name": cname}
+                merged_cols.append(merged)
+            else:
+                merged_cols.append(init_col)
+        cb_payload = {
+            "datasetId": dataset_id,
+            "schemaRevision": existing_cb.get("schemaRevision", 1) + int(merged_cols != existing_cb["columns"]),
+            "columns": merged_cols,
+        }
+    else:
+        cb_payload = initial_cb
+
+    store.save_codebook(dataset_id, cb_payload)
+    return cb_payload
+
+
 def _finalize_dataset(
     dataset_id: str,
     name: str,
@@ -142,16 +189,21 @@ def _finalize_dataset(
     df: pl.DataFrame,
     options: ImportOptions | None,
     source_schema: list[dict] | None = None,
+    source_dataset_id: str | None = None,
 ) -> dict:
     schemas = probe_table(df, df.height)
     id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
     df, identity_source = assign_row_identity(df, id_column, schemas)
     # Re-probe on the canonical frame so row counts align with __rowId__, preserving schema metadata if available.
     schema_payload = _derive_dataset_schema(df, source_schema)
+    cb = _sync_codebook(dataset_id, df, source_schema=source_schema, source_dataset_id=source_dataset_id)
+    schema_revision = cb.get("schemaRevision", 1)
+
     fingerprint_material = {
         "schema": schema_payload,
         "options": options.model_dump(mode="json") if options else {},
         "format": fmt,
+        "schemaRevision": schema_revision,
     }
     fingerprint_seed = values_fingerprint(df)
     fingerprint = hashlib.sha256(
@@ -165,6 +217,7 @@ def _finalize_dataset(
         "rowCount": df.height,
         "columnCount": df.width - 1,
         "schema": schema_payload,
+        "schemaRevision": schema_revision,
         "rowIdentity": identity_source,
         "rowIds": df["__rowId__"].to_list(),
         "createdAt": now_iso(),
@@ -177,7 +230,245 @@ def _finalize_dataset(
 
 @router.get("/datasets/{dataset_id}")
 def get_dataset(dataset_id: str) -> dict:
-    return store.get_meta(dataset_id)
+    meta = store.get_meta(dataset_id)
+    cb = store.load_codebook(dataset_id)
+    by_name = {c["name"]: c for c in (cb or {}).get("columns", [])}
+    return {**meta, "schema": [{**c, **by_name.get(c["name"], {})} for c in meta["schema"]]}
+
+
+@router.get("/datasets/{dataset_id}/codebook")
+def get_codebook(dataset_id: str) -> dict:
+    meta = store.get_meta(dataset_id)
+    cb = store.load_codebook(dataset_id)
+    if not cb:
+        from ..services.dataset_service import generate_initial_codebook
+        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+        store.save_codebook(dataset_id, cb)
+    return cb
+
+
+@router.put("/datasets/{dataset_id}/codebook")
+def update_codebook(dataset_id: str, request: dict) -> dict:
+    from ..domain.codebook import CodebookUpdateRequest
+
+    update_req = CodebookUpdateRequest(**request)
+    meta = store.get_meta(dataset_id)
+    df = store.get_dataframe(dataset_id)
+    cb = store.load_codebook(dataset_id)
+    if not cb:
+        from ..services.dataset_service import generate_initial_codebook
+        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+
+    by_id = {c["columnId"]: c for c in cb.get("columns", [])}
+    by_name = {c["name"]: c for c in cb.get("columns", [])}
+    updated_count = 0
+
+    allowed_fields = {
+        "label",
+        "scaleType",
+        "role",
+        "valueLabels",
+        "categoryOrder",
+        "missingCodes",
+        "missingReasons",
+        "isReversed",
+        "multiResponseGroup",
+    }
+
+    for patch in update_req.columns:
+        target = None
+        if patch.columnId and patch.columnId in by_id:
+            target = by_id[patch.columnId]
+        elif patch.name and patch.name in by_name:
+            target = by_name[patch.name]
+
+        if not target:
+            continue
+
+        updated_count += 1
+        patch_dict = patch.model_dump(exclude_unset=True)
+        for k, v in patch_dict.items():
+            if k in allowed_fields and v is not None:
+                if hasattr(v, "value"):
+                    v = v.value
+                target[k] = v
+
+    new_rev = int(cb.get("schemaRevision", 1)) + 1
+    cb["schemaRevision"] = new_rev
+    store.save_codebook(dataset_id, cb)
+
+    # Sync schemaRevision to meta & update fingerprint
+    meta["schemaRevision"] = new_rev
+    fingerprint_material = {
+        "schema": meta.get("schema", []),
+        "options": meta.get("importOptions", {}),
+        "format": meta.get("format", "csv"),
+        "schemaRevision": new_rev,
+    }
+    fingerprint_seed = values_fingerprint(df)
+    meta["fingerprint"] = hashlib.sha256(
+        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+    ).hexdigest()
+    store.save(dataset_id, meta, df)
+
+    return {
+        "status": "success",
+        "datasetId": dataset_id,
+        "schemaRevision": new_rev,
+        "updatedColumns": updated_count,
+    }
+
+
+@router.post("/datasets/{dataset_id}/codebook/import")
+async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict:
+    meta = store.get_meta(dataset_id)
+    df = store.get_dataframe(dataset_id)
+    cb = store.load_codebook(dataset_id)
+    if not cb:
+        from ..services.dataset_service import generate_initial_codebook
+        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+
+    raw = await _read_upload(file)
+    text = raw.decode("utf-8-sig", errors="replace")
+
+    by_name = {c["name"]: c for c in cb.get("columns", [])}
+    by_id = {c["columnId"]: c for c in cb.get("columns", [])}
+    updated_count = 0
+
+    # Try JSON
+    parsed_json = None
+    try:
+        parsed_json = json.loads(text)
+    except Exception:
+        pass
+
+    if parsed_json is not None:
+        items = parsed_json.get("columns", parsed_json) if isinstance(parsed_json, dict) else parsed_json
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                target = by_id.get(item.get("columnId")) or by_name.get(item.get("name"))
+                if target:
+                    for k in ["label", "scaleType", "role", "valueLabels", "categoryOrder", "missingCodes", "missingReasons", "isReversed", "multiResponseGroup"]:
+                        if k in item and item[k] is not None:
+                            target[k] = item[k]
+                    updated_count += 1
+    else:
+        # Parse CSV
+        reader = csv.DictReader(io.StringIO(text))
+        for row in reader:
+            col_name = row.get("name") or row.get("columnName")
+            target = by_name.get(col_name) if col_name else None
+            if not target:
+                continue
+            updated_count += 1
+            if "label" in row and row["label"]:
+                target["label"] = row["label"]
+            if "scaleType" in row and row["scaleType"]:
+                target["scaleType"] = row["scaleType"]
+            if "role" in row and row["role"]:
+                target["role"] = row["role"]
+            if "isReversed" in row and row["isReversed"]:
+                target["isReversed"] = row["isReversed"].lower() in ("true", "1", "yes")
+            if "multiResponseGroup" in row:
+                target["multiResponseGroup"] = row["multiResponseGroup"] or None
+
+            for json_field in ("valueLabels", "missingReasons"):
+                if json_field in row and row[json_field]:
+                    try:
+                        target[json_field] = json.loads(row[json_field])
+                    except Exception:
+                        pass
+
+            for list_field in ("categoryOrder", "missingCodes"):
+                if list_field in row and row[list_field]:
+                    try:
+                        target[list_field] = json.loads(row[list_field])
+                    except Exception:
+                        # Fallback comma-split
+                        target[list_field] = [x.strip() for x in row[list_field].split(",") if x.strip()]
+
+    new_rev = int(cb.get("schemaRevision", 1)) + 1
+    cb["schemaRevision"] = new_rev
+    store.save_codebook(dataset_id, cb)
+
+    meta["schemaRevision"] = new_rev
+    fingerprint_material = {
+        "schema": meta.get("schema", []),
+        "options": meta.get("importOptions", {}),
+        "format": meta.get("format", "csv"),
+        "schemaRevision": new_rev,
+    }
+    fingerprint_seed = values_fingerprint(df)
+    meta["fingerprint"] = hashlib.sha256(
+        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+    ).hexdigest()
+    store.save(dataset_id, meta, df)
+
+    return {
+        "status": "success",
+        "datasetId": dataset_id,
+        "schemaRevision": new_rev,
+        "updatedColumns": updated_count,
+    }
+
+
+@router.get("/datasets/{dataset_id}/codebook/export")
+def export_codebook(dataset_id: str, format: str = "csv") -> Response:
+    cb = store.load_codebook(dataset_id)
+    if not cb:
+        meta = store.get_meta(dataset_id)
+        from ..services.dataset_service import generate_initial_codebook
+        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+        store.save_codebook(dataset_id, cb)
+
+    fmt = format.lower().strip()
+    if fmt == "json":
+        content = json.dumps(cb, ensure_ascii=False, indent=2)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="codebook_{dataset_id}.json"'},
+        )
+
+    # CSV format
+    output = io.StringIO()
+    fields = [
+        "name",
+        "label",
+        "scaleType",
+        "role",
+        "valueLabels",
+        "categoryOrder",
+        "missingCodes",
+        "missingReasons",
+        "isReversed",
+        "multiResponseGroup",
+    ]
+    writer = csv.writer(output)
+    writer.writerow(fields)
+
+    for col in cb.get("columns", []):
+        row = [
+            col.get("name", ""),
+            col.get("label", ""),
+            col.get("scaleType", ""),
+            col.get("role", ""),
+            json.dumps(col.get("valueLabels", {}), ensure_ascii=False) if col.get("valueLabels") else "",
+            json.dumps(col.get("categoryOrder", []), ensure_ascii=False) if col.get("categoryOrder") else "",
+            json.dumps(col.get("missingCodes", []), ensure_ascii=False) if col.get("missingCodes") else "",
+            json.dumps(col.get("missingReasons", {}), ensure_ascii=False) if col.get("missingReasons") else "",
+            "true" if col.get("isReversed") else "false",
+            col.get("multiResponseGroup") or "",
+        ]
+        writer.writerow(row)
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="codebook_{dataset_id}.csv"'},
+    )
 
 
 class SchemaPatch(BaseModel):
@@ -202,6 +493,19 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
         updated.append(column_meta)
     meta["schema"] = updated
     meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
+    cb = store.load_codebook(dataset_id)
+    if cb:
+        for column in cb["columns"]:
+            override = by_name.get(column["name"], {})
+            if "semanticType" in override:
+                column["scaleType"] = {"numeric": "ratio", "categorical": "nominal", "ordinal": "ordinal", "identifier": "id", "label": "text"}.get(override["semanticType"], column["scaleType"])
+            for key in ("role", "categoryOrder"):
+                if key in override:
+                    column[key] = override[key]
+            if override.get("newName"):
+                column["name"] = override["newName"]
+        cb["schemaRevision"] = meta["schemaRevision"]
+        store.save_codebook(dataset_id, cb)
     fingerprint_material = {
         "schema": updated,
         "options": meta.get("importOptions", {}),
@@ -280,13 +584,16 @@ def transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     # Re-probe schema on updated dataframe
     canonical_schemas = [s for s in probe_table(df.drop("__rowId__"), df.height)]
     schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
+    schema_revision = cb.get("schemaRevision", 1)
 
     # Invalidate cached fingerprint
     fingerprint_seed = values_fingerprint(df)
     meta["fingerprint"] = hashlib.sha256(
-        json.dumps(schema_payload, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+        json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
     ).hexdigest()
     meta["schema"] = schema_payload
+    meta["schemaRevision"] = schema_revision
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
@@ -314,8 +621,11 @@ def delete_column(dataset_id: str, column_name: str) -> dict:
     df = df.drop(column_name)
     canonical_schemas = [s for s in probe_table(df.drop("__rowId__"), df.height)]
     schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
+    schema_revision = cb.get("schemaRevision", 1)
 
     meta["schema"] = schema_payload
+    meta["schemaRevision"] = schema_revision
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
@@ -365,14 +675,16 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
 
     if request.inPlace:
         schema_payload = _derive_dataset_schema(imputed_df, meta.get("schema", []))
+        cb = _sync_codebook(dataset_id, imputed_df, source_schema=meta.get("schema", []))
+        schema_revision = cb.get("schemaRevision", 1)
         fingerprint_seed = values_fingerprint(imputed_df)
         meta["fingerprint"] = hashlib.sha256(
-            json.dumps(schema_payload, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+            json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
         ).hexdigest()
         meta["schema"] = schema_payload
         meta["columnCount"] = imputed_df.width - 1
         meta["revision"] = meta.get("revision", 1) + 1
-        meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
+        meta["schemaRevision"] = schema_revision
 
         store.save(dataset_id, meta, imputed_df)
         meta.pop("rowIds", None)
@@ -390,6 +702,7 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
             imputed_df,
             None,
             source_schema=meta.get("schema", []),
+            source_dataset_id=dataset_id,
         )
         return {
             **new_meta,
@@ -410,6 +723,7 @@ class CalculateRequest(BaseModel):
 @router.post("/datasets/{dataset_id}/calculate/preview")
 def preview_dataset_calculation(dataset_id: str, request: CalculatePreviewRequest) -> dict:
     from ..algorithms.transformation.expression import preview_expression
+
     df = store.get_dataframe(dataset_id)
     return preview_expression(
         df,
@@ -432,11 +746,15 @@ def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> di
     )
 
     schema_payload = _derive_dataset_schema(updated_df, meta.get("schema", []))
+    cb = _sync_codebook(dataset_id, updated_df, source_schema=meta.get("schema", []))
+    schema_revision = cb.get("schemaRevision", 1)
+
     fingerprint_seed = values_fingerprint(updated_df)
     meta["fingerprint"] = hashlib.sha256(
-        json.dumps(schema_payload, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
+        json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
     ).hexdigest()
     meta["schema"] = schema_payload
+    meta["schemaRevision"] = schema_revision
     meta["columnCount"] = updated_df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 

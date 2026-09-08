@@ -1,6 +1,8 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Dropdown, Radio, Select, Slider, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { Button, Dropdown, Radio, Slider, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { DotChartOutlined, FilterOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
@@ -445,25 +447,25 @@ export default function LoessPlotPage() {
                 })}
 
                 {/* Axis Labels */}
-                <text
+                <ColumnQuestionTooltip nameOrId={xCol} svg><text
                   x={MARGIN_LEFT + PLOT_WIDTH / 2}
                   y={MARGIN_TOP + PLOT_HEIGHT + 44}
                   textAnchor="middle"
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
-                  <title>{xCol}</title>
+
                   {truncateText(xCol, 20)}
-                </text>
-                <text
+                </text></ColumnQuestionTooltip>
+                <ColumnQuestionTooltip nameOrId={yCol} svg><text
                   x={20}
                   y={MARGIN_TOP + PLOT_HEIGHT / 2}
                   textAnchor="middle"
                   transform={`rotate(-90 20 ${MARGIN_TOP + PLOT_HEIGHT / 2})`}
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
-                  <title>{yCol}</title>
+
                   {truncateText(yCol, 20)}
-                </text>
+                </text></ColumnQuestionTooltip>
 
                 {/* Drag Box Selection Overlay */}
                 {drag && (

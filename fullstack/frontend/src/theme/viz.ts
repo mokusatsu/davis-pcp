@@ -92,6 +92,24 @@ export function entityColor(theme: VizTheme, stableIndex: number): string {
   return theme.categorical[(stableIndex + 1) % theme.categorical.length]
 }
 
+// L1 slots are independent of analytical-group colors; no repeated slots at 20 levels.
+export const L1_COLORS = [
+  '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948', '#2a78d6',
+  '#7f4f24', '#00a6a6', '#a12d85', '#596d13', '#9c6ade', '#c75300', '#167064', '#cf486e',
+  '#496b9f', '#9b8b00', '#684354', '#6a9b80',
+] as const
+export const DARK_L1_COLORS = [
+  '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767', '#3987e5',
+  '#bf956c', '#36c9c9', '#da70bc', '#a6bd50', '#c599f3', '#ef9856', '#53a99c', '#f48eac',
+  '#89aadf', '#c8b849', '#ba91a2', '#91c9a7',
+] as const
+export function l1Palette(theme: VizTheme): readonly string[] {
+  return theme.surface === SURFACE_DARK ? DARK_L1_COLORS : L1_COLORS
+}
+export function l1Color(theme: VizTheme, index: number): string {
+  return l1Palette(theme)[index] ?? theme.contextLine
+}
+
 /* ---------- L2 (analysis groups) × L1 (nominal) color composition ---------- */
 
 function hexToHsl(hex: string): { h: number; s: number; l: number } {

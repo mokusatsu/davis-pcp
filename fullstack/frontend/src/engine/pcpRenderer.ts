@@ -17,7 +17,7 @@ export interface PcpRenderSpec {
   nAxes: number
   axisPos: number[]
   bounds: { left: number; right: number; top: number; bottom: number }
-  axes: { key: string; label: string; isCategorical: boolean; min: number; max: number; categories?: string[] }[]
+  axes: { key: string; label: string; isCategorical: boolean; min: number; max: number; categories?: string[]; valueLabels?: Record<string, string> }[]
   reversed: Record<string, boolean>
   style: {
     showContext: boolean
@@ -270,6 +270,15 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
   ctx.globalAlpha = 1
   ctx.lineWidth = 1
   ctx.font = '10px sans-serif'
+
+  const resolveTickRawLabel = (axis: PcpRenderSpec['axes'][number], value: number): string => {
+    const rawCode = axis.isCategorical ? String(axis.categories?.[value] ?? value) : String(Number(value))
+    const mapped = axis.valueLabels?.[rawCode]
+    if (mapped !== undefined) return mapped
+    if (axis.isCategorical) return rawCode
+    return Number(value).toFixed(1)
+  }
+
   for (let a = 0; a < nAxes; a += 1) {
     const axis = spec.axes[a]
     const anchor = spec.axisPos[a]
@@ -293,7 +302,7 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
         ctx.stroke()
         ctx.textAlign = 'right'
         ctx.textBaseline = 'middle'
-        const rawLabel = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const rawLabel = resolveTickRawLabel(axis, value)
         const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
         ctx.fillText(label, anchor - 7, y)
       }
@@ -325,7 +334,7 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
         ctx.stroke()
         ctx.textAlign = 'center'
         ctx.textBaseline = 'bottom'
-        const rawLabel = axis.isCategorical ? (axis.categories ?? [])[value] : Number(value).toFixed(1)
+        const rawLabel = resolveTickRawLabel(axis, value)
         const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
         ctx.fillText(label, x, anchor - 4)
       }

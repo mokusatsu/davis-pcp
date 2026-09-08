@@ -1,7 +1,9 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Button, Radio, Select, Space, Spin, Tag, Typography } from 'antd'
+import { Button, Radio, Space, Spin, Tag, Typography } from 'antd'
 import { AppstoreOutlined, ArrowRightOutlined, LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
@@ -292,7 +294,7 @@ export default function CovariancePage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {focused ? col : truncateText(col, 10)}
+                        <ColumnQuestionTooltip nameOrId={col}>{focused ? col : truncateText(col, 10)}</ColumnQuestionTooltip>
                       </th>
                     ))}
                   </tr>
@@ -315,7 +317,7 @@ export default function CovariancePage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {focused ? rCol : truncateText(rCol, 12)}
+                        <ColumnQuestionTooltip nameOrId={rCol}>{focused ? rCol : truncateText(rCol, 12)}</ColumnQuestionTooltip>
                       </td>
                       {covData.columns.map((cCol, cIdx) => {
                         const val = activeMatrix[rIdx]?.[cIdx] ?? 0
@@ -371,7 +373,7 @@ export default function CovariancePage() {
                 >
                   <Space size={12}>
                     <Typography.Text strong>
-                      選択セル: [{selectedCell.col1}] × [{selectedCell.col2}]
+                      選択セル: [<ColumnQuestionTooltip nameOrId={selectedCell.col1}>{selectedCell.col1}</ColumnQuestionTooltip>] × [<ColumnQuestionTooltip nameOrId={selectedCell.col2}>{selectedCell.col2}</ColumnQuestionTooltip>]
                     </Typography.Text>
                     <span>
                       共分散: {covData.covariance[selectedCell.r][selectedCell.c].toFixed(4)} | 相関: {covData.correlation[selectedCell.r][selectedCell.c].toFixed(3)} | 偏相関: {covData.partialCorrelation[selectedCell.r][selectedCell.c].toFixed(3)}

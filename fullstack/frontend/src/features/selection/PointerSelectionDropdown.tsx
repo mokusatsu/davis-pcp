@@ -1,5 +1,6 @@
+import { Select as AntSelect } from 'antd'
 import React from 'react'
-import { Button, Dropdown, Select, Typography } from 'antd'
+import { Button, Dropdown, Typography } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
@@ -47,7 +48,7 @@ export const PointerSelectionDropdown: React.FC<PointerSelectionDropdownProps> =
         <Typography.Text strong style={{ fontSize: 12 }}>
           集合演算
         </Typography.Text>
-        <Select
+        <AntSelect
           data-testid="brush-operation-select"
           size="small"
           value={brushOp}
@@ -67,7 +68,7 @@ export const PointerSelectionDropdown: React.FC<PointerSelectionDropdownProps> =
         <Typography.Text strong style={{ fontSize: 12 }}>
           PCPヒット判定
         </Typography.Text>
-        <Select
+        <AntSelect
           data-testid="pcp-hit-mode-select"
           size="small"
           value={hitMode}

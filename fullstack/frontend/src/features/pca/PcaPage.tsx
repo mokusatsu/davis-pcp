@@ -1,7 +1,8 @@
+import Select from '../common/ColumnSelect'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useSelector } from 'react-redux'
-import { Alert, Button, Radio, Segmented, Select, Space, Typography, message } from 'antd'
+import { Alert, Button, Radio, Segmented, Space, Typography, message } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'

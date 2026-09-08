@@ -10,6 +10,7 @@ from typing import Any
 import polars as pl
 
 from ...domain.errors import BizError
+from ...domain.codebook_adapter import CodebookAdapter, normalize_code
 
 PALETTE = [
     "#4e79a7",  # Blue
@@ -31,6 +32,7 @@ def compute_line_mosaic(
     row_variables: list[str] | None = None,
     target_variable: str | None = None,
     row_ids: list[str] | None = None,
+    codebook: dict | None = None,
 ) -> dict[str, Any]:
     """Compute hierarchical line mosaic contingency table and grid coordinates."""
     if "__rowId__" not in df.columns:
@@ -66,10 +68,22 @@ def compute_line_mosaic(
             else:
                 raise BizError("MOSAIC_NO_CATEGORICAL_COLUMNS", "モザイクプロットに使用可能なカテゴリ変数がありません。")
 
+    adapter = CodebookAdapter(df, codebook)
+    if codebook:
+        for c in set(col_vars + row_vars + ([target_variable] if target_variable else [])):
+            if c in df.columns:
+                df = df.with_columns(adapter.mask_missing_values(c).map_elements(normalize_code, return_dtype=pl.String))
+    def levels(name: str) -> list[str]:
+        if codebook:
+            ordered = adapter.get_ordered_categories(name)
+            spec = adapter.get_column_spec_optional(name) or {}
+            return list(reversed(ordered)) if spec.get("isReversed") else ordered
+        return sorted([str(v) for v in df[name].unique().to_list() if v is not None])
+
     # Determine unique levels for each column variable
     col_levels: list[list[str]] = []
     for c in col_vars:
-        vals = sorted([str(v) for v in df[c].unique().to_list() if v is not None])
+        vals = levels(c)
         if not vals:
             vals = ["(None)"]
         col_levels.append(vals)
@@ -77,7 +91,7 @@ def compute_line_mosaic(
     # Determine unique levels for each row variable
     row_levels: list[list[str]] = []
     for r in row_vars:
-        vals = sorted([str(v) for v in df[r].unique().to_list() if v is not None])
+        vals = levels(r)
         if not vals:
             vals = ["(None)"]
         row_levels.append(vals)
@@ -114,7 +128,7 @@ def compute_line_mosaic(
     has_target = target_variable and target_variable in df.columns
     target_categories: list[str] = []
     if has_target:
-        target_categories = sorted([str(v) for v in df[target_variable].unique().to_list() if v is not None])
+        target_categories = levels(target_variable)
         target_colors = [PALETTE[i % len(PALETTE)] for i in range(len(target_categories))]
         target_info = {
             "name": target_variable,
@@ -190,6 +204,7 @@ def compute_line_mosaic(
             "row_labels": row_labels,
         },
         "target": target_info,
+        "valueLabels": {c: (adapter.get_column_spec_optional(c) or {}).get("valueLabels", {}) for c in col_vars + row_vars},
         "maxCellFrequency": max_freq,
         "max_cell_frequency": max_freq,
         "cells": cells_list,

@@ -1,12 +1,13 @@
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   Row,
   Col,
-  Select,
   Button,
   Radio,
-  Table,
   Typography,
   Space,
   Alert,
@@ -682,7 +683,7 @@ export default function DiscriminantAnalysisPage() {
                               strokeWidth={1.8}
                             />
                             <circle cx={targetX} cy={targetY} r={3} fill="#722ed1" />
-                            <text
+                            <ColumnQuestionTooltip nameOrId={l.variable} svg><text
                               x={targetX + (l.ld1 >= 0 ? 5 : -5)}
                               y={targetY + (l.ld2 && l.ld2 >= 0 ? -4 : 10)}
                               textAnchor={l.ld1 >= 0 ? 'start' : 'end'}
@@ -691,7 +692,7 @@ export default function DiscriminantAnalysisPage() {
                               fill="#531dab"
                             >
                               {l.variable}
-                            </text>
+                            </text></ColumnQuestionTooltip>
                           </g>
                         )
                       })}
@@ -706,7 +707,7 @@ export default function DiscriminantAnalysisPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
                       {result.loadings.map((l) => (
                         <div key={l.variable} style={{ display: 'flex', alignItems: 'center' }}>
-                          <span style={{ width: 100, fontSize: 12 }}>{l.variable}</span>
+                          <span style={{ width: 100, fontSize: 12 }}><ColumnQuestionTooltip nameOrId={l.variable}>{l.variable}</ColumnQuestionTooltip></span>
                           <div style={{ flex: 1, position: 'relative', height: 16, background: '#f0f0f0', borderRadius: 2 }}>
                             <div
                               style={{
@@ -813,7 +814,7 @@ export default function DiscriminantAnalysisPage() {
                     render: (vars: string[]) => (
                       <Space size={4} wrap>
                         {vars.map((vr) => (
-                          <Tag key={vr}>{vr}</Tag>
+                          <Tag key={vr}><ColumnQuestionTooltip nameOrId={vr}>{vr}</ColumnQuestionTooltip></Tag>
                         ))}
                       </Space>
                     ),

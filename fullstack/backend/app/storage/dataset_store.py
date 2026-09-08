@@ -127,12 +127,39 @@ class DatasetStore:
                 continue
         return result
 
+    def _codebook_path(self, dataset_id: str) -> Path:
+        return self.root / f"{dataset_id}.codebook.json"
+
+    def save_codebook(self, dataset_id: str, codebook: dict[str, Any] | Any) -> None:
+        if hasattr(codebook, "model_dump"):
+            payload = codebook.model_dump()
+        elif hasattr(codebook, "dict"):
+            payload = codebook.dict()
+        else:
+            payload = codebook
+        atomic_write_bytes(
+            self._codebook_path(dataset_id),
+            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+
+    def load_codebook(self, dataset_id: str) -> dict[str, Any] | None:
+        path = self._codebook_path(dataset_id)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
     def delete(self, dataset_id: str) -> None:
         self.get_meta(dataset_id)
         self._meta_path(dataset_id).unlink()
         parquet = self._parquet_path(dataset_id)
         if parquet.exists():
             parquet.unlink()
+        codebook = self._codebook_path(dataset_id)
+        if codebook.exists():
+            codebook.unlink()
 
 
 def assign_row_identity(df: pl.DataFrame, id_column: str | None = None, schemas: list[Any] | None = None) -> tuple[pl.DataFrame, str]:

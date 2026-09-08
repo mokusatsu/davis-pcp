@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useEffect, useState } from 'react'
 import {
   Alert,
@@ -235,7 +236,7 @@ export default function ImputationModal({
                   >
                     <Space size="small">
                       <Checkbox checked={isChecked} />
-                      <Typography.Text strong>{col.name}</Typography.Text>
+                      <Typography.Text strong><ColumnQuestionTooltip nameOrId={col.name}>{col.name}</ColumnQuestionTooltip></Typography.Text>
                       <Tag color="red" style={{ margin: 0, fontSize: 11 }}>
                         欠損 {col.missing} ({pct}%)
                       </Tag>
@@ -325,7 +326,7 @@ export default function ImputationModal({
                   >
                     {selectedCols.map((c) => (
                       <Radio.Button key={c} value={c}>
-                        {c}
+                        <ColumnQuestionTooltip nameOrId={c}>{c}</ColumnQuestionTooltip>
                       </Radio.Button>
                     ))}
                   </Radio.Group>

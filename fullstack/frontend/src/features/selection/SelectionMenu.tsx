@@ -1,6 +1,7 @@
+import { Select as AntSelect } from 'antd'
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Dropdown, Popconfirm, Select, Space, Typography } from 'antd'
+import { Button, Dropdown, Popconfirm, Space, Typography } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
@@ -58,7 +59,7 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
       {extraContent}
       <div>
         <Typography.Text strong style={{ fontSize: 12 }}>集合演算</Typography.Text>
-        <Select
+        <AntSelect
           data-testid="brush-operation"
           size="small"
           style={{ width: '100%', marginTop: 4 }}

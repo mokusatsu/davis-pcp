@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from ..algorithms.ordering.core import compute_order
 from ..domain.errors import BizError
+from ..domain.codebook_adapter import CodebookAdapter
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
 
@@ -29,8 +30,15 @@ class OrderingRequest(BaseModel):
 def create_ordering(req: OrderingRequest) -> dict:
     meta = store.get_meta(req.datasetId)
     df = store.get_dataframe(req.datasetId)
+    adapter = CodebookAdapter(df, store.load_codebook(req.datasetId))
+    df = adapter.analysis_frame()
     schema_by_name = {c["name"]: c for c in meta["schema"]}
-    columns = req.columns or [c["name"] for c in meta["schema"] if c["semanticType"] == "numeric"]
+    for name in df.columns:
+        spec = adapter.get_column_spec_optional(name)
+        if spec:
+            numeric = spec.get("scaleType") in ("ordinal", "interval", "ratio")
+            schema_by_name[name] = {**schema_by_name.get(name, {}), "physicalType": "float" if numeric else "string", "semanticType": "numeric" if numeric else "categorical"}
+    columns = req.columns or [name for name, c in schema_by_name.items() if c["semanticType"] == "numeric"]
     non_numeric = [c for c in columns
                    if schema_by_name.get(c, {}).get("physicalType") not in ("float", "int")]
     constant = [schema_by_name[c] for c in columns if c in schema_by_name and schema_by_name[c].get("constant")]
@@ -75,6 +83,7 @@ def create_ordering(req: OrderingRequest) -> dict:
         "candidateScores": [c.get("score") for c in result.get("candidates", [])],
         "iterationTrace": result.get("trace", []),
         "datasetFingerprint": meta["fingerprint"],
+        "schemaRevision": meta.get("schemaRevision", 1),
         "createdAt": now_iso(),
         "runtimeMs": round(runtime_ms, 3),
     }

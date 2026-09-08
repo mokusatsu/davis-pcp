@@ -1,5 +1,7 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Table from '../common/ColumnTable'
 import { useState } from 'react'
-import { Checkbox, Input, Modal, Space, Table, Tag, Typography, notification } from 'antd'
+import { Checkbox, Input, Modal, Space, Tag, Typography, notification } from 'antd'
 import { api } from '../../api/client'
 
 interface OneHotModalProps {
@@ -57,7 +59,7 @@ export default function OneHotModal({
 
   return (
     <Modal
-      title={`カテゴリ変数の二値化 (One-Hot): ${columnName}`}
+      title={<>カテゴリ変数の二値化 (One-Hot): <ColumnQuestionTooltip nameOrId={columnName} /></>}
       open={open}
       onCancel={onClose}
       onOk={handleApply}

@@ -1,8 +1,11 @@
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Card, Row, Col, Typography, Space, Button, Select, Table, Tag,
+  Card, Row, Col, Typography, Space, Button, Tag,
   Statistic, Alert, Spin, Empty, Divider,
 } from 'antd'
 import {
@@ -381,7 +384,7 @@ export default function PenaltyRewardPage() {
                                   stroke={isSelected ? '#000' : '#fff'}
                                   strokeWidth={isSelected ? 2 : 1}
                                 />
-                                <text
+                                <ColumnQuestionTooltip nameOrId={a.name} svg><text
                                   x={cx > 380 ? cx - 10 : cx + 10}
                                   y={cy + 4}
                                   textAnchor={cx > 380 ? 'end' : 'start'}
@@ -392,9 +395,9 @@ export default function PenaltyRewardPage() {
                                   stroke="#ffffff"
                                   strokeWidth={3}
                                 >
-                                  <title>{a.label}</title>
+
                                   {isSelected ? a.label : truncateText(a.label, 10)}
-                                </text>
+                                </text></ColumnQuestionTooltip>
                               </g>
                             )
                           })}
@@ -446,7 +449,7 @@ export default function PenaltyRewardPage() {
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                                <Typography.Text strong ellipsis={{ tooltip: a.label }}>{a.label}</Typography.Text>
+                                <Typography.Text strong ellipsis={{ tooltip: a.label }}><ColumnQuestionTooltip nameOrId={a.name}>{a.label}</ColumnQuestionTooltip></Typography.Text>
                                 <Tag color={getKanoColor(a.classification)}>{a.class_label}</Tag>
                               </div>
                               <div style={{ display: 'flex', height: 16, background: '#f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
@@ -481,7 +484,7 @@ export default function PenaltyRewardPage() {
                     title={
                       <Space>
                         <Typography.Text strong style={{ fontSize: 15 }}>
-                          {currentAttr.label}
+                          <ColumnQuestionTooltip nameOrId={currentAttr.name}>{currentAttr.label}</ColumnQuestionTooltip>
                         </Typography.Text>
                         <Tag color={getKanoColor(currentAttr.classification)}>
                           {currentAttr.class_label}

@@ -17,6 +17,7 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from ..algorithms.models.pca import compute_pca
 from ..algorithms.models.kda import run_kda
 from ..domain.errors import BizError
+from ..domain.codebook_adapter import CodebookAdapter, normalize_code
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
 
@@ -44,6 +45,7 @@ def run_pca(req: PcaRequest) -> dict[str, Any]:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
     df = store.get_dataframe(dataset_id)
+    df = CodebookAdapter(df, store.load_codebook(dataset_id)).analysis_frame()
     use_corr = req.useCorrelation if req.use_correlation is None else req.use_correlation
     if use_corr is None:
         use_corr = True
@@ -154,26 +156,38 @@ def create_model(req: ModelRequest) -> dict:
     if missing:
         raise BizError("COLUMN_NOT_FOUND", f"列が見つかりません: {', '.join(missing)}",
                        details={"columnIds": missing})
-    feature_df = df.select(req.features)
+    adapter = CodebookAdapter(df, store.load_codebook(req.datasetId))
+    feature_values, feature_names, feature_sources = [], [], []
     for c in req.features:
-        if feature_df[c].dtype == pl.String:
-            raise BizError("MODEL_NON_NUMERIC_FEATURE", f"説明変数は数値列のみ対応です: {c}",
-                           details={"columnIds": [c]})
-    X = np.array([df[c].cast(pl.Float64).to_list() for c in req.features]).T
-    y_series = df[req.target]
+        spec = adapter.get_column_spec_optional(c) or {}
+        series = adapter.analysis_series(c)
+        label = spec.get("label") or c
+        if spec.get("scaleType") == "nominal":
+            codes = [normalize_code(v) for v in series]
+            for code in adapter.get_ordered_categories(c):
+                feature_values.append([np.nan if v is None else float(v == code) for v in codes])
+                feature_names.append(f'{label} = {adapter.label_for_value(c, code)}')
+                feature_sources.append(c)
+        else:
+            if series.dtype == pl.String:
+                raise BizError("MODEL_NON_NUMERIC_FEATURE", f"説明変数の尺度を設定してください: {c}", details={"columnIds": [c]})
+            feature_values.append(series.cast(pl.Float64, strict=False).to_list())
+            feature_names.append(label)
+            feature_sources.append(c)
+    if not feature_values:
+        raise BizError("MODEL_NO_FEATURES", "有効な説明変数がありません。")
+    X = np.array(feature_values, dtype=float).T
+    target_spec = adapter.get_column_spec_optional(req.target) or {}
+    y_series = adapter.analysis_series(req.target)
     task = req.taskType
     if task == "auto":
-        task = _infer_task(y_series)
-    if (X == np.nan).any():
-        mask = ~np.isnan(X).any(axis=1)
-        X = X[mask]
-        y_full = y_series.to_list()
-        y = [v for v, keep in zip(y_full, mask) if keep]
-        row_ids_all = df["__rowId__"].to_list()
-        row_ids = [r for r, keep in zip(row_ids_all, mask) if keep]
-    else:
-        y = y_series.to_list()
-        row_ids = df["__rowId__"].to_list()
+        task = "classification" if target_spec.get("scaleType") == "nominal" else ("regression" if target_spec.get("scaleType") in ("ordinal", "ratio", "interval") else _infer_task(y_series))
+    mask = np.isfinite(X).all(axis=1) & np.array([normalize_code(v) is not None for v in y_series])
+    X = X[mask]
+    y = [v for v, keep in zip(y_series, mask) if keep]
+    row_ids = [r for r, keep in zip(df["__rowId__"], mask) if keep]
+    if not y:
+        raise BizError("MODEL_NO_VALID_ROWS", "欠損値を除くと学習対象がありません。")
     started = time.perf_counter()
     if req.modelType == "decision_tree":
         model = (DecisionTreeClassifier(max_depth=req.maxDepth, random_state=req.seed)
@@ -237,7 +251,8 @@ def create_model(req: ModelRequest) -> dict:
 
     # Full structure of the representative tree (forest) / the tree (single).
     structure_source = trees[representative_index] if representative_index is not None else trees[0]
-    structures = [_tree_structure(structure_source, req.features, class_labels, X, y)]
+    display_classes = [adapter.label_for_value(req.target, c) for c in model.classes_] if class_labels else None
+    structures = [_tree_structure(structure_source, feature_names, display_classes, X, y)]
 
     # Compute node membership for the displayed tree (structures[0], index 0)
     # so leaves are clickable and selectable across all views for both single tree and random forest.
@@ -251,6 +266,8 @@ def create_model(req: ModelRequest) -> dict:
     payload = {
         "resultId": result_id,
         "datasetId": req.datasetId,
+        "schemaRevision": meta.get("schemaRevision", 1),
+        "fingerprint": meta["fingerprint"],
         "modelType": req.modelType,
         "taskType": task,
         "evidenceClass": "MODERN-EXTENSION",
@@ -259,15 +276,14 @@ def create_model(req: ModelRequest) -> dict:
         "target": req.target,
         "trainedRows": len(X),
         "rowIds": row_ids,
-        "featureImportance": dict(zip(req.features,
-                                      [round(float(v), 6) for v in model.feature_importances_])),
+        "featureImportance": {c: round(sum(float(v) for source, v in zip(feature_sources, model.feature_importances_) if source == c), 6) for c in req.features},
         "treeStructures": structures,
         "representativeTree": {
             "index": representative_index,
             "forestAgreement": forest_agreement,
             "treeAgreements": tree_agreements,
         },
-        "classLabels": class_labels,
+        "classLabels": display_classes,
         "nodes": nodes,
         "leafMembership": [
             {"nodeId": n["nodeId"], "treeIndex": n["treeIndex"], "rowIds": n["rowIds"]}
@@ -292,7 +308,11 @@ def create_model(req: ModelRequest) -> dict:
 def get_model(result_id: str) -> dict:
     if result_id not in _results:
         raise BizError("MODEL_RESULT_NOT_FOUND", f"モデル結果 {result_id} が見つかりません。", status_code=404)
-    return _results[result_id]
+    result = _results[result_id]
+    meta = store.get_meta(result["datasetId"])
+    if result.get("fingerprint") != meta["fingerprint"]:
+        raise BizError("MODEL_RESULT_STALE", "データまたはコードブックが更新されています。モデルを再実行してください。", status_code=409)
+    return result
 
 
 @router.get("/models/{result_id}/leaves")
@@ -318,6 +338,11 @@ def calculate_kda(req: KdaRequest) -> dict[str, Any]:
     df = store.get_dataframe(dataset_id)
     meta = store.get_meta(dataset_id)
     schema = meta.get("schema", [])
+    cb = store.load_codebook(dataset_id)
+    adapter = CodebookAdapter(df, cb)
+    df = adapter.analysis_frame()
+    if cb:
+        schema = [{**c, "semanticType": "numeric" if c.get("scaleType") in ("ordinal", "interval", "ratio") else "categorical"} for c in cb["columns"]]
 
     try:
         result = run_kda(
@@ -330,4 +355,3 @@ def calculate_kda(req: KdaRequest) -> dict[str, Any]:
         return result
     except ValueError as e:
         raise BizError("KDA_EXECUTION_ERROR", str(e), status_code=400)
-

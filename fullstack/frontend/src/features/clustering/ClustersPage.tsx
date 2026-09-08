@@ -1,7 +1,9 @@
+import { Select as AntSelect } from 'antd'
+import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Alert, Button, Card, Col, Descriptions, Dropdown, InputNumber, Row, Segmented, Select, Space, Spin, Statistic, Tag, Typography, message,
+  Alert, Button, Card, Col, Descriptions, Dropdown, InputNumber, Row, Segmented, Space, Spin, Statistic, Tag, Typography, message,
 } from 'antd'
 import { AppstoreOutlined, BranchesOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import React from 'react'
@@ -179,7 +181,7 @@ export default function ClustersPage() {
                   <Col>
                     <Space size={6} wrap>
                       <Typography.Text style={{ fontSize: 12 }}>連結法:</Typography.Text>
-                      <Select data-testid="linkage" size="small" value={linkage} onChange={setLinkage} style={{ width: 170 }}
+                      <AntSelect data-testid="linkage" size="small" value={linkage} onChange={setLinkage} style={{ width: 170 }}
                         options={[
                           { value: 'nearest', label: 'Nearest（最短距離法）' },
                           { value: 'farthest', label: 'Farthest（最長距離法）' },
@@ -187,7 +189,7 @@ export default function ClustersPage() {
                           { value: 'group_average', label: 'Group Average' },
                         ]} />
                       <Typography.Text style={{ fontSize: 12 }}>距離尺度:</Typography.Text>
-                      <Select data-testid="distance" size="small" value={distance} onChange={setDistance} style={{ width: 160 }}
+                      <AntSelect data-testid="distance" size="small" value={distance} onChange={setDistance} style={{ width: 160 }}
                         options={[
                           { value: 'euclidean', label: 'Euclidean' },
                           { value: 'standard_euclidean', label: 'Standard Euclidean' },

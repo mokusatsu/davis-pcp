@@ -1,5 +1,6 @@
+import Select from '../common/ColumnSelect'
 import { type FC } from 'react'
-import { Button, Checkbox, Select, Slider, Space, Tag, Typography } from 'antd'
+import { Button, Checkbox, Slider, Space, Tag, Typography } from 'antd'
 import { CaretRightOutlined, PauseOutlined, RedoOutlined, StepForwardOutlined } from '@ant-design/icons'
 
 interface TgtControlPanelProps {

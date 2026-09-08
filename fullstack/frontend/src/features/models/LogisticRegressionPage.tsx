@@ -1,14 +1,16 @@
+import { useQuestionText } from '../common/ColumnQuestionTooltip'
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
   Row,
   Col,
-  Select,
   Button,
   Radio,
   Checkbox,
   Slider,
-  Table,
   Typography,
   Space,
   Alert,
@@ -91,6 +93,7 @@ export interface LogisticResponse {
 }
 
 export default function LogisticRegressionPage() {
+  const questionText = useQuestionText()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector((s: RootState) => s.globalVariables)
@@ -680,7 +683,7 @@ export default function LogisticRegressionPage() {
                           strokeWidth={isSelected ? 2 : isMisclassified ? 1.5 : 0.8}
                           opacity={0.85}
                         >
-                          <title>{`Row: ${pt.rowId}\n${focusAxis}: ${pt.xVal}\nActual: ${pt.actual} (${result.classes[pt.actual]})\nProb: ${pt.predictedProb}`}</title>
+                          <title>{`Row: ${pt.rowId}\n${questionText(focusAxis)}: ${pt.xVal}\nActual: ${pt.actual} (${result.classes[pt.actual]})\nProb: ${pt.predictedProb}`}</title>
                         </circle>
                       )
                     })}
@@ -699,7 +702,7 @@ export default function LogisticRegressionPage() {
                     )}
 
                     {/* Axis Labels */}
-                    <text
+                    <ColumnQuestionTooltip nameOrId={focusAxis} svg><text
                       x={padding.left + innerWidth / 2}
                       y={chartHeight - 6}
                       textAnchor="middle"
@@ -707,7 +710,7 @@ export default function LogisticRegressionPage() {
                       fill="#595959"
                     >
                       {focusAxis}
-                    </text>
+                    </text></ColumnQuestionTooltip>
                     <text
                       x={14}
                       y={padding.top + innerHeight / 2}
@@ -756,7 +759,7 @@ export default function LogisticRegressionPage() {
                     return (
                       <div key={item.name} style={{ display: 'flex', alignItems: 'center' }}>
                         <span style={{ width: 120, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {item.name}
+                          <ColumnQuestionTooltip nameOrId={item.name}>{item.name}</ColumnQuestionTooltip>
                         </span>
                         <span style={{ width: 140, fontSize: 11, fontFamily: 'monospace' }}>
                           {item.oddsRatio.toFixed(2)} [{item.ciLower.toFixed(2)}, {item.ciUpper.toFixed(2)}]

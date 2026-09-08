@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Alert, Button, Card, Col, Descriptions, InputNumber, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography, message,
+  Alert, Button, Card, Col, Descriptions, InputNumber, Row, Segmented, Space, Spin, Statistic, Tag, Typography, message,
 } from 'antd'
 import { AimOutlined, BranchesOutlined, CheckCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, modelResultStored } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
@@ -53,6 +57,9 @@ export default function ModelsPage() {
   const selection = useSelector((s: RootState) => s.selection)
   const { focused, isTargetActive } = useFocusMode()
   const data = useColumnarData(selection.datasetId)
+  const { columns: codebookColumns, schemaRevision, getColumn } = useCodebook()
+  const contextRef = useRef('')
+  contextRef.current = `${selection.datasetId}:${schemaRevision}`
   const [modelType, setModelType] = useState<'decision_tree' | 'random_forest'>('decision_tree')
   const [target, setTarget] = useState<string | null>(null)
   const [maxDepth, setMaxDepth] = useState(4)
@@ -66,13 +73,18 @@ export default function ModelsPage() {
   }, [storedModel])
   const [error, setError] = useState<{ message: string } | null>(null)
   const [running, setRunning] = useState(false)
+  useEffect(() => { setResult(null); setRunning(false); dispatch(modelResultStored(null)) }, [schemaRevision, selection.datasetId, dispatch])
 
-  const numericColumns = data?.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) ?? []
+  const numericColumns = data?.schema.filter((c) => {
+    const spec = getColumn(c.name)
+    return spec ? spec.role === 'attribute' && ['nominal', 'ordinal', 'interval', 'ratio'].includes(spec.scaleType) : c.semanticType === 'numeric'
+  }).map((c) => c.name) ?? []
   const allColumns = data?.schema.map((c) => c.name) ?? []
-  const targetValue = target ?? allColumns.find((c) => !numericColumns.includes(c)) ?? allColumns[numericColumns.length - 1] ?? null
+  const targetValue = target && allColumns.includes(target) ? target : codebookColumns.find(c => c.role === 'question')?.name ?? allColumns.find((c) => !numericColumns.includes(c)) ?? allColumns[numericColumns.length - 1] ?? null
 
   const runModel = async () => {
     if (!selection.datasetId || !targetValue) return
+    const context = contextRef.current
     setRunning(true)
     setError(null)
     try {
@@ -86,13 +98,14 @@ export default function ModelsPage() {
         nEstimators,
         seed: 42,
       })
+      if (context !== contextRef.current) return
       setResult(response)
       dispatch(modelResultStored(response))
       message.success(`${modelType === 'decision_tree' ? '決定木' : 'ランダムフォレスト'}学習完了`)
     } catch (err) {
-      setError(err as { message: string })
+      if (context === contextRef.current) setError(err as { message: string })
     } finally {
-      setRunning(false)
+      if (context === contextRef.current) setRunning(false)
     }
   }
 
@@ -183,6 +196,7 @@ export default function ModelsPage() {
               <Statistic
                 title="目的変数 & タスク"
                 value={`${result.target}`}
+                formatter={() => <ColumnQuestionTooltip nameOrId={result.target}>{result.target}</ColumnQuestionTooltip>}
                 prefix={<AimOutlined />}
                 suffix={<Tag color="blue" style={{ marginLeft: 6 }}>{result.taskType}</Tag>}
                 valueStyle={{ fontSize: 15 }}
@@ -205,7 +219,7 @@ export default function ModelsPage() {
               {topFeature ? (
                 <Space align="baseline">
                   <span style={{ fontSize: 16, fontWeight: 600, color: '#1677ff' }}>
-                    {topFeature.name}
+                    <ColumnQuestionTooltip nameOrId={topFeature.name}>{topFeature.name}</ColumnQuestionTooltip>
                   </span>
                   <Tag color="purple">{(topFeature.value * 100).toFixed(1)}%</Tag>
                 </Space>
@@ -267,7 +281,7 @@ export default function ModelsPage() {
                 >
                   {Object.entries(result.featureImportance).sort((a, b) => b[1] - a[1]).map(([feature, importance]) => (
                     <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ width: isTargetActive('feature-importance') ? 180 : 140, fontSize: isTargetActive('feature-importance') ? 14 : 12, fontWeight: 500 }}>{feature}</span>
+                      <span style={{ width: isTargetActive('feature-importance') ? 180 : 140, fontSize: isTargetActive('feature-importance') ? 14 : 12, fontWeight: 500 }}><ColumnQuestionTooltip nameOrId={feature}>{feature}</ColumnQuestionTooltip></span>
                       <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: isTargetActive('feature-importance') ? 20 : 12 }}>
                         <div style={{ width: `${importance * 100}%`, background: '#3b82f6', height: '100%', borderRadius: 4 }} />
                       </div>
@@ -444,9 +458,9 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
             <g key={node.nodeId}>
               <rect x={cx - 46} y={cy - 15} width={92} height={30} rx={4}
                 fill="#f8fafc" stroke="#94a3b8" strokeWidth={1.2} />
-              <text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={600} fill="#0b0b0b">
+              <ColumnQuestionTooltip nameOrId={node.feature ?? ''} svg><text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={600} fill="#0b0b0b">
                 {node.feature?.replace(/_cm$/, '')} ≤ {node.threshold}
-              </text>
+              </text></ColumnQuestionTooltip>
               <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="#52514e">n={node.count}</text>
             </g>
           )

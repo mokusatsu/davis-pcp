@@ -1,6 +1,10 @@
+import { Select as AntSelect } from 'antd'
+import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import Select from '../common/ColumnSelect'
 import React, { useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Dropdown, Radio, Select, Space, Tag, Typography } from 'antd'
+import { Dropdown, Radio, Space, Tag, Typography } from 'antd'
 import { BarChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
@@ -24,13 +28,14 @@ export default function BarChartPage() {
   const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
   const data = useColumnarData(datasetId)
+  const { formatValueLabel } = useCodebook()
   const [brushOp] = useBrushOp()
 
   const [selectedColumn, setSelectedColumn] = useState<string>('')
   const [subColumn, setSubColumn] = useState<string>('')
   const [displayMode, setDisplayMode] = useState<'count' | 'percent' | 'stacked'>('count')
   const [sortOrder, setSortOrder] = useState<'count-desc' | 'name-asc' | 'ratio-desc'>('count-desc')
-  const [hoveredBar, setHoveredBar] = useState<BarItem | null>(null)
+  const [hoveredCategory, setHoveredBar] = useState<string | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
@@ -51,11 +56,15 @@ export default function BarChartPage() {
 
   // Default selection
   React.useEffect(() => {
-    if (columns.length > 0 && !selectedColumn) {
+    if (columns.length > 0 && !columns.some(c => c.name === selectedColumn)) {
       const preferred = categoricalColumns[0]?.name || columns[0].name
       setSelectedColumn(preferred)
     }
   }, [columns, categoricalColumns, selectedColumn])
+  React.useEffect(() => {
+    if (subColumn === selectedColumn || !columns.some(c => c.name === subColumn)) setSubColumn('')
+    setHoveredBar(null)
+  }, [columns, selectedColumn, subColumn])
 
   // Aggregate bar data
   const barData: BarItem[] = useMemo(() => {
@@ -66,7 +75,7 @@ export default function BarChartPage() {
 
     const subColIndex = subColumn ? data.schema.findIndex((c) => c.name === subColumn) : -1
 
-    const groups: Record<string, { total: number; selected: number; rowIds: string[]; sub: Record<string, { total: number; selected: number; rowIds: string[] }> }> = {}
+    const groups: Record<string, { total: number; selected: number; rowIds: string[]; sub: Record<string, { total: number; selected: number; rowIds: string[] }> }> = Object.create(null)
 
     for (const rid of activeRowIds) {
       const idx = data.rowIndex.get(rid)
@@ -76,7 +85,7 @@ export default function BarChartPage() {
       const catKey = rawVal === null || rawVal === undefined ? '(null)' : String(rawVal)
 
       if (!groups[catKey]) {
-        groups[catKey] = { total: 0, selected: 0, rowIds: [], sub: {} }
+        groups[catKey] = { total: 0, selected: 0, rowIds: [], sub: Object.create(null) }
       }
 
       const isSel = selectedSet.has(rid)
@@ -108,13 +117,14 @@ export default function BarChartPage() {
     if (sortOrder === 'count-desc') {
       items.sort((a, b) => b.totalCount - a.totalCount)
     } else if (sortOrder === 'name-asc') {
-      items.sort((a, b) => a.category.localeCompare(b.category))
+      items.sort((a, b) => formatValueLabel(selectedColumn, a.category).localeCompare(formatValueLabel(selectedColumn, b.category)))
     } else if (sortOrder === 'ratio-desc') {
       items.sort((a, b) => (b.selectedCount / (b.totalCount || 1)) - (a.selectedCount / (a.totalCount || 1)))
     }
 
     return items
-  }, [data, selectedColumn, subColumn, activeRowIds, selectedSet, sortOrder])
+  }, [data, selectedColumn, subColumn, activeRowIds, selectedSet, sortOrder, formatValueLabel])
+  const hoveredBar = barData.find(item => item.category === hoveredCategory)
 
   const totalActive = activeRowIds.length
   const maxBarCount = useMemo(() => {
@@ -138,7 +148,7 @@ export default function BarChartPage() {
   }
 
   // Layout parameters
-  const MARGIN_LEFT = 140
+  const MARGIN_LEFT = 250
   const MARGIN_RIGHT = 240
   const MARGIN_TOP = 40
   const BAR_HEIGHT = 34
@@ -224,7 +234,7 @@ export default function BarChartPage() {
               <Radio.Button value="percent">割合 (%)</Radio.Button>
             </Radio.Group>
 
-            <Select
+            <AntSelect
               style={{ width: 150 }}
               value={sortOrder}
               onChange={setSortOrder}
@@ -262,13 +272,17 @@ export default function BarChartPage() {
           >
             {/* Status bar */}
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Tag color="blue">{selectedColumn}</Tag>
+              <Tag color="blue"><ColumnQuestionTooltip nameOrId={selectedColumn}>{selectedColumn}</ColumnQuestionTooltip></Tag>
               <span style={{ fontSize: 12, color: '#6b7280' }}>
                 カテゴリ数: {barData.length} | 有効行: {totalActive}行 | 選択行: {selectedRowIds.length}行 (
                 {totalActive > 0 ? ((selectedRowIds.length / totalActive) * 100).toFixed(1) : 0}%)
               </span>
             </div>
 
+            <div data-testid="barchart-questions" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.5, marginBottom: 12 }}>
+              {selectedColumn && <div>対象変数: <ColumnQuestionText nameOrId={selectedColumn} /></div>}
+              {subColumn && <div>内訳変数: <ColumnQuestionText nameOrId={subColumn} /></div>}
+            </div>
             <svg data-testid="barchart-svg" width={totalSvgWidth} height={totalSvgHeight} style={{ display: 'block' }}>
               {/* Background Grid Lines */}
               {[0, 0.25, 0.5, 0.75, 1.0].map((frac) => {
@@ -303,7 +317,7 @@ export default function BarChartPage() {
                     data-testid={`barchart-bar-${idx}`}
                     style={{ cursor: 'pointer' }}
                     onClick={() => dispatch(selectionApplied({ rowIds: item.rowIds, operation: brushOp, label: 'BarChart' }))}
-                    onMouseEnter={() => setHoveredBar(item)}
+                    onMouseEnter={() => setHoveredBar(item.category)}
                     onMouseLeave={() => setHoveredBar(null)}
                   >
                     {/* Category Label */}
@@ -313,8 +327,8 @@ export default function BarChartPage() {
                       textAnchor="end"
                       style={{ fontSize: 12, fontWeight: 500, fill: '#374151' }}
                     >
-                      <title>{item.category}</title>
-                      {truncateText(item.category, 18)}
+                      <title>{formatValueLabel(selectedColumn, item.category)} ({item.category})</title>
+                      {truncateText(formatValueLabel(selectedColumn, item.category), 18)}
                     </text>
 
                     {/* Base Bar (Unselected / Total) */}
@@ -361,15 +375,13 @@ export default function BarChartPage() {
               })}
 
               {/* Hover Tooltip Overlay */}
-              {hoveredBar && (
-                <g transform={`translate(${MARGIN_LEFT + 10}, ${totalSvgHeight - 20})`}>
-                  <rect x={-6} y={-14} width={480} height={20} rx={4} fill="#1e293b" opacity={0.88} />
-                  <text x={0} y={0} style={{ fontSize: 11, fill: '#ffffff' }}>
-                    {hoveredBar.category}: 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択
-                  </text>
-                </g>
-              )}
             </svg>
+            {hoveredBar && (
+              <div role="status" style={{ padding: 8, background: '#1e293b', color: '#fff', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {formatValueLabel(selectedColumn, hoveredBar.category)} ({hoveredBar.category}): 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択
+                {hoveredBar.subGroups && Object.entries(hoveredBar.subGroups).map(([code, group]) => <div key={code}>{formatValueLabel(subColumn, code)} ({code}): {group.total}行 / 選択 {group.selected}行</div>)}
+              </div>
+            )}
 
             {barData.length === 0 && (
               <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>

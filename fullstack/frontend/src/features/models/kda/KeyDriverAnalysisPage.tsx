@@ -1,8 +1,11 @@
+import Table from '../../common/ColumnTable'
+import ColumnQuestionTooltip from '../../common/ColumnQuestionTooltip'
+import Select from '../../common/ColumnSelect'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Card, Row, Col, Typography, Space, Button, Select, Table, Tag,
+  Card, Row, Col, Typography, Space, Button, Tag,
   Statistic, Alert, Spin, Progress, Slider, Divider,
 } from 'antd'
 import {
@@ -310,7 +313,7 @@ export default function KeyDriverAnalysisPage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                               <Space>
                                 <Typography.Text strong style={{ fontSize: 13 }}>
-                                  #{idx + 1} {d.label}
+                                  #{idx + 1} <ColumnQuestionTooltip nameOrId={d.name}>{d.label}</ColumnQuestionTooltip>
                                 </Typography.Text>
                                 <Tag color={d.direction >= 0 ? 'blue' : 'red'}>
                                   {d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}
@@ -490,7 +493,7 @@ export default function KeyDriverAnalysisPage() {
                   return (
                     <Col xs={24} sm={12} md={8} key={d.name}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span>{d.label}</span>
+                        <span><ColumnQuestionTooltip nameOrId={d.name}>{d.label}</ColumnQuestionTooltip></span>
                         <span>{currentDelta > 0 ? `+${currentDelta.toFixed(2)}` : currentDelta.toFixed(2)} pt</span>
                       </div>
                       <Slider

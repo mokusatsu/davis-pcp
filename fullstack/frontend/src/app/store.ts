@@ -438,12 +438,15 @@ export function selectEffectiveRowIds(state: RootState): string[] {
   return obs.activeRowIds
 }
 
+import { codebookSlice } from '../features/dataset/codebookSlice'
+
 export const store = configureStore({
   reducer: {
     selection: selectionSlice.reducer,
     pcp: pcpSlice.reducer,
     globalVariables: globalVariablesSlice.reducer,
     globalObservations: globalObservationsSlice.reducer,
+    codebook: codebookSlice.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

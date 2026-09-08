@@ -1,14 +1,16 @@
+import { Select as AntSelect } from 'antd'
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Card,
   Row,
   Col,
-  Select,
   Checkbox,
   Button,
   Slider,
   InputNumber,
-  Table,
   Tag,
   Space,
   Typography,
@@ -411,7 +413,7 @@ export default function FeatureRankingPage() {
                     style={{ width: 55 }}
                   />
                 </div>
-                <Select
+                <AntSelect
                   size="small"
                   value={rankingMetric}
                   onChange={setRankingMetric}
@@ -432,7 +434,7 @@ export default function FeatureRankingPage() {
                 </Typography.Text>{' '}
                 {topKVariables.map((v) => (
                   <Tag key={v} color="blue">
-                    {v}
+                    <ColumnQuestionTooltip nameOrId={v}>{v}</ColumnQuestionTooltip>
                   </Tag>
                 ))}
               </div>
@@ -499,7 +501,7 @@ export default function FeatureRankingPage() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
                         <span style={{ fontWeight: isTopK ? 600 : 400 }}>
-                          #{item.overallRank} {item.variable}
+                          #{item.overallRank} <ColumnQuestionTooltip nameOrId={item.variable}>{item.variable}</ColumnQuestionTooltip>
                         </span>
                         <span style={{ color: '#666' }}>Borda: {item.bordaScore}</span>
                       </div>
@@ -585,7 +587,7 @@ export default function FeatureRankingPage() {
                         >
                           <title>{`${r.variable}\nBorda Score: ${r.bordaScore} (Rank #${r.overallRank})\nmRMR Redundancy vs Top-${topK}: ${dynRedundancy.toFixed(3)}\nStatic Mean Redundancy: ${r.meanRedundancy.toFixed(3)}`}</title>
                         </circle>
-                        <text
+                        <ColumnQuestionTooltip nameOrId={r.variable} svg><text
                           x={cx + 9}
                           y={cy + 4}
                           fontSize={10}
@@ -593,7 +595,7 @@ export default function FeatureRankingPage() {
                           fill={isHighlighted ? '#cf1322' : '#333'}
                         >
                           {r.variable}
-                        </text>
+                        </text></ColumnQuestionTooltip>
                       </g>
                     )
                   })

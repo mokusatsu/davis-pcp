@@ -1,6 +1,8 @@
+import CanvasColumnQuestions from '../common/CanvasColumnQuestions'
+import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Dropdown, Select, Space, Tag, Typography } from 'antd'
+import { Card, Dropdown, Space, Tag, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
@@ -373,6 +375,7 @@ export default function QQPlotView() {
           <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
             <div
               style={{
+                position: 'relative',
                 border: focused ? 'none' : '1px solid #e5e7eb',
                 borderRadius: 6,
                 background: '#ffffff',
@@ -404,6 +407,8 @@ export default function QQPlotView() {
                 onMouseUp={handleMouseUp}
                 data-testid="qqplot-canvas"
               />
+              <CanvasColumnQuestions canvasRef={canvasRef} width={width} height={height}
+                regions={qqData ? [{ key: qqData.column, x: 6, y: margin.top + plotH / 2 - 130, width: 24, height: 260 }] : []} />
             </div>
           </Dropdown>
 

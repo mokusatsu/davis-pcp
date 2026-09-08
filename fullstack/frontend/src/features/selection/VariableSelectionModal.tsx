@@ -1,5 +1,7 @@
+import { Select as AntSelect } from 'antd'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState, useEffect } from 'react'
-import { Modal, Input, Select, Button, Space, Typography, List, Card, message } from 'antd'
+import { Modal, Input, Button, Space, Typography, List, Card, message } from 'antd'
 import { ArrowRightOutlined, ArrowLeftOutlined, UpOutlined, DownOutlined, BarChartOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -136,7 +138,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
           allowClear
           data-testid="var-manager-search"
         />
-        <Select
+        <AntSelect
           value={typeFilter}
           onChange={(v) => setTypeFilter(v)}
           style={{ width: 140 }}
@@ -184,7 +186,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                   data-testid={`var-available-${item}`}
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <Typography.Text>{item}</Typography.Text>
+                    <Typography.Text><ColumnQuestionTooltip nameOrId={item}>{item}</ColumnQuestionTooltip></Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                       {meta?.semanticType ?? 'variable'}
                     </Typography.Text>
@@ -271,7 +273,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
                     <Typography.Text>
-                      {index + 1}. {item}
+                      {index + 1}. <ColumnQuestionTooltip nameOrId={item}>{item}</ColumnQuestionTooltip>
                     </Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                       {meta?.semanticType ?? 'variable'}

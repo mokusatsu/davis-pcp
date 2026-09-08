@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from ..algorithms.summaries.core import correlation_matrix_df, summarize
 from ..storage.dataset_store import DatasetStore
+from ..domain.codebook_adapter import CodebookAdapter
 
 router = APIRouter()
 store = DatasetStore()
@@ -32,22 +33,29 @@ def summaries(req: SummaryRequest) -> dict:
         wanted = set(req.rowIds)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
     columns = req.columns or [c for c in df.columns if c != "__rowId__"]
+    codebook = store.load_codebook(req.datasetId)
+    schema_revision = (codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1))
+    codebook_dict = codebook
+    for spec in (codebook or {}).get("columns", []):
+        column_types[spec["name"]] = "numeric" if spec.get("scaleType") in ("ordinal", "interval", "ratio") else "categorical"
     row_ids_key = tuple(sorted(req.rowIds)) if req.rowIds is not None else None
     key = (req.datasetId, row_ids_key,
-           tuple(sorted(columns)), req.correlation, meta["fingerprint"])
+           tuple(sorted(columns)), req.correlation, meta["fingerprint"], schema_revision)
     if key in _cache:
         return {**_cache[key], "cacheHit": True}
     subset = df.select([c for c in columns if c in df.columns])
     payload = {
         "datasetId": req.datasetId,
+        "schemaRevision": schema_revision,
         "fingerprint": meta["fingerprint"],
         "rowCount": subset.height,
-        "columns": summarize(subset, {k: v for k, v in column_types.items() if k in set(columns)}),
+        "columns": summarize(subset, {k: v for k, v in column_types.items() if k in set(columns)}, codebook=codebook_dict),
         "evidenceClass": "MODERN-EXTENSION",
     }
     if req.correlation:
         numeric_cols = [c for c in columns if column_types.get(c) == "numeric"]
-        payload["correlation"] = {"columns": numeric_cols, "matrix": correlation_matrix_df(subset, numeric_cols)}
+        normalized = CodebookAdapter(subset, codebook).analysis_frame()
+        payload["correlation"] = {"columns": numeric_cols, "matrix": correlation_matrix_df(normalized, numeric_cols)}
     _cache[key] = payload
     if len(_cache) > 200:
         _cache.pop(next(iter(_cache)))
@@ -104,6 +112,5 @@ def line_mosaic_summary(req: LineMosaicRequest) -> dict:
         row_variables=row_vars,
         target_variable=target_var,
         row_ids=row_ids,
+        codebook=store.load_codebook(dataset_id),
     )
-
-

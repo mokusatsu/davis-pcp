@@ -1,6 +1,9 @@
+import { useQuestionText } from '../common/ColumnQuestionTooltip'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Col, Dropdown, Row, Segmented, Select, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { Card, Col, Dropdown, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { CheckCircleOutlined, DotChartOutlined, SwapOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
@@ -18,6 +21,7 @@ interface FacetPoint { x: number; y: number; id: string }
 
 /** Facet scatter matrix + correlation heatmap; cell click = variable-pair focus. */
 export default function RelationshipsPage() {
+  const questionText = useQuestionText()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const { focused, isTargetActive } = useFocusMode()
@@ -655,7 +659,7 @@ export default function RelationshipsPage() {
                     onMouseEnter={() => dispatch(hoverAction(id))}
                     onMouseLeave={() => dispatch(hoverAction(null))}
                     onClick={(e) => { e.stopPropagation(); dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'ペアプロット点クリック' })) }}>
-                    <title>{`${id}: ${shortName(colX)}=${Number(v).toFixed(2)}, ${shortName(colY)}=${Number(yv).toFixed(2)}`}</title>
+                    <title>{`${id}: ${questionText(colX)}=${Number(v).toFixed(2)}, ${questionText(colY)}=${Number(yv).toFixed(2)}`}</title>
                   </circle>,
                 )
               }
@@ -669,14 +673,14 @@ export default function RelationshipsPage() {
           {/* axis labels */}
           {numericColumns.map((col, i) => (
             <g key={`lbl-${col}`}>
-              <text x={pairLabel + i * pairCell + pairCell / 2} y={14} textAnchor="middle" fontSize={11} fontWeight={600} fill="#52514e">
-                <title>{col}</title>
+              <ColumnQuestionTooltip nameOrId={col} svg><text x={pairLabel + i * pairCell + pairCell / 2} y={14} textAnchor="middle" fontSize={11} fontWeight={600} fill="#52514e">
+
                 {shortName(col, 8)}
-              </text>
-              <text x={12} y={pairLabel + i * pairCell + pairCell / 2} fontSize={11} fontWeight={600} fill="#52514e">
-                <title>{col}</title>
+              </text></ColumnQuestionTooltip>
+              <ColumnQuestionTooltip nameOrId={col} svg><text x={12} y={pairLabel + i * pairCell + pairCell / 2} fontSize={11} fontWeight={600} fill="#52514e">
+
                 {shortName(col, 8)}
-              </text>
+              </text></ColumnQuestionTooltip>
             </g>
           ))}
           {/* drag rect on TOP of everything so it stays visible while brushing */}
@@ -790,7 +794,7 @@ export default function RelationshipsPage() {
             })
           )}
           {corr?.columns.map((col, j) => (
-            <text
+            <ColumnQuestionTooltip nameOrId={col} svg key={`col-${col}`}><text
               key={`col-${col}`}
               x={labelMargin + j * cellSize + cellSize / 2}
               y={labelMargin - 8}
@@ -800,12 +804,12 @@ export default function RelationshipsPage() {
               fill="#374151"
               transform={`rotate(-45 ${labelMargin + j * cellSize + cellSize / 2} ${labelMargin - 8})`}
             >
-              <title>{col}</title>
+
               {shortName(col, 12)}
-            </text>
+            </text></ColumnQuestionTooltip>
           ))}
           {corr?.columns.map((col, i) => (
-            <text
+            <ColumnQuestionTooltip nameOrId={col} svg key={`row-${col}`}><text
               key={`row-${col}`}
               x={labelMargin - 8}
               y={labelMargin + i * cellSize + cellSize / 2 + 4}
@@ -814,9 +818,9 @@ export default function RelationshipsPage() {
               fontWeight={600}
               fill="#374151"
             >
-              <title>{col}</title>
+
               {shortName(col, 12)}
-            </text>
+            </text></ColumnQuestionTooltip>
           ))}
         </svg>
         </div>
@@ -897,7 +901,7 @@ export default function RelationshipsPage() {
                 onMouseLeave={() => dispatch(hoverAction(null))}
                 onClick={(e) => { e.stopPropagation(); dispatch(selectionApplied({ rowIds: [point.id], operation: 'toggle', label: 'ファセット点クリック' })) }}
               >
-                <title>{`${point.id}: ${focusPair?.[0]}=${point.x.toFixed(2)}, ${focusPair?.[1]}=${point.y.toFixed(2)}`}</title>
+                <title>{`${point.id}: ${questionText(focusPair?.[0] ?? '')}=${point.x.toFixed(2)}, ${questionText(focusPair?.[1] ?? '')}=${point.y.toFixed(2)}`}</title>
               </circle>
             )
           })}
@@ -929,14 +933,14 @@ export default function RelationshipsPage() {
                 <text x={plotPadding - 8} y={size - plotPadding - plotWidth + 8} textAnchor="end" fontSize={tickFontSize} fill="#6b7280">{yMax}</text>
 
                 {/* Axis titles */}
-                <text x={plotPadding + plotWidth / 2} y={size - 6} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="#374151">
-                  <title>{focusPair[0]}</title>
+                <ColumnQuestionTooltip nameOrId={focusPair[0]} svg><text x={plotPadding + plotWidth / 2} y={size - 6} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="#374151">
+
                   {truncateText(focusPair[0], 20)}
-                </text>
-                <text x={14} y={size - plotPadding - plotWidth / 2} fontSize={labelFontSize} fontWeight={600} fill="#374151" textAnchor="middle" transform={`rotate(-90 14 ${size - plotPadding - plotWidth / 2})`}>
-                  <title>{focusPair[1]}</title>
+                </text></ColumnQuestionTooltip>
+                <ColumnQuestionTooltip nameOrId={focusPair[1]} svg><text x={14} y={size - plotPadding - plotWidth / 2} fontSize={labelFontSize} fontWeight={600} fill="#374151" textAnchor="middle" transform={`rotate(-90 14 ${size - plotPadding - plotWidth / 2})`}>
+
                   {truncateText(focusPair[1], 20)}
-                </text>
+                </text></ColumnQuestionTooltip>
               </g>
             )
           })()}

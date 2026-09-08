@@ -1,6 +1,8 @@
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Descriptions, Popconfirm, Space, Table, Tag, Typography, notification } from 'antd'
+import { Button, Descriptions, Popconfirm, Space, Tag, Typography, notification } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetLoaded } from '../../app/store'
 import { api, fetchArrowView } from '../../api/client'
@@ -9,6 +11,7 @@ import BinningModal from './BinningModal'
 import OneHotModal from './OneHotModal'
 import ImputationModal from './ImputationModal'
 import AddVariableModal from './AddVariableModal'
+import { editorModalOpened } from './codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 
 interface SummaryColumn {
@@ -163,6 +166,14 @@ export default function OverviewPage() {
             <Space wrap align="center">
               <Button
                 type="primary"
+                style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                data-testid="btn-open-codebook"
+                onClick={() => dispatch(editorModalOpened())}
+              >
+                📋 コードブック編集
+              </Button>
+              <Button
+                type="primary"
                 data-testid="btn-open-imputation"
                 onClick={() => {
                   setImputeTargetCol(null)
@@ -200,7 +211,7 @@ export default function OverviewPage() {
                   const isNumeric = record.schema?.semanticType === 'numeric' || typeof record.min === 'number'
                   return (
                     <Space>
-                      <Typography.Text strong>{name}</Typography.Text>
+                      <Typography.Text strong><ColumnQuestionTooltip nameOrId={name}>{name}</ColumnQuestionTooltip></Typography.Text>
                       {record.schema && (
                         <Tag color={isNumeric ? 'blue' : 'green'} style={{ fontSize: 10 }}>
                           {record.schema.semanticType}
@@ -270,7 +281,7 @@ export default function OverviewPage() {
                         </Button>
                       )}
                       <Popconfirm
-                        title={`列 '${record.name}' を削除しますか？`}
+                        title={<>列「<ColumnQuestionText nameOrId={record.name} />」を削除しますか？</>}
                         okText="削除"
                         cancelText="キャンセル"
                         onConfirm={() => handleDeleteColumn(record.name)}

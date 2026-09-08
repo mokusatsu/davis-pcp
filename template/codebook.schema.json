@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DAVIS-PCP コードブック",
+  "description": "エクスポートされたコードブックと列名または列IDで照合する部分辞書の作成用スキーマ。読込時のdatasetIdとschemaRevisionは取込先が管理する。",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["columns"],
+      "properties": {
+        "$schema": { "type": "string", "description": "エディタでの検証用スキーマ参照。データ属性ではない。" },
+        "datasetId": { "type": "string", "minLength": 1, "description": "出力元データセットID。取込先の切替には使わない。" },
+        "schemaRevision": { "type": "integer", "minimum": 1, "description": "出力時のリビジョン。取込先のリビジョンを上書きしない。" },
+        "columns": { "$ref": "#/$defs/columns" }
+      },
+      "additionalProperties": false
+    },
+    { "$ref": "#/$defs/columns" }
+  ],
+  "$defs": {
+    "columns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/column" }
+    },
+    "codes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "column": {
+      "type": "object",
+      "description": "columnId優先、次にnameで照合。省略属性は保持し、指定した辞書・配列は全体を置換する。",
+      "anyOf": [ { "required": ["name"] }, { "required": ["columnId"] } ],
+      "properties": {
+        "columnId": { "type": "string", "minLength": 1, "description": "既存の列ID。別データセットへの再利用時は省略を推奨。" },
+        "name": { "type": "string", "minLength": 1, "description": "既存データの列名。大文字・小文字を含めて一致させる。" },
+        "label": { "type": "string", "description": "質問文または変数表示名。" },
+        "scaleType": { "type": "string", "enum": ["nominal", "ordinal", "interval", "ratio", "text", "id"] },
+        "role": { "type": "string", "enum": ["question", "attribute", "weight", "id", "other"] },
+        "valueLabels": { "$ref": "#/$defs/labels", "description": "コード文字列から表示ラベルへの対応。" },
+        "categoryOrder": { "$ref": "#/$defs/codes", "description": "欠損を除いた有効カテゴリの意味上の順序。未観測カテゴリも含める。" },
+        "missingCodes": { "$ref": "#/$defs/codes", "description": "欠損として除外するコード文字列。" },
+        "missingReasons": { "$ref": "#/$defs/labels", "description": "missingCodesに含まれるコードの理由。非該当と無回答を指定する。" },
+        "isReversed": { "type": "boolean", "description": "軸方向と分析上の得点方向を逆転する。" },
+        "multiResponseGroup": { "type": ["string", "null"], "description": "複数回答設問のグループ名。JSON読込でnullを指定しても既存値は解除されない。" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

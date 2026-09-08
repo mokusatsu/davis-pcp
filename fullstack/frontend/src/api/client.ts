@@ -78,20 +78,20 @@ export async function fetchArrowView(datasetId: string, columns?: string[], rowI
   const table = tableFromIPC(await response.arrayBuffer())
   const result: Record<string, unknown[]> = {}
   for (const column of table.schema.fields) {
-    result[column.name] = Array.from(table.getChild(column.name)?.toArray() ?? [])
+    result[column.name] = Array.from(table.getChild(column.name) ?? [])
   }
   return result
 }
 
-export async function downloadExport(datasetId: string, scope: 'selected' | 'active' | 'all', format: 'csv' | 'parquet' | 'arrow', rowIds?: string[]) {
+export async function downloadExport(datasetId: string, scope: 'selected' | 'active' | 'all', format: 'csv' | 'parquet' | 'arrow' | 'xlsx', rowIds?: string[], useValueLabels = false) {
   if (IS_STATIC_BUILD) {
-    return pyodideClient.downloadExport(datasetId, scope, format, rowIds)
+    return pyodideClient.downloadExport(datasetId, scope, format, rowIds, useValueLabels)
   }
 
   const response = await fetch(`${BASE}/exports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ datasetId, scope, format, rowIds }),
+    body: JSON.stringify({ datasetId, scope, format, rowIds, useValueLabels }),
   })
   if (!response.ok) throw new Error('export failed')
   const blob = await response.blob()
@@ -101,6 +101,60 @@ export async function downloadExport(datasetId: string, scope: 'selected' | 'act
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = match?.[1] ?? `export.${format}`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export interface CodebookColumn {
+  columnId: string
+  name: string
+  label: string
+  scaleType: 'nominal' | 'ordinal' | 'interval' | 'ratio' | 'text' | 'id'
+  role: 'question' | 'attribute' | 'weight' | 'id' | 'other'
+  valueLabels: Record<string, string>
+  categoryOrder: string[]
+  missingCodes: string[]
+  missingReasons: Record<string, string>
+  isReversed: boolean
+  multiResponseGroup: string | null
+}
+
+export interface CodebookResponse {
+  datasetId: string
+  schemaRevision: number
+  columns: CodebookColumn[]
+}
+
+export async function getCodebook(datasetId: string): Promise<CodebookResponse> {
+  return api.get<CodebookResponse>(`/datasets/${datasetId}/codebook`)
+}
+
+export async function updateCodebook(
+  datasetId: string,
+  columns: Partial<CodebookColumn>[]
+): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number }> {
+  return api.put(`/datasets/${datasetId}/codebook`, { columns })
+}
+
+export async function importCodebook(
+  datasetId: string,
+  file: File
+): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number }> {
+  return api.upload(`/datasets/${datasetId}/codebook/import`, file)
+}
+
+export async function downloadCodebookExport(datasetId: string, format: 'csv' | 'json' = 'csv'): Promise<void> {
+  const response = await fetch(`${BASE}/datasets/${datasetId}/codebook/export?format=${format}`)
+  if (!response.ok) throw new Error('Codebook export failed')
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = match?.[1] ?? `codebook_${datasetId}.${format}`
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()

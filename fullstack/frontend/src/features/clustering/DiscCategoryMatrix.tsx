@@ -1,5 +1,7 @@
+import { Select as AntSelect } from 'antd'
+import Select from '../common/ColumnSelect'
 import { useMemo, useState } from 'react'
-import { Alert, Select, Space, Typography } from 'antd'
+import { Alert, Space, Typography } from 'antd'
 import { FocusEnterButton, useFocusMode } from '../common/FocusMode'
 
 interface DiscCategoryMatrixProps {
@@ -62,7 +64,7 @@ export default function DiscCategoryMatrix({
         </Space>
         <Space wrap align="center">
           <Typography.Text style={{ fontSize: 13 }}>クラスタ:</Typography.Text>
-          <Select
+          <AntSelect
             data-testid="disc-cluster-select"
             value={selectedCluster}
             onChange={setSelectedCluster}

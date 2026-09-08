@@ -1,5 +1,7 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { type FC } from 'react'
-import { Card, Radio, Select, Space, Tag, Typography } from 'antd'
+import { Card, Radio, Space, Tag, Typography } from 'antd'
 import type { LineMosaicTarget } from './types'
 
 interface MosaicControlPanelProps {
@@ -95,7 +97,7 @@ export const MosaicControlPanel: FC<MosaicControlPanelProps> = ({
         {targetInfo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             <Typography.Text style={{ fontSize: 12, color: '#666' }}>
-              {targetInfo.name}:
+              <ColumnQuestionTooltip nameOrId={targetInfo.name}>{targetInfo.name}</ColumnQuestionTooltip>:
             </Typography.Text>
             <Space size={4}>
               {targetInfo.categories.map((cat, idx) => (

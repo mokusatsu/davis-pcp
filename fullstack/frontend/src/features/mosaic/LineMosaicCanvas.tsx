@@ -1,3 +1,4 @@
+import { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Tooltip } from 'antd'
@@ -318,7 +319,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                       <div>度数: <strong>{cell.totalCount}</strong> 行 ({(lineLengthRatio * 100).toFixed(1)}%)</div>
                       {target && (
                         <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px dashed #666' }}>
-                          <div>{target.name} 分布:</div>
+                          <div><ColumnQuestionText nameOrId={target.name} /> 分布:</div>
                           {target.categories.map((cat) => {
                             const tc = cell.targetCounts[cat] || 0
                             const pct = cell.totalCount > 0 ? ((tc / cell.totalCount) * 100).toFixed(1) : '0.0'

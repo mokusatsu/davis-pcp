@@ -1,8 +1,9 @@
+import { l1Index, useL1ColorDomains } from './useL1ColorDomain'
 import { useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../app/store'
 import { useColumnarData } from '../features/pcp/useDatasetColumns'
-import { composedColor, entityColor, vizTheme, SELECTION, CONTEXT_LINE } from './viz'
+import { composedColor, l1Color, vizTheme, SELECTION, CONTEXT_LINE } from './viz'
 
 export interface RowColorResolver {
   selectedSet: Set<string>
@@ -21,8 +22,10 @@ export function useRowColorResolver(): RowColorResolver {
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
   const data = useColumnarData(selection.datasetId)
-  const theme = vizTheme(false)
+  const theme = useMemo(() => vizTheme(false), [])
 
+  const domains = useL1ColorDomains(data)
+  const domain = domains.find(d => d.key === pcp.colorBy)
   const colorKey = pcp.colorBy
   const l2Enabled = selection.l2ColorEnabled
 
@@ -36,12 +39,7 @@ export function useRowColorResolver(): RowColorResolver {
       })
     }
 
-    const catMap = new Map<string, number>()
     const values = colorKey && data ? data.columns[colorKey] ?? [] : []
-    if (colorKey && data) {
-      const categories = data.categories[colorKey] ?? []
-      categories.forEach((cat, i) => catMap.set(cat, i))
-    }
 
     const selectedSet = new Set(selection.selectedRowIds)
 
@@ -53,10 +51,9 @@ export function useRowColorResolver(): RowColorResolver {
 
       let l1: string | null = null
       if (colorKey && data && rIndex !== undefined) {
-        const val = String(values[rIndex] ?? '')
-        const catIndex = catMap.get(val) ?? -1
-        if (catIndex >= 0) {
-          l1 = entityColor(theme, catIndex)
+        const catIndex = l1Index(domain, values[rIndex])
+        if (catIndex !== null) {
+          l1 = l1Color(theme, catIndex)
         }
       }
 
@@ -74,5 +71,5 @@ export function useRowColorResolver(): RowColorResolver {
       selectionColor: SELECTION,
       contextColor: CONTEXT_LINE,
     }
-  }, [selection.datasetId, selection.selectedRowIds, selection.groups, selection.l2ColorEnabled, pcp.colorBy, data, colorKey, l2Enabled, theme])
+  }, [selection.datasetId, selection.selectedRowIds, selection.groups, selection.l2ColorEnabled, pcp.colorBy, data, colorKey, l2Enabled, theme, domain])
 }

@@ -1,8 +1,10 @@
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Card, Row, Col, Typography, Space, Button, Slider, Table, Tag,
+  Card, Row, Col, Typography, Space, Button, Slider, Tag,
   Segmented, Statistic, Empty, Spin,
 } from 'antd'
 import {
@@ -306,7 +308,9 @@ export default function SurpriseAssociationView() {
                                 stroke="#ffffff"
                                 strokeWidth={3}
                               >
-                                {p.x.name} × {p.y.name}
+                                <ColumnQuestionTooltip nameOrId={p.x.name} svg><tspan>{p.x.name}</tspan></ColumnQuestionTooltip>
+                                <tspan> × </tspan>
+                                <ColumnQuestionTooltip nameOrId={p.y.name} svg><tspan>{p.y.name}</tspan></ColumnQuestionTooltip>
                               </text>
                             )}
                           </g>
@@ -345,7 +349,7 @@ export default function SurpriseAssociationView() {
                         <th />
                         {result.pair_matrix.columns.map((col) => (
                           <th key={col} style={{ padding: '4px 6px', transform: 'rotate(-30deg)', whiteSpace: 'nowrap' }}>
-                            {col}
+                            <ColumnQuestionTooltip nameOrId={col}>{col}</ColumnQuestionTooltip>
                           </th>
                         ))}
                       </tr>
@@ -353,7 +357,7 @@ export default function SurpriseAssociationView() {
                     <tbody>
                       {result.pair_matrix.columns.map((rowCol, rIdx) => (
                         <tr key={rowCol}>
-                          <td style={{ padding: '4px 8px', fontWeight: 500, whiteSpace: 'nowrap' }}>{rowCol}</td>
+                          <td style={{ padding: '4px 8px', fontWeight: 500, whiteSpace: 'nowrap' }}><ColumnQuestionTooltip nameOrId={rowCol}>{rowCol}</ColumnQuestionTooltip></td>
                           {result.pair_matrix.columns.map((colCol, cIdx) => {
                             const val = result.pair_matrix.matrix[rIdx][cIdx]
                             // Heatmap color from -1 (blue) to 0 (white) to 1 (red)
@@ -432,8 +436,12 @@ export default function SurpriseAssociationView() {
                   title={
                     <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
                       <Typography.Text strong style={{ fontSize: 15, wordBreak: 'break-all', lineHeight: 1.3 }}>
-                        {currentPair.x.name} × {currentPair.y.name}
+                        <ColumnQuestionTooltip nameOrId={currentPair.x.name}>{currentPair.x.name}</ColumnQuestionTooltip> × <ColumnQuestionTooltip nameOrId={currentPair.y.name}>{currentPair.y.name}</ColumnQuestionTooltip>
                       </Typography.Text>
+                      <div style={{ fontWeight: 400, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.5 }}>
+                        <div><ColumnQuestionText nameOrId={currentPair.x.name} /></div>
+                        <div><ColumnQuestionText nameOrId={currentPair.y.name} /></div>
+                      </div>
                       <Space wrap size={8}>
                         <Button
                           type="primary"

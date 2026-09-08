@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useEffect, useState } from 'react'
 import {
   Alert,
@@ -212,7 +213,7 @@ export default function AddVariableModal({
                     style={{ cursor: 'pointer', margin: 0, fontSize: 11 }}
                     onClick={() => appendToExpr(c)}
                   >
-                    {c}
+                    <ColumnQuestionTooltip nameOrId={c}>{c}</ColumnQuestionTooltip>
                   </Tag>
                 ))}
               </div>

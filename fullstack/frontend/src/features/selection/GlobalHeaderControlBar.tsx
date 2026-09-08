@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState, useEffect } from 'react'
 import {
   Button,
@@ -163,7 +164,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
               data-testid={`var-checkbox-${varName}`}
             >
               <span style={{ fontSize: 12 }}>
-                {varName}{' '}
+                <ColumnQuestionTooltip nameOrId={varName}>{varName}</ColumnQuestionTooltip>{' '}
                 <span style={{ color: '#888', fontSize: 11 }}>
                   ({meta?.semanticType ?? 'var'})
                 </span>
@@ -189,7 +190,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
     </div>
   )
 
-  const activeVarPreview = globalVars.activeVariableIds.slice(0, 2).join(', ') + (globalVars.activeVariableIds.length > 2 ? '...' : '')
+  const activeVarPreview = globalVars.activeVariableIds.slice(0, 2)
 
   return (
     <div
@@ -222,7 +223,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
             data-testid="global-var-btn"
             style={{ fontWeight: 500 }}
           >
-            <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 列選択中 {activeVarPreview ? `(${activeVarPreview})` : ''} <DownOutlined style={{ fontSize: 10 }} /> ]
+            <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 列選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} <DownOutlined style={{ fontSize: 10 }} /> ]
           </Button>
         </Popover>
       </div>

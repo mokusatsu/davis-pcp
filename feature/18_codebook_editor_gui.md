@@ -253,8 +253,7 @@ DAVIS-FEAT-017で定義されたコードブック（データ辞書）データ
 リクエスト (JSON):
 ```json
 {
-  "schemaRevision": "rev-002",
-  "variables": [
+  "columns": [
     {
       "columnId": "col-001",
       "name": "Q1_satisfaction",
@@ -283,7 +282,7 @@ DAVIS-FEAT-017で定義されたコードブック（データ辞書）データ
 {
   "status": "success",
   "datasetId": "ds-12345",
-  "schemaRevision": "rev-003",
+  "schemaRevision": 3,
   "updatedColumns": 1
 }
 ```
@@ -385,11 +384,11 @@ export function parseQuickValueLabels(text: string, startNumber: number = 1): Pa
 ```typescript
 interface CodebookState {
   datasetId: string | null;
-  schemaRevision: string;
-  variables: CodebookVariable[];
-  draftVariables: CodebookVariable[]; // 編集中の一時コピー
-  selectedColumnIds: string[];        // 左ペインまたはグリッドで選択中の変数ID
-  activeColumnId: string | null;      // 詳細編集中の変数ID
+  schemaRevision: number;
+  columns: CodebookColumn[];
+  draftColumns: CodebookColumn[];     // 編集中の一時コピー
+  selectedColumnIds: string[];        // 左ペインまたはグリッドで選択中の列ID
+  activeColumnId: string | null;      // 詳細編集中の列ID
   viewMode: 'detail' | 'grid';        // 詳細フォーム or グリッド
   isEditorOpen: boolean;
   isBulkLabelModalOpen: boolean;
@@ -443,7 +442,7 @@ interface CodebookState {
 
 - [ ] **Step 1**: `frontend/src/features/dataset/codebookParsers.ts` を作成し、`parseBulkLabels` および `parseQuickValueLabels` のパース関数とユニットテストを実装。
 - [ ] **Step 2**: 調査票定番プリセット（5件法、4件法、賛否、頻度など）の定義定数を `codebookPresets.ts` に作成。
-- [ ] **Step 3**: `frontend/src/features/dataset/codebookSlice.ts` に `draftVariables`, `viewMode`, 一括更新用アクション (`bulkUpdateLabels`, `applyPresetToSelected`) を追加。
+- [ ] **Step 3**: `frontend/src/features/dataset/codebookSlice.ts` に `draftColumns`, `viewMode`, 一括更新用アクション (`bulkUpdateLabels`, `applyPresetToSelected`) を追加。
 - [ ] **Step 4**: `frontend/src/features/dataset/QuickValueLabelsPopover.tsx` を実装（テキスト流し込み＋プリセット選択UI）。
 - [ ] **Step 5**: `frontend/src/features/dataset/BulkLabelPasteModal.tsx` を実装（貼り付け入力、アライメント設定、差分プレビューテーブル）。
 - [ ] **Step 6**: `frontend/src/features/dataset/CodebookGridView.tsx` を実装（Ant Design Table をベースとしたインライン編集・セル選択・ペーストハンドラ）。

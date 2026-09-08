@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Empty, Progress, Space, Spin, Typography } from 'antd'
@@ -241,7 +242,7 @@ export default function LineMosaicPage() {
                 {mosaicData?.target && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #f0f0f0' }}>
                     <Typography.Text strong style={{ fontSize: 12 }}>
-                      {mosaicData.target.name} 比率:
+                      <ColumnQuestionTooltip nameOrId={mosaicData.target.name}>{mosaicData.target.name}</ColumnQuestionTooltip> 比率:
                     </Typography.Text>
                     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {mosaicData.target.categories.map((cat, idx) => {

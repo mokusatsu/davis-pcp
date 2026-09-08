@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { type FC } from 'react'
 import { Card, Typography } from 'antd'
 
@@ -59,7 +60,7 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
               {/* Tip dot */}
               <circle cx={endX} cy={endY} r={3} fill={color} />
               {/* Label */}
-              <text
+              <ColumnQuestionTooltip nameOrId={col} svg><text
                 x={endX + (aVal >= 0 ? 4 : -4)}
                 y={endY + (bVal >= 0 ? -4 : 10)}
                 fill={color}
@@ -68,7 +69,7 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
                 textAnchor={aVal >= 0 ? 'start' : 'end'}
               >
                 {col.length > 10 ? `${col.slice(0, 8)}…` : col}
-              </text>
+              </text></ColumnQuestionTooltip>
             </g>
           )
         })}

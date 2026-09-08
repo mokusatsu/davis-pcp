@@ -41,6 +41,8 @@ def mine_subgroups(req: SubgroupMiningRequest) -> dict[str, Any]:
     df = store.get_dataframe(dataset_id)
     meta = store.get_meta(dataset_id)
     schema = meta.get("schema", [])
+    codebook = store.load_codebook(dataset_id)
+    columns_meta = codebook.get("columns", []) if codebook else schema
 
     attr_cols = req.attributeCols if req.attribute_cols is None else req.attribute_cols
     q_cols = req.questionCols if req.question_cols is None else req.question_cols
@@ -52,14 +54,14 @@ def mine_subgroups(req: SubgroupMiningRequest) -> dict[str, Any]:
         df=df,
         attribute_cols=attr_cols,
         question_cols=q_cols,
-        column_meta=schema,
+        column_meta=columns_meta,
         alpha=req.alpha,
         min_group_size=min_size if min_size is not None else 30,
         min_pct_diff=min_pct if min_pct is not None else 3.0,
         max_subgroup_levels=max_levels if max_levels is not None else 8,
         weights=req.weights,
     )
-    return result
+    return {**result, "schemaRevision": meta.get("schemaRevision", 1), "fingerprint": meta.get("fingerprint")}
 
 
 class ModernSubgroupRequest(BaseModel):
@@ -99,6 +101,8 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
     df = store.get_dataframe(dataset_id)
     meta = store.get_meta(dataset_id)
     schema = meta.get("schema", [])
+    codebook = store.load_codebook(dataset_id)
+    columns_meta = codebook.get("columns", []) if codebook else schema
 
     # Filter by selected row IDs if provided (active population connection contract)
     filter_ids = req.selectedRowIds if req.selected_row_ids is None else req.selected_row_ids
@@ -134,7 +138,7 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
             mode=req.mode,  # type: ignore
             target_binary_category=t_binary,
             attribute_cols=attr_cols,
-            column_meta=schema,
+            column_meta=columns_meta,
             max_depth=m_depth if m_depth is not None else 2,
             beam_width=b_width if b_width is not None else 30,
             min_group_size=m_size if m_size is not None else 30,
@@ -143,7 +147,7 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
             overlap_threshold=overlap if overlap is not None else 0.8,
             min_effect_diff=effect_diff,
         )
-        return result
+        return {**result, "schemaRevision": meta.get("schemaRevision", 1), "fingerprint": meta.get("fingerprint")}
     except BizError:
         raise
     except Exception as e:
@@ -218,5 +222,3 @@ def run_feature_ranking(req: FeatureRankingRequest) -> dict[str, Any]:
         raise BizError("FEATURE_RANKING_ERROR", str(e), status_code=400)
     except Exception as e:
         raise BizError("FEATURE_RANKING_FAILED", f"特徴量ランキング計算に失敗しました: {str(e)}", status_code=500)
-
-

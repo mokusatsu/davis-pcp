@@ -1,6 +1,9 @@
+import { useQuestionText } from '../common/ColumnQuestionTooltip'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Dropdown, Radio, Select, Space, Spin, Typography } from 'antd'
+import { Dropdown, Radio, Space, Spin, Typography } from 'antd'
 import { LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
@@ -45,6 +48,7 @@ interface FedfResponse {
 }
 
 export default function FedfPage() {
+  const questionText = useQuestionText()
   const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -306,15 +310,15 @@ export default function FedfPage() {
                   return (
                     <g key={col} data-testid={`fedf-axis-${idx}`}>
                       {/* Column Title and Presets */}
-                      <text
+                      <ColumnQuestionTooltip nameOrId={col} svg><text
                         x={xBase + AXIS_WIDTH / 2}
                         y={PLOT_TOP - 40}
                         textAnchor="middle"
                         style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                       >
-                        <title>{col}</title>
+
                         {truncateText(col, 14)}
-                      </text>
+                      </text></ColumnQuestionTooltip>
 
                       {/* Quick Quantile Presets */}
                       <g transform={`translate(${xBase - 15}, ${PLOT_TOP - 16})`}>
@@ -492,7 +496,7 @@ export default function FedfPage() {
                   <g transform={`translate(${MARGIN_LEFT + 20}, ${PLOT_TOP + PLOT_HEIGHT + 45})`}>
                     <rect x={-8} y={-14} width={340} height={22} rx={4} fill="#1f2937" opacity={0.85} />
                     <text x={0} y={1} style={{ fontSize: 11, fill: '#ffffff' }}>
-                      ID: {hoveredPoint.id} | {hoveredPoint.col}: {hoveredPoint.val.toFixed(3)} | 累積分位: {(hoveredPoint.q * 100).toFixed(1)}%
+                      ID: {hoveredPoint.id} | {questionText(hoveredPoint.col)}: {hoveredPoint.val.toFixed(3)} | 累積分位: {(hoveredPoint.q * 100).toFixed(1)}%
                     </text>
                   </g>
                 )}

@@ -67,3 +67,63 @@ def new_id(prefix: str) -> str:
 
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def generate_initial_codebook(dataset_id: str, schemas: list[Any]) -> dict[str, Any]:
+    import re
+    from ..domain.codebook import Codebook, CodebookColumn, RoleType, ScaleType
+
+    columns: list[CodebookColumn] = []
+    for s in schemas:
+        s_dict = s.model_dump() if hasattr(s, "model_dump") else (s if isinstance(s, dict) else {})
+        name = s_dict.get("name", "")
+        if name == "__rowId__":
+            continue
+        col_id = s_dict.get("columnId") or new_id("col")
+        semantic = s_dict.get("semanticType", "numeric")
+        role_val = s_dict.get("role", "")
+        if hasattr(role_val, "value"):
+            role_val = role_val.value
+        cats = s_dict.get("categories") or []
+
+        # Scale type inference
+        if role_val == "row_id" or semantic == "identifier" or name.lower() == "id":
+            scale = ScaleType.ID
+        elif semantic == "categorical":
+            scale = ScaleType.NOMINAL
+        elif semantic == "numeric":
+            scale = ScaleType.RATIO
+        elif semantic == "label":
+            scale = ScaleType.TEXT
+        else:
+            scale = ScaleType.NOMINAL
+
+        # Role inference
+        if scale == ScaleType.ID or role_val == "row_id":
+            role = RoleType.ID
+        elif re.match(r"^(?:q|sq|item|v)\d+", name, re.IGNORECASE):
+            role = RoleType.QUESTION
+        else:
+            role = RoleType.ATTRIBUTE
+
+        # Value labels & categories
+        val_labels = {str(c): str(c) for c in cats} if cats else {}
+        cat_order = [str(c) for c in cats] if cats else []
+
+        col = CodebookColumn(
+            columnId=col_id,
+            name=name,
+            label=name,
+            scaleType=scale,
+            role=role,
+            valueLabels=val_labels,
+            categoryOrder=cat_order,
+            missingCodes=[],
+            missingReasons={},
+            isReversed=False,
+            multiResponseGroup=None,
+        )
+        columns.append(col)
+
+    cb = Codebook(datasetId=dataset_id, schemaRevision=1, columns=columns)
+    return cb.model_dump(mode="json")

@@ -8,6 +8,8 @@ import { useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
 import { graphEngine } from '../../engine/graphClient'
 import { useColumnarData, type ColumnarData, type SchemaColumn } from './useDatasetColumns'
+import type { CodebookColumn } from '../../api/client'
+import { normalizeCode } from '../dataset/useCodebookColumn'
 
 export interface PcpAxis {
   key: string
@@ -16,18 +18,29 @@ export interface PcpAxis {
   min: number
   max: number
   categories?: string[]
+  valueLabels?: Record<string, string>
+  missingCodes?: string[]
+  isReversed?: boolean
 }
 
-export function buildAxes(data: ColumnarData): PcpAxis[] {
+export function buildAxes(data: ColumnarData, columns: CodebookColumn[] = []): PcpAxis[] {
+  const specs = new Map(columns.map(c => [c.name, c]))
   return data.schema.map((column: SchemaColumn) => {
-    if (column.semanticType === 'numeric') {
-      const mm = data.minMax[column.name] ?? { min: 0, max: 0 }
-      return { key: column.name, label: column.name, type: 'numeric' as const, min: mm.min, max: mm.max }
+    const spec = specs.get(column.name)
+    const missing = new Set(spec?.missingCodes ?? [])
+    const raw = data.columns[column.name] ?? []
+    const valid = raw.filter(v => normalizeCode(v) !== null && !missing.has(normalizeCode(v)!))
+    const shared = { key: column.name, label: spec?.label || column.name, valueLabels: spec?.valueLabels, missingCodes: spec?.missingCodes, isReversed: spec?.isReversed }
+    if (spec ? ['interval', 'ratio'].includes(spec.scaleType) : column.semanticType === 'numeric') {
+      let min = Infinity, max = -Infinity
+      for (const v of valid) { const n = Number(v); if (Number.isFinite(n)) { min = Math.min(min, n); max = Math.max(max, n) } }
+      return { ...shared, type: 'numeric' as const, min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max }
     }
-    const categories = data.categories[column.name] ?? []
+    const defined = spec?.categoryOrder?.length ? spec.categoryOrder : Object.keys(spec?.valueLabels ?? {})
+    const observed = [...new Set(valid.map(v => normalizeCode(v)!))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    const categories = [...new Set([...defined, ...observed])].filter(c => !missing.has(c))
     return {
-      key: column.name,
-      label: column.name,
+      ...shared,
       type: 'categorical' as const,
       min: 0,
       max: Math.max(0, categories.length - 1),
@@ -36,9 +49,6 @@ export function buildAxes(data: ColumnarData): PcpAxis[] {
   })
 }
 
-export function l1CandidatesOf(axes: PcpAxis[]): PcpAxis[] {
-  return axes.filter((a) => a.type === 'categorical' && (a.categories?.length ?? 0) >= 2 && (a.categories?.length ?? 0) <= 15)
-}
 
 import { selectEffectiveRowIds } from '../../app/store'
 
@@ -75,7 +85,7 @@ export interface GeometryState {
  *  top, and the K-Medoids distance treats one-sided NaN as a mismatch
  *  penalty. (Coercing missing categories to t=0 instead made 88%-sparse
  *  survey rows nearly identical and collapsed all clusters into one.) */
-function buildValues(
+export function buildValues(
   data: ColumnarData,
   axes: PcpAxis[],
   rowIndexes: number[],
@@ -96,6 +106,8 @@ function buildValues(
     rowIds[r] = data.rowIds[srcIndex]
     for (let a = 0; a < nAxes; a += 1) {
       const axis = axes[a]
+      const code = normalizeCode(data.columns[axis.key]?.[srcIndex])
+      if (code === null || axis.missingCodes?.includes(code)) { values[r * nAxes + a] = NaN; continue }
       if (axis.type === 'categorical') {
         const catMap = catMaps[a]!
         const raw = data.columns[axis.key]?.[srcIndex]
@@ -109,7 +121,8 @@ function buildValues(
           ? NaN
           : cats.length <= 1 ? 0.5 : idx / (cats.length - 1)
       } else {
-        values[r * nAxes + a] = data.numeric[axis.key]?.[srcIndex] ?? NaN
+        const value = Number(data.columns[axis.key]?.[srcIndex])
+        values[r * nAxes + a] = Number.isFinite(value) ? value : NaN
       }
     }
   }
@@ -125,7 +138,7 @@ export function usePcpGeometry(params: {
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
   const data = useColumnarData(selection.datasetId)
-  const [state, setState] = useState<GeometryState | null>(null)
+  const [state, setState] = useState<{ geometry: GeometryState; axes: PcpAxis[]; data: typeof data; rows: number[] } | null>(null)
   const seqRef = useRef(0)
 
   useEffect(() => {
@@ -151,7 +164,7 @@ export function usePcpGeometry(params: {
         height: effHeight,
         orientation: pcp.orientation,
         axes: orderedVisibleAxes.map((a) => ({ key: a.key, min: a.min, max: a.max, isCategorical: a.type === 'categorical' })),
-        reversed: pcp.reversed,
+        reversed: Object.fromEntries(orderedVisibleAxes.map(a => [a.key, Boolean(a.isReversed) !== Boolean(pcp.reversed[a.key])])),
         jitterEnabled: pcp.jitterEnabled,
         jitterMode: pcp.jitterMode,
         jitterAmount: pcp.jitterAmount,
@@ -160,13 +173,14 @@ export function usePcpGeometry(params: {
         values,
       })
       if (!cancelled && seq === seqRef.current) {
-        setState({ ...result, nRows, nAxes, rowIds })
+        setState({ geometry: { ...result, nRows, nAxes, rowIds }, axes: orderedVisibleAxes, data, rows: activeRowIndexes })
       }
     })().catch(() => undefined)
     return () => { cancelled = true }
   }, [data, params.width, params.height, params.orderedVisibleAxes, params.activeRowIndexes, pcp.orientation, pcp.reversed, pcp.jitterEnabled, pcp.jitterMode, pcp.jitterAmount, pcp.jitterSeed])
 
-  return state
+  // Axis changes must not pair the previous coordinates with the new labels.
+  return state?.axes === params.orderedVisibleAxes && state.data === data && state.rows === params.activeRowIndexes ? state.geometry : null
 }
 
 // ---------------------------------------------------------------------------
@@ -227,15 +241,15 @@ export function usePcpSimplification(params: {
 
   const cacheKey = useMemo(() => {
     if (!enabled || !data) return null
-    const axisKeys = params.orderedVisibleAxes.map((a) => a.key).join(',')
+    const axisKeys = JSON.stringify(params.orderedVisibleAxes)
     // Axes must belong to THIS dataset: a switch race can pair new axes with
     // the previous dataset object, and every columns[key] lookup would miss
     // (all-NaN values → one degenerate cluster → cached forever).
     const axesMatchDataset = params.orderedVisibleAxes.every((a) => a.key in data.columns)
     if (!axesMatchDataset) return null
-    const rowFingerprint = fnv1a(selection.activeRowIds.join('|'))
-    return `${selection.datasetId}|${axisKeys}|${SIMPLIFY_TARGET_K}|${KMEDOIDS_SEED}|${rowFingerprint}`
-  }, [enabled, data, params.orderedVisibleAxes, selection.datasetId, selection.activeRowIds])
+    const rowFingerprint = fnv1a(params.activeRowIndexes.join('|'))
+    return `${selection.datasetId}|${selection.revision}|${axisKeys}|${SIMPLIFY_TARGET_K}|${KMEDOIDS_SEED}|${rowFingerprint}`
+  }, [enabled, data, params.orderedVisibleAxes, params.activeRowIndexes, selection.datasetId, selection.revision])
 
   useEffect(() => {
     if (!enabled || !cacheKey || !data) {

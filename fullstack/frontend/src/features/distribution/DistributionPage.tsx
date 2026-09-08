@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
+import L1Legend from '../common/L1Legend'
+import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Card, Col, Dropdown, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, SlidersOutlined, TableOutlined } from '@ant-design/icons'
@@ -6,13 +9,16 @@ import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
-import { vizTheme, entityColor, signedNoiseViz } from '../../theme/viz'
+import { vizTheme, l1Color, signedNoiseViz } from '../../theme/viz'
 import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import QQPlotView from '../qqplot/QQPlotView'
 import EmptyStatePanel from '../common/EmptyStatePanel'
+import { api } from '../../api/client'
+import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
+import QuestionCard from './QuestionCard'
 
 interface BoxStats {
   low: number
@@ -24,6 +30,7 @@ interface BoxStats {
 
 interface GroupRows {
   key: string
+  code: string | null
   color: string
   stats: BoxStats | null
   rows: { id: string; v: number; index: number }[]
@@ -50,10 +57,38 @@ export default function DistributionPage() {
   const focused = useFocusMode().focused
   const svgRef = useRef<SVGSVGElement>(null)
   const [brushOp] = useBrushOp()
-  const [viewMode, setViewMode] = useState<'boxplot' | 'qqplot'>('boxplot')
+  const { getColumn, isLoading: isCodebookLoading, schemaRevision } = useCodebook()
+  const [viewMode, setViewMode] = useState<'cards' | 'boxplot' | 'qqplot'>('cards')
+  const [cardsRoleFilter, setCardsRoleFilter] = useState<'all' | 'question' | 'attribute'>('all')
+  const [summaryData, setSummaryData] = useState<Record<string, any> | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [loadingSummaries, setLoadingSummaries] = useState<boolean>(false)
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal')
   const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const dragRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+
+  useEffect(() => {
+    if (viewMode !== 'cards' || !selection.datasetId) return
+    let cancelled = false
+    setSummaryData(null)
+    setSummaryError(null)
+    setLoadingSummaries(true)
+    api.post<{ columns: Record<string, any> }>('/summaries', {
+      datasetId: selection.datasetId,
+      rowIds: effectiveRowIds,
+    }).then((res) => {
+      if (!cancelled && res?.columns) {
+        setSummaryData(res.columns)
+      }
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setSummaryError(error instanceof Error ? error.message : '要約集計データの取得に失敗しました。')
+      }
+    }).finally(() => {
+      if (!cancelled) setLoadingSummaries(false)
+    })
+    return () => { cancelled = true }
+  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision])
 
   const numericColumns = useMemo(() => {
     if (!data) return []
@@ -71,9 +106,53 @@ export default function DistributionPage() {
       .map((c) => c.name)
   }, [data, globalVars?.activeVariableIds])
 
+  const cardColumns = useMemo(() => {
+    if (!data) return []
+    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
+    return data.schema
+      .filter((c) => {
+        if (activeVarSet && !activeVarSet.has(c.name)) return false
+        if (isCodebookLoading || cardsRoleFilter === 'all') return true
+        const meta = getColumn(c.name)
+        if (cardsRoleFilter === 'question' && meta?.role !== 'question') return false
+        if (cardsRoleFilter === 'attribute' && meta?.role !== 'attribute') return false
+        return true
+      })
+      .map((c) => c.name)
+  }, [data, globalVars?.activeVariableIds, cardsRoleFilter, getColumn, isCodebookLoading])
+
+  const effectiveRowIdSet = useMemo(() => new Set(effectiveRowIds), [effectiveRowIds])
+
+  const handleSelectCategory = (colName: string, code: string | number | null, label?: string) => {
+    if (!data) return
+    const colVals = data.columns[colName]
+    if (!colVals) return
+    const normalizedCode = code === null ? null : normalizeCode(code)
+    const matchedIds: string[] = []
+    for (const rowId of effectiveRowIdSet) {
+      const index = data.rowIndex.get(rowId)
+      if (index === undefined) continue
+      if (normalizeCode(colVals[index]) === normalizedCode) {
+        matchedIds.push(rowId)
+      }
+    }
+    const colMeta = getColumn(colName)
+    const displayCol = colMeta?.label || colName
+    const displayVal = label || (code === null ? '(欠損)' : String(code))
+    dispatch(
+      selectionApplied({
+        rowIds: matchedIds,
+        operation: brushOp,
+        label: `${displayCol} = ${displayVal}`,
+      })
+    )
+  }
+
   const theme = useMemo(() => vizTheme(false), [])
   const { getColor } = useRowColorResolver()
-  const groupBy = pcp.colorBy
+  const domains = useL1ColorDomains(data)
+  const domain = domains.find(d => d.key === pcp.colorBy)
+  const groupBy = domain?.key ?? null
 
   /** Active row indexes via O(1) map lookups. */
   const activeIndexes = useMemo(() => {
@@ -113,9 +192,7 @@ export default function DistributionPage() {
       setLoadingStats(false)
       return
     }
-    const categories = groupBy && data.categories[groupBy]?.length
-      ? [...data.categories[groupBy]].sort()
-      : ['']
+    const categories: (string | null)[] = domain ? [...domain.codes, null] : ['']
     const catRaw = groupBy ? data.columns[groupBy] ?? [] : null
     const next: PanelData[] = numericColumns.map((column: string) => {
       const arr = data.numeric[column]
@@ -131,11 +208,12 @@ export default function DistributionPage() {
       }
       const groups: GroupRows[] = categories.map((category, catIndex) => {
         const subset = groupBy
-          ? rows.filter(({ index }) => String(catRaw?.[index]) === category)
+          ? rows.filter(({ index }) => { const slot = l1Index(domain, catRaw?.[index]); return category === null ? slot === null : slot === catIndex })
           : rows
         return {
-          key: category,
-          color: groupBy ? entityColor(theme, catIndex) : theme.contextLine,
+          key: category ?? '(欠損)',
+          code: category,
+          color: groupBy && category !== null ? l1Color(theme, catIndex) : theme.contextLine,
           stats: null,
           rows: subset,
         }
@@ -169,7 +247,7 @@ export default function DistributionPage() {
       if (!cancelled) setLoadingStats(false)
     })
     return () => { cancelled = true }
-  }, [data, numericColumns.join('|'), activeIndexes, groupBy, theme])
+  }, [data, numericColumns.join('|'), activeIndexes, groupBy, theme, domain])
 
   // For vertical we need value→x and x→value helpers.
   const verticalSlots = numericColumns.length || 1
@@ -255,8 +333,7 @@ export default function DistributionPage() {
         if (!Number.isFinite(v) || v < lo || v > hi) continue
         if (orientation === 'vertical' && panel.groups.length > 1) {
           // find this row's group center and require it inside the rect x-range
-          const cat = String(data.columns[groupKeyOf(panel)]?.[index] ?? '')
-          const gi = panel.groups.findIndex((g) => g.key === cat)
+          const gi = l1Index(domain, data.columns[groupKeyOf(panel)]?.[index]) ?? (domain?.codes.length ?? 0)
           if (gi >= 0) {
             const centerX = slotLeftV + 12 + gi * colSpacingV + colSpacingV / 2
             if (centerX < rxLo || centerX > rxHi) continue
@@ -274,6 +351,24 @@ export default function DistributionPage() {
 
   const selectedSet = new Set(selection.selectedRowIds)
   const hoveredId = selection.hoveredRowId
+
+  const selectedCountByCodeByColumn = useMemo(() => {
+    if (!data) return {}
+    const next: Record<string, Record<string, number>> = {}
+    for (const rowId of selection.selectedRowIds) {
+      const index = data.rowIndex.get(rowId)
+      if (index === undefined) continue
+      for (const colName of cardColumns) {
+        const colValues = data.columns[colName]
+        if (!colValues) continue
+        const rawCode = normalizeCode(colValues[index])
+        const key = rawCode === null ? '__null__' : rawCode
+        if (!next[colName]) next[colName] = {}
+        next[colName][key] = (next[colName][key] ?? 0) + 1
+      }
+    }
+    return next
+  }, [cardColumns, data, selection.selectedRowIds])
 
   const contextMenuItems = [
     {
@@ -316,7 +411,7 @@ export default function DistributionPage() {
       const rowSpacing = (panelHeight - 22) / Math.max(1, nGroups)
       return (
         <g key={panel.column}>
-          <text x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{panel.column}</text>
+          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{panel.column}</text></ColumnQuestionTooltip>
           <line x1={innerLeft} y1={panelTop + panelHeight - 12} x2={innerRight} y2={panelTop + panelHeight - 12} stroke="#c3c2b7" strokeWidth={1} />
           {[panel.min, (panel.min + panel.max) / 2, panel.max].map((tick, ti) => (
             <g key={ti}>
@@ -328,7 +423,7 @@ export default function DistributionPage() {
             const centerY = panelTop + 12 + gi * rowSpacing + rowSpacing / 2
             const stats = group.stats
             return (
-              <g key={`${panel.column}-${group.key}`}>
+              <g key={JSON.stringify([panel.column, group.code])}>
                 {group.key && (
                   <text x={112} y={centerY + 3} textAnchor="end" fontSize={10} fill="#52514e">
                     {group.key.replace(/Iris-/, '')}
@@ -386,9 +481,9 @@ export default function DistributionPage() {
       const colSpacing = (slotWidth - 16) / Math.max(1, nGroups)
       return (
         <g key={panel.column}>
-          <text x={slotLeft + slotWidth / 2} y={18} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
+          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={slotLeft + slotWidth / 2} y={18} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
             {panel.column}
-          </text>
+          </text></ColumnQuestionTooltip>
           <line x1={slotLeft + 8} y1={innerTop} x2={slotLeft + 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
           <line x1={slotLeft + 8} y1={innerBottom} x2={slotLeft + slotWidth - 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
           {[panel.min, (panel.min + panel.max) / 2, panel.max].map((tick, ti) => (
@@ -401,7 +496,7 @@ export default function DistributionPage() {
             const centerX = slotLeft + 12 + gi * colSpacing + colSpacing / 2
             const stats = group.stats
             return (
-              <g key={`${panel.column}-${group.key}`}>
+              <g key={JSON.stringify([panel.column, group.code])}>
                 {group.key && (
                   <text x={centerX} y={height - 30} textAnchor="middle" fontSize={9} fill="#52514e">
                     {group.key.replace(/Iris-/, '').slice(0, 6)}
@@ -458,12 +553,26 @@ export default function DistributionPage() {
                   data-testid="dist-view-mode"
                   size="small"
                   options={[
+                    { label: '設問別分布カード', value: 'cards' },
                     { label: '箱ひげ図 (Box Plot)', value: 'boxplot' },
                     { label: '正規Q-Qプロット (QQ-Plot)', value: 'qqplot' },
                   ]}
                   value={viewMode}
-                  onChange={(v) => setViewMode(v as 'boxplot' | 'qqplot')}
+                  onChange={(v) => setViewMode(v as 'cards' | 'boxplot' | 'qqplot')}
                 />
+                {viewMode === 'cards' && (
+                  <Segmented
+                    data-testid="cards-role-filter"
+                    size="small"
+                    options={[
+                      { label: '全変数', value: 'all' },
+                      { label: '設問のみ', value: 'question' },
+                      { label: '属性のみ', value: 'attribute' },
+                    ]}
+                    value={cardsRoleFilter}
+                    onChange={(v) => setCardsRoleFilter(v as 'all' | 'question' | 'attribute')}
+                  />
+                )}
                 {viewMode === 'boxplot' && (
                   <>
                     <Segmented
@@ -484,7 +593,7 @@ export default function DistributionPage() {
             <Col>
               <Space size={6}>
                 <Tag color={groupBy ? 'blue' : 'default'} style={{ margin: 0 }}>
-                  色分け: {groupBy ?? 'なし（単色）'}
+                  色分け: <ColumnQuestionTooltip nameOrId={groupBy ?? ''}>{groupBy ?? 'なし（単色）'}</ColumnQuestionTooltip>
                 </Tag>
                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                   ドラッグで範囲選択 · クリックで選択toggle · 右クリックでメニュー
@@ -532,7 +641,8 @@ export default function DistributionPage() {
             <Card size="small">
               <Statistic
                 title="PCP連動色分け"
-                value={groupBy ? `${groupBy} (${data?.categories[groupBy]?.length ?? 0}水準)` : '単色表示'}
+                value={groupBy ? `${groupBy} (${domain?.codes.length ?? 0}水準)` : '単色表示'}
+                formatter={() => <ColumnQuestionTooltip nameOrId={groupBy ?? ''}>{groupBy ? `${groupBy} (${domain?.codes.length ?? 0}水準)` : '単色表示'}</ColumnQuestionTooltip>}
                 prefix={<SlidersOutlined />}
                 valueStyle={{ fontSize: 14 }}
               />
@@ -543,11 +653,57 @@ export default function DistributionPage() {
 
       {viewMode === 'qqplot' ? (
         <QQPlotView />
+      ) : viewMode === 'cards' ? (
+        loadingSummaries && !summaryData ? (
+          <div style={{ textAlign: 'center', padding: 48 }} data-testid="cards-loading">
+            <Spin tip="設問分布データを集計中..."><div style={{ height: 80 }} /></Spin>
+          </div>
+        ) : summaryError ? (
+          <Alert
+            type="error"
+            message="設問分布データの取得に失敗しました。"
+            description={summaryError}
+            showIcon
+          />
+        ) : cardColumns.length === 0 ? (
+          <EmptyStatePanel message="表示可能な設問がありません。変数選択またはフィルタをご確認ください。" />
+        ) : (
+          <div data-testid="question-cards-container" style={{ padding: '4px 0' }}>
+            <Row gutter={[16, 16]}>
+              {cardColumns.map((colName) => {
+                const colMeta = getColumn(colName)
+                const colSum = summaryData?.[colName] || {}
+                const selectedCountByCode = selectedCountByCodeByColumn[colName] || {}
+                const cardProps: ComponentProps<typeof QuestionCard> & { selectedCountByCode: Record<string, number> } = {
+                  summary: {
+                    columnId: colName,
+                    semanticType: colMeta?.scaleType,
+                    denominators: colSum.denominators,
+                    distribution: colSum.distribution,
+                    auxiliaryStats: colSum.auxiliaryStats,
+                    min: colSum.min,
+                    max: colSum.max,
+                    mean: colSum.mean,
+                    median: colSum.median,
+                  },
+                  codebookColumn: colMeta,
+                  selectedCountByCode,
+                  onSelectCategory: (code, label) => handleSelectCategory(colName, code, label),
+                }
+                return (
+                  <Col key={colName} xs={24} lg={12}>
+                    <QuestionCard {...cardProps} />
+                  </Col>
+                )
+              })}
+            </Row>
+          </div>
+        )
       ) : numericColumns.length === 0 ? (
         <EmptyStatePanel message="分布プロットには1つ以上の数値変数が必要です。上部の変数セレクタから追加してください。" />
       ) : (
         <>
-          {!categoricalColumns.length && <Alert type="info" message="カテゴリ列がないため単色表示です。" />}
+          {!domain && <Alert type="info" message="L1色分け列が未選択のため単色表示です。" />}
           <FocusTarget id="distribution" title="分布・箱ひげ図">
             <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
               <div
@@ -566,7 +722,8 @@ export default function DistributionPage() {
                   boxShadow: focused ? 'none' : '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
                 }}
               >
-                {loadingStats && (
+                <L1Legend />
+      {loadingStats && (
                   <div
                     role="status"
                     aria-live="polite"

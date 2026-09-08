@@ -1,3 +1,4 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState } from 'react'
 import { Button, Space, Tag, Typography } from 'antd'
 import { DownOutlined, RightOutlined } from '@ant-design/icons'
@@ -74,7 +75,7 @@ function TreeNodeItem({
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, marginLeft: 8 }}>
           {Object.entries(node.stats).slice(0, 3).map(([k, v]) => (
             <Tag key={k} style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', margin: 0 }}>
-              {k}: {typeof v === 'object' && v !== null ? (v.mean !== undefined ? `μ=${v.mean}` : JSON.stringify(v).slice(0, 15)) : String(v)}
+              <ColumnQuestionTooltip nameOrId={k}>{k}</ColumnQuestionTooltip>: {typeof v === 'object' && v !== null ? (v.mean !== undefined ? `μ=${v.mean}` : JSON.stringify(v).slice(0, 15)) : String(v)}
             </Tag>
           ))}
         </div>

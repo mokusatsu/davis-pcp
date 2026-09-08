@@ -1,28 +1,35 @@
+import { Select as AntSelect } from 'antd'
+import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
+import Table from '../common/ColumnTable'
+import Select from '../common/ColumnSelect'
+import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
+import L1Legend from '../common/L1Legend'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import {
-  Alert, Button, Dropdown, InputNumber, Segmented, Select, Slider, Space, Spin,
-  Switch, Table, Tag, Tooltip, Typography,
+  Alert, Button, Dropdown, InputNumber, Segmented, Slider, Space, Spin,
+  Switch, Tag, Typography,
 } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import { ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, CaretUpOutlined, CaretLeftOutlined } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, pcpStateChanged, l2ColorToggled } from '../../app/store'
-import type { PcpAxis } from './geometry'
+import type { PcpAxis } from './usePcpPipeline'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { normalizedRect, type Rect } from './brush'
 import { graphEngine } from '../../engine/graphClient'
 import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
-import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes, l1CandidatesOf } from './usePcpPipeline'
+import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes } from './usePcpPipeline'
 import { useColumnarData } from './useDatasetColumns'
 import { api } from '../../api/client'
-import { vizTheme } from '../../theme/viz'
+import { vizTheme, l1Palette } from '../../theme/viz'
 import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 
 /** Palette tokens as a plain array for the packed-slot color resolver. */
 function buildPalette(theme: ReturnType<typeof vizTheme>): string[] {
-  return [...theme.categorical]
+  return [...l1Palette(theme)]
 }
 
 /** Paint the spec on an OffscreenCanvas inside the shared graph worker.
@@ -108,8 +115,10 @@ export default function PcpPage() {
   const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
 
   // Build axis metadata from schema (O(cols) via precomputed min/max/cats).
-  const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data) : []), [data])
-  const l1Candidates = useMemo(() => l1CandidatesOf(axes), [axes])
+  const { columns: codebookColumns, formatValueLabel } = useCodebook()
+  const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data, codebookColumns) : []), [data, codebookColumns])
+  const l1Candidates = useL1ColorDomains(data)
+  const l1Domain = l1Candidates.find(d => d.key === pcp.colorBy)
 
   // Dataset switch: drop the previous geometry immediately so axis controls
   // never render positions from a different dataset (audit #3).
@@ -123,42 +132,18 @@ export default function PcpPage() {
   }, [selection.datasetId])
 
   // Initialize order/visibility/colorBy on dataset load.
+  const initializedDataset = useRef<string | null>(null)
   useEffect(() => {
     if (!axes.length || !data) return
-    const columns = data.columns
-    const rowIds = data.rowIds
-    let defaultColorBy: string | null = null
-    if (l1Candidates.length === 1) {
-      defaultColorBy = l1Candidates[0].key
-    } else if (l1Candidates.length > 1) {
-      // Auto-pick the candidate with the lowest normalized entropy (most
-      // class-representative) — it separates lines best.
-      let bestKey: string | null = null
-      let bestScore = Infinity
-      for (const key of l1Candidates.map((a) => a.key)) {
-        const values = rowIds.map((_, i) => String(columns[key]?.[i] ?? ''))
-        const counts = new Map<string, number>()
-        for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1)
-        const n = values.length
-        const entropy = -[...counts.values()].reduce((sum, c) => {
-          const p = c / n
-          return sum + p * Math.log2(p)
-        }, 0)
-        const score = entropy / Math.log2(counts.size)
-        if (score < bestScore) {
-          bestScore = score
-          bestKey = key
-        }
-      }
-      defaultColorBy = bestKey ?? l1Candidates[0].key as string
-    }
+    const key = `${selection.datasetId}:${selection.revision}`
+    if (initializedDataset.current === key) return
+    initializedDataset.current = key
     dispatch(pcpStateChanged({
       order: axes.map((a) => a.key),
       visibleColumns: axes.map((a) => a.key),
       reversed: Object.fromEntries(axes.map((a) => [a.key, false])),
-      colorBy: defaultColorBy,
     }))
-  }, [axes, l1Candidates, dispatch])
+  }, [axes, dispatch, selection.datasetId, selection.revision])
 
   const globalVars = useSelector((s: RootState) => s.globalVariables)
   const orderedVisibleAxes = useMemo(() => {
@@ -243,16 +228,11 @@ export default function PcpPage() {
     const colorKey = pcp.colorBy
     if (colorKey && data) {
       const values = data.columns[colorKey] ?? []
-      const categories = data.categories[colorKey] ?? []
-      // Pre-build category → index map for O(1) lookup instead of indexOf
-      const catMap = new Map<string, number>()
-      categories.forEach((cat, i) => catMap.set(cat, i))
       for (let r = 0; r < geometry.nRows; r += 1) {
         const id = geometry.rowIds[r]
         const index = data.rowIndex.get(id)
         if (index === undefined) continue
-        const catIndex = catMap.get(String(values[index])) ?? -1
-        const l1Slot = catIndex >= 0 ? catIndex + 1 : 0
+        const l1Slot = l1Index(l1Domain, values[index]) ?? 0xff
         const l2Group = l2GroupOfId.get(id)
         slots[r] = ((l2Group !== undefined && selection.l2ColorEnabled) ? (1 << 15) | ((l2Group & 0x7f) << 8) : 0) | (l1Slot & 0xff)
       }
@@ -264,7 +244,7 @@ export default function PcpPage() {
       }
     }
     return slots
-  }, [geometry, selection.groups, selection.l2ColorEnabled, pcp.colorBy, data])
+  }, [geometry, selection.groups, selection.l2ColorEnabled, pcp.colorBy, data, l1Domain])
 
   const selectedFlags = useMemo(() => {
     if (!geometry) return null
@@ -347,6 +327,7 @@ export default function PcpPage() {
       min: a.min,
       max: a.max,
       categories: a.categories,
+      valueLabels: a.valueLabels,
     }))
     const spec: PcpRenderSpec = {
       width,
@@ -359,7 +340,7 @@ export default function PcpPage() {
       axisPos: geometry.axisPos,
       bounds: geometry.bounds,
       axes: axesSpec,
-      reversed: pcp.reversed,
+      reversed: Object.fromEntries(orderedVisibleAxes.map(a => [a.key, Boolean(a.isReversed) !== Boolean(pcp.reversed[a.key])])),
       style: {
         showContext: pcp.showContext,
         lineOpacity: pcp.lineOpacity,
@@ -679,17 +660,17 @@ export default function PcpPage() {
           <div style={{ color: '#888' }}>代表行: {memberCount}行のクラスタ</div>
         )}
         {data.schema.slice(0, 6).map((c) => (
-          <div key={c.columnId}>{`${c.name}: ${String(data.columns[c.name]?.[index] ?? '')}`}</div>
+          <div key={c.columnId}><ColumnQuestionText nameOrId={c.name} />: {formatValueLabel(c.name, data.columns[c.name]?.[index])} ({String(data.columns[c.name]?.[index] ?? '')})</div>
         ))}
       </div>
     )
-  }, [tooltip, data])
+  }, [tooltip, data, formatValueLabel])
 
   const orderMenu = (
     <div style={{ padding: 12, width: 260, background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
       <div>
         <Typography.Text strong style={{ fontSize: 12 }}>軸順</Typography.Text>
-        <Select
+        <AntSelect
           data-testid="order-mode"
           size="small"
           value={pcp.orderMode}
@@ -720,7 +701,7 @@ export default function PcpPage() {
   const renderSettingsMenu = (
     <div style={{ padding: 12, width: 280, background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
       <div>
-        <Typography.Text strong style={{ fontSize: 12 }}>L1色分け：名義尺度で色分け</Typography.Text>
+        <Typography.Text strong style={{ fontSize: 12 }}>L1色分け：列の値で色分け</Typography.Text>
         <Select
           data-testid="color-by"
           size="small"
@@ -729,9 +710,11 @@ export default function PcpPage() {
           style={{ width: '100%', marginTop: 4 }}
           value={pcp.colorBy}
           onChange={(value) => dispatch(pcpStateChanged({ colorBy: value ?? null }))}
-          options={l1Candidates.map((a) => ({ value: a.key, label: a.label }))}
+          options={l1Candidates.map((a) => ({ value: a.key, label: `${axes.find(axis => axis.key === a.key)?.label ?? a.key} (${a.codes.length}種類)` }))}
         />
       </div>
+      <Typography.Text type="secondary">欠損を除く値が20種類以下の列</Typography.Text>
+      <L1Legend />
       {selection.groups.length > 0 && (
         <div>
           <label>
@@ -759,7 +742,7 @@ export default function PcpPage() {
       </Space>
       <div>
         <Typography.Text style={{ fontSize: 12 }}>描画簡略化</Typography.Text>
-        <Select
+        <AntSelect
           data-testid="simplify-mode"
           size="small"
           style={{ width: '100%', marginTop: 4 }}
@@ -783,7 +766,7 @@ export default function PcpPage() {
         <label><Switch size="small" data-testid="jitter-enabled" checked={pcp.jitterEnabled} onChange={(c) => dispatch(pcpStateChanged({ jitterEnabled: c }))} /> Jittering</label>
         {pcp.jitterEnabled && (
           <Space direction="vertical" size={4} style={{ width: '100%', marginTop: 4 }}>
-            <Select
+            <AntSelect
               data-testid="jitter-mode"
               size="small"
               style={{ width: '100%' }}
@@ -832,10 +815,10 @@ export default function PcpPage() {
     return <Alert type="info" showIcon message="データセットを読み込んでください。" description="上部のImportからCSV等を取り込むか、Irisサンプルを選択してください。" />
   }
 
-  if (orderedVisibleAxes.filter((a) => a.type === 'numeric').length < 2) {
+  if (orderedVisibleAxes.length < 2) {
     return (
       <EmptyStatePanel
-        message="平行座標プロットには2つ以上の数値変数が必要です。上部の変数セレクタから追加してください。"
+        message="平行座標プロットには2つ以上の変数が必要です。上部の変数セレクタから追加してください。"
         minVariables={2}
       />
     )
@@ -887,7 +870,7 @@ export default function PcpPage() {
                 gap: 12,
               }}
             >
-              <Spin size="large" tip="軸順を最適化中..." />
+              <Spin size="large" tip="軸順を最適化中..."><div style={{ height: 80 }} /></Spin>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 相関セリエーション / 最適順序を計算しています
               </Typography.Text>
@@ -905,7 +888,7 @@ export default function PcpPage() {
                 background: 'rgba(255, 255, 255, 0.6)',
               }}
             >
-              <Spin size="large" tip="平行座標プロットを描画準備中…" />
+              <Spin size="large" tip="平行座標プロットを描画準備中…"><div style={{ height: 80 }} /></Spin>
             </div>
           )}
           <canvas ref={canvasRef} data-testid="pcp-canvas" role="img" aria-label="Parallel coordinates plot"
@@ -923,6 +906,27 @@ export default function PcpPage() {
             onPointerLeave={() => { dispatch(hoverAction(null)); setTooltip(null) }}
             onDoubleClick={() => dispatch(selectionCleared())}
           >
+            {geometry && orderedVisibleAxes.map((axis, index) => {
+              const horizontal = pcp.orientation === 'horizontal'
+              const anchor = geometry.axisPos[index]
+              return <ColumnQuestionTooltip key={axis.key} nameOrId={axis.key} svg>
+                <rect x={horizontal ? -130 : geometry.bounds.left - 130}
+                  y={horizontal ? -10 : anchor - 10}
+                  transform={horizontal ? `translate(${anchor}, ${geometry.bounds.bottom + 8}) rotate(-45)` : undefined}
+                  width={130} height={22} fill="transparent" aria-label={axis.label} />
+              </ColumnQuestionTooltip>
+            })}
+            {geometry && orderedVisibleAxes.flatMap((axis, index) => (axis.categories ?? []).map((code, i) => {
+              let t = (axis.categories?.length ?? 0) <= 1 ? 0.5 : i / (axis.categories!.length - 1)
+              if (Boolean(axis.isReversed) !== Boolean(pcp.reversed[axis.key])) t = 1 - t
+              const horizontal = pcp.orientation === 'horizontal'
+              const x = horizontal ? geometry.axisPos[index] - 95 : geometry.bounds.left + t * (geometry.bounds.right - geometry.bounds.left) - 40
+              const y = horizontal ? geometry.bounds.bottom - t * (geometry.bounds.bottom - geometry.bounds.top) - 8 : geometry.axisPos[index] - 20
+              const label = axis.valueLabels?.[code] ?? code
+              return <rect key={`${axis.key}-${code}`} data-testid={`pcp-tick-${axis.key}-${code}`} data-code={code} data-label={label}
+                x={x} y={y} width={88} height={16} fill="transparent" aria-label={`${axis.label}: ${label} (${code})`}
+                onPointerDown={e => e.stopPropagation()}><title>{`${axis.label}: ${label} (${code})`}</title></rect>
+            }))}
             <rect ref={brushRectRef} fill="rgba(42,120,214,0.15)" strokeWidth={1.5} style={{ pointerEvents: 'none' }} stroke="#2a78d6" visibility="hidden" />
           </svg>
           {/* v1-style on-axis controls: move/reverse buttons near each axis.
@@ -939,11 +943,10 @@ export default function PcpPage() {
               ? (geometry.axisPos[index] ?? 0)
               : 8
             return (
-              <Tooltip key={axis.key} title={axis.label} placement={vertical ? 'right' : 'top'}>
+              <div key={axis.key}>
                 <div
                   className="axis-control"
                   data-testid={`axis-control-${axis.key}`}
-                  title={axis.label}
                   style={{
                     position: 'absolute', left, top,
                     transform: vertical ? 'translateY(-50%)' : 'translateX(-50%)',
@@ -986,7 +989,7 @@ export default function PcpPage() {
                   </>
                 )}
               </div>
-            </Tooltip>
+            </div>
           )
         })}
           {tooltip && (

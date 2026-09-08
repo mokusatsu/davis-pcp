@@ -1,5 +1,7 @@
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Table from '../common/ColumnTable'
 import { useEffect, useState } from 'react'
-import { Input, Modal, Radio, Slider, Space, Table, Typography, notification } from 'antd'
+import { Input, Modal, Radio, Slider, Space, Typography, notification } from 'antd'
 import { api } from '../../api/client'
 
 interface BinInfo {
@@ -102,7 +104,7 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
 
   return (
     <Modal
-      title={`連続変数のビン分割: ${columnName}`}
+      title={<>連続変数のビン分割: <ColumnQuestionTooltip nameOrId={columnName} /></>}
       open={open}
       onCancel={onClose}
       onOk={handleApply}

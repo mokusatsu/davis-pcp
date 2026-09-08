@@ -1,8 +1,12 @@
+import { Select as AntSelect } from 'antd'
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import Select from '../common/ColumnSelect'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Card, Button, Select, Typography, Space, Tag, Table, Row, Col,
+  Card, Button, Typography, Space, Tag, Row, Col,
   Alert, Statistic, Spin, Empty, InputNumber, Divider, Tabs,
 } from 'antd'
 import {
@@ -249,7 +253,7 @@ export default function SubgroupMiningPage() {
           </Col>
           <Col xs={12} md={3}>
             <Typography.Text strong>FDR α:</Typography.Text>
-            <Select
+            <AntSelect
               style={{ width: '100%', marginTop: 4 }}
               value={alpha}
               onChange={setAlpha}
@@ -414,7 +418,7 @@ export default function SubgroupMiningPage() {
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Typography.Text strong style={{ fontSize: 14 }}>
-                                    #{idx + 1} {ins.subgroup.label} × {ins.question.label}
+                                    #{idx + 1} <ColumnQuestionTooltip nameOrId={ins.subgroup.name}>{ins.subgroup.label}</ColumnQuestionTooltip> × <ColumnQuestionTooltip nameOrId={ins.question.name}>{ins.question.label}</ColumnQuestionTooltip>
                                   </Typography.Text>
                                   <Space size={4}>
                                     <Tag color={effColor}>{ins.effect.label.toUpperCase()}</Tag>
@@ -481,7 +485,7 @@ export default function SubgroupMiningPage() {
                             title={
                               <Space wrap>
                                 <Typography.Text strong style={{ fontSize: 16 }}>
-                                  {currentInsight.subgroup.label} × {currentInsight.question.label}
+                                  <ColumnQuestionTooltip nameOrId={currentInsight.subgroup.name}>{currentInsight.subgroup.label}</ColumnQuestionTooltip> × <ColumnQuestionTooltip nameOrId={currentInsight.question.name}>{currentInsight.question.label}</ColumnQuestionTooltip>
                                 </Typography.Text>
                                 <Tag color="blue">{currentInsight.test.method}</Tag>
                               </Space>

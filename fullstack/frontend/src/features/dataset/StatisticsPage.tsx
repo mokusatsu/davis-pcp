@@ -1,16 +1,23 @@
+import { useQuestionText } from '../common/ColumnQuestionTooltip'
+import Table from '../common/ColumnTable'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
+import L1Legend from '../common/L1Legend'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Col, Dropdown, Empty, Row, Segmented, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { Card, Col, Dropdown, Empty, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, statsScopeSet, selectEffectiveRowIds } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
-import { vizTheme, entityColor, signedNoiseViz } from '../../theme/viz'
+import { vizTheme, l1Color, signedNoiseViz } from '../../theme/viz'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import { normalizeCode, useCodebook } from './useCodebookColumn'
+import { QuestionCard } from '../distribution/QuestionCard'
 
 interface StatsRow {
   key: string
@@ -31,12 +38,14 @@ interface StatsRow {
 
 /** Descriptive statistics page: per-axis summary table + histogram per axis. */
 export default function StatisticsPage() {
+  const questionText = useQuestionText()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const pcpColorBy = useSelector((s: RootState) => s.pcp.colorBy)
   const globalVars = useSelector((s: RootState) => s.globalVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const data = useColumnarData(selection.datasetId)
+  const { getColumn, formatValueLabel, getOrderedCategories } = useCodebook()
   const { focused, isTargetActive } = useFocusMode()
   const theme = vizTheme(false)
   const { getColor } = useRowColorResolver()
@@ -93,6 +102,17 @@ export default function StatisticsPage() {
     return activeVarSet ? data.schema.filter((c) => activeVarSet.has(c.name)) : data.schema
   }, [data, globalVars?.activeVariableIds])
 
+  const columnValues = useMemo(() => Object.fromEntries(targetSchema.map(column => {
+    const spec = getColumn(column.name)
+    const missing = new Set(spec?.missingCodes ?? [])
+    const numeric = spec ? ['interval', 'ratio'].includes(spec.scaleType) : column.semanticType === 'numeric'
+    const values = (data?.columns[column.name] ?? []).map(raw => {
+      const code = normalizeCode(raw)
+      return code === null || missing.has(code) || (numeric && (code.trim() === '' || !Number.isFinite(Number(code)))) ? null : code
+    })
+    return [column.name, { numeric, values, numbers: numeric ? Float64Array.from(values, v => v === null ? NaN : Number(v)) : new Float64Array(0) }]
+  })), [data, targetSchema, getColumn])
+
   const [stats, setStats] = useState<StatsRow[]>([])
   const [loadingStats, setLoadingStats] = useState(false)
   useEffect(() => {
@@ -104,8 +124,11 @@ export default function StatisticsPage() {
         const f = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '—' : v.toFixed(3))
         const rows: StatsRow[] = []
         for (const column of targetSchema) {
-          if (column.semanticType === 'numeric') {
-            const arr = data.numeric[column.name]
+          const spec = getColumn(column.name)
+          const scaleNames: Record<string, string> = { nominal: '名義尺度', ordinal: '順序尺度', interval: '間隔尺度', ratio: '比例尺度', text: 'テキスト', id: '識別子' }
+          const type = spec ? scaleNames[spec.scaleType] : (column.semanticType === 'numeric' ? '数値' : 'カテゴリ')
+          if (columnValues[column.name].numeric) {
+            const arr = columnValues[column.name].numbers
             const scoped = new Float64Array(scopedIndexes.length)
             for (let i = 0; i < scopedIndexes.length; i += 1) scoped[i] = arr[scopedIndexes[i]]
             // unique over finite values (host-side; hashing is cheap vs sorting)
@@ -121,7 +144,7 @@ export default function StatisticsPage() {
             rows.push({
               key: column.name,
               column: column.name,
-              type: '数値',
+              type,
               count: d ? d[0] : 0,
               missing: d ? d[1] : missing,
               mean: d ? f(d[2]) : '—',
@@ -134,18 +157,18 @@ export default function StatisticsPage() {
               unique: String(unique.size),
             })
           } else {
-            const values = data.columns[column.name] ?? []
-            const strings = scopedIndexes.map((i) => String(values[i]))
+            const values = columnValues[column.name].values
+            const strings = scopedIndexes.map((i) => values[i]).filter((v): v is string => v !== null && v !== undefined)
             const counts = new Map<string, number>()
             for (const v of strings) counts.set(v, (counts.get(v) ?? 0) + 1)
             const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
             rows.push({
               key: column.name,
               column: column.name,
-              type: 'カテゴリ',
+              type,
               count: strings.length,
               missing: scopedIndexes.length - strings.length,
-              mode: top ? `${top[0]} (${top[1]})` : '—',
+              mode: top ? `${formatValueLabel(column.name, top[0])} (${top[1]})` : '—',
               unique: String(counts.size),
             })
           }
@@ -158,18 +181,17 @@ export default function StatisticsPage() {
       if (!cancelled) setLoadingStats(false)
     })
     return () => { cancelled = true }
-  }, [data, scopedIndexes, targetSchema])
+  }, [data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel])
 
   const numericColumns = useMemo(
-    () => targetSchema.filter((c) => c.semanticType === 'numeric').map((c) => c.name),
-    [targetSchema],
+    () => targetSchema.filter((c) => columnValues[c.name].numeric).map((c) => c.name),
+    [targetSchema, columnValues],
   )
 
   const selectedSet = new Set(selection.selectedRowIds)
-  const categoriesOf = useMemo(() => {
-    if (!pcpColorBy || !data?.columns[pcpColorBy]) return null
-    return [...new Set(data.rowIds.map((_, i) => String(data.columns[pcpColorBy][i])))].sort()
-  }, [pcpColorBy, data])
+  const domains = useL1ColorDomains(data)
+  const domain = domains.find(d => d.key === pcpColorBy)
+  const categoriesOf = domain ? [...domain.codes, null] : null
 
   // Histogram layout.
   const binsCount = 20
@@ -204,7 +226,7 @@ export default function StatisticsPage() {
                 </Tag>
                 {pcpColorBy && (
                   <Tag color="purple" style={{ margin: 0 }}>
-                    色分け: {pcpColorBy}
+                    色分け: <ColumnQuestionTooltip nameOrId={pcpColorBy!}>{pcpColorBy}</ColumnQuestionTooltip>
                   </Tag>
                 )}
               </Space>
@@ -259,6 +281,7 @@ export default function StatisticsPage() {
         </Row>
       )}
 
+      <L1Legend />
       {loadingStats && (
         <Card size="small" style={{ textAlign: 'center', padding: '30px 20px', background: '#fafafa', borderRadius: 8 }}>
           <Spin size="large" tip="記述統計量を集計中..." />
@@ -304,11 +327,38 @@ export default function StatisticsPage() {
             </Card>
           )}
 
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {targetSchema.filter(c => {
+              const spec = getColumn(c.name)
+              return spec ? ['nominal', 'ordinal'].includes(spec.scaleType) : !columnValues[c.name].numeric
+            }).map(column => {
+              const values = columnValues[column.name].values
+              const counts = new Map<string, number>()
+              const selectedCounts: Record<string, number> = Object.create(null)
+              for (const index of scopedIndexes) {
+                const code = values[index]
+                if (code === null || code === undefined) continue
+                counts.set(code, (counts.get(code) ?? 0) + 1)
+                if (selectedSet.has(data!.rowIds[index])) selectedCounts[code] = (selectedCounts[code] ?? 0) + 1
+              }
+              const valid = [...counts.values()].reduce((a, b) => a + b, 0)
+              return <div key={column.name} style={{ flex: '1 1 420px', minWidth: 0, maxWidth: '100%' }}>
+                <QuestionCard codebookColumn={getColumn(column.name)} summary={{
+                  columnId: column.name,
+                  denominators: { total: scopedIndexes.length, target: scopedIndexes.length, valid, missing: scopedIndexes.length - valid, notApplicable: 0 },
+                  distribution: getOrderedCategories(column.name, [...counts.keys()]).map(code => ({ code, label: formatValueLabel(column.name, code), count: counts.get(code) ?? 0, percentageValid: valid ? (counts.get(code) ?? 0) / valid * 100 : 0, percentageTotal: scopedIndexes.length ? (counts.get(code) ?? 0) / scopedIndexes.length * 100 : 0 })),
+                }} selectedCountByCode={selectedCounts} onSelectCategory={(code) => {
+                  const ids = scopedIndexes.filter(i => values[i] === normalizeCode(code)).map(i => data!.rowIds[i])
+                  dispatch(selectionApplied({ rowIds: ids, operation: getBrushOp(), label: `カテゴリ選択（${column.name}）` }))
+                }} />
+              </div>
+            })}
+          </div>
           {(() => {
             const activeSingleColumn = numericColumns.find((col) => isTargetActive(`histogram-${col}`))
             const renderHistCard = (column: string, isSingleFocused: boolean) => {
               const rows = scopedIndexes
-                .map((index) => ({ id: data!.rowIds[index], index, v: data!.numeric[column]?.[index] ?? NaN }))
+                .map((index) => ({ id: data!.rowIds[index], index, v: columnValues[column].numbers[index] ?? NaN }))
                 .filter(({ v }) => Number.isFinite(v))
               if (!rows.length) return null
               const min = Math.min(...rows.map((r) => r.v))
@@ -321,7 +371,7 @@ export default function StatisticsPage() {
                 let bin = Math.floor(((row.v - min) / (max - min || 1)) * binsCount)
                 bin = Math.min(binsCount - 1, bin)
                 if (categoriesOf && pcpColorBy && data!.columns[pcpColorBy]) {
-                  const ci = categoriesOf.indexOf(String(data!.columns[pcpColorBy][row.index]))
+                  const ci = l1Index(domain, data!.columns[pcpColorBy][row.index]) ?? domain!.codes.length
                   if (ci >= 0) groupBins[ci][bin] += 1
                 } else {
                   groupBins[0][bin] += 1
@@ -396,7 +446,7 @@ export default function StatisticsPage() {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#f8fafc', border: '1px solid #e5e7eb', borderBottom: 'none', borderRadius: '6px 6px 0 0' }}>
-                    <Typography.Text strong style={{ fontSize: 13, color: '#334155' }}>{column}</Typography.Text>
+                    <Typography.Text strong style={{ fontSize: 13, color: '#334155' }}><ColumnQuestionTooltip nameOrId={column}>{column}</ColumnQuestionTooltip></Typography.Text>
                     {!isSingleFocused && <FocusEnterButton targetId={`histogram-${column}`} title={`${column} ヒストグラム`} />}
                   </div>
                   <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
@@ -421,13 +471,13 @@ export default function StatisticsPage() {
                     onPointerMove={histOnPointerMove}
                     onPointerUp={histOnPointerUp}
                   >
-                    <text x={histWidth / 2} y={16} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{column}</text>
+                    <ColumnQuestionTooltip nameOrId={column} svg><text x={histWidth / 2} y={16} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{column}</text></ColumnQuestionTooltip>
                     {groupBins.map((bins, gi) =>
                       bins.map((count, bi) => {
                         if (!count) return null
                         const h = (count / maxCount) * (histHeight - 44)
                         const x = 22 + bi * barW
-                        const color = categoriesOf ? entityColor(theme, gi) : theme.contextLine
+                        const color = domain && gi < domain.codes.length ? l1Color(theme, gi) : theme.contextLine
                         const isSelectedBin = isBinHighlighted(bi)
                         return (
                           <rect
@@ -442,7 +492,7 @@ export default function StatisticsPage() {
                             style={{ cursor: 'pointer' }}
                             onClick={() => selectBinRange(bi)}
                           >
-                            <title>{`${column} [${binEdges[bi].toFixed(2)}–${binEdges[bi + 1].toFixed(2)}): ${count}`}</title>
+                            <title>{`${questionText(column)} [${binEdges[bi].toFixed(2)}–${binEdges[bi + 1].toFixed(2)}): ${count}`}</title>
                           </rect>
                         )
                       }))}
