@@ -152,10 +152,12 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             "missingReason": "無回答",
         })
 
-    # Auxiliary stats (mean, median, top2Box, bottom2Box)
+    # Auxiliary stats (mean, median, iqr, top2Box, bottom2Box).
+    # Ordinal scores always use 1-based categoryOrder ranks with an
+    # equal-interval note; never raw numeric codes.
     auxiliary_stats: dict[str, Any] = {}
     if valid > 0 and scale_type in ("ordinal", "interval", "ratio", "numeric"):
-        valid_vals = []
+        valid_vals: list[float] = []
         score_map = {code: idx + 1 for idx, code in enumerate(ordered_valid_codes)}
         ordinal_scores = score_map
 
@@ -194,6 +196,10 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             auxiliary_stats["mean"] = round(float(arr.mean()), 2)
             auxiliary_stats["meanNote"] = "等間隔得点として計算"
             auxiliary_stats["median"] = round(float(np.median(arr)), 2)
+            q1, q3 = np.percentile(arr, [25, 75])
+            auxiliary_stats["q1"] = round(float(q1), 2)
+            auxiliary_stats["q3"] = round(float(q3), 2)
+            auxiliary_stats["iqr"] = round(float(q3 - q1), 2)
 
         if len(ordered_valid_codes) >= 2:
             top2_codes = ordered_valid_codes[-2:]
@@ -213,7 +219,12 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
     }
 
 
-def summarize(df: pl.DataFrame, column_types: dict[str, str], codebook: dict | None = None) -> dict:
+def summarize(
+    df: pl.DataFrame,
+    column_types: dict[str, str],
+    codebook: dict | None = None,
+    weights: list[float | None] | None = None,
+) -> dict:
     result: dict[str, dict] = {}
     adapter = CodebookAdapter(df, codebook) if codebook else None
     for name in df.columns:
@@ -230,9 +241,86 @@ def summarize(df: pl.DataFrame, column_types: dict[str, str], codebook: dict | N
         # Always enrich with denominators, distribution, and auxiliaryStats
         q_summary = question_summary(df[name], spec, adapter=adapter)
         col_summary.update(q_summary)
+        if weights is not None:
+            col_summary["weighted"] = _weighted_column_summary(df[name], spec, weights, adapter=adapter)
         result[name] = col_summary
 
     return result
+
+
+def _weighted_column_summary(
+    series: pl.Series,
+    spec: dict | None,
+    weights: list[float | None],
+    adapter: CodebookAdapter | None = None,
+) -> dict[str, Any]:
+    """Weighted counts/percents/mean over valid rows with positive finite weights.
+
+    Shares the valid-row rule with ``question_summary``: missing codes,
+    notApplicable reasons, and nulls are excluded; unknown codes stay valid
+    rows here because row-level invalid (MA-style) does not exist on this path.
+    """
+    spec = spec or {}
+    missing_codes = {c for c in (normalize_code(v) for v in (spec.get("missingCodes") or [])) if c is not None}
+    missing_reasons = {normalize_code(k): str(v) for k, v in (spec.get("missingReasons") or {}).items() if normalize_code(k) is not None}
+    scale_type = spec.get("scaleType", "nominal")
+    is_reversed = bool(spec.get("isReversed", False))
+    if adapter is None:
+        adapter = CodebookAdapter(series.to_frame(), {"columns": [{**spec, "name": series.name}]})
+    ordered = adapter.get_ordered_categories(series.name)
+    if is_reversed:
+        ordered = list(reversed(ordered))
+
+    raw = series.to_list()
+    counts: dict[str, float] = {}
+    weighted_n = 0.0
+    weight_missing = 0
+    for value, weight in zip(raw, weights):
+        code = normalize_code(value)
+        if code is None:
+            continue
+        if code in missing_codes:
+            reason = missing_reasons.get(code, "")
+            if is_not_applicable_reason(reason):
+                continue
+            continue
+        if weight is None:
+            weight_missing += 1
+            continue
+        if weight <= 0:
+            continue
+        weighted_n += weight
+        counts[code] = counts.get(code, 0.0) + weight
+
+    distribution = []
+    for code in ordered:
+        count = counts.get(code, 0.0)
+        distribution.append({
+            "code": code,
+            "weightedCount": round(count, 4),
+            "weightedPct": round(count / weighted_n * 100, 4) if weighted_n > 0 else None,
+        })
+
+    weighted: dict[str, Any] = {
+        "weightedN": round(weighted_n, 4),
+        "weightMissingCount": weight_missing,
+        "distribution": distribution,
+    }
+    if scale_type in ("ordinal", "interval", "ratio", "numeric") and weighted_n > 0:
+        score_map = {code: idx + 1 for idx, code in enumerate(ordered)}
+        total = 0.0
+        for code, count in counts.items():
+            try:
+                score = float(score_map[code]) if scale_type == "ordinal" else float(code)
+            except ValueError:
+                score = float(score_map.get(code, 0))
+            total += score * count
+        weighted["weightedMean"] = round(total / weighted_n, 4)
+        if scale_type == "ordinal":
+            weighted["meanNote"] = "等間隔得点として計算"
+    else:
+        weighted["weightedMean"] = None
+    return weighted
 
 
 def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[float | None]]:

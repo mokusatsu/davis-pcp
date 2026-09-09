@@ -83,6 +83,13 @@ def compute_phik_and_surprise(
         series = df_with_id[c]
         meta = meta_by_col.get(c, {})
         sem_type = meta.get("semanticType")
+        scale_type = meta.get("scaleType")
+        if scale_type == "ordinal":
+            sem_type = "ordinal"
+        elif scale_type == "nominal":
+            sem_type = "categorical"
+        elif scale_type in ("interval", "ratio"):
+            sem_type = "numeric"
         if not sem_type:
             if series.dtype in (pl.Float32, pl.Float64):
                 sem_type = "numeric"
@@ -257,6 +264,35 @@ def compute_phik_and_surprise(
 
             unexpected_lift = min(1.0, max(0.0, (max_lift - 1.0) / max(1e-4, max_lift_cap - 1.0)))
 
+            from ...domain.ordinal_methods import kendall_tb, method_family, select_method
+            pair_family = "ordinal" if method_family(
+                meta_by_col.get(col_x, {}).get("scaleType") or ("ordinal" if tx == "ordinal" else None)
+            ) == "ordinal" and method_family(
+                meta_by_col.get(col_y, {}).get("scaleType") or ("ordinal" if ty == "ordinal" else None)
+            ) == "ordinal" else ("numeric" if tx == "numeric" and ty == "numeric" else "nominal")
+            adopted = select_method("correlation", "ordinal" if pair_family == "ordinal"
+                                    else ("nominal" if pair_family == "nominal" else "ratio"))["methodUsed"]
+            adopted_value = None
+            adopted_n = valid_count
+            if adopted == "kendall_tb":
+                from ...domain.codebook_adapter import normalize_code as _normalize_code
+                order_x = meta_by_col.get(col_x, {}).get("categoryOrder") or []
+                order_y = meta_by_col.get(col_y, {}).get("categoryOrder") or []
+                rank_x = {c: float(i + 1) for i, c in enumerate(
+                    [c for c in (_normalize_code(v) for v in order_x) if c is not None])}
+                rank_y = {c: float(i + 1) for i, c in enumerate(
+                    [c for c in (_normalize_code(v) for v in order_y) if c is not None])}
+                if not rank_x:
+                    rank_x = {c: float(i + 1) for i, c in enumerate(sorted(set(bx) - {"欠損"}))}
+                if not rank_y:
+                    rank_y = {c: float(i + 1) for i, c in enumerate(sorted(set(by) - {"欠損"}))}
+                kendall = kendall_tb(
+                    [rank_x.get(v) for v in bx],
+                    [rank_y.get(v) for v in by])
+                adopted_value = kendall["tau"]
+                adopted_n = kendall["nValid"]
+            elif adopted == "pearson_r":
+                adopted_value = pearson_r
             pairs_list.append({
                 "id": f"pair_{len(pairs_list)+1:03d}",
                 "x": {
@@ -268,6 +304,11 @@ def compute_phik_and_surprise(
                     "name": col_y,
                     "label": meta_by_col.get(col_y, {}).get("label") or col_y,
                     "type": ty,
+                },
+                "adoptedCorrelation": {
+                    "methodUsed": adopted,
+                    "value": adopted_value,
+                    "nValid": adopted_n,
                 },
                 "primary": {
                     "measure": "phik",

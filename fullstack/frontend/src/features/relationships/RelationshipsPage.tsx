@@ -9,9 +9,13 @@ import { useColumnarData } from '../pcp/useDatasetColumns'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import RelationshipCanvas, { type RelationshipPoints } from './RelationshipCanvas'
 
-interface MatrixResult { columns: string[]; matrix: (number | null)[][]; counts: number[][] }
+interface MatrixResult {
+  columns: string[]; matrix: (number | null)[][]; counts: number[][]
+  weightStatus?: string; weightColumn?: string | null
+}
 
 function useRelationshipResult<T>(path: string, body: unknown | null) {
   const key = useMemo(() => body === null ? null : JSON.stringify(body), [body])
@@ -51,9 +55,12 @@ export default function RelationshipsPage() {
     ? focusPair : names.length >= 2 ? [names[0], names[1]] as [string, string] : null
   useEffect(() => { setFocusPair(null) }, [selection.datasetId])
   const namesKey = JSON.stringify(names)
+  const weightColumnId = useSelector((state: RootState) => state.globalVariables.weightColumnId)
+  const weightName = columns.find((c) => c.columnId === weightColumnId)?.name
   const request = useMemo(() => selection.datasetId && columns.length ? { datasetId: selection.datasetId, columns: names, rowIds,
-    expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision } : null,
-  [selection.datasetId, selection.dataRevision, columns.length, schemaRevision, namesKey, rowIds])
+    expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
+    ...(weightName ? { weightColumn: weightName } : {}) } : null,
+  [selection.datasetId, selection.dataRevision, columns.length, schemaRevision, namesKey, rowIds, weightName])
   const pairRequest = useMemo(() => request && pair ? { ...request, columns: pair } : null, [request, pair?.[0], pair?.[1]])
   const matrix = useRelationshipResult<MatrixResult>('/relationships/matrix', request)
   const points = useRelationshipResult<RelationshipPoints>('/relationships/pair', pairRequest)
@@ -84,6 +91,7 @@ export default function RelationshipsPage() {
     </Space></Card>
     {(matrix.error || points.error) && <Alert type="error" showIcon message={matrix.error || points.error} />}
     {names.length < 2 && <Alert type="info" message="通常変数またはMA選択肢を2つ以上選択してください。" />}
+    <WeightUnsupportedAlert weightColumnName={matrix.value?.weightStatus === 'unsupported' ? matrix.value?.weightColumn : null} />
     <Row gutter={[12, 12]}>
       <Col xs={24} xl={12}><FocusTarget id="relationships-heatmap" title="相関ヒートマップ">
         <Card size="small" title="相関ヒートマップ" extra={<FocusEnterButton targetId="relationships-heatmap" title="相関ヒートマップ" />}>

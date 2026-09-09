@@ -12,6 +12,7 @@ from ..domain.errors import BizError
 from ..domain.analysis_columns import resolve_analysis_columns
 from ..domain.codebook_adapter import CodebookAdapter
 from ..domain.multi_response import prepare_classifier
+from ..domain.weight_unsupported import weight_unsupported_block
 from .multi_response import _collect_revisions, _check_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
 
@@ -25,6 +26,7 @@ class RelationshipRequest(BaseModel):
     rowIds: list[str] | None = None
     expectedSchemaRevision: int | None = None
     expectedDataRevision: int | None = None
+    weightColumn: str | None = None
 
 
 def _relationship_input(req: RelationshipRequest, *, scales=None, need_numeric=True):
@@ -66,6 +68,7 @@ def _relationship_input(req: RelationshipRequest, *, scales=None, need_numeric=T
 def relationship_matrix(req: RelationshipRequest) -> dict[str, Any]:
     with store.lock(req.datasetId):
         _, numeric, info = _relationship_input(req)
+        weight = weight_unsupported_block(store.load_codebook(req.datasetId) or {}, req.weightColumn)
         columns = info['usedColumns']
         matrix = [[None for _ in columns] for _ in columns]
         counts = [[0 for _ in columns] for _ in columns]
@@ -85,19 +88,20 @@ def relationship_matrix(req: RelationshipRequest) -> dict[str, Any]:
                 denominator = float(np.linalg.norm(a) * np.linalg.norm(b))
                 value = float(np.clip(np.dot(a, b) / denominator, -1, 1)) if denominator > 0 else None
                 matrix[i][j] = matrix[j][i] = value
-        return {**info, 'columns': columns, 'matrix': matrix, 'counts': counts, 'method': 'pearson-pairwise'}
+        return {**info, **weight, 'columns': columns, 'matrix': matrix, 'counts': counts, 'method': 'pearson-pairwise'}
 
 
 @router.post('/relationships/pair')
 def relationship_pair(req: RelationshipRequest) -> dict[str, Any]:
     with store.lock(req.datasetId):
         frame, numeric, info = _relationship_input(req)
+        weight = weight_unsupported_block(store.load_codebook(req.datasetId) or {}, req.weightColumn)
         if len(info['usedColumns']) != 2:
             raise BizError('EMPTY_ANALYSIS_INPUT', '焦点表示には異なる2変数を指定してください。', status_code=422)
         x, y = [numeric[name] for name in info['usedColumns']]
         finite = np.isfinite(x) & np.isfinite(y)
         row_ids = frame.filter(pl.Series(finite))['__rowId__'].to_list()
-        return {**info, 'rowIds': row_ids, 'x': x[finite].tolist(), 'y': y[finite].tolist(),
+        return {**info, **weight, 'rowIds': row_ids, 'x': x[finite].tolist(), 'y': y[finite].tolist(),
                 'usedRows': len(row_ids), 'method': 'pairwise-finite'}
 
 
@@ -105,6 +109,7 @@ class SurpriseAssociationRequest(BaseModel):
     rowIds: list[str] | None = None
     expectedSchemaRevision: int | None = None
     expectedDataRevision: int | None = None
+    weightColumn: str | None = None
     includeSameMa: bool = False
     datasetId: str | None = None
     dataset_id: str | None = None
@@ -157,4 +162,5 @@ def _evaluate_surprise_associations(dataset_id: str, req: SurpriseAssociationReq
         max_lift_cap=max_lift if max_lift is not None else 5.0,
         include_same_ma=req.includeSameMa,
     )
-    return {**result, **info, 'method': 'surprise-associations'}
+    weight = weight_unsupported_block(codebook, req.weightColumn)
+    return {**result, **info, **weight, 'method': 'surprise-associations'}

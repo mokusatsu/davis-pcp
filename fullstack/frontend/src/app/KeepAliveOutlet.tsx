@@ -6,6 +6,7 @@ import type { RootState } from './store'
 import PcpPage from '../features/pcp/PcpPage'
 import TablePage from '../features/table/TablePage'
 import DistributionPage from '../features/distribution/DistributionPage'
+import LikertComparisonPage from '../features/distribution/LikertComparisonPage'
 import RelationshipsPage from '../features/relationships/RelationshipsPage'
 import ClustersPage from '../features/clustering/ClustersPage'
 import ModelsPage from '../features/models/ModelsPage'
@@ -34,6 +35,7 @@ const ROUTE_COMPONENTS: Record<string, React.ComponentType> = {
   '/pcp': PcpPage,
   '/table': TablePage,
   '/distribution': DistributionPage,
+  '/likert': LikertComparisonPage,
   '/relationships': RelationshipsPage,
   '/clusters': ClustersPage,
   '/models': ModelsPage,

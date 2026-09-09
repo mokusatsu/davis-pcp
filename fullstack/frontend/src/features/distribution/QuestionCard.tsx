@@ -24,6 +24,28 @@ export interface AuxiliaryStats {
   bottom2Box?: { pct: number; n: number } | null
 }
 
+export interface WeightedDistItem {
+  code: string
+  weightedCount: number
+  weightedPct: number | null
+}
+
+export interface WeightedSummary {
+  weightedN: number | null
+  weightMissingCount: number
+  distribution: WeightedDistItem[]
+  weightedMean?: number | null
+  meanNote?: string | null
+}
+
+export interface WeightMeta {
+  status: 'omitted' | 'applied' | 'no_positive_weight'
+  columnName?: string | null
+  unweightedN?: number | null
+  weightedN?: number | null
+  weightMissingCount?: number | null
+}
+
 export interface QuestionSummaryData {
   columnId: string
   semanticType?: string
@@ -40,6 +62,8 @@ export interface QuestionSummaryData {
   max?: number
   mean?: number
   median?: number
+  weighted?: WeightedSummary | null
+  weight?: WeightMeta | null
 }
 
 interface QuestionCardProps {
@@ -71,6 +95,9 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const distribution = summary.distribution || []
   const aux = summary.auxiliaryStats
+  const weighted = summary.weighted ?? null
+  const weight = summary.weight ?? null
+  const weightedByCode = new Map((weighted?.distribution ?? []).map((d) => [String(d.code), d]))
 
   const scaleTypeLabels: Record<string, string> = {
     nominal: '名義尺度',
@@ -108,6 +135,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <Tag color="blue">{scaleTypeLabels[scaleType] || scaleType}</Tag>
           {role && <Tag color="default">{roleLabels[role] || role}</Tag>}
           {codebookColumn?.isReversed && <Tag color="warning">逆転</Tag>}
+          {summary.weight?.status === 'applied' && <Tag color="green">ウェイト適用中</Tag>}
+          {summary.weight?.status === 'no_positive_weight' && <Tag color="warning">加重値なし</Tag>}
         </Space>
       }
       extra={
@@ -217,6 +246,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
                   <Text ellipsis style={{ fontSize: 12, fontFamily: 'monospace' }}>
                     {displayPct} ({item.count.toLocaleString()})
+                    {weight?.status === 'applied' && (() => {
+                      const w = weightedByCode.get(key)
+                      if (!w) return null
+                      return <span> / 加重{w.weightedPct == null ? '—' : `${w.weightedPct.toFixed(1)}%`} ({w.weightedCount.toLocaleString()})</span>
+                    })()}
                   </Text>
                   {item.isMissing && <Tag color="warning">{item.missingReason || '無回答'}</Tag>}
                   {isSelected && <Tag color="blue">{selectedCount}選択中</Tag>}
@@ -289,7 +323,30 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                 </span>
               </Col>
             )}
+            {weight?.status === 'applied' && weighted?.weightedMean != null && (
+              <Col span={12}>
+                <span>
+                  加重平均: <strong>{weighted.weightedMean.toFixed(2)}</strong>
+                  {weighted.meanNote && (
+                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                      (※{weighted.meanNote})
+                    </Text>
+                  )}
+                </span>
+              </Col>
+            )}
           </Row>
+        </div>
+      )}
+      {weight?.status === 'applied' && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#666' }} data-testid="weight-note">
+          非加重n={weight.unweightedN?.toLocaleString()} / 加重Σw={weight.weightedN?.toLocaleString()}
+          {weight.weightMissingCount ? ` / ウェイト欠損${weight.weightMissingCount}` : ''} · 標準誤差は非加重n基準。母集団推論には調査設計情報が必要
+        </div>
+      )}
+      {weight?.status === 'no_positive_weight' && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#a00' }} data-testid="weight-note">
+          正のウェイトがないため加重値を表示できません。非加重値を参照してください。
         </div>
       )}
     </Card>

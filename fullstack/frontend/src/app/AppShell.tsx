@@ -30,6 +30,7 @@ export const VIS_NAV_ITEMS = [
   { key: '/pcp', label: 'PCP' },
   { key: '/table', label: 'Table' },
   { key: '/distribution', label: 'Distribution' },
+  { key: '/likert', label: 'Likert' },
   { key: '/relationships', label: 'Relationships' },
   { key: '/associations', label: 'Surprise' },
   { key: '/touring', label: 'Touring' },

@@ -235,6 +235,8 @@ export interface GlobalVariableState {
   variableOrder: string[]
   targetVariableId: string | null
   variableMeta: Record<string, VariableMetaItem>
+  /** Survey weight column (columnId) for the active dataset. Null = unweighted. */
+  weightColumnId: string | null
 }
 
 const initialGlobalVariables: GlobalVariableState = {
@@ -244,6 +246,7 @@ const initialGlobalVariables: GlobalVariableState = {
   variableOrder: [],
   targetVariableId: null,
   variableMeta: {},
+  weightColumnId: null,
 }
 
 export const globalVariablesSlice = createSlice({
@@ -254,6 +257,9 @@ export const globalVariablesSlice = createSlice({
       state,
       action: PayloadAction<{ variables: string[]; meta?: Record<string, VariableMetaItem>; target?: string | null; datasetId?: string }>
     ) {
+      if (state.datasetId && action.payload.datasetId && state.datasetId !== action.payload.datasetId) {
+        state.weightColumnId = null
+      }
       state.allVariables = action.payload.variables
       state.datasetId = action.payload.datasetId ?? null
       state.activeEntities = action.payload.variables.map(name => ({ kind: 'column', columnId: action.payload.meta?.[name]?.columnId ?? name }))
@@ -283,12 +289,21 @@ export const globalVariablesSlice = createSlice({
     targetVariableSet(state, action: PayloadAction<string | null>) {
       state.targetVariableId = action.payload
     },
+    weightColumnSet(state, action: PayloadAction<{ columnId: string | null; datasetId?: string }>) {
+      if (action.payload.datasetId && state.datasetId && action.payload.datasetId !== state.datasetId) return
+      state.weightColumnId = action.payload.columnId
+    },
+    weightColumnCleared(state) {
+      state.weightColumnId = null
+    },
   },
   extraReducers: builder => {
     for (const thunk of [fetchCodebookThunk, saveCodebookThunk]) {
       builder.addCase(thunk.fulfilled, (state, action) => {
         if (state.datasetId && state.datasetId !== action.payload.datasetId) return
         state.activeEntities = reconcileEntities(state.activeEntities, action.payload.columns, action.payload.multiResponseGroups ?? [])
+        const ids = new Set((action.payload.columns ?? []).map((c: { columnId: string }) => c.columnId))
+        if (state.weightColumnId && !ids.has(state.weightColumnId)) state.weightColumnId = null
       })
     }
   },
@@ -301,6 +316,8 @@ export const {
   variableToggled,
   variableOrderReordered,
   targetVariableSet,
+  weightColumnSet,
+  weightColumnCleared,
 } = globalVariablesSlice.actions
 
 /** Ordinary analysis candidates never implicitly expand a selected MA parent. */

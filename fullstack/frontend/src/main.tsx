@@ -8,6 +8,7 @@ import AppShell from './app/AppShell'
 import PcpPage from './features/pcp/PcpPage'
 import TablePage from './features/table/TablePage'
 import DistributionPage from './features/distribution/DistributionPage'
+import LikertComparisonPage from './features/distribution/LikertComparisonPage'
 import RelationshipsPage from './features/relationships/RelationshipsPage'
 import ClustersPage from './features/clustering/ClustersPage'
 import ModelsPage from './features/models/ModelsPage'
@@ -40,6 +41,7 @@ const routeChildren = [
   { path: 'pcp', element: <PcpPage /> },
   { path: 'table', element: <TablePage /> },
   { path: 'distribution', element: <DistributionPage /> },
+  { path: 'likert', element: <LikertComparisonPage /> },
   { path: 'relationships', element: <RelationshipsPage /> },
   { path: 'clusters', element: <ClustersPage /> },
   { path: 'models', element: <ModelsPage /> },

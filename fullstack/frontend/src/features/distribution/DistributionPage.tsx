@@ -62,6 +62,7 @@ export default function DistributionPage() {
   const svgRef = useRef<SVGSVGElement>(null)
   const [brushOp] = useBrushOp()
   const { columns: codebookColumns, getColumn, isLoading: isCodebookLoading, schemaRevision } = useCodebook()
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
   const [viewMode, setViewMode] = useState<'cards' | 'boxplot' | 'qqplot'>('cards')
   const [rawDatasetIds, setRawDatasetIds] = useState<string[]>([])
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function DistributionPage() {
   const [selectedCounts, setSelectedCounts] = useState<Record<string, Record<string, number>>>({})
   const [cardsRoleFilter, setCardsRoleFilter] = useState<'all' | 'question' | 'attribute'>('all')
   const [summaryData, setSummaryData] = useState<Record<string, any> | null>(null)
+  const [weightMeta, setWeightMeta] = useState<Record<string, any> | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [loadingSummaries, setLoadingSummaries] = useState<boolean>(false)
   const [cardPage, setCardPage] = useState(1)
@@ -141,23 +143,34 @@ export default function DistributionPage() {
     if (summaryInput.current !== key) {
       setSummaryData(null)
       setMaSummaries([])
+      setWeightMeta(null)
       summaryInput.current = key
     }
     setSummaryError(null)
     setLoadingSummaries(true)
-    const common = { datasetId: selection.datasetId, rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision }
+    const weightName = codebookColumns.find((c) => c.columnId === weightColumnId)?.name
+    const common = { datasetId: selection.datasetId, rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
+      ...(weightName ? { weightColumn: weightName } : {}) }
     Promise.all([
       columns.length ? api.post<{ columns: Record<string, any>; selectedCountByCode?: Record<string, Record<string, number>> }>('/summaries', { ...common, columns, selectedRowIds: selection.selectedRowIds }) : Promise.resolve({ columns: {}, selectedCountByCode: {} }),
       groupIds.length ? api.post<MultiResponseSummaryResponse>('/summaries/multi-response', {
         ...common, groupIds, selectedRowIds: selection.selectedRowIds,
       }) : Promise.resolve({ groups: [] }),
     ]).then(([sa, ma]) => {
-      if (!cancelled) { setSummaryData(sa.columns); setSelectedCounts(sa.selectedCountByCode ?? {}); setMaSummaries(ma.groups) }
+      if (!cancelled) {
+        setSummaryData(sa.columns); setSelectedCounts(sa.selectedCountByCode ?? {}); setMaSummaries(ma.groups)
+        const raw = sa as Record<string, any>
+        setWeightMeta(raw.weightStatus ? {
+          status: raw.weightStatus, columnName: raw.weightColumn,
+          unweightedN: raw.unweightedN, weightedN: raw.weightedN,
+          weightMissingCount: raw.weightMissingCount,
+        } : null)
+      }
     }).catch((error: { message?: string }) => {
       if (!cancelled) setSummaryError(error.message ?? '要約集計データの取得に失敗しました。')
     }).finally(() => { if (!cancelled) setLoadingSummaries(false) })
     return () => { cancelled = true }
-  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision, visibleKey, selection.selectedRowIds, isCodebookLoading, codebookColumns.length])
+  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision, visibleKey, selection.selectedRowIds, isCodebookLoading, codebookColumns.length, weightColumnId])
 
   const selectMa = async (groupId: string, optionColumnIds: string[], predicate: string, status?: string, goToPcp?: boolean) => {
     const generation = ++matchGeneration.current
@@ -724,6 +737,12 @@ export default function DistributionPage() {
                     max: colSum.max,
                     mean: colSum.mean,
                     median: colSum.median,
+                    weighted: colSum.weighted ?? null,
+                    weight: weightMeta ? {
+                      status: weightMeta.status, columnName: weightMeta.columnName,
+                      unweightedN: weightMeta.unweightedN, weightedN: weightMeta.weightedN,
+                      weightMissingCount: weightMeta.weightMissingCount,
+                    } : null,
                   },
                   codebookColumn: colMeta,
                   selectedCountByCode,

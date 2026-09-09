@@ -1,11 +1,13 @@
-import { selectVariableManagerState } from '../../app/store'
+import { selectVariableManagerState, weightColumnCleared, weightColumnSet } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import React, { useState } from 'react'
 import {
   Button,
   Popover,
   Input,
   Checkbox,
+  Select,
   Space,
   Radio,
   Typography,
@@ -51,6 +53,11 @@ export const GlobalHeaderControlBar: React.FC = () => {
   const [varModalOpen, setVarModalOpen] = useState(false)
   const [obsModalOpen, setObsModalOpen] = useState(false)
   const [obsModalTab, setObsModalTab] = useState<'sampling' | 'range'>('sampling')
+  const { columns: codebookColumns } = useCodebook()
+  const weightCandidates = codebookColumns.filter(
+    (c) => c.role === 'weight' && (c.scaleType === 'interval' || c.scaleType === 'ratio') && !c.multiResponseGroup
+  )
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
 
   const totalVarCount = globalVars.allVariables.length
   const activeVarCount = globalVars.activeVariableIds.length
@@ -210,6 +217,25 @@ export const GlobalHeaderControlBar: React.FC = () => {
             <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 項目選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} <DownOutlined style={{ fontSize: 10 }} /> ]
           </Button>
         </Popover>
+        <Space size={4} align="center">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ウェイト:</Typography.Text>
+          <Select
+            size="small"
+            style={{ minWidth: 140 }}
+            placeholder="未選択"
+            allowClear
+            value={weightColumnId ?? undefined}
+            onChange={(value) => {
+              if (!value) dispatch(weightColumnCleared())
+              else dispatch(weightColumnSet({ columnId: value as string, datasetId: selection.datasetId ?? undefined }))
+            }}
+            options={weightCandidates.map((c) => ({
+              value: c.columnId,
+              label: `${c.label || c.name} (${c.name})`,
+            }))}
+            data-testid="global-weight-select"
+          />
+        </Space>
       </div>
 
       {/* Center/Right: Global Observations & Scopes */}
