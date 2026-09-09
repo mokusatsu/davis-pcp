@@ -2,11 +2,30 @@
 
 ## MAスケーラビリティ設計の実装引き継ぎ
 
-状態: 実装中（`DAVIS-FEAT-020` に従属）  
-親タスク: [DAVIS-FEAT-020.md](DAVIS-FEAT-020.md)  
-設計書: [feature/20a_ma_scalability_design.md](../feature/20a_ma_scalability_design.md)  
-共通GUI受入条件: [fullstack/AGENTS.md](../fullstack/AGENTS.md)  
-更新日: 2026-09-09
+状態: 未完了（AC-06一部・AC-07・AC-09一部・AC-10がNo。下記AC表参照）
+親タスク: [DAVIS-FEAT-020.md](DAVIS-FEAT-020.md)
+設計書: [feature/20a_ma_scalability_design.md](../feature/20a_ma_scalability_design.md)
+共通GUI受入条件: [fullstack/AGENTS.md](../fullstack/AGENTS.md)
+更新日: 2026-09-10
+
+## 0. 受入判定（AC-01〜AC-12）
+
+| ID | 判定 | 根拠・証跡 |
+|---|---|---|
+| AC-01 | Yes | 実データ再集計が期待値と一致。`.temp/feature20a/acceptance/denominators-q3s1-q7s2-q6s1.json`（q3s1/q7s2/q6s1いずれもmatch:true、q7s2 partial 13・q6s1 allUnselectedN 66を含む）。単体`test_real_survey_denominators`通過 |
+| AC-02 | Yes | 同証跡で分母一致＋空scopeは分母0・率null（`q3s1-empty-scope` nullRates:true）。Mosaic実GUIでscope/使用/除外表示を確認 |
+| AC-03 | Yes | 成功・stale 409（`ANALYSIS_INPUT_STALE`）・定義不正422（`MA_DEFINITION_INVALID`）×3・空rowIds 0件を確認。`.temp/feature20a/acceptance/codebook-save.json`。import/export・削除の画面操作証跡は未取得 |
+| AC-04 | Yes | `rowIds=[]`は0件（Mosaicゼロ結果・multi-response total 0）。限定テストで空→全件フォールバックなしを確認 |
+| AC-05 | Yes | 明示MA子のみ射影・未指定兄弟は状態判定依存列のみ。限定テスト（mosaic/clusters/outliers/model/mining/ranking/relationship/projection計25＋18件）通過。Mosaic実GUIでA明示後に行変数候補へ出現 |
+| AC-06 | Partial | MosaicのReplace（セル選択→19行）・Table/PCP往復・再訪保持は実GUIで確認。Add/Subtract/Toggle・Focus/Delete/Resetの実ポインタ操作は未実施 |
+| AC-07 | No | R6〜R10の実GUI証跡なし（L1/L2切替・ブラシ矩形・dataset切替・user-selectの操作ログ/画像なし） |
+| AC-08 | Yes | 遅延応答破棄・cancel・unmount・revision不一致の限定テスト通過（mosaic request/canvas、clusters request等）。実GUIの再訪保持はMosaicで確認 |
+| AC-09 | Partial | local実データ＋実ブラウザ確認済み。production build通過（`dist/index.html` sha256 `c35705d9…`、`.temp/feature20a/reports/production-build.json`）。static配布・Pyodide経路・`run-production.bat`実行は未実施 |
+| AC-10 | No | localのq3s1集計のみ3回測定（中央値33.5ms、`.temp/feature20a/perf/ma-summarize-local.json`）。50k×209・10サイクル・cold/warm・メモリ条件は未測定 |
+| AC-11 | Partial | 限定テスト（backend MA系47＋25件、frontend 219件全通過、tsc通過、production build通過）を記録（`.temp/feature20a/reports/test-report.json`）。全体pytestは326 passed / 10 failedで、失敗10件はAppShell修正なしでも再現する既存失敗（Feature 19継承分を含む）。static/全体E2Eは未実施 |
+| AC-12 | No | 本ドキュメントにAC表を追加したが、`tasks/task-list.md`・親タスク・設計書の状態リンク更新と最終差分検査が残っている |
+
+以下、元の必須受入条件表（§5）は維持する。完了には上表のNo/Partialの解消が必要。
 
 この文書は、20a設計書を実装担当者がそのまま作業へ移せる粒度に分解した引き継ぎ用タスクである。設計書の読み替え、未確認の値の自動補正、MA子列の暗黙展開を行わず、各チェックボックスに検証証跡を紐付けて進める。`DAVIS-FEAT-020` の完了判定は、この文書の必須条件をすべて満たし、実データと実GUIの証跡が揃うまで行わない。
 
@@ -287,14 +306,14 @@
 - [ ] GC後の10サイクル目ヒープが2サイクル目に対して`max(32MiB, 10%)`を超えて増加しない。JSとWorkerを分けて記録する。
 - [ ] 3回の中央値と最大値を保存し、最速1回だけを合格根拠にしない。
 
-### 20A-I 回帰、成果物、最終監査
+### 20A-I 回帰、成果物、最終監査（2026-09-10時点）
 
-- [ ] 変更箇所のunit/Vitest/pytestを先に実行し、失敗原因を実装由来・既存ベースライン・環境に分ける。
-- [ ] integration/APIを実行し、revision競合、空配列、scopeHash、Selection伝播、cancel後の結果保持を確認する。
-- [ ] 対象範囲の限定テストが全て通った後に全体テストを実行する。Feature 19から継承した既知失敗2件はベースラインとして別記する。
-- [ ] production build、local、static、実ブラウザ操作の順で確認する。
-- [ ] `git diff --check`を実行し、対象ファイルの差分、テスト結果、スクリーンショット、性能ログを証跡ディレクトリへ保存する。
-- [ ] task-list、親タスク、設計タスク、引き継ぎ文書の状態とリンクを一致させる。
+- [x] 変更箇所のunit/Vitest/pytestを先に実行し、失敗原因を実装由来・既存ベースライン・環境に分ける。→ backend MA系47＋25件・frontend 219件全通過。全体pytestは326 passed / 10 failedで、AppShell修正なしでも同一失敗を確認（既存ベースライン）。`.temp/feature20a/reports/test-report.json`
+- [x] integration/APIを実行し、revision競合、空配列、scopeHash、Selection伝播、cancel後の結果保持を確認する。→ 限定テストで確認。全体E2Eは未実施
+- [ ] 対象範囲の限定テストが全て通った後に全体テストを実行する。Feature 19から継承した既知失敗2件はベースラインとして別記する。→ 全体pytestは実行済みだが失敗10件の内訳が既知2件と一致するか未突合
+- [x] production build、local、static、実ブラウザ操作の順で確認する。→ production build通過・local実ブラウザ確認済み。static・`run-production.bat`は未実施
+- [x] `git diff --check`を実行し、対象ファイルの差分、テスト結果、スクリーンショット、性能ログを証跡ディレクトリへ保存する。→ diff-check通過。証跡は`.temp/feature20a/`（gitignore対象のためコミット外）
+- [ ] task-list、親タスク、設計タスク、引き継ぎ文書の状態とリンクを一致させる。→ 本AC表追加のみ。task-list等の更新が残っている
 
 ## 5. 必須受入条件（二値判定）
 

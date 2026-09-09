@@ -1,6 +1,6 @@
 # DAVIS-FEAT-020
 
-状態: 実装中
+状態: 実装中（20AのAC-06一部・AC-07・AC-09一部・AC-10が未達のため未完了）
 
 引き継ぎ: [DAVIS-FEAT-020-HANDOFF.md](DAVIS-FEAT-020-HANDOFF.md)
 20a実装分解・受入条件: [DAVIS-FEAT-020A.md](DAVIS-FEAT-020A.md)

@@ -112,6 +112,9 @@ export default function AppShell() {
       }
     })
     dispatch(variablesInitialized({ variables: colNames, meta: varMeta, datasetId }))
+    // Codebook fetch reconciles MA children into parent entities via
+    // globalVariablesSlice extraReducers (reconcileEntities).
+    await dispatch(codebookSlice.fetchCodebookThunk(datasetId))
   }, [dispatch])
 
   // Bootstrap: auto-load built-in Iris sample on first launch.
