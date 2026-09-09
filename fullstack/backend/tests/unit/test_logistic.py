@@ -36,6 +36,7 @@ def test_logistic_regression_basic():
     assert res["target"] == "target"
     assert res["classes"] == ["0", "1"]
     assert res["excludedRowCount"] == 0
+    assert res['diagnostics']['completeSeparation'] is False
     assert len(res["coefficients"]) == 3  # Intercept, feat1, feat2
 
     # Check coefficient names
@@ -98,6 +99,7 @@ def test_logistic_regression_regularization_l1_l2():
         c_value=0.5,
     )
     assert len(res_l2["coefficients"]) == 3
+    assert res_l2['diagnostics']['completeSeparation'] is True
 
     # L1
     res_l1 = run_logistic_regression(
@@ -108,6 +110,22 @@ def test_logistic_regression_regularization_l1_l2():
         c_value=0.5,
     )
     assert len(res_l1["coefficients"]) == 3
+    assert res_l1['diagnostics']['completeSeparation'] is True
+
+
+def test_logistic_constant_features_are_named():
+    frame = pl.DataFrame({'target': [0, 1, 0, 1, 0, 1], 'constant': [0] * 6, 'x': list(range(6))})
+    with pytest.raises(BizError) as error:
+        run_logistic_regression(frame, 'target', ['constant', 'x'])
+    assert error.value.code == 'LOGISTIC_CONSTANT_FEATURES'
+    assert error.value.details['columns'] == ['constant']
+
+
+def test_complete_separation_requires_strict_margins():
+    # Opposite labels at the same x prevent complete separation even if most rows separate.
+    frame = pl.DataFrame({'target': [0, 0, 0, 1, 1, 1], 'x': [-2, -1, 0, 0, 1, 2]})
+    result = run_logistic_regression(frame, 'target', ['x'], regularization='l2')
+    assert result['diagnostics']['completeSeparation'] is False
 
 
 def test_logistic_regression_listwise_deletion_and_active_rows():
@@ -157,3 +175,33 @@ def test_logistic_regression_errors():
     with pytest.raises(BizError) as exc_info3:
         run_logistic_regression(df=df, target_column="target_3class", feature_columns=[])
     assert exc_info3.value.code == "LOGISTIC_NO_FEATURES"
+
+
+def test_no_intercept_fits_the_original_origin_and_predicts_the_fitted_model():
+    from scipy.optimize import brentq
+    from scipy.special import expit
+
+    x = np.arange(1.0, 13.0)
+    y = np.array([0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
+    frame = pl.DataFrame({'__rowId__': [f'r{i * 7}' for i in range(len(x))], 'x': x, 'target': y})
+    # Independent likelihood score on the original, uncentered design.
+    expected_beta = brentq(lambda beta: x @ (expit(x * beta) - y), -2, 2)
+    expected_probabilities = expit(x * expected_beta)
+    result = run_logistic_regression(frame, 'target', ['x'], intercept=False)
+    assert [item['name'] for item in result['coefficients']] == ['x']
+    assert result['coefficients'][0]['coefficient'] == pytest.approx(expected_beta, abs=1e-6)
+    np.testing.assert_allclose([sample['predictedProb'] for sample in result['samples']], expected_probabilities, atol=1e-5)
+    expected_likelihood = np.sum(y * np.log(expected_probabilities) + (1-y) * np.log1p(-expected_probabilities))
+    assert result['fitMetrics']['logLikelihood'] == pytest.approx(expected_likelihood, abs=1e-4)
+    for point in result['curves']['x']:
+        assert point['probability'] == pytest.approx(expit(point['x'] * expected_beta), abs=1e-4)
+    assert [sample['rowId'] for sample in result['samples']] == frame['__rowId__'].to_list()
+
+
+def test_no_intercept_separation_uses_the_original_origin():
+    frame = pl.DataFrame({'x': [1., 2., 3., 4., 5., 6.], 'target': [0, 0, 0, 1, 1, 1]})
+    # A threshold at 3.5 requires an intercept. No line through the origin separates these labels.
+    without = run_logistic_regression(frame, 'target', ['x'], intercept=False, regularization='l2')
+    with_intercept = run_logistic_regression(frame, 'target', ['x'], intercept=True, regularization='l2')
+    assert without['diagnostics']['completeSeparation'] is False
+    assert with_intercept['diagnostics']['completeSeparation'] is True

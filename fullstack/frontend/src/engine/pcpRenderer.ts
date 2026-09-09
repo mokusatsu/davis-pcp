@@ -6,6 +6,17 @@
 import { vizTheme, composedColor } from '../theme/viz'
 import { truncateText } from '../utils/textUtils'
 
+export function tracePcpRow(ctx: Pick<CanvasRenderingContext2D, 'moveTo' | 'lineTo'>, points: Float64Array, base: number, nAxes: number) {
+  let connected = false
+  for (let axis = 0; axis < nAxes; axis++) {
+    const x = points[base + axis * 2], y = points[base + axis * 2 + 1]
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { connected = false; continue }
+    if (connected) ctx.lineTo(x, y)
+    else ctx.moveTo(x, y)
+    connected = true
+  }
+}
+
 export interface PcpRenderSpec {
   width: number
   height: number
@@ -193,8 +204,7 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
     for (const r of rows) {
       const base = r * nAxes * 2
       // Viewport culling already done at bucket stage — no per-row check here.
-      ctx.moveTo(points[base], points[base + 1])
-      for (let k = 1; k < nAxes; k += 1) ctx.lineTo(points[base + k * 2], points[base + k * 2 + 1])
+      tracePcpRow(ctx, points, base, nAxes)
     }
     ctx.stroke()
   }
@@ -211,8 +221,7 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
     for (let r = 0; r < nRows; r += 1) {
       if (!spec.selectedFlags[r]) continue
       const base = r * nAxes * 2
-      ctx.moveTo(points[base], points[base + 1])
-      for (let k = 1; k < nAxes; k += 1) ctx.lineTo(points[base + k * 2], points[base + k * 2 + 1])
+      tracePcpRow(ctx, points, base, nAxes)
     }
     ctx.stroke()
 
@@ -236,8 +245,7 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
       ctx.beginPath()
       for (const r of rows) {
         const base = r * nAxes * 2
-        ctx.moveTo(points[base], points[base + 1])
-        for (let k = 1; k < nAxes; k += 1) ctx.lineTo(points[base + k * 2], points[base + k * 2 + 1])
+        tracePcpRow(ctx, points, base, nAxes)
       }
       ctx.stroke()
     }
@@ -251,15 +259,13 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
     ctx.strokeStyle = theme.surface
     ctx.lineWidth = spec.style.lineWidth + 6
     ctx.beginPath()
-    ctx.moveTo(points[base], points[base + 1])
-    for (let k = 1; k < nAxes; k += 1) ctx.lineTo(points[base + k * 2], points[base + k * 2 + 1])
+    tracePcpRow(ctx, points, base, nAxes)
     ctx.stroke()
     const color = resolveRowColor(spec, spec.hoveredRow, theme, colorCache)
     ctx.strokeStyle = spec.selectedFlags[spec.hoveredRow] ? theme.selection : color
     ctx.lineWidth = spec.style.lineWidth + 3
     ctx.beginPath()
-    ctx.moveTo(points[base], points[base + 1])
-    for (let k = 1; k < nAxes; k += 1) ctx.lineTo(points[base + k * 2], points[base + k * 2 + 1])
+    tracePcpRow(ctx, points, base, nAxes)
     ctx.stroke()
     ctx.restore()
   }

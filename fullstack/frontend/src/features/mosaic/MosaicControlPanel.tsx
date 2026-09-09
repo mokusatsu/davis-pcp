@@ -106,7 +106,7 @@ export const MosaicControlPanel: FC<MosaicControlPanelProps> = ({
                   color={targetInfo.colors[idx % targetInfo.colors.length]}
                   style={{ marginRight: 0, fontWeight: 'bold' }}
                 >
-                  {cat}
+                  {targetInfo.valueLabels?.[cat] ?? cat}
                 </Tag>
               ))}
             </Space>

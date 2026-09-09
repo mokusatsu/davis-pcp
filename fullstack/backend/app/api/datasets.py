@@ -12,10 +12,12 @@ import pyarrow as pa
 import pyarrow.ipc as ipc
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..config import settings
 from ..domain.errors import BizError
+from ..domain.multi_response import resolve_groups, validate_group
+from ..domain.ma_projection import plan_ma_axes, append_ma_axes
 from ..services.dataset_service import ColumnRole, ImportOptions, new_id, now_iso
 from ..services.import_service import (
     build_builtin_iris,
@@ -136,6 +138,68 @@ def _derive_dataset_schema(df: pl.DataFrame, source_schema: list[dict] | None = 
     return schema_payload
 
 
+def _get_visible_multi_response_groups(codebook: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_groups = codebook.get("multiResponseGroups") or []
+    fallback = []
+    for group in raw_groups:
+        if isinstance(group, dict):
+            fallback.append({k: v for k, v in group.items() if k != "columns"})
+
+    try:
+        groups = resolve_groups(codebook)
+    except Exception:
+        return fallback
+
+    resolved = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        resolved.append({k: v for k, v in group.items() if k != "columns"})
+    return resolved
+
+
+def _sync_multi_response_groups(
+    groups: list[Any],
+    merged_cols: list[dict[str, Any]],
+    filter_option_order: bool = False,
+) -> list[dict[str, Any]]:
+    if not groups:
+        return []
+
+    members_by_group: dict[str, set[str]] = {}
+    for col in merged_cols:
+        group_id = col.get("multiResponseGroup")
+        column_id = col.get("columnId")
+        if not isinstance(group_id, str) or not group_id:
+            continue
+        if not isinstance(column_id, str):
+            continue
+        members_by_group.setdefault(group_id, set()).add(column_id)
+
+    normalized: list[dict[str, Any]] = []
+    for raw_group in groups:
+        if not isinstance(raw_group, dict):
+            continue
+        group_id = raw_group.get("groupId")
+        if not isinstance(group_id, str) or not group_id:
+            continue
+        members = members_by_group.get(group_id)
+        if not members:
+            continue
+
+        option_order_raw = raw_group.get("optionOrder", [])
+        if filter_option_order:
+            option_order = [cid for cid in option_order_raw if isinstance(cid, str) and cid in members]
+        else:
+            option_order = option_order_raw if isinstance(option_order_raw, list) else []
+        group = dict(raw_group)
+        group.pop("columns", None)
+        group["optionOrder"] = option_order
+        normalized.append(group)
+
+    return normalized
+
+
 def _sync_codebook(
     dataset_id: str,
     df: pl.DataFrame,
@@ -153,7 +217,7 @@ def _sync_codebook(
     existing_names = {c["name"] for c in (existing_cb or {}).get("columns", [])}
     new_names = [c for c in frame_without_row_id.columns if c not in existing_names]
     new_frame = frame_without_row_id.select(new_names)
-    schemas = [s.model_dump(mode="json") for s in probe_table(new_frame, new_frame.height)] if new_names else []
+    schemas = _derive_dataset_schema(new_frame, source_schema) if new_names else []
     initial_cb = generate_initial_codebook(dataset_id, schemas)
 
     if existing_cb and "columns" in existing_cb:
@@ -178,7 +242,12 @@ def _sync_codebook(
     else:
         cb_payload = initial_cb
 
-    store.save_codebook(dataset_id, cb_payload)
+    cb_payload["multiResponseGroups"] = _sync_multi_response_groups(
+        (existing_cb or {}).get("multiResponseGroups", []) or [],
+        cb_payload.get("columns", []),
+        True,
+    ) if existing_cb else cb_payload.get("multiResponseGroups", [])
+
     return cb_payload
 
 
@@ -193,6 +262,8 @@ def _finalize_dataset(
 ) -> dict:
     schemas = probe_table(df, df.height)
     id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
+    if source_dataset_id and "__rowId__" in df.columns:
+        id_column = None
     df, identity_source = assign_row_identity(df, id_column, schemas)
     # Re-probe on the canonical frame so row counts align with __rowId__, preserving schema metadata if available.
     schema_payload = _derive_dataset_schema(df, source_schema)
@@ -223,44 +294,85 @@ def _finalize_dataset(
         "createdAt": now_iso(),
         "importOptions": options.model_dump(mode="json") if options else ImportOptions().model_dump(mode="json"),
     }
-    store.save(dataset_id, meta, df)
+    store.save(dataset_id, meta, df, codebook=cb)
     meta.pop("rowIds", None)
     return meta
 
 
 @router.get("/datasets/{dataset_id}")
 def get_dataset(dataset_id: str) -> dict:
+    with store.lock(dataset_id):
+        return _get_dataset(dataset_id)
+
+
+def _get_dataset(dataset_id: str) -> dict:
     meta = store.get_meta(dataset_id)
     cb = store.load_codebook(dataset_id)
     by_name = {c["name"]: c for c in (cb or {}).get("columns", [])}
-    return {**meta, "schema": [{**c, **by_name.get(c["name"], {})} for c in meta["schema"]]}
+    return {**meta, "schemaRevision": (cb or {}).get("schemaRevision", meta.get("schemaRevision", 1)),
+            "schema": [{**c, **by_name.get(c["name"], {})} for c in meta["schema"]]}
 
 
 @router.get("/datasets/{dataset_id}/codebook")
 def get_codebook(dataset_id: str) -> dict:
+    with store.lock(dataset_id):
+        return _get_codebook(dataset_id)
+
+
+def _get_codebook(dataset_id: str) -> dict:
     meta = store.get_meta(dataset_id)
     cb = store.load_codebook(dataset_id)
     if not cb:
         from ..services.dataset_service import generate_initial_codebook
         cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
         store.save_codebook(dataset_id, cb)
-    return cb
+    response = dict(cb)
+    response["multiResponseGroups"] = _get_visible_multi_response_groups(cb)
+    return response
 
 
 @router.put("/datasets/{dataset_id}/codebook")
 def update_codebook(dataset_id: str, request: dict) -> dict:
+    with store.lock(dataset_id):
+        return _update_codebook(dataset_id, request)
+
+
+def _update_codebook(dataset_id: str, request: dict) -> dict:
     from ..domain.codebook import CodebookUpdateRequest
 
-    update_req = CodebookUpdateRequest(**request)
+    try:
+        update_req = CodebookUpdateRequest(**request)
+    except ValidationError as exc:
+        raise BizError("CODEBOOK_INVALID", "コードブック定義が不正です。", status_code=422, details={"message": str(exc)}) from exc
+
     meta = store.get_meta(dataset_id)
-    df = store.get_dataframe(dataset_id)
     cb = store.load_codebook(dataset_id)
     if not cb:
         from ..services.dataset_service import generate_initial_codebook
         cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+        cb["multiResponseGroups"] = []
 
+    current_schema_revision = int(cb.get("schemaRevision", 1))
+    if (
+        update_req.expectedSchemaRevision is not None
+        and update_req.expectedSchemaRevision != current_schema_revision
+    ):
+        raise BizError(
+            "ANALYSIS_INPUT_STALE",
+            "保存・変換のため入力の世代が更新されています。",
+            status_code=409,
+            details={
+                "schemaRevision": current_schema_revision,
+                "expectedSchemaRevision": update_req.expectedSchemaRevision,
+            },
+        )
+
+    columns_payload = [dict(col) for col in cb.get("columns", []) if isinstance(col, dict)]
+    cb["columns"] = columns_payload
     by_id = {c["columnId"]: c for c in cb.get("columns", [])}
     by_name = {c["name"]: c for c in cb.get("columns", [])}
+    multi_response_groups = [dict(g) for g in cb.get("multiResponseGroups", []) if isinstance(g, dict)]
+    groups_by_id = {g.get("groupId"): idx for idx, g in enumerate(multi_response_groups) if isinstance(g.get("groupId"), str) and g.get("groupId")}
     updated_count = 0
 
     allowed_fields = {
@@ -273,7 +385,26 @@ def update_codebook(dataset_id: str, request: dict) -> dict:
         "missingReasons",
         "isReversed",
         "multiResponseGroup",
+        "multiResponseOptionLabel",
     }
+    validation_affecting_fields = {
+        "scaleType",
+        "role",
+        "missingCodes",
+        "missingReasons",
+        "isReversed",
+        "multiResponseGroup",
+    }
+    changed_group_ids: set[str] = set()
+    changed_group_order: list[str] = []
+    reassigned_from_group_ids: set[str] = set()
+
+    def _mark_changed(group_id: str | None) -> None:
+        if not isinstance(group_id, str) or not group_id:
+            return
+        if group_id not in changed_group_ids:
+            changed_group_ids.add(group_id)
+            changed_group_order.append(group_id)
 
     for patch in update_req.columns:
         target = None
@@ -286,17 +417,142 @@ def update_codebook(dataset_id: str, request: dict) -> dict:
             continue
 
         updated_count += 1
+        old_group = target.get("multiResponseGroup")
+        old_group = old_group if isinstance(old_group, str) else None
         patch_dict = patch.model_dump(exclude_unset=True)
         for k, v in patch_dict.items():
-            if k in allowed_fields and v is not None:
+            if k not in allowed_fields:
+                continue
+            if k == "multiResponseGroup":
+                next_group = v
+                if hasattr(v, "value"):
+                    next_group = v.value
+                if next_group == "":
+                    next_group = None
+                target[k] = next_group
+                if next_group != old_group:
+                    if old_group:
+                        reassigned_from_group_ids.add(old_group)
+                    _mark_changed(next_group)
+                    _mark_changed(old_group)
+            elif v is not None:
                 if hasattr(v, "value"):
                     v = v.value
+                if k in validation_affecting_fields and v != target.get(k):
+                    _mark_changed(old_group)
                 target[k] = v
 
+    seen_upsert_group_ids: set[str] = set()
+    if update_req.multiResponseGroups:
+        for group in update_req.multiResponseGroups:
+            group_payload = group.model_dump()
+            group_id = group_payload.get("groupId")
+            if not isinstance(group_id, str) or not group_id:
+                continue
+            if group_id in seen_upsert_group_ids:
+                raise BizError("MA_DEFINITION_INVALID", f"groupId が重複しています: {group_id}", status_code=422)
+            seen_upsert_group_ids.add(group_id)
+            if not group_payload.get("label"):
+                group_payload["label"] = group_id
+            _mark_changed(group_id)
+            if group_id in groups_by_id:
+                multi_response_groups[groups_by_id[group_id]] = group_payload
+            else:
+                multi_response_groups.append(group_payload)
+                groups_by_id[group_id] = len(multi_response_groups) - 1
+    resolved_groups: list[dict[str, Any]] = []
+    resolved_group_specs: dict[str, dict[str, Any]] = {}
+
+    if changed_group_ids:
+        try:
+            resolved_groups = resolve_groups({"columns": cb["columns"], "multiResponseGroups": multi_response_groups})
+        except ValueError as exc:
+            raise BizError("MA_DEFINITION_INVALID", str(exc), status_code=422) from exc
+        resolved_by_group = {
+            g.get("groupId"): g for g in resolved_groups if isinstance(g, dict) and isinstance(g.get("groupId"), str)
+        }
+        for group_id in changed_group_order:
+            group = resolved_by_group.get(group_id)
+            if not group:
+                continue
+            group_members = group.get("columns")
+            if group_id in seen_upsert_group_ids and not group_members:
+                raise BizError(
+                    "MA_DEFINITION_INVALID",
+                    "multi-response group must have at least one member column",
+                    status_code=422,
+                )
+            if not group_members:
+                # allow removing an existing parent whose column membership became empty (old parent cleanup).
+                continue
+
+            option_order = group.get("optionOrder")
+            if option_order is None:
+                option_order = []
+            if not isinstance(option_order, list):
+                raise BizError(
+                    "MA_DEFINITION_INVALID",
+                    "multiResponseGroup optionOrder must be a list",
+                    status_code=422,
+                )
+            if not all(isinstance(code, str) for code in option_order):
+                raise BizError(
+                    "MA_DEFINITION_INVALID",
+                    "multiResponseGroup optionOrder must be a list of strings",
+                    status_code=422,
+                )
+
+            option_order_for_validation = option_order
+            if group_id in reassigned_from_group_ids:
+                member_ids = {
+                    c.get("columnId")
+                    for c in group_members
+                    if isinstance(c, dict) and isinstance(c.get("columnId"), str)
+                }
+                option_order_for_validation = [code for code in option_order if code in member_ids]
+
+            candidate_group = dict(group)
+            candidate_group["optionOrder"] = option_order_for_validation
+            try:
+                validate_group(candidate_group)
+            except ValueError as exc:
+                raise BizError("MA_DEFINITION_INVALID", str(exc), status_code=422) from exc
+
+            if not candidate_group.get("label"):
+                candidate_group["label"] = group_id
+            resolved_group_specs[group_id] = {k: v for k, v in candidate_group.items() if k != "columns"}
+
+    projected_groups: list[dict[str, Any]] = []
+    seen_projected_ids: set[str] = set()
+    for raw_group in multi_response_groups:
+        if not isinstance(raw_group, dict):
+            continue
+        raw_group_id = raw_group.get("groupId")
+        if not isinstance(raw_group_id, str):
+            continue
+        if raw_group_id in changed_group_ids:
+            if raw_group_id in resolved_group_specs:
+                if raw_group_id in seen_projected_ids:
+                    continue
+                projected = resolved_group_specs[raw_group_id]
+                projected_groups.append(projected)
+                seen_projected_ids.add(raw_group_id)
+            continue
+        projected = {k: v for k, v in raw_group.items() if k != "columns"}
+        projected_groups.append(projected)
+        seen_projected_ids.add(raw_group_id)
+
+    for group_id in changed_group_order:
+        if group_id in seen_projected_ids:
+            continue
+        projected = resolved_group_specs.get(group_id)
+        if projected:
+            projected_groups.append(projected)
+            seen_projected_ids.add(group_id)
+
+    cb["multiResponseGroups"] = _sync_multi_response_groups(projected_groups, cb["columns"], False)
     new_rev = int(cb.get("schemaRevision", 1)) + 1
     cb["schemaRevision"] = new_rev
-    store.save_codebook(dataset_id, cb)
-
     # Sync schemaRevision to meta & update fingerprint
     meta["schemaRevision"] = new_rev
     fingerprint_material = {
@@ -305,11 +561,14 @@ def update_codebook(dataset_id: str, request: dict) -> dict:
         "format": meta.get("format", "csv"),
         "schemaRevision": new_rev,
     }
-    fingerprint_seed = values_fingerprint(df)
+    fingerprint_seed = meta.get("valuesFingerprint")
+    if not fingerprint_seed:
+        fingerprint_seed = values_fingerprint(store.get_dataframe(dataset_id))
+        meta["valuesFingerprint"] = fingerprint_seed
     meta["fingerprint"] = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
     ).hexdigest()
-    store.save(dataset_id, meta, df)
+    store.save_metadata(dataset_id, meta, cb)
 
     return {
         "status": "success",
@@ -321,101 +580,79 @@ def update_codebook(dataset_id: str, request: dict) -> dict:
 
 @router.post("/datasets/{dataset_id}/codebook/import")
 async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict:
-    meta = store.get_meta(dataset_id)
-    df = store.get_dataframe(dataset_id)
-    cb = store.load_codebook(dataset_id)
-    if not cb:
-        from ..services.dataset_service import generate_initial_codebook
-        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
-
+    cb = get_codebook(dataset_id)
+    by_name = {c["name"]: c for c in cb["columns"]}
+    by_id = {c["columnId"]: c for c in cb["columns"]}
     raw = await _read_upload(file)
-    text = raw.decode("utf-8-sig", errors="replace")
-
-    by_name = {c["name"]: c for c in cb.get("columns", [])}
-    by_id = {c["columnId"]: c for c in cb.get("columns", [])}
-    updated_count = 0
-
-    # Try JSON
-    parsed_json = None
+    text = raw.decode("utf-8-sig")
+    patches: list[dict] = []
+    groups = None
     try:
-        parsed_json = json.loads(text)
-    except Exception:
-        pass
-
-    if parsed_json is not None:
-        items = parsed_json.get("columns", parsed_json) if isinstance(parsed_json, dict) else parsed_json
-        if isinstance(items, list):
+        if text.lstrip().startswith(("{", "[")):
+            payload = json.loads(text)
+            items = payload.get("columns") if isinstance(payload, dict) else payload
+            if not isinstance(items, list):
+                raise ValueError("columns must be an array")
             for item in items:
                 if not isinstance(item, dict):
-                    continue
-                target = by_id.get(item.get("columnId")) or by_name.get(item.get("name"))
+                    raise ValueError("column definitions must be objects")
+                target = by_name.get(item.get("name")) or by_id.get(item.get("columnId"))
                 if target:
-                    for k in ["label", "scaleType", "role", "valueLabels", "categoryOrder", "missingCodes", "missingReasons", "isReversed", "multiResponseGroup"]:
-                        if k in item and item[k] is not None:
-                            target[k] = item[k]
-                    updated_count += 1
-    else:
-        # Parse CSV
-        reader = csv.DictReader(io.StringIO(text))
-        for row in reader:
-            col_name = row.get("name") or row.get("columnName")
-            target = by_name.get(col_name) if col_name else None
-            if not target:
-                continue
-            updated_count += 1
-            if "label" in row and row["label"]:
-                target["label"] = row["label"]
-            if "scaleType" in row and row["scaleType"]:
-                target["scaleType"] = row["scaleType"]
-            if "role" in row and row["role"]:
-                target["role"] = row["role"]
-            if "isReversed" in row and row["isReversed"]:
-                target["isReversed"] = row["isReversed"].lower() in ("true", "1", "yes")
-            if "multiResponseGroup" in row:
-                target["multiResponseGroup"] = row["multiResponseGroup"] or None
-
-            for json_field in ("valueLabels", "missingReasons"):
-                if json_field in row and row[json_field]:
-                    try:
-                        target[json_field] = json.loads(row[json_field])
-                    except Exception:
-                        pass
-
-            for list_field in ("categoryOrder", "missingCodes"):
-                if list_field in row and row[list_field]:
-                    try:
-                        target[list_field] = json.loads(row[list_field])
-                    except Exception:
-                        # Fallback comma-split
-                        target[list_field] = [x.strip() for x in row[list_field].split(",") if x.strip()]
-
-    new_rev = int(cb.get("schemaRevision", 1)) + 1
-    cb["schemaRevision"] = new_rev
-    store.save_codebook(dataset_id, cb)
-
-    meta["schemaRevision"] = new_rev
-    fingerprint_material = {
-        "schema": meta.get("schema", []),
-        "options": meta.get("importOptions", {}),
-        "format": meta.get("format", "csv"),
-        "schemaRevision": new_rev,
-    }
-    fingerprint_seed = values_fingerprint(df)
-    meta["fingerprint"] = hashlib.sha256(
-        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
-    store.save(dataset_id, meta, df)
-
-    return {
-        "status": "success",
-        "datasetId": dataset_id,
-        "schemaRevision": new_rev,
-        "updatedColumns": updated_count,
-    }
+                    patches.append({**item, "columnId": target["columnId"], "name": target["name"]})
+            if isinstance(payload, dict) and "multiResponseGroups" in payload:
+                groups = payload["multiResponseGroups"]
+                if not isinstance(groups, list):
+                    raise ValueError("multiResponseGroups must be an array")
+                source_names = {c.get("columnId"): c.get("name") for c in items if isinstance(c, dict)}
+                normalized_groups = []
+                for raw_group in groups:
+                    group = dict(raw_group)
+                    if "optionOrderNames" in group and "optionOrder" in group:
+                        raise ValueError("Specify only one option order field")
+                    if "optionOrderNames" in group:
+                        group["optionOrder"] = [by_name[name]["columnId"] for name in group.pop("optionOrderNames")]
+                    elif group.get("optionOrder"):
+                        group["optionOrder"] = [by_name[source_names[cid]]["columnId"] if cid in source_names
+                                                else by_id[cid]["columnId"] for cid in group["optionOrder"]]
+                    normalized_groups.append(group)
+                groups = normalized_groups
+        else:
+            for row in csv.DictReader(io.StringIO(text)):
+                target = by_name.get(row.get("name"))
+                if not target:
+                    continue
+                patch = {"columnId": target["columnId"]}
+                for field in ("label", "scaleType", "role", "multiResponseOptionLabel"):
+                    if row.get(field):
+                        patch[field] = row[field]
+                if "multiResponseGroup" in row:
+                    patch["multiResponseGroup"] = row["multiResponseGroup"] or None
+                if row.get("isReversed"):
+                    if row["isReversed"].lower() not in ("true", "false", "1", "0", "yes", "no"):
+                        raise ValueError("isReversed must be a boolean")
+                    patch["isReversed"] = row["isReversed"].lower() in ("true", "1", "yes")
+                for field in ("valueLabels", "missingReasons", "categoryOrder", "missingCodes"):
+                    if row.get(field):
+                        patch[field] = json.loads(row[field])
+                patches.append(patch)
+        if not patches and not groups:
+            raise ValueError("No matching columns or groups")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise BizError("CODEBOOK_INVALID", "辞書の列・設問定義を確認してください。", status_code=422,
+                       details={"message": str(exc)}) from exc
+    request = {"columns": patches, "expectedSchemaRevision": cb["schemaRevision"]}
+    if groups is not None:
+        request["multiResponseGroups"] = groups
+    return update_codebook(dataset_id, request)
 
 
 @router.get("/datasets/{dataset_id}/codebook/export")
 def export_codebook(dataset_id: str, format: str = "csv") -> Response:
+    with store.lock(dataset_id):
+        return _export_codebook(dataset_id, format)
+
+
+def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
     cb = store.load_codebook(dataset_id)
     if not cb:
         meta = store.get_meta(dataset_id)
@@ -445,6 +682,7 @@ def export_codebook(dataset_id: str, format: str = "csv") -> Response:
         "missingReasons",
         "isReversed",
         "multiResponseGroup",
+        "multiResponseOptionLabel",
     ]
     writer = csv.writer(output)
     writer.writerow(fields)
@@ -461,6 +699,7 @@ def export_codebook(dataset_id: str, format: str = "csv") -> Response:
             json.dumps(col.get("missingReasons", {}), ensure_ascii=False) if col.get("missingReasons") else "",
             "true" if col.get("isReversed") else "false",
             col.get("multiResponseGroup") or "",
+            col.get("multiResponseOptionLabel", ""),
         ]
         writer.writerow(row)
 
@@ -471,16 +710,58 @@ def export_codebook(dataset_id: str, format: str = "csv") -> Response:
     )
 
 
+@router.delete("/datasets/{dataset_id}/codebook/multi-response-groups/{group_id}")
+def delete_multi_response_group(dataset_id: str, group_id: str, expectedSchemaRevision: int) -> dict:
+    with store.lock(dataset_id):
+        return _delete_multi_response_group(dataset_id, group_id, expectedSchemaRevision)
+
+
+def _delete_multi_response_group(dataset_id: str, group_id: str, expectedSchemaRevision: int) -> dict:
+    cb = store.load_codebook(dataset_id)
+    if not cb:
+        meta = store.get_meta(dataset_id)
+        from ..services.dataset_service import generate_initial_codebook
+        cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
+        cb["multiResponseGroups"] = []
+
+    columns = cb.get("columns", [])
+    if not isinstance(columns, list):
+        columns = []
+
+    group_columns = []
+    for col in columns:
+        if isinstance(col, dict) and col.get("multiResponseGroup") == group_id and isinstance(col.get("columnId"), str):
+            group_columns.append(col["columnId"])
+
+    has_group_definition = any(
+        isinstance(group, dict) and group.get("groupId") == group_id
+        for group in cb.get("multiResponseGroups", [])
+    )
+    if not group_columns and not has_group_definition:
+        raise BizError("GROUP_NOT_FOUND", f"multiResponseGroup が見つかりません: {group_id}", status_code=404)
+
+    return update_codebook(dataset_id, {
+        "expectedSchemaRevision": expectedSchemaRevision,
+        "columns": [{"columnId": cid, "multiResponseGroup": None} for cid in group_columns],
+    })
+
+
 class SchemaPatch(BaseModel):
     columns: list[dict[str, Any]]
 
 
 @router.patch("/datasets/{dataset_id}/schema")
 def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
+    with store.lock(dataset_id):
+        return _patch_schema(dataset_id, patch)
+
+
+def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
     meta = store.get_meta(dataset_id)
     df = store.get_dataframe(dataset_id)
     by_name = {c["name"]: c for c in patch.columns}
     updated = []
+    renamed = False
     for column_meta in meta["schema"]:
         override = by_name.get(column_meta["name"])
         if override:
@@ -490,6 +771,7 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
                 old = column_meta["name"]
                 column_meta["name"] = override["newName"]
                 df = df.rename({old: override["newName"]})
+                renamed = renamed or old != override["newName"]
         updated.append(column_meta)
     meta["schema"] = updated
     meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
@@ -505,7 +787,6 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
             if override.get("newName"):
                 column["name"] = override["newName"]
         cb["schemaRevision"] = meta["schemaRevision"]
-        store.save_codebook(dataset_id, cb)
     fingerprint_material = {
         "schema": updated,
         "options": meta.get("importOptions", {}),
@@ -516,7 +797,14 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
     meta["fingerprint"] = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
     ).hexdigest()
-    store.save(dataset_id, meta, df)
+    if renamed:
+        store.save(dataset_id, meta, df, codebook=cb)
+    else:
+        if cb is None:
+            from ..services.dataset_service import generate_initial_codebook
+            cb = generate_initial_codebook(dataset_id, meta["schema"])
+            cb["schemaRevision"] = meta["schemaRevision"]
+        store.save_metadata(dataset_id, meta, cb)
     meta.pop("rowIds", None)
     return meta
 
@@ -549,6 +837,11 @@ def preview_dataset_binning(dataset_id: str, request: BinningPreviewRequest) -> 
 
 @router.post("/datasets/{dataset_id}/transform")
 def transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
+    with store.lock(dataset_id):
+        return _transform_dataset(dataset_id, request)
+
+
+def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     from ..algorithms.transform.core import bin_numeric, nominal_to_binary
 
     meta = store.get_meta(dataset_id)
@@ -582,8 +875,7 @@ def transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
         raise BizError("TRANSFORM_UNKNOWN_TYPE", f"未知の変換タイプ '{request.type}' です。")
 
     # Re-probe schema on updated dataframe
-    canonical_schemas = [s for s in probe_table(df.drop("__rowId__"), df.height)]
-    schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    schema_payload = _derive_dataset_schema(df, meta.get("schema", []))
     cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
     schema_revision = cb.get("schemaRevision", 1)
 
@@ -597,7 +889,7 @@ def transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, df)
+    store.save(dataset_id, meta, df, codebook=cb)
     meta.pop("rowIds", None)
 
     return {
@@ -609,6 +901,11 @@ def transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
 
 @router.delete("/datasets/{dataset_id}/columns/{column_name}")
 def delete_column(dataset_id: str, column_name: str) -> dict:
+    with store.lock(dataset_id):
+        return _delete_column(dataset_id, column_name)
+
+
+def _delete_column(dataset_id: str, column_name: str) -> dict:
     if column_name == "__rowId__":
         raise BizError("COLUMN_CANNOT_DELETE_ROW_ID", "ID列 '__rowId__' は削除できません。")
 
@@ -619,8 +916,7 @@ def delete_column(dataset_id: str, column_name: str) -> dict:
         raise BizError("COLUMN_NOT_FOUND", f"列 '{column_name}' が見つかりません。")
 
     df = df.drop(column_name)
-    canonical_schemas = [s for s in probe_table(df.drop("__rowId__"), df.height)]
-    schema_payload = [s.model_dump(mode="json") for s in canonical_schemas]
+    schema_payload = _derive_dataset_schema(df, meta.get("schema", []))
     cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
     schema_revision = cb.get("schemaRevision", 1)
 
@@ -629,7 +925,7 @@ def delete_column(dataset_id: str, column_name: str) -> dict:
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, df)
+    store.save(dataset_id, meta, df, codebook=cb)
     meta.pop("rowIds", None)
     return meta
 
@@ -661,6 +957,11 @@ def preview_dataset_imputation(dataset_id: str, request: ImputePreviewRequest) -
 
 @router.post("/datasets/{dataset_id}/impute")
 def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
+    with store.lock(dataset_id):
+        return _impute_dataset(dataset_id, request)
+
+
+def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
     from ..algorithms.imputation.core import impute_dataframe
 
     meta = store.get_meta(dataset_id)
@@ -686,7 +987,7 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         meta["revision"] = meta.get("revision", 1) + 1
         meta["schemaRevision"] = schema_revision
 
-        store.save(dataset_id, meta, imputed_df)
+        store.save(dataset_id, meta, imputed_df, codebook=cb)
         meta.pop("rowIds", None)
         return {
             **meta,
@@ -734,6 +1035,11 @@ def preview_dataset_calculation(dataset_id: str, request: CalculatePreviewReques
 
 @router.post("/datasets/{dataset_id}/calculate")
 def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> dict:
+    with store.lock(dataset_id):
+        return _calculate_dataset_variable(dataset_id, request)
+
+
+def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> dict:
     from ..algorithms.transformation.expression import evaluate_expression
 
     meta = store.get_meta(dataset_id)
@@ -758,7 +1064,7 @@ def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> di
     meta["columnCount"] = updated_df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, updated_df)
+    store.save(dataset_id, meta, updated_df, codebook=cb)
     meta.pop("rowIds", None)
 
     return {
@@ -771,16 +1077,37 @@ def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> di
 
 @router.post("/datasets/{dataset_id}/view")
 def dataset_view(dataset_id: str, body: dict) -> Response:
+    with store.lock(dataset_id):
+        return _dataset_view(dataset_id, body)
+
+
+def _dataset_view(dataset_id: str, body: dict) -> Response:
     """Arrow IPC view of the dataset with optional filters.
 
     body: {columns?: [names], rowIds?: [...], limit?: int, offset?: int}
     """
     meta = store.get_meta(dataset_id)
-    df = store.get_dataframe(dataset_id)
     columns = body.get("columns")
-    if columns:
-        keep = ["__rowId__"] + [c for c in columns if c in df.columns]
-        df = df.select(keep)
+    ma_axes = body.get("maAxes") or []
+    codebook = store.load_codebook(dataset_id) or {}
+    for field in ("dataRevision", "schemaRevision"):
+        current = codebook.get(field, meta.get(field, 1)) if field == "schemaRevision" else meta.get(field, 1)
+        expected = body.get("expected" + field[0].upper() + field[1:])
+        if expected is not None and expected != current:
+            raise BizError("ANALYSIS_INPUT_STALE", "入力の世代が更新されています。", status_code=409)
+    if columns is not None:
+        available = {c["name"] for c in meta["schema"]} | {"__rowId__"}
+        if not isinstance(columns, list) or any(c not in available for c in columns):
+            raise BizError("COLUMN_NOT_FOUND", "存在する列を指定してください。", status_code=422)
+        columns = list(dict.fromkeys(["__rowId__", *columns]))
+    try:
+        plans, dependencies = plan_ma_axes(codebook, ma_axes, {c["name"] for c in meta["schema"]}) if ma_axes else ([], [])
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise BizError("MA_DEFINITION_INVALID", str(exc), status_code=422) from exc
+    if plans and columns is None:
+        raise BizError("MA_DEFINITION_INVALID", "MA軸と併用する通常列を明示してください。", status_code=422)
+    read_columns = list(dict.fromkeys([*columns, *dependencies])) if columns is not None else None
+    df = store.get_dataframe(dataset_id, columns=read_columns)
     row_ids = body.get("rowIds")
     if row_ids is not None:
         wanted = set(row_ids)
@@ -791,27 +1118,28 @@ def dataset_view(dataset_id: str, body: dict) -> Response:
         df = df.slice(offset, limit)
     elif offset:
         df = df.slice(offset)
+    if plans:
+        df = append_ma_axes(df, plans).select([*columns, *[axis["key"] for axis, _ in plans]])
     return Response(content=_serialize_dataframe_to_arrow_bytes(df), media_type="application/vnd.apache.arrow.stream")
 
 
 @router.delete("/datasets/{dataset_id}")
 def delete_dataset(dataset_id: str) -> dict:
+    with store.lock(dataset_id):
+        return _delete_dataset(dataset_id)
+
+
+def _delete_dataset(dataset_id: str) -> dict:
     store.delete(dataset_id)
     return {"deleted": dataset_id}
 
 
 def _serialize_dataframe_to_arrow_bytes(df: pl.DataFrame) -> bytes:
-    try:
-        pydict = df.to_dict(as_series=False)
-        table = pa.Table.from_pydict(pydict)
-        sink = pa.BufferOutputStream()
-        with ipc.new_stream(sink, table.schema) as writer:
-            writer.write_table(table)
-        return sink.getvalue().to_pybytes()
-    except Exception:
-        buf = io.BytesIO()
-        df.write_ipc_stream(buf)
-        return buf.getvalue()
+    table = df.to_arrow()
+    sink = pa.BufferOutputStream()
+    with ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
 
 
 def dataframe_to_arrow_response(df: pl.DataFrame) -> Response:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Button,
@@ -46,12 +46,14 @@ import CodebookDetailForm from './CodebookDetailForm'
 import CodebookGridView from './CodebookGridView'
 import BulkLabelPasteModal from './BulkLabelPasteModal'
 import CodebookCsvImportDialog from './CodebookCsvImportDialog'
+import MultiResponseGroupDialog from './MultiResponseGroupDialog'
 
 export default function CodebookEditorModal() {
   const [notificationApi, notificationHolder] = notification.useNotification()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const codebook = useSelector((s: RootState) => s.codebook)
+  const [maOpen, setMaOpen] = useState(false)
 
   const datasetId = selection.datasetId
 
@@ -205,9 +207,9 @@ export default function CodebookEditorModal() {
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div>
-              {changedCount > 0 ? (
+              {codebook.hasChanges ? (
                 <Tag color="orange">
-                  変更保留中: {changedCount}変数
+                  変更保留中: {changedCount}変数・設問設定
                 </Tag>
               ) : (
                 <Tag color="default">変更なし</Tag>
@@ -216,7 +218,7 @@ export default function CodebookEditorModal() {
             <Space>
               <Button
                 icon={<UndoOutlined />}
-                disabled={changedCount === 0}
+                disabled={!codebook.hasChanges}
                 onClick={() => dispatch(draftReverted())}
               >
                 元に戻す
@@ -227,7 +229,7 @@ export default function CodebookEditorModal() {
               <Button
                 type="primary"
                 loading={codebook.isSaving}
-                disabled={changedCount === 0}
+                disabled={!codebook.hasChanges}
                 onClick={handleSave}
               >
                 保存
@@ -250,6 +252,7 @@ export default function CodebookEditorModal() {
           }}
         >
           <Space wrap size="small">
+            <Button size="small" onClick={() => setMaOpen(true)}>MA設問</Button>
             <Button
               size="small"
               icon={<ImportOutlined />}
@@ -354,6 +357,7 @@ export default function CodebookEditorModal() {
       </Modal>
 
       {/* Sub Modals */}
+      <MultiResponseGroupDialog key={datasetId} open={maOpen && codebook.isEditorOpen} onClose={() => setMaOpen(false)} />
       <BulkLabelPasteModal
         open={codebook.isBulkLabelModalOpen}
         onClose={() => dispatch(bulkLabelModalToggled(false))}

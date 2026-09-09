@@ -1,8 +1,7 @@
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import Select from '../common/ColumnSelect'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -14,7 +13,10 @@ import {
   ArrowRightOutlined, BarChartOutlined, LineChartOutlined, AppstoreOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged } from '../../app/store'
+import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import { useMiningTargets } from './useMiningTargets'
+import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import ModernSubgroupMiningView from './ModernSubgroupMiningView'
@@ -87,9 +89,10 @@ export default function SubgroupMiningPage() {
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
-  const [columns, setColumns] = useState<Array<{ name: string; type: string }>>([])
-  const [attrCols, setAttrCols] = useState<string[]>([])
-  const [qCols, setQCols] = useState<string[]>([])
+  const targets = useMiningTargets()
+  const rowIds = useSelector(selectEffectiveRowIds)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const { schemaRevision } = useCodebook()
   const [alpha, setAlpha] = useState<number>(0.05)
   const [minGroupSize, setMinGroupSize] = useState<number>(10)
   const [loading, setLoading] = useState<boolean>(false)
@@ -97,40 +100,32 @@ export default function SubgroupMiningPage() {
   const [miningResult, setMiningResult] = useState<MiningResult | null>(null)
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'modern' | 'classic'>('modern')
+  const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, targets.attributes, targets.questions, alpha, minGroupSize]),
+    [datasetId, dataRevision, schemaRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|'), alpha, minGroupSize])
+  const latestContext = useRef(context)
+  latestContext.current = context
+  const requestVersion = useRef(0)
 
-  // Fetch columns on mount or datasetId change
   useEffect(() => {
-    if (!datasetId) return
-    let active = true
-    api.get<{ schema: Array<{ name: string; physicalType: string; semanticType: string }> }>(`/datasets/${datasetId}`)
-      .then((meta) => {
-        if (!active) return
-        const cols = meta.schema.map((c) => ({ name: c.name, type: c.semanticType || c.physicalType }))
-        setColumns(cols)
-        // Default attributes: categorical or string or small-cardinality
-        const defaultAttrs = cols.filter((c) => c.type === 'categorical' || c.name.includes('group') || c.name.includes('species') || c.name.includes('segment')).map((c) => c.name)
-        const defaultQs = cols.filter((c) => !defaultAttrs.includes(c.name)).map((c) => c.name)
-        setAttrCols(defaultAttrs.length > 0 ? defaultAttrs : [cols[cols.length - 1]?.name].filter(Boolean))
-        setQCols(defaultQs.length > 0 ? defaultQs : cols.map((c) => c.name))
-      })
-      .catch((err) => {
-        console.error('Failed to load dataset columns', err)
-      })
-    return () => { active = false }
-  }, [datasetId])
+    requestVersion.current += 1
+    setMiningResult(null); setSelectedInsightId(null); setLoading(false); setError(null)
+  }, [context])
 
   const runMining = async () => {
-    if (!datasetId) return
+    if (!datasetId || !targets.ready) return
+    const version = ++requestVersion.current, startedContext = latestContext.current
     setLoading(true)
     setError(null)
     try {
       const res = await api.post<MiningResult>('/mining/subgroups', {
         datasetId,
-        attributeCols: attrCols.length > 0 ? attrCols : undefined,
-        questionCols: qCols.length > 0 ? qCols : undefined,
+        attributeCols: targets.attributes,
+        questionCols: targets.questions,
+        rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         alpha,
         minGroupSize,
       })
+      if (version !== requestVersion.current || startedContext !== latestContext.current) return
       setMiningResult(res)
       if (res.insights.length > 0) {
         setSelectedInsightId(res.insights[0].id)
@@ -138,22 +133,16 @@ export default function SubgroupMiningPage() {
         setSelectedInsightId(null)
       }
     } catch (err: any) {
+      if (version !== requestVersion.current || startedContext !== latestContext.current) return
       console.error('Mining execution error', err)
       const msg = err?.message || err?.detail || '単変量マイニング処理中にエラーが発生しました。'
       const details = typeof err?.details === 'object' ? JSON.stringify(err.details, null, 2) : (err?.details ? String(err.details) : undefined)
       const actions = Array.isArray(err?.suggestedActions) ? err.suggestedActions : undefined
       setError({ message: msg, details, suggestedActions: actions })
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current && startedContext === latestContext.current) setLoading(false)
     }
   }
-
-  // Auto-run once dataset is loaded (only if classic tab is active)
-  useEffect(() => {
-    if (datasetId && columns.length > 0 && !miningResult && !loading && activeTab === 'classic') {
-      void runMining()
-    }
-  }, [datasetId, columns, activeTab])
 
   const currentInsight = useMemo(() => {
     if (!miningResult || !selectedInsightId) return null
@@ -165,7 +154,7 @@ export default function SubgroupMiningPage() {
     if (rids.length > 0) {
       dispatch(selectionApplied({
         rowIds: rids,
-        operation: 'replace',
+        operation: getBrushOp(),
         label: `Subgroup: ${insight.subgroup.name}=${insight.direction.highest_group || insight.direction.top_group}`,
       }))
     }
@@ -173,10 +162,6 @@ export default function SubgroupMiningPage() {
 
   const handleFocusPcpPair = (insight: InsightItem) => {
     handleSelectRowsInPcp(insight)
-    dispatch(pcpStateChanged({
-      order: [insight.subgroup.name, insight.question.name],
-      visibleColumns: [insight.subgroup.name, insight.question.name],
-    }))
     navigate('/pcp')
   }
 
@@ -228,29 +213,8 @@ export default function SubgroupMiningPage() {
                 {/* Control bar */}
                 {!focused && (
                   <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
+                    {targets.control}
                     <Row gutter={[12, 12]} align="middle">
-                      <Col xs={24} md={6}>
-            <Typography.Text strong>属性変数 (Subgroups):</Typography.Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="属性を選択"
-              value={attrCols}
-              onChange={setAttrCols}
-              options={columns.map((c) => ({ label: c.name, value: c.name }))}
-            />
-          </Col>
-          <Col xs={24} md={6}>
-            <Typography.Text strong>質問変数 (Questions):</Typography.Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', marginTop: 4 }}
-              placeholder="質問を選択"
-              value={qCols}
-              onChange={setQCols}
-              options={columns.map((c) => ({ label: c.name, value: c.name }))}
-            />
-          </Col>
           <Col xs={12} md={3}>
             <Typography.Text strong>FDR α:</Typography.Text>
             <AntSelect
@@ -281,6 +245,7 @@ export default function SubgroupMiningPage() {
               onClick={() => void runMining()}
               loading={loading}
               data-testid="mining-run-button"
+              disabled={!targets.ready}
               style={{ width: '100%', marginTop: 22 }}
             >
               Run Auto Mining

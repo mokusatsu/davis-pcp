@@ -1,8 +1,10 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
+import MaAxisPicker from './MaAxisPicker'
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
 import Select from '../common/ColumnSelect'
-import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
+import { l1Index, useDatasetL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
@@ -98,7 +100,21 @@ export default function PcpPage() {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
-  const data = useColumnarData(selection.datasetId)
+  const { columns: codebookColumns, formatValueLabel } = useCodebook()
+  const globalVars = useSelector(selectOrdinaryVariables)
+  const globalEntities = useSelector(selectVariableEntities)
+  const maGroups = globalEntities.items.filter(item => item.entity.kind === 'ma' && globalEntities.selected.has(item.key))
+    .map(item => ({ groupId: item.name, label: item.label }))
+  const availableMaAxes = (pcp.maAxes ?? []).filter(axis => maGroups.some(group => group.groupId === axis.groupId)
+    && (axis.kind === 'maCount' || codebookColumns.some(column => column.columnId === axis.columnId && column.multiResponseGroup === axis.groupId)))
+  const eligibleAxisKeys = [...globalVars.activeVariableIds, ...availableMaAxes.map(axis => axis.key)]
+  const ordinaryNames = useMemo(() => codebookColumns.filter(column => !column.multiResponseGroup).map(column => column.name), [codebookColumns])
+  const initializedDataset = useRef<string | null>(null)
+  const datasetKey = `${selection.datasetId}:${selection.dataRevision}`
+  const requestedAxes = initializedDataset.current === datasetKey ? pcp.visibleColumns : ordinaryNames.slice(0, 10)
+  const requestedColumns = [...new Set([...requestedAxes.filter(name => ordinaryNames.includes(name) && globalVars.activeVariableIds.includes(name)),
+    ...(pcp.colorBy && codebookColumns.some(column => column.name === pcp.colorBy) ? [pcp.colorBy] : [])])]
+  const data = useColumnarData(selection.datasetId, requestedColumns, availableMaAxes.filter(axis => requestedAxes.includes(axis.key)))
   const theme = vizTheme(false)
   /** OffscreenCanvas mirror of the visible canvas — painted in the worker. */
   const offscreenRef = useRef<OffscreenCanvas | null>(null)
@@ -115,9 +131,16 @@ export default function PcpPage() {
   const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
 
   // Build axis metadata from schema (O(cols) via precomputed min/max/cats).
-  const { columns: codebookColumns, formatValueLabel } = useCodebook()
-  const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data, codebookColumns) : []), [data, codebookColumns])
-  const l1Candidates = useL1ColorDomains(data)
+  const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data, codebookColumns).map(axis => {
+    const ma = availableMaAxes.find(item => item.key === axis.key)
+    if (!ma) return axis
+    const column = codebookColumns.find(column => column.columnId === ma.columnId)
+    return ma.kind === 'maCount'
+      ? { ...axis, missingAsGap: true, label: `${maGroups.find(group => group.groupId === ma.groupId)?.label || ma.groupId}・選択数` }
+      : { ...axis, label: column?.multiResponseOptionLabel || column?.label || column?.name || axis.key,
+        type: 'categorical' as const, missingAsGap: true, min: 0, max: 1, categories: ['0', '1'], valueLabels: { '0': '非選択', '1': '選択' } }
+  }) : []), [data, codebookColumns, pcp.maAxes, globalEntities])
+  const l1Candidates = useDatasetL1ColorDomains(selection.datasetId) ?? []
   const l1Domain = l1Candidates.find(d => d.key === pcp.colorBy)
 
   // Dataset switch: drop the previous geometry immediately so axis controls
@@ -131,36 +154,33 @@ export default function PcpPage() {
     }
   }, [selection.datasetId])
 
-  // Initialize order/visibility/colorBy on dataset load.
-  const initializedDataset = useRef<string | null>(null)
+  // Initialize only ordinary axes. Additional axes are chosen explicitly in the page control.
   useEffect(() => {
-    if (!axes.length || !data) return
-    const key = `${selection.datasetId}:${selection.revision}`
-    if (initializedDataset.current === key) return
-    initializedDataset.current = key
+    if (!codebookColumns.length || initializedDataset.current === datasetKey) return
+    initializedDataset.current = datasetKey
     dispatch(pcpStateChanged({
-      order: axes.map((a) => a.key),
-      visibleColumns: axes.map((a) => a.key),
-      reversed: Object.fromEntries(axes.map((a) => [a.key, false])),
+      order: ordinaryNames,
+      visibleColumns: ordinaryNames.slice(0, 10),
+      maAxes: [],
+      reversed: Object.fromEntries(ordinaryNames.map(name => [name, false])),
     }))
-  }, [axes, dispatch, selection.datasetId, selection.revision])
+  }, [ordinaryNames, codebookColumns.length, dispatch, datasetKey])
 
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
   const orderedVisibleAxes = useMemo(() => {
-    const activeVarIds = globalVars?.activeVariableIds?.length > 0 ? globalVars.activeVariableIds : pcp.visibleColumns
+    const activeVarIds = eligibleAxisKeys
     return pcp.order
-      .filter((key) => activeVarIds.includes(key))
+      .filter((key) => activeVarIds.includes(key) && pcp.visibleColumns.includes(key))
       .map((key) => axes.find((a) => a.key === key))
       .filter((a): a is PcpAxis => Boolean(a))
   }, [pcp.order, pcp.visibleColumns, globalVars?.activeVariableIds, axes])
 
-  const activeRowIndexes = useActiveRows()
+  const activeRowIndexes = useActiveRows(data)
 
   // K-Medoids draw simplification: >500 rows draw cluster representatives
   // (medoids ∪ selected rows) instead of every active row. Runs BEFORE the
   // geometry call so color slots / selection flags / hit tests all see the
   // reduced row set and stay consistent by construction.
-  const simplification = usePcpSimplification({ orderedVisibleAxes, activeRowIndexes })
+  const simplification = usePcpSimplification({ source: data, orderedVisibleAxes, activeRowIndexes })
   const drawRowIndexes = simplification?.drawRowIndexes ?? activeRowIndexes
 
   // Minimum pixel width/height per axis: below this, labels/ticks collide and the
@@ -183,6 +203,7 @@ export default function PcpPage() {
   }, [orderedVisibleAxes, frameSize.height, isVertical])
 
   const geometry = usePcpGeometry({
+    source: data,
     // Geometry must span the FULL virtual span — not just the visible frame —
     // or axis spacing collapses and the canvas coordinate space diverges
     // from the scrollable area (student_performance: 33 axes drew at 12.8px
@@ -815,18 +836,34 @@ export default function PcpPage() {
     return <Alert type="info" showIcon message="データセットを読み込んでください。" description="上部のImportからCSV等を取り込むか、Irisサンプルを選択してください。" />
   }
 
+  const axisChooser = <Space wrap><AntSelect mode="multiple" aria-label="PCPの表示軸" placeholder="表示軸を選択"
+    style={{ minWidth: 240, maxWidth: 480 }} maxTagCount={2} allowClear optionFilterProp="label"
+    value={pcp.visibleColumns.filter(name => eligibleAxisKeys.includes(name))}
+    options={[...ordinaryNames.filter(name => globalVars.activeVariableIds.includes(name)).map(name => ({ value: name, label: `${name}: ${codebookColumns.find(column => column.name === name)?.label || name}` })),
+      ...availableMaAxes.map(axis => ({ value: axis.key, label: axes.find(item => item.key === axis.key)?.label || (axis.kind === 'maCount' ? `${axis.groupId}・選択数` : codebookColumns.find(column => column.columnId === axis.columnId)?.multiResponseOptionLabel || codebookColumns.find(column => column.columnId === axis.columnId)?.label || axis.columnId) }))]}
+    onChange={names => dispatch(pcpStateChanged({ visibleColumns: names }))} />
+    <MaAxisPicker groups={maGroups} columns={codebookColumns} onAdd={added => dispatch(pcpStateChanged({
+      maAxes: [...new Map([...(pcp.maAxes ?? []), ...added].map(axis => [axis.key, axis])).values()],
+      visibleColumns: [...new Set([...pcp.visibleColumns, ...added.map(axis => axis.key)])],
+      order: [...new Set([...pcp.order, ...added.map(axis => axis.key)])],
+    }))} /></Space>
+
   if (orderedVisibleAxes.length < 2) {
     return (
+      <Space direction="vertical" style={{ width: '100%' }}>
+      {axisChooser}
       <EmptyStatePanel
-        message="平行座標プロットには2つ以上の変数が必要です。上部の変数セレクタから追加してください。"
+        message="平行座標プロットには2つ以上の表示軸が必要です。共通変数とこのページの表示軸を選択してください。"
         minVariables={2}
       />
+      </Space>
     )
   }
 
   return (
     <div data-testid="pcp-page" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%', flex: 1, minHeight: 400 }}>
       <Space size="small" wrap>
+        {axisChooser}
         <Dropdown popupRender={() => orderMenu} trigger={['click']} disabled={orderingLoading} getPopupContainer={() => document.body}>
           <Button data-testid="axis-order-menu" loading={orderingLoading}>軸順 <DownOutlined /></Button>
         </Dropdown>
@@ -909,12 +946,13 @@ export default function PcpPage() {
             {geometry && orderedVisibleAxes.map((axis, index) => {
               const horizontal = pcp.orientation === 'horizontal'
               const anchor = geometry.axisPos[index]
-              return <ColumnQuestionTooltip key={axis.key} nameOrId={axis.key} svg>
-                <rect x={horizontal ? -130 : geometry.bounds.left - 130}
+              const hit = <rect x={horizontal ? -130 : geometry.bounds.left - 130}
                   y={horizontal ? -10 : anchor - 10}
                   transform={horizontal ? `translate(${anchor}, ${geometry.bounds.bottom + 8}) rotate(-45)` : undefined}
                   width={130} height={22} fill="transparent" aria-label={axis.label} />
-              </ColumnQuestionTooltip>
+              return availableMaAxes.some(item => item.key === axis.key)
+                ? <g key={axis.key}><title>{axis.label}</title>{hit}</g>
+                : <ColumnQuestionTooltip key={axis.key} nameOrId={axis.key} svg>{hit}</ColumnQuestionTooltip>
             })}
             {geometry && orderedVisibleAxes.flatMap((axis, index) => (axis.categories ?? []).map((code, i) => {
               let t = (axis.categories?.length ?? 0) <= 1 ? 0.5 : i / (axis.categories!.length - 1)

@@ -1,18 +1,19 @@
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Descriptions, Popconfirm, Space, Tag, Typography, notification } from 'antd'
+import { Alert, Button, Descriptions, Popconfirm, Space, Tag, Typography, notification } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { datasetLoaded } from '../../app/store'
-import { api, fetchArrowView } from '../../api/client'
+import { datasetValuesUpdated } from '../../app/store'
+import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import BinningModal from './BinningModal'
 import OneHotModal from './OneHotModal'
 import ImputationModal from './ImputationModal'
 import AddVariableModal from './AddVariableModal'
-import { editorModalOpened } from './codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from './codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
+import { useCodebook } from './useCodebookColumn'
 
 interface SummaryColumn {
   count: number
@@ -54,6 +55,8 @@ interface DatasetMeta {
   rowCount: number
   columnCount: number
   fingerprint: string
+  dataRevision: number
+  schemaRevision: number
   rowIdentity: string
   createdAt: string
   schema?: ColumnSchemaItem[]
@@ -63,8 +66,17 @@ export default function OverviewPage() {
   const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
+  const { columns: definitions, schemaRevision } = useCodebook()
+  const groups = useSelector((s: RootState) => s.codebook.datasetId === s.selection.datasetId ? s.codebook.multiResponseGroups : null)
   const [meta, setMeta] = useState<DatasetMeta | null>(null)
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const datasetRef = useRef(selection.datasetId)
+  datasetRef.current = selection.datasetId
+  const context = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision])
+  const contextRef = useRef(context)
+  contextRef.current = context
+  const loadVersion = useRef(0)
 
   // Transformation Modals state
   const [binModalTarget, setBinModalTarget] = useState<string | null>(null)
@@ -74,28 +86,48 @@ export default function OverviewPage() {
   const [addVarModalOpen, setAddVarModalOpen] = useState<boolean>(false)
 
   const reloadDataset = async () => {
-    if (!selection.datasetId) return
-    invalidateColumnarCache()
-    const updatedMeta = await api.get<DatasetMeta>(`/datasets/${selection.datasetId}`).catch(() => null)
-    if (updatedMeta) setMeta(updatedMeta)
-    const updatedSummary = await api.post<SummaryResponse>('/summaries', { datasetId: selection.datasetId }).catch(() => null)
-    if (updatedSummary) setSummary(updatedSummary)
+    const datasetId = selection.datasetId
+    if (!datasetId || datasetRef.current !== datasetId) return
+    const version = ++loadVersion.current
+    const current = () => contextRef.current === context && datasetRef.current === datasetId && loadVersion.current === version
+    setLoadError(null)
+    let updatedMeta: DatasetMeta
+    let updatedSummary: SummaryResponse
+    try {
+      updatedMeta = await api.get<DatasetMeta>(`/datasets/${datasetId}`)
+      if (!current()) return
+      updatedSummary = await api.post<SummaryResponse>('/summaries', {
+        datasetId, expectedDataRevision: updatedMeta.dataRevision, expectedSchemaRevision: updatedMeta.schemaRevision,
+      })
+    } catch (error) {
+      if (current()) {
+        setMeta(null)
+        setSummary(null)
+        setLoadError(error instanceof Error ? error.message : 'データの取得に失敗しました。')
+      }
+      return
+    }
+    if (!current()) return
+    setMeta(updatedMeta)
+    setSummary(updatedSummary)
 
-    // Also refresh arrow view in store
-    const view = await fetchArrowView(selection.datasetId).catch(() => null)
-    if (view && updatedMeta) {
-      dispatch(datasetLoaded({
-        datasetId: selection.datasetId,
-        name: updatedMeta.name,
-        rowIds: (view.__rowId__ as string[]) || selection.activeRowIds,
+    // Column transformations retain row identity and the current working set.
+    if (updatedMeta && updatedMeta.dataRevision !== selection.dataRevision) {
+      invalidateColumnarCache()
+      dispatch(datasetValuesUpdated({
+        datasetId,
+        dataRevision: updatedMeta.dataRevision,
       }))
+      void dispatch(fetchCodebookThunk(datasetId))
     }
   }
 
   useEffect(() => {
-    if (!selection.datasetId) return
+    setMeta(null)
+    setSummary(null)
     void reloadDataset()
-  }, [selection.datasetId])
+    return () => { loadVersion.current++ }
+  }, [selection.datasetId, selection.dataRevision, schemaRevision])
 
   const handleDeleteColumn = async (colName: string) => {
     if (!selection.datasetId) return
@@ -109,9 +141,30 @@ export default function OverviewPage() {
     }
   }
 
-  if (!selection.datasetId || !meta) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
+  if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
+  if (loadError) return <Alert type="error" showIcon message="概要を読み込めませんでした" description={loadError}
+    action={<Button onClick={() => void reloadDataset()}>再試行</Button>} />
+  if (!meta || meta.datasetId !== selection.datasetId) return <Typography.Text>概要を読み込み中です。</Typography.Text>
 
   const schemaMap = new Map((meta.schema || []).map((s) => [s.name, s]))
+  const definitionMap = new Map(definitions.map(column => [column.name, column]))
+  const questionCount = new Set(definitions.filter(column => column.role === 'question')
+    .map(column => column.multiResponseGroup ? `ma:${column.multiResponseGroup}` : `column:${column.columnId}`)).size
+  const rows: any[] = []
+  const parents = new Map<string, any>()
+  for (const schema of meta.schema ?? []) {
+    const spec = definitionMap.get(schema.name)
+    const child = { key: schema.columnId, name: schema.name, schema, ...summary?.columns[schema.name] }
+    if (!spec?.multiResponseGroup) { rows.push(child); continue }
+    let parent = parents.get(spec.multiResponseGroup)
+    if (!parent) {
+      parent = { key: `ma:${spec.multiResponseGroup}`, name: groups?.find(group => group.groupId === spec.multiResponseGroup)?.label || spec.multiResponseGroup,
+        isMaParent: true, children: [] }
+      parents.set(spec.multiResponseGroup, parent)
+      rows.push(parent)
+    }
+    parent.children.push(child)
+  }
   const columnsWithMissing = Object.entries(summary?.columns ?? {})
     .filter(([_, stats]) => stats.missing > 0)
     .map(([name, stats]) => ({
@@ -139,7 +192,8 @@ export default function OverviewPage() {
             <Descriptions.Item label="名前">{meta.name}</Descriptions.Item>
             <Descriptions.Item label="形式">{meta.format}</Descriptions.Item>
             <Descriptions.Item label="行数">{meta.rowCount}</Descriptions.Item>
-            <Descriptions.Item label="列数">{meta.columnCount}</Descriptions.Item>
+            <Descriptions.Item label="物理列数">{meta.columnCount}</Descriptions.Item>
+            <Descriptions.Item label="設問数（question）">{questionCount}</Descriptions.Item>
             <Descriptions.Item label="row identity">{meta.rowIdentity}</Descriptions.Item>
             <Descriptions.Item label="fingerprint"><code style={{ fontSize: 10 }}>{meta.fingerprint.slice(0, 24)}…</code></Descriptions.Item>
             <Descriptions.Item label="作成日時">{meta.createdAt}</Descriptions.Item>
@@ -196,18 +250,14 @@ export default function OverviewPage() {
             size="small"
             pagination={false}
             scroll={{ x: true, y: focused ? 'calc(100vh - 120px)' : undefined }}
-            dataSource={Object.entries(summary?.columns ?? {}).map(([name, stats]) => ({
-              key: name,
-              name,
-              schema: schemaMap.get(name),
-              ...stats,
-            }))}
+            dataSource={rows}
             columns={[
               {
                 title: '列名',
                 dataIndex: 'name',
                 key: 'name',
                 render: (name: string, record) => {
+                  if (record.isMaParent) return <Space><Typography.Text strong>{name}</Typography.Text><Tag color="blue">MA・{record.children.length}選択肢</Tag></Space>
                   const isNumeric = record.schema?.semanticType === 'numeric' || typeof record.min === 'number'
                   return (
                     <Space>
@@ -227,7 +277,7 @@ export default function OverviewPage() {
                 dataIndex: 'missing',
                 key: 'missing',
                 width: 75,
-                render: (v: number) => (v > 0 ? <Tag color="error">{v}</Tag> : '0'),
+                render: (v?: number) => v === undefined ? '—' : (v > 0 ? <Tag color="error">{v}</Tag> : '0'),
               },
               { title: 'min', dataIndex: 'min', key: 'min', width: 75, render: (v) => (typeof v === 'number' ? v.toFixed(2) : '—') },
               { title: 'max', dataIndex: 'max', key: 'max', width: 75, render: (v) => (typeof v === 'number' ? v.toFixed(2) : '—') },
@@ -239,6 +289,7 @@ export default function OverviewPage() {
                 key: 'actions',
                 width: 260,
                 render: (_, record) => {
+                  if (record.isMaParent) return null
                   const isNumeric = record.schema?.semanticType === 'numeric' || typeof record.min === 'number'
                   const isCategorical = record.schema?.semanticType === 'categorical' || (!isNumeric && record.uniqueCount)
                   const categories = record.schema?.categories || Object.keys(record.frequencies || {})

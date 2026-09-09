@@ -21,6 +21,7 @@ export interface PcpAxis {
   valueLabels?: Record<string, string>
   missingCodes?: string[]
   isReversed?: boolean
+  missingAsGap?: boolean
 }
 
 export function buildAxes(data: ColumnarData, columns: CodebookColumn[] = []): PcpAxis[] {
@@ -53,10 +54,11 @@ export function buildAxes(data: ColumnarData, columns: CodebookColumn[] = []): P
 import { selectEffectiveRowIds } from '../../app/store'
 
 /** Active row indexes aligned with the effective row scope (Active / Selected / Sampled / All). */
-export function useActiveRows(): number[] {
+export function useActiveRows(source?: ColumnarData | null): number[] {
   const selection = useSelector((s: RootState) => s.selection)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
+  const loaded = useColumnarData(source === undefined ? selection.datasetId : null)
+  const data = source === undefined ? loaded : source
   return useMemo(() => {
     if (!data) return []
     const out: number[] = []
@@ -130,6 +132,7 @@ export function buildValues(
 }
 
 export function usePcpGeometry(params: {
+  source?: ColumnarData | null
   width: number
   height: number
   orderedVisibleAxes: PcpAxis[]
@@ -137,7 +140,8 @@ export function usePcpGeometry(params: {
 }): GeometryState | null {
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
-  const data = useColumnarData(selection.datasetId)
+  const loaded = useColumnarData(params.source === undefined ? selection.datasetId : null)
+  const data = params.source === undefined ? loaded : params.source
   const [state, setState] = useState<{ geometry: GeometryState; axes: PcpAxis[]; data: typeof data; rows: number[] } | null>(null)
   const seqRef = useRef(0)
 
@@ -173,6 +177,17 @@ export function usePcpGeometry(params: {
         values,
       })
       if (!cancelled && seq === seqRef.current) {
+        for (let axisIndex = 0; axisIndex < nAxes; axisIndex++) {
+          const axis = orderedVisibleAxes[axisIndex]
+          if (!axis.missingAsGap) continue
+          for (let row = 0; row < nRows; row++) {
+            if (data.columns[axis.key]?.[activeRowIndexes[row]] == null) {
+              const offset = (row * nAxes + axisIndex) * 2
+              result.points[offset] = NaN
+              result.points[offset + 1] = NaN
+            }
+          }
+        }
         setState({ geometry: { ...result, nRows, nAxes, rowIds }, axes: orderedVisibleAxes, data, rows: activeRowIndexes })
       }
     })().catch(() => undefined)
@@ -226,12 +241,14 @@ interface SimplificationCacheEntry {
 const simplifyCache = new Map<string, SimplificationCacheEntry>()
 
 export function usePcpSimplification(params: {
+  source?: ColumnarData | null
   orderedVisibleAxes: PcpAxis[]
   activeRowIndexes: number[]
 }): SimplificationResult | null {
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
-  const data = useColumnarData(selection.datasetId)
+  const loaded = useColumnarData(params.source === undefined ? selection.datasetId : null)
+  const data = params.source === undefined ? loaded : params.source
   const [state, setState] = useState<SimplificationResult | null>(null)
   const seqRef = useRef(0)
 

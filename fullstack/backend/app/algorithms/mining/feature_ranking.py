@@ -380,6 +380,7 @@ def compute_feature_rankings(
         np.fill_diagonal(corr_matrix, 0.0)
         redundancy_map = {f: float(np.nanmean(corr_matrix[i])) for i, f in enumerate(valid_features)}
     else:
+        corr_matrix = np.zeros((1, 1))
         redundancy_map = {valid_features[0]: 0.0}
 
     # Borda aggregation
@@ -426,6 +427,7 @@ def compute_feature_rankings(
         "target": target_column,
         "taskType": task_type,
         "evaluatedVariables": valid_features,
+        "redundancyMatrix": np.nan_to_num(corr_matrix, nan=0.0).tolist(),
         "rankings": rankings,
         "suggestedTopK": suggested_top_k,
         "executionTimeMs": round(execution_time_ms, 2),

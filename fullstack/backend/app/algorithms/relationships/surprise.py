@@ -27,6 +27,7 @@ def compute_phik_and_surprise(
     w_unexpected: float = 0.5,
     max_lift_cap: float = 5.0,
     min_n: int = 5,
+    include_same_ma: bool = False,
 ) -> dict[str, Any]:
     # Determine row ID column
     row_id_col = "__rowId__" if "__rowId__" in df.columns else None
@@ -49,7 +50,7 @@ def compute_phik_and_surprise(
             if m.get("name"):
                 meta_by_col[m["name"]] = m
 
-    target_cols = columns or [c for c in df.columns if c != actual_row_id]
+    target_cols = columns if columns is not None else [c for c in df.columns if c != actual_row_id]
     # Filter out columns with 0 variance or all null
     valid_cols = []
     for c in target_cols:
@@ -131,6 +132,9 @@ def compute_phik_and_surprise(
 
         for j in range(i + 1, p):
             col_y = valid_cols[j]
+            group = meta_by_col.get(col_x, {}).get('multiResponseGroup')
+            if not include_same_ma and group and group == meta_by_col.get(col_y, {}).get('multiResponseGroup'):
+                continue
             by = binned_data[col_y]
             ny = numeric_data[col_y]
             ty = col_types[col_y]

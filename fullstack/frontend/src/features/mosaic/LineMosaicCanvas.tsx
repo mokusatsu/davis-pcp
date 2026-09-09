@@ -1,5 +1,5 @@
 import { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
-import { useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Tooltip } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
@@ -7,6 +7,7 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { getBrushOp } from '../selection/SelectionMenu'
 import { useFocusMode } from '../common/FocusMode'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
+import { mosaicPathLabel } from './types'
 
 interface LineMosaicCanvasProps {
   mosaicData: LineMosaicResponse
@@ -65,78 +66,48 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
   const leftLabelWidth = Math.max(rowDepth * (focused ? 110 : 85), 70)
 
   // Drag state
-  const isDragging = useRef(false)
-  const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
   const dragEnd = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragBox, setDragBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const pointerId = useRef<number | null>(null)
 
-  const handleMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+  const positionOf = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    isDragging.current = true
-    dragStart.current = { x, y }
-    dragEnd.current = { x, y }
-    setDragBox({ x1: x, y1: y, x2: x, y2: y })
+    if (!rect) return null
+    return { x: clientX - rect.left, y: clientY - rect.top }
   }
 
-  const handleMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!isDragging.current) return
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    dragEnd.current = { x, y }
-    setDragBox({
-      x1: dragStart.current.x,
-      y1: dragStart.current.y,
-      x2: x,
-      y2: y,
-    })
-  }
-
-  const handleMouseUp = (e?: ReactMouseEvent<HTMLDivElement>) => {
-    if (!isDragging.current) {
-      isDragging.current = false
+  const commitDrag = (end: { x: number; y: number }) => {
+    const start = dragStart.current
+    dragStart.current = null
+    pointerId.current = null
+    if (!start) {
       setDragBox(null)
       return
     }
-    isDragging.current = false
+    dragEnd.current = end
+    const bx1 = Math.min(start.x, end.x)
+    const bx2 = Math.max(start.x, end.x)
+    const by1 = Math.min(start.y, end.y)
+    const by2 = Math.max(start.y, end.y)
 
-    if (e && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect()
-      dragEnd.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-    }
-
-    const bx1 = Math.min(dragStart.current.x, dragEnd.current.x)
-    const bx2 = Math.max(dragStart.current.x, dragEnd.current.x)
-    const by1 = Math.min(dragStart.current.y, dragEnd.current.y)
-    const by2 = Math.max(dragStart.current.y, dragEnd.current.y)
-
-    // Check if drag was larger than tiny jitter
     if (bx2 - bx1 > 8 || by2 - by1 > 8) {
-      const hitRowIds: string[] = []
-      // Check which cells intersect with drag box
+      const hit = new Set<string>()
       for (let r = 1; r <= nRows; r++) {
         for (let c = 1; c <= nCols; c++) {
           const cellLeft = leftLabelWidth + (c - 1) * (boxW + colGap)
           const cellRight = cellLeft + boxW
           const cellTop = headerHeight + (r - 1) * (boxH + rowGap)
           const cellBottom = cellTop + boxH
-
           const intersects = !(cellRight < bx1 || cellLeft > bx2 || cellBottom < by1 || cellTop > by2)
           if (intersects) {
             const cellData = cellMap.get(`${r}-${c}`)
-            if (cellData && cellData.rowIds) {
-              hitRowIds.push(...cellData.rowIds)
-            }
+            for (const id of cellData?.rowIds ?? []) hit.add(id)
           }
         }
       }
-
+      const hitRowIds = [...hit]
       if (hitRowIds.length > 0) {
         dispatch(
           selectionApplied({
@@ -147,11 +118,50 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
         )
       }
     }
-
     setDragBox(null)
   }
 
-  const handleCellClick = (cell: LineMosaicCell, _e: ReactMouseEvent) => {
+  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || dragStart.current) return
+    if ((e.target as HTMLElement | null)?.closest?.('[data-selectable]')) return
+    const position = positionOf(e.clientX, e.clientY)
+    if (!position) return
+    dragStart.current = position
+    dragEnd.current = position
+    pointerId.current = e.pointerId
+    setDragBox({ x1: position.x, y1: position.y, x2: position.x, y2: position.y })
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current
+    if (!start || (pointerId.current !== null && e.pointerId !== pointerId.current)) return
+    const position = positionOf(e.clientX, e.clientY)
+    if (!position) return
+    dragEnd.current = position
+    setDragBox({ x1: start.x, y1: start.y, x2: position.x, y2: position.y })
+  }
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current || (pointerId.current !== null && e.pointerId !== pointerId.current)) return
+    const position = positionOf(e.clientX, e.clientY) ?? dragEnd.current
+    commitDrag(position)
+  }
+
+  const handlePointerCancel = () => {
+    dragStart.current = null
+    pointerId.current = null
+    setDragBox(null)
+  }
+
+  useEffect(() => {
+    dragStart.current = null
+    pointerId.current = null
+    setDragBox(null)
+  }, [mosaicData])
+
+  const handleCellClick = (cell: LineMosaicCell, e: ReactMouseEvent) => {
+    e.stopPropagation()
     if (onSelectCell) onSelectCell(cell)
     if (cell.rowIds && cell.rowIds.length > 0) {
       dispatch(
@@ -221,9 +231,10 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
             userSelect: 'none',
             cursor: 'crosshair',
           }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
           data-testid="mosaic-canvas"
         >
           {/* Column Header Labels */}
@@ -254,11 +265,11 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}
-                  title={cl.path.join(' / ')}
+                  title={mosaicPathLabel(mosaicData, 'col', cl.path)}
                 >
                   {cl.path.map((p, pIdx) => (
                     <div key={pIdx} style={{ fontSize: focused ? (pIdx === 0 ? 12 : 11) : (pIdx === 0 ? 11 : 10), color: pIdx === 0 ? '#111' : '#666', lineHeight: 1.3 }}>
-                      {p}
+                      {mosaicData.valueLabels?.[grid.colVariables[pIdx]]?.[p] ?? p}
                     </div>
                   ))}
                 </div>
@@ -291,9 +302,9 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                     textAlign: 'right',
                     borderRight: '2px solid #d9d9d9',
                   }}
-                  title={rl ? rl.path.join(' / ') : undefined}
+                  title={rl ? mosaicPathLabel(mosaicData, 'row', rl.path) : undefined}
                 >
-                  {rl ? rl.path.join(' / ') : `Row ${r}`}
+                  {rl ? mosaicPathLabel(mosaicData, 'row', rl.path) : `Row ${r}`}
                 </div>
 
                 {/* Cells in Row */}
@@ -315,7 +326,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                   // Build tooltip text
                   const tooltipContent = cell ? (
                     <div style={{ fontSize: 11 }}>
-                      <div><strong>{cell.rowPath.join(' / ')} × {cell.colPath.join(' / ')}</strong></div>
+                      <div><strong>{mosaicPathLabel(mosaicData, 'row', cell.rowPath)} × {mosaicPathLabel(mosaicData, 'col', cell.colPath)}</strong></div>
                       <div>度数: <strong>{cell.totalCount}</strong> 行 ({(lineLengthRatio * 100).toFixed(1)}%)</div>
                       {target && (
                         <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px dashed #666' }}>
@@ -325,7 +336,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                             const pct = cell.totalCount > 0 ? ((tc / cell.totalCount) * 100).toFixed(1) : '0.0'
                             return (
                               <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                                <span>{cat}:</span>
+                                <span>{target.valueLabels?.[cat] ?? cat}:</span>
                                 <strong>{tc} ({pct}%)</strong>
                               </div>
                             )
@@ -343,7 +354,12 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                   return (
                     <Tooltip key={`cell-${r}-${c}`} title={tooltipContent} placement="top">
                       <div
+                        data-selectable={cell && cell.rowIds.length > 0 ? true : undefined}
+                        role={cell && cell.rowIds.length > 0 ? 'button' : undefined}
+                        tabIndex={cell && cell.rowIds.length > 0 ? 0 : undefined}
+                        aria-label={cell ? `${mosaicPathLabel(mosaicData, 'row', cell.rowPath)} × ${mosaicPathLabel(mosaicData, 'col', cell.colPath)}: ${count}行` : undefined}
                         onClick={(e) => cell && handleCellClick(cell, e)}
+                        onKeyDown={(e) => { if (cell && (e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); handleCellClick(cell, e as never) } }}
                         style={{
                           position: 'absolute',
                           left: cx,
@@ -400,7 +416,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                                     height: '100%',
                                     backgroundColor: color,
                                   }}
-                                  title={`${cat}: ${catCount}`}
+                                  title={`${target.valueLabels?.[cat] ?? cat}: ${catCount}`}
                                 />
                               )
                             })
@@ -427,6 +443,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
           {/* Drag Selection Box Overlay */}
           {dragBox && (
             <div
+              data-testid="mosaic-brush-rect"
               style={{
                 position: 'absolute',
                 left: Math.min(dragBox.x1, dragBox.x2),
@@ -437,6 +454,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                 border: '1.5px solid #2a78d6',
                 pointerEvents: 'none',
                 borderRadius: 2,
+                zIndex: 10,
               }}
             />
           )}

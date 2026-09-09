@@ -1,4 +1,5 @@
-import { configureStore, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { configureStore, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { entityKey, reconcileEntities, variableCatalog, type VariableEntity } from '../features/selection/variableEntities'
 
 export interface GroupDef {
   groupId: string
@@ -28,6 +29,7 @@ export interface SelectionState {
   datasetId: string | null
   datasetName: string
   revision: number
+  dataRevision: number
   allRowIds: string[]
   activeRowIds: string[]
   /** Derived O(1) membership set over activeRowIds (kept in sync by reducers). */
@@ -53,6 +55,7 @@ const initialState: SelectionState = {
   datasetId: null,
   datasetName: '',
   revision: 0,
+  dataRevision: 1,
   allRowIds: [],
   activeRowIds: [],
   activeRowIdSet: new Set<string>(),
@@ -73,10 +76,15 @@ const selectionSlice = createSlice({
   name: 'selection',
   initialState,
   reducers: {
-    datasetLoaded(state, action: PayloadAction<{ datasetId: string; name: string; rowIds: string[] }>) {
+    datasetValuesUpdated(state, action: PayloadAction<{ datasetId: string; dataRevision: number }>) {
+      if (state.datasetId !== action.payload.datasetId || action.payload.dataRevision <= state.dataRevision) return
+      state.dataRevision = action.payload.dataRevision
+    },
+    datasetLoaded(state, action: PayloadAction<{ datasetId: string; name: string; rowIds: string[]; dataRevision?: number }>) {
       state.datasetId = action.payload.datasetId
       state.datasetName = action.payload.name
       state.revision = (state.revision || 0) + 1
+      state.dataRevision = action.payload.dataRevision ?? 1
       state.allRowIds = action.payload.rowIds
       state.activeRowIds = action.payload.rowIds
       state.activeRowIdSet = new Set(action.payload.rowIds)
@@ -152,11 +160,12 @@ const selectionSlice = createSlice({
 })
 
 export const {
-  datasetLoaded, selectionApplied, selectionCleared, hovered,
+  datasetLoaded, datasetValuesUpdated, selectionApplied, selectionCleared, hovered,
   focusSelected, deleteSelected, resetWorkingSet, groupsReplaced, clusterResultStored, l2ColorToggled, statsScopeSet, modelResultStored, undoDone,
 } = selectionSlice.actions
 
 export interface PcpState {
+  maAxes?: import('../api/client').MaDisplayAxis[]
   orientation: 'horizontal' | 'vertical'
   orderMode: string
   order: string[]
@@ -211,6 +220,7 @@ const pcpSlice = createSlice({
 export const { pcpStateChanged } = pcpSlice.actions
 
 export interface VariableMetaItem {
+  columnId?: string
   name: string
   semanticType: 'numeric' | 'nominal' | 'ordinal' | 'text' | 'categorical' | 'identifier' | 'label' | 'ignored'
   physicalType: string
@@ -219,16 +229,18 @@ export interface VariableMetaItem {
 }
 
 export interface GlobalVariableState {
+  datasetId: string | null
   allVariables: string[]
-  activeVariableIds: string[]
+  activeEntities: VariableEntity[] | null
   variableOrder: string[]
   targetVariableId: string | null
   variableMeta: Record<string, VariableMetaItem>
 }
 
 const initialGlobalVariables: GlobalVariableState = {
+  datasetId: null,
   allVariables: [],
-  activeVariableIds: [],
+  activeEntities: null,
   variableOrder: [],
   targetVariableId: null,
   variableMeta: {},
@@ -240,24 +252,29 @@ export const globalVariablesSlice = createSlice({
   reducers: {
     variablesInitialized(
       state,
-      action: PayloadAction<{ variables: string[]; meta?: Record<string, VariableMetaItem>; target?: string | null }>
+      action: PayloadAction<{ variables: string[]; meta?: Record<string, VariableMetaItem>; target?: string | null; datasetId?: string }>
     ) {
       state.allVariables = action.payload.variables
-      state.activeVariableIds = action.payload.variables
+      state.datasetId = action.payload.datasetId ?? null
+      state.activeEntities = action.payload.variables.map(name => ({ kind: 'column', columnId: action.payload.meta?.[name]?.columnId ?? name }))
       state.variableOrder = action.payload.variables
       state.variableMeta = action.payload.meta ?? {}
       state.targetVariableId = action.payload.target ?? null
     },
     activeVariablesSet(state, action: PayloadAction<string[]>) {
       const allowed = new Set(state.allVariables)
-      state.activeVariableIds = action.payload.filter((id) => allowed.has(id))
+      state.activeEntities = action.payload.filter((id) => allowed.has(id)).map(name => ({ kind: 'column', columnId: state.variableMeta[name]?.columnId ?? name }))
+    },
+    activeEntitiesSet(state, action: PayloadAction<VariableEntity[]>) {
+      state.activeEntities = action.payload
     },
     variableToggled(state, action: PayloadAction<string>) {
       const id = action.payload
-      if (state.activeVariableIds.includes(id)) {
-        state.activeVariableIds = state.activeVariableIds.filter((v) => v !== id)
+      const columnId = state.variableMeta[id]?.columnId ?? id
+      if (state.activeEntities?.some(entity => entity.kind === 'column' && entity.columnId === columnId)) {
+        state.activeEntities = state.activeEntities.filter(entity => entity.kind !== 'column' || entity.columnId !== columnId)
       } else if (state.allVariables.includes(id)) {
-        state.activeVariableIds.push(id)
+        state.activeEntities = [...(state.activeEntities ?? []), { kind: 'column', columnId }]
       }
     },
     variableOrderReordered(state, action: PayloadAction<string[]>) {
@@ -267,15 +284,61 @@ export const globalVariablesSlice = createSlice({
       state.targetVariableId = action.payload
     },
   },
+  extraReducers: builder => {
+    for (const thunk of [fetchCodebookThunk, saveCodebookThunk]) {
+      builder.addCase(thunk.fulfilled, (state, action) => {
+        if (state.datasetId && state.datasetId !== action.payload.datasetId) return
+        state.activeEntities = reconcileEntities(state.activeEntities, action.payload.columns, action.payload.multiResponseGroups ?? [])
+      })
+    }
+  },
 })
 
 export const {
   variablesInitialized,
   activeVariablesSet,
+  activeEntitiesSet,
   variableToggled,
   variableOrderReordered,
   targetVariableSet,
 } = globalVariablesSlice.actions
+
+/** Ordinary analysis candidates never implicitly expand a selected MA parent. */
+export const selectOrdinaryVariables = createSelector(
+  [(state: RootState) => state.globalVariables, (state: RootState) => state.codebook.columns],
+  (variables, columns) => {
+    const ordinary = columns.filter(column => !column.multiResponseGroup)
+    const selected = variables.activeEntities === null ? null : new Set(variables.activeEntities.filter(entity => entity.kind === 'column').map(entity => entity.columnId))
+    return { ...variables,
+      allVariables: ordinary.map(column => column.name),
+      activeVariableIds: ordinary.filter(column => selected === null || selected.has(column.columnId)).map(column => column.name),
+    }
+  },
+)
+
+export const selectVariableEntities = createSelector(
+  [(state: RootState) => state.globalVariables, (state: RootState) => state.codebook],
+  (variables, codebook) => {
+    const items = variableCatalog(codebook.columns, codebook.multiResponseGroups)
+    const selected = new Set((variables.activeEntities ?? items.map(item => item.entity)).map(entityKey))
+    const order = new Map([...selected].map((key, index) => [key, index]))
+    items.sort((a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity))
+    return { items, selected }
+  },
+)
+
+export const selectVariableManagerState = createSelector(
+  [selectVariableEntities, (state: RootState) => state.globalVariables.activeEntities],
+  ({ items, selected }, activeEntities) => {
+    const allVariables = items.map(item => item.key)
+    const activeVariableIds = activeEntities === null ? allVariables : activeEntities.map(entityKey).filter(key => selected.has(key) && allVariables.includes(key))
+    return {
+      allVariables, activeVariableIds, variableOrder: [...activeVariableIds, ...allVariables.filter(key => !selected.has(key))],
+      variableMeta: Object.fromEntries(items.map(item => [item.key, { ...item,
+        semanticType: ['interval', 'ratio'].includes(item.scaleType) ? 'numeric' : 'categorical' }])),
+    }
+  },
+)
 
 export interface SamplingConfig {
   enabled: boolean
@@ -322,14 +385,7 @@ export const globalObservationsSlice = createSlice({
   initialState: initialGlobalObservations,
   reducers: {
     observationScopeChanged(state, action: PayloadAction<'active' | 'selected' | 'sampled' | 'all'>) {
-      const nextScope = action.payload
-      if (nextScope === 'selected' && state.selectedRowIds.length === 0) {
-        state.scopeMode = 'active'
-      } else if (nextScope === 'sampled' && state.sampling.sampledRowIds.length === 0) {
-        state.scopeMode = 'active'
-      } else {
-        state.scopeMode = nextScope
-      }
+      state.scopeMode = action.payload
     },
     samplingApplied(
       state,
@@ -391,9 +447,6 @@ export const globalObservationsSlice = createSlice({
       })
       .addCase(selectionSlice.actions.selectionCleared, (state) => {
         state.selectedRowIds = []
-        if (state.scopeMode === 'selected') {
-          state.scopeMode = 'active'
-        }
       })
       .addCase(selectionSlice.actions.focusSelected, (state) => {
         const selected = new Set(state.selectedRowIds)
@@ -403,9 +456,6 @@ export const globalObservationsSlice = createSlice({
         const selected = new Set(state.selectedRowIds)
         state.activeRowIds = state.activeRowIds.filter((id) => !selected.has(id))
         state.selectedRowIds = []
-        if (state.scopeMode === 'selected') {
-          state.scopeMode = 'active'
-        }
       })
       .addCase(selectionSlice.actions.resetWorkingSet, (state) => {
         state.activeRowIds = [...state.totalRowIds]
@@ -427,18 +477,18 @@ export function selectEffectiveRowIds(state: RootState): string[] {
   const obs = state.globalObservations
   if (!obs) return state.selection.activeRowIds
   if (obs.scopeMode === 'selected') {
-    return obs.selectedRowIds.length > 0 ? obs.selectedRowIds : obs.activeRowIds
+    return obs.selectedRowIds
   }
   if (obs.scopeMode === 'sampled') {
-    return obs.sampling.sampledRowIds.length > 0 ? obs.sampling.sampledRowIds : obs.activeRowIds
+    return obs.sampling.sampledRowIds
   }
   if (obs.scopeMode === 'all') {
-    return obs.totalRowIds.length > 0 ? obs.totalRowIds : obs.activeRowIds
+    return obs.totalRowIds
   }
   return obs.activeRowIds
 }
 
-import { codebookSlice } from '../features/dataset/codebookSlice'
+import { codebookSlice, fetchCodebookThunk, saveCodebookThunk } from '../features/dataset/codebookSlice'
 
 export const store = configureStore({
   reducer: {

@@ -1,3 +1,4 @@
+import { selectOrdinaryVariables } from '../../app/store'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useLocation } from 'react-router-dom'
@@ -15,14 +16,14 @@ import EmptyStatePanel from '../common/EmptyStatePanel'
 export default function TgtPage() {
   const { focused } = useFocusMode()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const activeVarIds = globalVars?.activeVariableIds
   const data = useColumnarData(selection.datasetId)
 
   const numericColumns = useMemo(() => {
     if (!data) return []
     return data.schema
-      .filter((c) => c.semanticType === 'numeric' && (!activeVarIds || activeVarIds.length === 0 || activeVarIds.includes(c.name)))
+      .filter((c) => c.semanticType === 'numeric' && activeVarIds.includes(c.name))
       .map((c) => c.name)
   }, [data, activeVarIds])
 

@@ -8,6 +8,12 @@ import numpy as np
 import polars as pl
 
 
+def is_not_applicable_reason(reason: Any) -> bool:
+    if not isinstance(reason, str):
+        return False
+    return "非該当" in reason or "not_applicable" in reason.lower() or "skip" in reason.lower()
+
+
 def normalize_code(value: Any) -> Optional[str]:
     """Normalize code values used by codebook lookups.
 

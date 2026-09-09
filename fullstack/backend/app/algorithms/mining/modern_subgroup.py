@@ -719,7 +719,7 @@ def run_modern_subgroup_mining(
         dtype = t_series.dtype
 
         is_binary = False
-        target_cat = target_binary_category
+        target_cat = 1 if meta.get('multiResponseGroup') else target_binary_category
 
         if target_cat is not None or sem_type == "binary":
             is_binary = True

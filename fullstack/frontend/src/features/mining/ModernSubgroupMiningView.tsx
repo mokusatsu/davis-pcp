@@ -13,7 +13,9 @@ import {
   LineChartOutlined, SwapOutlined, FilterOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged } from '../../app/store'
+import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
+import { useMiningTargets } from './useMiningTargets'
+import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 
@@ -82,22 +84,20 @@ export interface ModernMiningResult {
   insights: ModernInsight[]
 }
 
-interface ColumnMeta {
-  name: string
-  type: string
-  role?: string
-}
-
 export const ModernSubgroupMiningView: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
 
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
+  const rowIds = useSelector(selectEffectiveRowIds)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const targets = useMiningTargets()
   const { schemaRevision, getColumn, formatValueLabel } = useCodebook()
   const requestVersion = useRef(0)
   const resultContext = useRef('')
-  const context = `${datasetId}:${schemaRevision}`
+  const context = useMemo(() => JSON.stringify([datasetId, schemaRevision, dataRevision, rowIds, targets.attributes, targets.questions]),
+    [datasetId, schemaRevision, dataRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|')])
   resultContext.current = context
   const conditionLabel = (c: ModernCondition) => {
     const title = getColumn(c.column)?.label || c.column
@@ -106,7 +106,6 @@ export const ModernSubgroupMiningView: React.FC = () => {
     return `${title} ${c.operator} ${value}`
   }
 
-  const [columns, setColumns] = useState<ColumnMeta[]>([])
   const [miningMode, setMiningMode] = useState<'auto' | 'standard' | 'emm_kendall'>('auto')
   const [maxDepth, setMaxDepth] = useState<number>(2)
   const [minGroupSize, setMinGroupSize] = useState<number>(30)
@@ -117,26 +116,9 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const [error, setError] = useState<{ message: string; details?: string; suggestedActions?: string[] } | null>(null)
   const [result, setResult] = useState<ModernMiningResult | null>(null)
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null)
-
-  // Fetch columns on mount or datasetId change
-  useEffect(() => {
-    if (!datasetId) return
-    let active = true
-    api.get<{ schema: Array<{ name: string; physicalType: string; semanticType: string; role?: string }> }>(`/datasets/${datasetId}`)
-      .then((meta) => {
-        if (!active) return
-        const cols: ColumnMeta[] = meta.schema.map((c) => ({
-          name: c.name,
-          type: c.semanticType || c.physicalType,
-          role: c.role,
-        }))
-        setColumns(cols)
-      })
-      .catch((err: any) => {
-        console.error('Failed to load dataset columns', err)
-      })
-    return () => { active = false }
-  }, [datasetId, schemaRevision])
+  const inputContext = useMemo(() => JSON.stringify([context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null]),
+    [context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null])
+  resultContext.current = inputContext
 
   useEffect(() => {
     requestVersion.current += 1
@@ -144,11 +126,11 @@ export const ModernSubgroupMiningView: React.FC = () => {
     setSelectedInsightId(null)
     setLoading(false)
     setError(null)
-  }, [datasetId, schemaRevision])
+  }, [inputContext])
 
   // Omnipresent Auto-mining runner
   const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall', overrideFilterSelection?: boolean) => {
-    if (!datasetId) return
+    if (!datasetId || !targets.ready) return
     const version = ++requestVersion.current
     const startedContext = resultContext.current
     setLoading(true)
@@ -157,6 +139,8 @@ export const ModernSubgroupMiningView: React.FC = () => {
       const shouldUseFilter = overrideFilterSelection !== undefined ? overrideFilterSelection : filterBySelection
       const payload: any = {
         datasetId,
+        attributeCols: targets.attributes, targetQuestions: targets.questions, rowIds,
+        expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         mode: overrideMode || miningMode,
         maxDepth,
         minGroupSize,
@@ -183,13 +167,6 @@ export const ModernSubgroupMiningView: React.FC = () => {
       if (version === requestVersion.current && startedContext === resultContext.current) setLoading(false)
     }
   }
-
-  // Automatically run auto-mining on initial load once columns & dataset are ready!
-  useEffect(() => {
-    if (datasetId && columns.length > 0) {
-      void runAutoMining('auto')
-    }
-  }, [datasetId, columns.length, schemaRevision])
 
   // Extract all distinct questions present in results for filtering
   const availableQuestionsInResults = useMemo(() => {
@@ -220,31 +197,11 @@ export const ModernSubgroupMiningView: React.FC = () => {
     dispatch(
       selectionApplied({
         rowIds: insight.coverage.row_ids,
-        operation: 'replace',
+        operation: getBrushOp(),
         label: `Subgroup: ${insight.rule.text}`,
       })
     )
 
-    // Automatically focus relevant question axes in PCP
-    if (insight.target_pair && insight.target_pair.length === 2) {
-      dispatch(
-        pcpStateChanged({
-          order: [insight.target_pair[0], insight.target_pair[1]],
-          visibleColumns: [insight.target_pair[0], insight.target_pair[1]],
-        })
-      )
-    } else if (insight.target_question && columns.length > 0) {
-      // Put attribute condition column and target question adjacent
-      const attrCol = insight.rule.conditions[0]?.column
-      if (attrCol) {
-        dispatch(
-          pcpStateChanged({
-            order: [attrCol, insight.target_question],
-            visibleColumns: [attrCol, insight.target_question],
-          })
-        )
-      }
-    }
     navigate('/pcp')
   }
 
@@ -257,17 +214,17 @@ export const ModernSubgroupMiningView: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Top Header & Omnipresent Control Bar */}
       <Card size="small" style={{ background: '#fafafa' }}>
+        {targets.control}
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={7}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
-              全件探索モード:
+              探索モード:
             </Typography.Text>
             <Radio.Group
               value={miningMode}
               onChange={(e) => {
                 const newMode = e.target.value
                 setMiningMode(newMode)
-                void runAutoMining(newMode)
               }}
               buttonStyle="solid"
               size="small"
@@ -339,7 +296,6 @@ export const ModernSubgroupMiningView: React.FC = () => {
                 onChange={(e) => {
                   const checked = e.target.checked
                   setFilterBySelection(checked)
-                  void runAutoMining(undefined, checked)
                 }}
                 style={{ fontSize: 11, marginBottom: 4 }}
               >
@@ -351,9 +307,10 @@ export const ModernSubgroupMiningView: React.FC = () => {
               icon={<ThunderboltOutlined />}
               onClick={() => void runAutoMining()}
               loading={loading}
+              disabled={!targets.ready}
               style={{ width: '100%' }}
             >
-              全件再探索
+              指定対象で実行
             </Button>
           </Col>
         </Row>
@@ -421,7 +378,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
             <Card size="small">
               <Statistic
                 title="評価した質問数"
-                value={result.summary.questions_evaluated_count || columns.length}
+                value={result.summary.questions_evaluated_count ?? targets.questions.length}
                 prefix={<LineChartOutlined />}
                 suffix="問"
               />
@@ -674,7 +631,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                     icon={<SwapOutlined />}
                     onClick={() => handleApplyToPcp(selectedInsight)}
                   >
-                    このセグメントと対象質問をPCPで可視化
+                    このセグメントをPCPで表示
                   </Button>
                   <Button
                     block
@@ -697,7 +654,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                     この結論の頑健性を検証 (Send to Robustness)
                   </Button>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    ※クリックすると、PCP上で該当データ行がシアン色で太線ハイライトされ、該当質問軸が自動でフォーカス配置されます。
+                    該当行を共通の選択に反映してPCPへ移動します。PCPの表示軸は保持されます。
                   </Typography.Text>
                 </Space>
               </Card>

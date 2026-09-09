@@ -7,11 +7,12 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Radio, Space, Tag, Typography } from 'antd'
 import { BarChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
-import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
+import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { truncateText } from '../../utils/textUtils'
+import MultiResponseBarChart from './MultiResponseBarChart'
 
 interface BarItem {
   category: string
@@ -25,44 +26,37 @@ export default function BarChartPage() {
   const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
-  const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
+  const activeRowIds = useSelector(selectEffectiveRowIds)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
-  const data = useColumnarData(datasetId)
-  const { formatValueLabel } = useCodebook()
+  const { formatValueLabel, columns: definitions } = useCodebook()
+  const ordinary = useSelector(selectOrdinaryVariables)
   const [brushOp] = useBrushOp()
 
-  const [selectedColumn, setSelectedColumn] = useState<string>('')
-  const [subColumn, setSubColumn] = useState<string>('')
+  const [requestedColumn, setSelectedColumn] = useState<string>('')
+  const [requestedSubColumn, setSubColumn] = useState<string>('')
   const [displayMode, setDisplayMode] = useState<'count' | 'percent' | 'stacked'>('count')
   const [sortOrder, setSortOrder] = useState<'count-desc' | 'name-asc' | 'ratio-desc'>('count-desc')
   const [hoveredCategory, setHoveredBar] = useState<string | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
-  // Get all columns (prefer categorical, but include all)
   const columns = useMemo(() => {
-    if (!data) return []
-    return data.schema
-      .filter((c) => c.name !== '__rowId__')
+    return definitions
+      .filter((c) => !c.multiResponseGroup && ordinary.activeVariableIds.includes(c.name))
       .map((c) => ({
         name: c.name,
-        type: c.semanticType,
+        type: ['ratio', 'interval'].includes(c.scaleType) ? 'numeric' : 'categorical',
       }))
-  }, [data])
+  }, [definitions, ordinary.activeVariableIds])
 
   const categoricalColumns = useMemo(() => {
     return columns.filter((c) => c.type !== 'numeric')
   }, [columns])
 
-  // Default selection
+  const selectedColumn = columns.some(c => c.name === requestedColumn) ? requestedColumn : categoricalColumns[0]?.name || columns[0]?.name || ''
+  const subColumn = requestedSubColumn !== selectedColumn && columns.some(c => c.name === requestedSubColumn) ? requestedSubColumn : ''
+  const data = useColumnarData(datasetId, [selectedColumn, subColumn].filter(Boolean))
   React.useEffect(() => {
-    if (columns.length > 0 && !columns.some(c => c.name === selectedColumn)) {
-      const preferred = categoricalColumns[0]?.name || columns[0].name
-      setSelectedColumn(preferred)
-    }
-  }, [columns, categoricalColumns, selectedColumn])
-  React.useEffect(() => {
-    if (subColumn === selectedColumn || !columns.some(c => c.name === subColumn)) setSubColumn('')
     setHoveredBar(null)
   }, [columns, selectedColumn, subColumn])
 
@@ -171,6 +165,7 @@ export default function BarChartPage() {
       }}
     >
       {/* Controls Card */}
+      <MultiResponseBarChart />
       {!focused && (
         <div
           style={{
@@ -267,7 +262,8 @@ export default function BarChartPage() {
               userSelect: 'none',
               height: focused ? '100%' : undefined,
               flex: focused ? 1 : undefined,
-              minHeight: 0,
+              minHeight: focused ? 0 : 380,
+              flexShrink: focused ? undefined : 0,
             }}
           >
             {/* Status bar */}

@@ -1,4 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
+import type { RootState } from '../app/store'
+import { api } from '../api/client'
 import type { CodebookColumn } from '../api/client'
 import type { ColumnarData } from '../features/pcp/useDatasetColumns'
 import { normalizeCode, useCodebook } from '../features/dataset/useCodebookColumn'
@@ -7,6 +10,7 @@ export interface L1ColorDomain {
   key: string
   codes: string[]
   indexByCode: Map<string, number>
+  entropy?: number
 }
 
 export function buildL1Domains(data: ColumnarData, columns: CodebookColumn[] = []): L1ColorDomain[] {
@@ -46,6 +50,43 @@ export function useL1ColorDomains(data: ColumnarData | null): L1ColorDomain[] {
 }
 
 const domainCache = new WeakMap<ColumnarData, { columns: CodebookColumn[]; domains: L1ColorDomain[] }>()
+
+const datasetDomains = new Map<string, Promise<L1ColorDomain[]>>()
+
+/** Full-dataset color levels stay available even when the plot projects only a few axes. */
+export function useDatasetL1ColorDomains(datasetId: string | null): L1ColorDomain[] | null {
+  const { schemaRevision, columns } = useCodebook()
+  const dataRevision = useSelector((state: RootState) => state.selection.dataRevision)
+  const key = JSON.stringify([datasetId, dataRevision, schemaRevision])
+  const [state, setState] = useState<{ key: string; domains: L1ColorDomain[] } | null>(null)
+  useEffect(() => {
+    if (!datasetId || !columns.length) return
+    let current = true
+    let request = datasetDomains.get(key)
+    if (!request) {
+      request = api.post<{ domains: { key: string; codes: string[]; counts: number[]; numeric: boolean }[] }>(`/datasets/${datasetId}/color-domains`, {
+        expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
+      }).then(result => result.domains.map(domain => {
+        const observed = new Set(domain.codes)
+        const sorted = [...domain.codes].sort((a, b) => {
+          const delta = domain.numeric ? Number(a) - Number(b) : 0
+          return (Number.isFinite(delta) && delta !== 0 ? delta : a.localeCompare(b, 'en', { numeric: true })) || (a < b ? -1 : a > b ? 1 : 0)
+        })
+        const codes = [...new Set([...(columns.find(column => column.name === domain.key)?.categoryOrder ?? []).filter(code => observed.has(code)), ...sorted])]
+        const total = domain.counts.reduce((sum, count) => sum + count, 0)
+        const entropy = codes.length > 1 && total > 0
+          ? -domain.counts.reduce((sum, count) => count ? sum + count / total * Math.log2(count / total) : sum, 0) / Math.log2(codes.length)
+          : Infinity
+        return { key: domain.key, codes, entropy, indexByCode: new Map(codes.map((code, index) => [code, index])) }
+      }))
+      datasetDomains.set(key, request)
+      void request.catch(() => { datasetDomains.delete(key) })
+    }
+    void request.then(domains => { if (current) setState({ key, domains }) }).catch(() => undefined)
+    return () => { current = false }
+  }, [key, columns.length])
+  return state?.key === key ? state.domains : null
+}
 
 export function l1Index(domain: L1ColorDomain | undefined, raw: unknown): number | null {
   const code = normalizeCode(raw)

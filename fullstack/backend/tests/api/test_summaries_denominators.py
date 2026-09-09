@@ -66,6 +66,30 @@ def test_sparse_order_and_float_missing_codes():
     assert adapter.get_reversed_numeric_series('Q').to_list() == [4., 3., None]
 
 
+def test_projected_cards_share_base_counts_and_match_canonical_ids(survey, monkeypatch):
+    from app.api import summaries
+    client, ds, cb = survey
+    calls = []
+    read = summaries.store.get_dataframe
+    def projected(dataset_id, columns=None):
+        calls.append(columns)
+        return read(dataset_id, columns=columns)
+    monkeypatch.setattr(summaries.store, 'get_dataframe', projected)
+    column_id = next(c['columnId'] for c in cb['columns'] if c['name'] == 'Q1')
+    match = client.post(f'/api/v1/datasets/{ds}/column-matches', json={'columnId': column_id, 'code': '1'}).json()
+    assert match['count'] == 40
+    body = {'datasetId': ds, 'columns': ['Q1'], 'selectedRowIds': match['rowIds'][:2]}
+    first = client.post('/api/v1/summaries', json=body).json()
+    assert first['selectedCountByCode'] == {'Q1': {'1': 2}}
+    second = client.post('/api/v1/summaries', json={**body, 'selectedRowIds': []}).json()
+    assert second['cacheHit'] and second['selectedCountByCode'] == {'Q1': {}}
+    assert second['columns'] == first['columns']
+    assert all(c == ['__rowId__', 'Q1'] for c in calls)
+    empty = client.post('/api/v1/summaries', json={**body, 'columns': [], 'rowIds': []}).json()
+    assert empty['columns'] == {} and empty['rowCount'] == 0
+    assert client.post(f'/api/v1/datasets/{ds}/column-matches', json={'columnId': column_id, 'code': '1', 'rowIds': []}).json()['rowIds'] == []
+
+
 def test_labels_csv_xlsx_preserve_missing_reason(survey):
     client, ds, _ = survey
     response = client.post('/api/v1/exports', json={'datasetId': ds, 'format': 'csv', 'useValueLabels': True})

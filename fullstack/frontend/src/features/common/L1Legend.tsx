@@ -1,7 +1,6 @@
 import { useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
-import { useL1ColorDomains } from '../../theme/useL1ColorDomain'
+import { useDatasetL1ColorDomains } from '../../theme/useL1ColorDomain'
 import { l1Color, vizTheme } from '../../theme/viz'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import ColumnQuestionTooltip from './ColumnQuestionTooltip'
@@ -9,8 +8,7 @@ import ColumnQuestionTooltip from './ColumnQuestionTooltip'
 export default function L1Legend() {
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const key = useSelector((s: RootState) => s.pcp.colorBy)
-  const data = useColumnarData(datasetId)
-  const domain = useL1ColorDomains(data).find(d => d.key === key)
+  const domain = useDatasetL1ColorDomains(datasetId)?.find(d => d.key === key)
   const { formatValueLabel } = useCodebook()
   if (!domain || !key) return null
   const theme = vizTheme(false)

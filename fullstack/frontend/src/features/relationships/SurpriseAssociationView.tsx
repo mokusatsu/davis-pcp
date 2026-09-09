@@ -1,18 +1,21 @@
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Slider, Tag,
-  Segmented, Statistic, Empty, Spin,
+  Segmented, Statistic, Empty, Spin, Select, Alert,
 } from 'antd'
 import {
   FireOutlined, AimOutlined, AppstoreOutlined,
   DotChartOutlined, ArrowRightOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged } from '../../app/store'
+import { selectionApplied, selectEffectiveRowIds, selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import MaAxisPicker from '../pcp/MaAxisPicker'
+import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
@@ -61,38 +64,61 @@ export default function SurpriseAssociationView() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const rowIds = useSelector(selectEffectiveRowIds)
+  const global = useSelector(selectOrdinaryVariables)
+  const entities = useSelector(selectVariableEntities)
+  const { columns, schemaRevision } = useCodebook()
+  const [chosen, setChosen] = useState<{ datasetId: string; names: string[]; children: string[] } | null>(null)
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key)
+    && ['question', 'attribute'].includes(item.role)).map(item => ({ groupId: item.name, label: item.label }))
+  const current = chosen?.datasetId === datasetId ? chosen : null
+  const candidates = columns.filter(column => ['question', 'attribute'].includes(column.role)
+    && (column.multiResponseGroup ? current?.children.includes(column.name) && groups.some(group => group.groupId === column.multiResponseGroup)
+      : global.activeVariableIds.includes(column.name)))
+  const names = (current?.names ?? []).filter(name => candidates.some(column => column.name === name))
+  const [error, setError] = useState<string | null>(null)
+  const requestVersion = useRef(0)
 
   const [mode, setMode] = useState<'quadrant' | 'heatmap' | 'list'>('quadrant')
   const [wStrength, setWStrength] = useState<number>(50)
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<SurpriseResult | null>(null)
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null)
+  const namesKey = JSON.stringify(names)
+  const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, namesKey, wStrength]),
+    [datasetId, dataRevision, schemaRevision, rowIds, namesKey, wStrength])
+  const contextRef = useRef(context)
+  contextRef.current = context
 
   const fetchSurprise = async (wStr: number) => {
-    if (!datasetId) return
+    if (!datasetId || names.length < 2) return
+    const version = ++requestVersion.current, startedContext = contextRef.current
     setLoading(true)
+    setError(null)
     try {
       const res = await api.post<SurpriseResult>('/relationships/surprise', {
         datasetId,
+        columns: names, rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         wStrength: wStr / 100.0,
         wUnexpected: (100 - wStr) / 100.0,
       })
+      if (version !== requestVersion.current || startedContext !== contextRef.current) return
       setResult(res)
       if (res.pairs.length > 0) {
         setSelectedPairId(res.pairs[0].id)
       }
-    } catch (err) {
-      console.error(err)
+    } catch (err: any) {
+      if (version === requestVersion.current && startedContext === contextRef.current) setError(err.message || '計算に失敗しました。')
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current && startedContext === contextRef.current) setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (datasetId) {
-      void fetchSurprise(wStrength)
-    }
-  }, [datasetId])
+    requestVersion.current += 1
+    setResult(null); setSelectedPairId(null); setLoading(false); setError(null)
+  }, [context])
 
   const currentPair = useMemo(() => {
     if (!result || !selectedPairId) return null
@@ -103,7 +129,7 @@ export default function SurpriseAssociationView() {
     if (pair.top_lift?.row_ids?.length) {
       dispatch(selectionApplied({
         rowIds: pair.top_lift.row_ids,
-        operation: 'replace',
+        operation: getBrushOp(),
         label: `Lift cell: ${pair.x.name} x ${pair.y.name} (${pair.top_lift.cell})`,
       }))
     }
@@ -113,10 +139,6 @@ export default function SurpriseAssociationView() {
     if (pair.top_lift?.row_ids?.length) {
       handleSelectLiftRowsInPcp(pair)
     }
-    dispatch(pcpStateChanged({
-      order: [pair.x.name, pair.y.name],
-      visibleColumns: [pair.x.name, pair.y.name],
-    }))
     navigate('/pcp')
   }
 
@@ -135,6 +157,16 @@ export default function SurpriseAssociationView() {
       {/* Controls */}
       {!focused && (
         <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Select mode="multiple" aria-label="Surpriseの対象変数" placeholder="対象変数を選択" value={names} allowClear maxTagCount={3}
+              style={{ minWidth: 300 }} optionFilterProp="label"
+              options={candidates.map(column => ({ value: column.name, label: `${column.name}: ${column.multiResponseOptionLabel || column.label || column.name}` }))}
+              onChange={next => setChosen({ datasetId: datasetId!, names: next, children: current?.children ?? [] })} />
+            <MaAxisPicker allowCount={false} groups={groups} columns={columns} onAdd={axes => {
+              const added = axes.map(axis => columns.find(column => column.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
+              setChosen({ datasetId: datasetId!, names: [...new Set([...names, ...added])], children: [...new Set([...(current?.children ?? []), ...added])] })
+            }} />
+          </Space>
           <div
             style={{
               display: 'flex',
@@ -171,7 +203,6 @@ export default function SurpriseAssociationView() {
                 max={100}
                 step={5}
                 onChange={setWStrength}
-                onChangeComplete={(v) => void fetchSurprise(v)}
               />
             </div>
 
@@ -180,15 +211,19 @@ export default function SurpriseAssociationView() {
                 type="primary"
                 icon={<FireOutlined />}
                 loading={loading}
+                disabled={!datasetId || names.length < 2}
                 onClick={() => void fetchSurprise(wStrength)}
                 data-testid="refresh-surprise-btn"
               >
-                再計算
+                実行
               </Button>
             </div>
           </div>
         </Card>
       )}
+
+      {error && <Alert type="error" showIcon message={error} />}
+      {!result && !loading && <Alert type="info" message="対象変数を2つ以上指定して実行してください。同じMA設問内の選択肢同士は候補から除外します。" />}
 
       {loading && !result && (
         <div style={{ textAlign: 'center', padding: 60 }}>

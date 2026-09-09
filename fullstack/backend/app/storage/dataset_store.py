@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import tempfile
+from threading import RLock
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,9 @@ import polars as pl
 
 from ..config import settings
 from ..domain.errors import BizError
+
+_dataset_locks: dict[tuple[str, str], RLock] = {}
+_locks_guard = RLock()
 
 
 def canonical_fingerprint(schema_json: str, row_ids: list[str], values_hash: str, options_json: str) -> str:
@@ -76,7 +81,57 @@ class DatasetStore:
     def _parquet_path(self, dataset_id: str) -> Path:
         return self.root / f"{dataset_id}.parquet"
 
-    def save(self, dataset_id: str, meta: dict[str, Any], df: pl.DataFrame) -> None:
+    def lock(self, dataset_id: str):
+        key = (str(self.root.resolve()), dataset_id)
+        with _locks_guard:
+            return _dataset_locks.setdefault(key, RLock())
+
+    def save(self, dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
+             codebook: dict[str, Any] | None = None) -> None:
+        with self.lock(dataset_id):
+            previous = self.get_meta(dataset_id) if self._meta_path(dataset_id).exists() else None
+            updated = {**meta, "dataRevision": int(previous.get("dataRevision", 1)) + 1 if previous else int(meta.get("dataRevision", 1)),
+                       "valuesFingerprint": values_fingerprint(df)}
+            self._save_data(dataset_id, updated, df, codebook)
+            meta.update(updated)
+
+    def _publish_files(self, payloads: list[tuple[Path, bytes]]) -> None:
+        # Backups stay on disk so a large previous Parquet is not duplicated in RAM.
+        backups: dict[Path, Path | None] = {}
+        written: list[Path] = []
+        recovery_failed = False
+        try:
+            for path, _ in payloads:
+                if path.exists():
+                    fd, name = tempfile.mkstemp(dir=str(path.parent), suffix=".bak")
+                    os.close(fd)
+                    backups[path] = Path(name)
+                    shutil.copyfile(path, name)
+                else:
+                    backups[path] = None
+            try:
+                for path, payload in payloads:
+                    written.append(path)
+                    atomic_write_bytes(path, payload)
+            except Exception:
+                try:
+                    for path in reversed(written):
+                        backup = backups[path]
+                        if backup is None:
+                            path.unlink(missing_ok=True)
+                        else:
+                            os.replace(backup, path)
+                except Exception:
+                    recovery_failed = True
+                    raise
+                raise
+        finally:
+            for backup in backups.values():
+                if backup is not None and not recovery_failed:
+                    backup.unlink(missing_ok=True)
+
+    def _save_data(self, dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
+                   codebook: dict[str, Any] | None = None) -> None:
         import io
         buffer = io.BytesIO()
         try:
@@ -86,26 +141,44 @@ class DatasetStore:
             import pyarrow.parquet as pq
             table = pa.Table.from_pydict(df.to_dict(as_series=False))
             pq.write_table(table, buffer)
-        atomic_write_bytes(self._parquet_path(dataset_id), buffer.getvalue())
-        atomic_write_bytes(self._meta_path(dataset_id), json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8"))
+        payloads = [(self._parquet_path(dataset_id), buffer.getvalue())]
+        if codebook is not None:
+            payloads.append((self._codebook_path(dataset_id), json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
+        payloads.append((self._meta_path(dataset_id), json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8")))
+        self._publish_files(payloads)
+
+    def save_metadata(self, dataset_id: str, meta: dict[str, Any], codebook: dict[str, Any]) -> None:
+        """Publish dictionary and metadata together under the dataset operation lock."""
+        with self.lock(dataset_id):
+            self._publish_files([(path, json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"))
+                                 for path, payload in [(self._codebook_path(dataset_id), codebook), (self._meta_path(dataset_id), meta)]])
 
     def get_meta(self, dataset_id: str) -> dict[str, Any]:
         path = self._meta_path(dataset_id)
         if not path.exists():
             raise BizError("DATASET_NOT_FOUND", f"データセット {dataset_id} が見つかりません。", status_code=404,
                            suggested_actions=["データセット一覧を確認してください"])
-        return json.loads(path.read_text(encoding="utf-8"))
+        with self.lock(dataset_id):
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            if "dataRevision" not in meta:
+                meta["dataRevision"] = 1
+                atomic_write_bytes(path, json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8"))
+            return meta
 
-    def get_dataframe(self, dataset_id: str) -> pl.DataFrame:
+    def get_dataframe(self, dataset_id: str, columns: list[str] | None = None) -> pl.DataFrame:
+        with self.lock(dataset_id):
+            return self._read_dataframe(dataset_id, columns)
+
+    def _read_dataframe(self, dataset_id: str, columns: list[str] | None) -> pl.DataFrame:
         path = self._parquet_path(dataset_id)
         if not path.exists():
             raise BizError("DATASET_NOT_FOUND", f"データセット {dataset_id} の本体が見つかりません。",
                            status_code=404)
         try:
-            return pl.read_parquet(path)
+            return pl.read_parquet(path, columns=columns)
         except Exception:
             import pyarrow.parquet as pq
-            table = pq.read_table(path)
+            table = pq.read_table(path, columns=columns)
             return pl.DataFrame(table.to_pydict())
 
     def list_datasets(self) -> list[dict[str, Any]]:
@@ -137,12 +210,17 @@ class DatasetStore:
             payload = codebook.dict()
         else:
             payload = codebook
-        atomic_write_bytes(
-            self._codebook_path(dataset_id),
-            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
-        )
+        with self.lock(dataset_id):
+            atomic_write_bytes(
+                self._codebook_path(dataset_id),
+                json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
 
     def load_codebook(self, dataset_id: str) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_codebook(dataset_id)
+
+    def _read_codebook(self, dataset_id: str) -> dict[str, Any] | None:
         path = self._codebook_path(dataset_id)
         if not path.exists():
             return None

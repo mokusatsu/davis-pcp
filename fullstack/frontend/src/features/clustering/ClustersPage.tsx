@@ -9,9 +9,13 @@ import { AppstoreOutlined, BranchesOutlined, CheckCircleOutlined, PlayCircleOutl
 import React from 'react'
 import type { RootState } from '../../app/store'
 import { groupsReplaced, selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, clusterResultStored } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { selectEffectiveRowIds, selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
+import MaAxisPicker from '../pcp/MaAxisPicker'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { graphEngine } from '../../engine/graphClient'
 import { api } from '../../api/client'
+import { useRowColorResolver } from '../../theme/useRowColor'
+import L1Legend from '../common/L1Legend'
 import { vizTheme, composedColor } from '../../theme/viz'
 import { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
@@ -30,10 +34,15 @@ function finiteRange(values: number[]): { min: number; max: number } {
       if (v > max) max = v
     }
   }
-  return { min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max }
+  if (min === Infinity) return { min: -0.5, max: 0.5 }
+  if (min === max) return { min: min - 0.5, max: max + 0.5 }
+  return { min, max }
 }
 
 interface ClusterResponse {
+  scopeCount?: number
+  usedColumns?: string[]
+  excludedRowCount?: number
   resultId: string
   method: string
   k: number
@@ -53,7 +62,11 @@ export default function ClustersPage() {
   const selection = useSelector((s: RootState) => s.selection)
   const stored = selection.clusterResult
   const { focused, isTargetActive } = useFocusMode()
-  const data = useColumnarData(selection.datasetId)
+  const activeRowIds = useSelector(selectEffectiveRowIds)
+  const variables = useSelector(selectOrdinaryVariables)
+  const entities = useSelector(selectVariableEntities)
+  const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
+  const { columns: definitions, schemaRevision } = useCodebook()
   const [method, setMethod] = useState('kmeans')
   const [k, setK] = useState(3)
   const [seed, setSeed] = useState(42)
@@ -66,19 +79,47 @@ export default function ClustersPage() {
   const [error, setError] = useState<{ message: string } | null>(null)
   const [running, setRunning] = useState(false)
 
-  const numericColumns = data?.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) ?? []
-  const categoricalColumns = data?.schema.filter((c) => c.semanticType !== 'numeric').map((c) => c.name) ?? []
-  const [classColumn, setClassColumn] = useState<string | null>(null)
+  const candidates = definitions.filter(column => !column.multiResponseGroup && ['question', 'attribute'].includes(column.role)
+    && variables.activeVariableIds.includes(column.name))
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
+    .map(item => ({ groupId: item.name, label: item.label }))
+  const maColumns = definitions.filter(column => ['question', 'attribute'].includes(column.role)
+    && column.multiResponseGroup && groups.some(group => group.groupId === column.multiResponseGroup)
+    && added.datasetId === selection.datasetId && added.names.includes(column.name)).map(column => column.name)
+  const mixed = method === 'cobweb' || method === 'disc'
+  const numericColumns = method === 'class_variable' ? [] : [
+    ...candidates.filter(column => ['ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name),
+    ...(mixed ? [] : maColumns)]
+  const classCandidates = [...candidates.filter(column => column.scaleType === 'nominal').map(column => column.name), ...maColumns]
+  const categoricalColumns = mixed ? classCandidates : []
+  const [requestedClass, setClassColumn] = useState<string | null>(null)
+  const classColumn = classCandidates.includes(requestedClass ?? '') ? requestedClass : null
+  const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, activeRowIds,
+    numericColumns, categoricalColumns, classColumn, method, k, seed, linkage, distance, acuity, cutoff, alphaSmooth, numWeight])
+  const [resultInput, setResultInput] = useState<{ resultId: string; key: string } | null>(null)
+  const resultMatchesInput = stored && resultInput?.resultId === stored.resultId && resultInput.key === inputKey
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const runVersion = useRef(0)
+  useEffect(() => {
+    setRunning(false)
+    setError(null)
+    return () => { runVersion.current++ }
+  }, [inputKey])
 
   const theme = vizTheme(false)
 
   const runClustering = async () => {
     if (!selection.datasetId) return
+    const version = ++runVersion.current
     setRunning(true)
     setError(null)
     try {
       const response = await api.post<ClusterResponse>('/clusters', {
         datasetId: selection.datasetId,
+        activeRowIds,
+        expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision,
         method,
         k,
         seed,
@@ -93,6 +134,7 @@ export default function ClustersPage() {
         alphaSmooth,
         numWeight,
       })
+      if (version !== runVersion.current || currentInput.current !== inputKey) return
       // Stable group slots: cluster label -> fixed color slot (entity-stable).
       const clusters = Array.from({ length: response.k }, (_, label) => ({
         groupId: `cluster-${response.resultId}-${label}`,
@@ -103,12 +145,13 @@ export default function ClustersPage() {
         evidenceClass: response.evidenceClass,
       }))
       dispatch(groupsReplaced(clusters))
+      setResultInput({ resultId: response.resultId, key: inputKey })
       dispatch(clusterResultStored(response))
       message.success(`クラスタリング完了 (${response.k}クラスタ、平均シルエット ${response.silhouette?.mean?.toFixed(3) ?? '—'})`)
     } catch (err) {
-      setError(err as { message: string })
+      if (version === runVersion.current && currentInput.current === inputKey) setError(err as { message: string })
     } finally {
-      setRunning(false)
+      if (version === runVersion.current) setRunning(false)
     }
   }
 
@@ -163,6 +206,15 @@ export default function ClustersPage() {
               value={method}
               onChange={(v) => setMethod(String(v))}
             />
+            <Space wrap>
+              <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+                const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+                setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+              }} />
+              <Select data-testid="cluster-ma-columns" mode="multiple" size="small" placeholder="追加したMA選択肢" value={maColumns}
+                style={{ minWidth: 220 }} options={maColumns.map(name => ({ value: name, label: definitions.find(column => column.name === name)?.multiResponseOptionLabel || name }))}
+                onChange={names => setAdded({ datasetId: selection.datasetId, names })} />
+            </Space>
             {method !== 'class_variable' ? (
               <Row gutter={[16, 8]} align="middle">
                 <Col>
@@ -228,13 +280,16 @@ export default function ClustersPage() {
               <Space>
                 <Typography.Text style={{ fontSize: 12 }}>正解ラベル列:</Typography.Text>
                 <Select data-testid="class-column" size="small" placeholder="クラス列" style={{ width: 200 }} value={classColumn} onChange={setClassColumn}
-                  options={categoricalColumns.map((c) => ({ value: c, label: c }))} />
+                  options={classCandidates.map((c) => ({ value: c, label: c }))} />
               </Space>
             )}
             {error && <Alert type="error" showIcon message={error.message} style={{ marginTop: 6 }} />}
           </Space>
         </Card>
       )}
+
+      {stored && !resultMatchesInput && <Alert type="info" showIcon data-testid="cluster-previous-result"
+        message="表示中の結果は現在の入力と異なるか、入力条件を確認できません。現在の条件で分類するには再実行してください。" />}
 
       {/* Summary KPI Cards */}
       {!focused && stored && (
@@ -350,8 +405,17 @@ export default function ClustersPage() {
 /** PCA 2D scatter of the clustering: PC1×PC2 with cluster colors and
  *  selection highlight; click a point to toggle that row in the shared selection. */
 function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelect: (label: number) => void }) {
+  const { getColor, selectionColor } = useRowColorResolver()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
+  const rowScope = useSelector(selectEffectiveRowIds)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const { focused, zoom } = useFocusMode()
+  const context = useMemo(() => ({}), [selection.datasetId, selection.dataRevision, schemaRevision,
+    selection.activeRowIds, rowScope, result, focused, zoom])
+  const currentContext = useRef(context)
+  currentContext.current = context
+  const selectionVersion = useRef(0)
   const theme = vizTheme(false)
   // Square plot sized to the viewport (fills available width, capped).
   const size = Math.max(360, Math.min(760, window.innerWidth - 220))
@@ -364,6 +428,13 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
   const [brushOpOp] = useBrushOp() as ['add' | 'replace' | 'subtract' | 'toggle', (v: never) => void]
   const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const dragRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+
+  useEffect(() => {
+    dragRef.current = null
+    setDrag(null)
+    return () => { selectionVersion.current++ }
+  }, [context])
+  const cancelDrag = () => { dragRef.current = null; setDrag(null) }
 
   const xs = pca.pc1
   const ys = pca.pc2
@@ -381,6 +452,7 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (!svgRef.current || event.button !== 0) return
+    selectionVersion.current++
     const target = event.target as Element
     if (target.closest('circle, rect[data-selectable], rect.bar-hit')) {
       // Click on a selectable mark: let its own onClick handle it (audit #1).
@@ -399,8 +471,10 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
     setDrag(dragRef.current)
   }
 
-  const onPointerUp = async (_event: React.PointerEvent) => {
-    const cur = dragRef.current
+  const onPointerUp = async (event: React.PointerEvent) => {
+    const end = eventPoint(event)
+    const cur = dragRef.current ? { ...dragRef.current, x2: end.x, y2: end.y } : null
+    const version = selectionVersion.current
     dragRef.current = null
     setDrag(null)
     if (!cur) return
@@ -423,10 +497,15 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
       values[i * 2] = xs[keep[i]]
       values[i * 2 + 1] = ys[keep[i]]
     }
-    const hitIdxs = await graphEngine.scatterHit(values, keep.length,
-      { x1: Math.min(vxLo, vxHi), y1: Math.min(vyLo, vyHi), x2: Math.max(vxLo, vxHi), y2: Math.max(vyLo, vyHi) },
-      active)
-    dispatch(selectionApplied({ rowIds: hitIdxs.map((i) => result.rowIds[keep[i]]), operation: brushOpOp, label: 'PCA矩形選択' }))
+    try {
+      const hitIdxs = await graphEngine.scatterHit(values, keep.length,
+        { x1: Math.min(vxLo, vxHi), y1: Math.min(vyLo, vyHi), x2: Math.max(vxLo, vxHi), y2: Math.max(vyLo, vyHi) }, active)
+      if (version !== selectionVersion.current || currentContext.current !== context) return
+      dispatch(selectionApplied({ rowIds: hitIdxs.map((i) => result.rowIds[keep[i]]), operation: brushOpOp, label: 'PCA矩形選択' }))
+    } catch (error) {
+      if (version === selectionVersion.current && currentContext.current === context)
+        message.error(error instanceof Error ? error.message : '矩形選択に失敗しました。')
+    }
   }
 
   const contextMenuItems = [
@@ -475,6 +554,8 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={cancelDrag}
+        onLostPointerCapture={cancelDrag}
       >
         {/* recessive hairline axes */}
         <line x1={pad} y1={size - pad} x2={size - pad} y2={size - pad} stroke={theme.axis} strokeWidth={1} />
@@ -486,14 +567,14 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
           const isSelected = selectedSet.has(id)
           const isHovered = hoveredId === id
           return (
-            <circle data-selectable="true"
+            <circle data-selectable="true" data-row-id={id}
               key={id}
               cx={scaleX(xs[index])}
               cy={scaleY(ys[index])}
               r={isSelected ? 5.0 : isHovered ? 4.5 : 3.5}
-              fill={composedColor(theme, { l2Group: label })}
+              fill={getColor(id)}
               opacity={isSelected ? 1 : 0.55}
-              stroke={isSelected ? theme.selection : theme.surface}
+              stroke={isSelected ? selectionColor : theme.surface}
               strokeWidth={isSelected ? 1.5 : 1}
               style={{ cursor: 'pointer' }}
               onClick={() => dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'PCA点クリック' }))}
@@ -529,11 +610,15 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
         )}
       </svg>
       </Dropdown>
+      <L1Legend />
     </div>
   )
 }
 
 function ClusterSummaryPanel({ result, onSelect }: { result: ClusterResponse; onSelect: (label: number) => void }) {
+  const dropped = Array.isArray(result.diagnostics.droppedColumns) ? result.diagnostics.droppedColumns.map(String) : []
+  const imputed = result.diagnostics.imputedCounts && typeof result.diagnostics.imputedCounts === 'object'
+    ? Object.entries(result.diagnostics.imputedCounts).filter(([, count]) => typeof count === 'number' && count > 0) : []
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
@@ -544,6 +629,11 @@ function ClusterSummaryPanel({ result, onSelect }: { result: ClusterResponse; on
         <Descriptions.Item label="平均シルエット">
           {result.silhouette ? result.silhouette.mean.toFixed(3) : '—'}
         </Descriptions.Item>
+        <Descriptions.Item label="使用行">{result.rowIds.length}行{result.scopeCount !== undefined ? ` / 対象 ${result.scopeCount}行` : ''}</Descriptions.Item>
+        {result.usedColumns && <Descriptions.Item label="使用列">{result.usedColumns.join('、')}</Descriptions.Item>}
+        {result.excludedRowCount !== undefined && <Descriptions.Item label="MA回答状態による行除外">{result.excludedRowCount}行</Descriptions.Item>}
+        {dropped.length > 0 && <Descriptions.Item label="定数・全欠損のため除外した列">{dropped.join('、')}</Descriptions.Item>}
+        {imputed.length > 0 && <Descriptions.Item label="数値の欠損補完">{imputed.map(([name, count]) => `${name}: ${count}件`).join('、')}（対象行の有効値の平均）</Descriptions.Item>}
         <Descriptions.Item label="diagnostics">
           <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{JSON.stringify(result.diagnostics).slice(0, 200)}</code>
         </Descriptions.Item>
@@ -568,7 +658,7 @@ function ClusterSummaryPanel({ result, onSelect }: { result: ClusterResponse; on
  *  Width = how confidently the row belongs to its cluster (1 = strong).
  *  Row ordering comes from the engine's silhouetteOrder (WASM in worker). */
 function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelect: (label: number) => void }) {
-  const theme = vizTheme(false)
+  const { getColor, isSelected, selectionColor } = useRowColorResolver()
   const width = Math.max(760, Math.min(1200, window.innerWidth - 220))
   const rowHeight = Math.max(1.5, Math.min(5, 420 / result.rowIds.length))
   const height = result.k * 40 + result.rowIds.length * rowHeight + 60
@@ -616,12 +706,15 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
       bars.push(
         <rect
           key={`${cluster.label}-${row.id}`}
+          data-row-id={row.id}
           x={barX}
           y={yCursor}
           width={barWidth}
           height={rowHeight - 0.4}
-          fill={composedColor(theme, { l2Group: cluster.label })}
-          opacity={0.85}
+          fill={getColor(row.id)}
+          opacity={isSelected(row.id) ? 1 : 0.85}
+          stroke={isSelected(row.id) ? selectionColor : undefined}
+          strokeWidth={isSelected(row.id) ? 1.5 : 0}
           style={{ cursor: 'pointer' }}
           onClick={() => onSelect(cluster.label)}
         >
@@ -648,6 +741,7 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>幅が広いほどそのクラスタへの所属確からしさが高い · クリックで選択</Typography.Text>
       </div>
+      <L1Legend />
       <div style={{ flex: active ? 1 : 'none', overflow: 'auto', minHeight: active ? 0 : 200, maxHeight: active ? undefined : 420 }}>
         <svg data-testid="silhouette-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: active ? 'none' : width, height: active ? '100%' : height, display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           {/* reference lines: -1, 0, mean, +1 */}

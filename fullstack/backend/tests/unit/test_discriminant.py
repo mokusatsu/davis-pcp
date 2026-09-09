@@ -7,6 +7,28 @@ from app.algorithms.models.discriminant import run_discriminant_analysis
 from app.domain.errors import BizError
 
 
+def test_discriminant_names_constant_and_no_within_variation():
+    frame = pl.DataFrame({'target': [0, 0, 0, 1, 1, 1], 'constant': [1] * 6, 'separated': [0, 0, 0, 1, 1, 1]})
+    with pytest.raises(BizError) as error:
+        run_discriminant_analysis(frame, 'target', ['constant'])
+    assert error.value.code == 'DISCRIMINANT_CONSTANT_FEATURES'
+    assert error.value.details['columns'] == ['constant']
+    with pytest.raises(BizError) as error:
+        run_discriminant_analysis(frame, 'target', ['separated'])
+    assert error.value.code == 'DISCRIMINANT_NO_WITHIN_CLASS_VARIATION'
+
+
+def test_discriminant_reports_collinearity_without_rejecting_svd():
+    frame = pl.DataFrame({'target': [0] * 5 + [1] * 5, 'x': [0, 1, 2, 3, 4, 3, 4, 5, 6, 7]})
+    frame = frame.with_columns((pl.col('x') * 1000).alias('copy'))
+    result = run_discriminant_analysis(frame, 'target', ['x', 'copy'])
+    assert result['diagnostics']['collinear'] is True
+    assert result['diagnostics']['withinClassRank'] == 1
+    assert result['diagnostics']['usedDimensions'] == 2
+    assert result['diagnostics']['classCounts'] == {'0': 5, '1': 5}
+    assert len(result['samples']) == 10
+
+
 @pytest.fixture
 def iris_df():
     iris = load_iris()
@@ -32,6 +54,9 @@ def test_fisher_iris_lda_reproduction(iris_df):
     assert res["target"] == "species"
     assert res["classes"] == ["setosa", "versicolor", "virginica"]
     assert res["accuracy"] == 0.98  # 147/150 = 98%
+    assert res['diagnostics']['usedDimensions'] == 4
+    assert res['diagnostics']['withinClassRank'] == 4
+    assert res['diagnostics']['collinear'] is False
     assert len(res["misclassifiedRowIds"]) == 3
 
     # Axes

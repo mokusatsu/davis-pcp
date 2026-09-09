@@ -1,5 +1,6 @@
+import { selectVariableManagerState } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Button,
   Popover,
@@ -26,8 +27,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState, AppDispatch } from '../../app/store'
 import {
-  activeVariablesSet,
-  variableToggled,
+  activeEntitiesSet,
   observationScopeChanged,
   selectionCleared,
   focusSelected,
@@ -42,7 +42,8 @@ export const GlobalHeaderControlBar: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectVariableManagerState)
+  const applyVariables = (keys: string[]) => dispatch(activeEntitiesSet(keys.flatMap(key => globalVars.variableMeta[key] ? [globalVars.variableMeta[key].entity] : [])))
   const obs = useSelector((s: RootState) => s.globalObservations)
 
   const [varPopoverOpen, setVarPopoverOpen] = useState(false)
@@ -61,23 +62,6 @@ export const GlobalHeaderControlBar: React.FC = () => {
 
   const currentScope = obs?.scopeMode || 'active'
 
-  // If current scope becomes invalid (e.g. selected emptied), fallback to 'active'
-  useEffect(() => {
-    if (currentScope === 'selected' && selectedRowCount === 0) {
-      dispatch(observationScopeChanged('active'))
-      notification.info({
-        message: 'スコープを自動変更',
-        description: '選択行が空になったため、表示スコープを Active に切り替えました。',
-      })
-    } else if (currentScope === 'sampled' && sampledRowCount === 0) {
-      dispatch(observationScopeChanged('active'))
-      notification.info({
-        message: 'スコープを自動変更',
-        description: 'サンプリング行が空のため、表示スコープを Active に切り替えました。',
-      })
-    }
-  }, [currentScope, selectedRowCount, sampledRowCount, dispatch])
-
   const numericVars = globalVars.allVariables.filter(
     (id) => globalVars.variableMeta[id]?.semanticType === 'numeric'
   )
@@ -87,7 +71,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
   })
 
   const filteredVars = globalVars.allVariables.filter((id) =>
-    id.toLowerCase().includes(varSearch.toLowerCase())
+    `${globalVars.variableMeta[id]?.name} ${globalVars.variableMeta[id]?.label}`.toLowerCase().includes(varSearch.toLowerCase())
   )
 
   const varPopoverContent = (
@@ -103,7 +87,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
       <Space size={4} wrap>
         <Button
           size="small"
-          onClick={() => dispatch(activeVariablesSet(globalVars.allVariables))}
+          onClick={() => applyVariables(globalVars.allVariables)}
           data-testid="var-quick-all"
         >
           全選択
@@ -112,7 +96,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           size="small"
           onClick={() => {
             if (numericVars.length > 0) {
-              dispatch(activeVariablesSet(numericVars))
+              applyVariables(numericVars)
             } else {
               notification.info({
                 message: '数値変数がありません',
@@ -128,7 +112,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           size="small"
           onClick={() => {
             if (nominalVars.length > 0) {
-              dispatch(activeVariablesSet(nominalVars))
+              applyVariables(nominalVars)
             } else {
               notification.info({
                 message: 'カテゴリ変数がありません',
@@ -160,13 +144,13 @@ export const GlobalHeaderControlBar: React.FC = () => {
             <Checkbox
               key={varName}
               checked={isChecked}
-              onChange={() => dispatch(variableToggled(varName))}
+              onChange={() => applyVariables(isChecked ? globalVars.activeVariableIds.filter(key => key !== varName) : [...globalVars.activeVariableIds, varName])}
               data-testid={`var-checkbox-${varName}`}
             >
               <span style={{ fontSize: 12 }}>
-                <ColumnQuestionTooltip nameOrId={varName}>{varName}</ColumnQuestionTooltip>{' '}
+                <ColumnQuestionTooltip nameOrId={meta?.name}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip>{' '}
                 <span style={{ color: '#888', fontSize: 11 }}>
-                  ({meta?.semanticType ?? 'var'})
+                  ({meta?.entity.kind === 'ma' ? 'MA' : meta?.semanticType ?? 'var'})
                 </span>
               </span>
             </Checkbox>
@@ -190,7 +174,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
     </div>
   )
 
-  const activeVarPreview = globalVars.activeVariableIds.slice(0, 2)
+  const activeVarPreview = globalVars.activeVariableIds.slice(0, 2).map(key => globalVars.variableMeta[key]?.name)
 
   return (
     <div
@@ -223,7 +207,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
             data-testid="global-var-btn"
             style={{ fontWeight: 500 }}
           >
-            <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 列選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} <DownOutlined style={{ fontSize: 10 }} /> ]
+            <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 項目選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} <DownOutlined style={{ fontSize: 10 }} /> ]
           </Button>
         </Popover>
       </div>

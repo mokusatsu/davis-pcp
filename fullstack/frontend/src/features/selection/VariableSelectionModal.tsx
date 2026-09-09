@@ -1,3 +1,4 @@
+import { selectVariableManagerState } from '../../app/store'
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState, useEffect } from 'react'
@@ -5,8 +6,8 @@ import { Modal, Input, Button, Space, Typography, List, Card, message } from 'an
 import { ArrowRightOutlined, ArrowLeftOutlined, UpOutlined, DownOutlined, BarChartOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import type { RootState, AppDispatch } from '../../app/store'
-import { activeVariablesSet, variableOrderReordered } from '../../app/store'
+import type { AppDispatch } from '../../app/store'
+import { activeEntitiesSet } from '../../app/store'
 
 interface VariableSelectionModalProps {
   open: boolean
@@ -16,7 +17,8 @@ interface VariableSelectionModalProps {
 export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ open, onClose }) => {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectVariableManagerState)
+  const applyVariables = (keys: string[]) => dispatch(activeEntitiesSet(keys.flatMap(key => globalVars.variableMeta[key] ? [globalVars.variableMeta[key].entity] : [])))
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'numeric' | 'nominal'>('all')
 
@@ -41,7 +43,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
   }, [open, globalVars])
 
   const matchesFilter = (varName: string) => {
-    if (searchTerm && !varName.toLowerCase().includes(searchTerm.toLowerCase())) return false
+    if (searchTerm && !`${globalVars.variableMeta[varName]?.name} ${globalVars.variableMeta[varName]?.label}`.toLowerCase().includes(searchTerm.toLowerCase())) return false
     const meta = globalVars.variableMeta[varName]
     if (typeFilter === 'numeric') return meta?.semanticType === 'numeric'
     if (typeFilter === 'nominal') return meta?.semanticType === 'nominal' || meta?.semanticType === 'ordinal' || meta?.semanticType === 'text' || meta?.semanticType === 'categorical'
@@ -87,13 +89,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
   }
 
   const handleApply = () => {
-    if (selectedList.length === 0) {
-      message.warning('少なくとも1つの変数を選択してください。')
-      return
-    }
-    dispatch(activeVariablesSet(selectedList))
-    const remaining = globalVars.allVariables.filter((id) => !selectedList.includes(id))
-    dispatch(variableOrderReordered([...selectedList, ...remaining]))
+    applyVariables(selectedList)
     message.success(`変数選択を更新しました（${selectedList.length}変数）`)
     onClose()
   }
@@ -186,9 +182,9 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                   data-testid={`var-available-${item}`}
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <Typography.Text><ColumnQuestionTooltip nameOrId={item}>{item}</ColumnQuestionTooltip></Typography.Text>
+                    <Typography.Text><ColumnQuestionTooltip nameOrId={meta?.name}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip></Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      {meta?.semanticType ?? 'variable'}
+                      {meta?.entity.kind === 'ma' ? 'MA' : meta?.semanticType ?? 'variable'}
                     </Typography.Text>
                   </Space>
                 </List.Item>
@@ -273,10 +269,10 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
                     <Typography.Text>
-                      {index + 1}. <ColumnQuestionTooltip nameOrId={item}>{item}</ColumnQuestionTooltip>
+                      {index + 1}. <ColumnQuestionTooltip nameOrId={meta?.name}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip>
                     </Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      {meta?.semanticType ?? 'variable'}
+                      {meta?.entity.kind === 'ma' ? 'MA' : meta?.semanticType ?? 'variable'}
                     </Typography.Text>
                   </Space>
                 </List.Item>

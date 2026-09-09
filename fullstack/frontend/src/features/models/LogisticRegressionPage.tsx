@@ -1,3 +1,4 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -29,8 +30,12 @@ import {
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import { getBrushOp } from '../selection/SelectionMenu'
+import { useRowColorResolver } from '../../theme/useRowColor'
+import L1Legend from '../common/L1Legend'
 
 export interface CoefficientItem {
   name: string
@@ -49,6 +54,7 @@ export interface SigmoidCurvePoint {
 }
 
 export interface LogisticSamplePoint {
+  featureValues: Record<string, number>
   rowId: string
   actual: number
   predictedProb: number
@@ -73,6 +79,7 @@ export interface ConfusionMatrix {
 }
 
 export interface LogisticResponse {
+  diagnostics: { completeSeparation: boolean | null }
   target: string
   classes: string[]
   features: string[]
@@ -93,16 +100,31 @@ export interface LogisticResponse {
 }
 
 export default function LogisticRegressionPage() {
+  const { getColor, selectionColor } = useRowColorResolver()
   const questionText = useQuestionText()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
+  const { schemaRevision, columns: definitions } = useCodebook()
+  const entities = useSelector(selectVariableEntities)
+  const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
+    .map(item => ({ groupId: item.name, label: item.label }))
+  const candidates = definitions.filter(column => ['question', 'attribute'].includes(column.role)
+    && (column.multiResponseGroup ? added.datasetId === selection.datasetId && added.names.includes(column.name)
+      && groups.some(group => group.groupId === column.multiResponseGroup) : globalVars.activeVariableIds.includes(column.name)))
 
   // Form state
-  const [targetColumn, setTargetColumn] = useState<string>('')
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const [requestedTarget, setTargetColumn] = useState<string>('')
+  const [requestedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const allColumns = candidates.filter(column => column.multiResponseGroup || ['nominal', 'ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name)
+  const targetColumn = allColumns.includes(requestedTarget) ? requestedTarget : ''
+  const targetGroup = candidates.find(column => column.name === targetColumn)?.multiResponseGroup
+  const numericColumns = candidates.filter(column => column.name !== targetColumn && (!targetGroup || column.multiResponseGroup !== targetGroup)
+    && (column.multiResponseGroup || ['ordinal', 'interval', 'ratio'].includes(column.scaleType))).map(column => column.name)
+  const selectedFeatures = requestedFeatures.filter(name => numericColumns.includes(name))
+  useEffect(() => { setTargetColumn(''); setSelectedFeatures([]) }, [selection.datasetId])
   const [intercept, setIntercept] = useState<boolean>(true)
   const [regularization, setRegularization] = useState<'none' | 'l2' | 'l1'>('none')
   const [cValue, setCValue] = useState<number>(1.0)
@@ -112,44 +134,22 @@ export default function LogisticRegressionPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<LogisticResponse | null>(null)
   const [focusAxis, setFocusAxis] = useState<string>('')
+  const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds,
+    targetColumn, selectedFeatures, intercept, regularization, cValue])
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const runVersion = useRef(0)
+  useEffect(() => {
+    setResult(null)
+    setLoading(false)
+    return () => { runVersion.current++ }
+  }, [inputKey])
 
   // Brush state on Sigmoid Plot
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [brushBox, setBrushBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
-
-  // Available columns
-  const allColumns = useMemo(() => {
-    if (!data?.schema) return []
-    return data.schema.map((c) => c.name)
-  }, [data])
-
-  const numericColumns = useMemo(() => {
-    if (!data?.schema) return []
-    return data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name)
-  }, [data])
-
-  // Initialize target and features from globalVariables
-  useEffect(() => {
-    if (!allColumns.length) return
-    if (!targetColumn) {
-      // Pick global target or first non-numeric/nominal or last column
-      const defaultTarget = globalVars.targetVariableId || allColumns[allColumns.length - 1]
-      setTargetColumn(defaultTarget)
-    }
-  }, [allColumns, globalVars.targetVariableId, targetColumn])
-
-  useEffect(() => {
-    if (!targetColumn) return
-    // Default features to activeVariableIds minus target
-    const candidateFeats = globalVars.activeVariableIds.filter(
-      (v) => v !== targetColumn && numericColumns.includes(v)
-    )
-    if (candidateFeats.length > 0) {
-      setSelectedFeatures(candidateFeats)
-    } else {
-      setSelectedFeatures(numericColumns.filter((v) => v !== targetColumn).slice(0, 4))
-    }
-  }, [targetColumn, globalVars.activeVariableIds, numericColumns])
+  const brushStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
+  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey, focusAxis])
 
   // Run model
   const handleRunModel = async () => {
@@ -158,26 +158,31 @@ export default function LogisticRegressionPage() {
       return
     }
     setLoading(true)
+    setResult(null)
+    const version = ++runVersion.current
     try {
       const res = await api.post<LogisticResponse>('/models/logistic', {
         datasetId: selection.datasetId,
         targetColumn,
         featureColumns: selectedFeatures,
-        activeRowIds: effectiveRowIds.length ? effectiveRowIds : undefined,
+        activeRowIds: effectiveRowIds,
+        expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision,
         intercept,
         regularization,
         cValue,
         cutoff,
       })
+      if (currentInput.current !== inputKey || version !== runVersion.current) return
       setResult(res)
       if (selectedFeatures.length > 0) {
         setFocusAxis(selectedFeatures[0])
       }
       message.success('ロジスティック回帰モデルを推定しました。')
     } catch (err: any) {
-      message.error(err?.message || 'モデルの推定に失敗しました。')
+      if (currentInput.current === inputKey && version === runVersion.current) message.error(err?.message || 'モデルの推定に失敗しました。')
     } finally {
-      setLoading(false)
+      if (version === runVersion.current) setLoading(false)
     }
   }
 
@@ -238,9 +243,8 @@ export default function LogisticRegressionPage() {
   }, [result?.samples, cutoff])
 
   // Selection dispatch helpers
-  const handleSelectRows = (rowIds: string[], e?: React.MouseEvent) => {
-    if (!rowIds.length) return
-    const op = e?.shiftKey ? 'add' : e?.altKey ? 'subtract' : 'replace'
+  const handleSelectRows = (rowIds: string[], _event?: React.MouseEvent) => {
+    const op = getBrushOp()
     dispatch(selectionApplied({ rowIds, operation: op, label: 'ロジスティック回帰選択' }))
   }
 
@@ -270,31 +274,27 @@ export default function LogisticRegressionPage() {
   }, [result, focusAxis])
 
   const axisMinMax = useMemo(() => {
-    if (!data || !focusAxis) return { min: 0, max: 1 }
-    const arr = data.numeric[focusAxis]
-    if (!arr) return { min: 0, max: 1 }
+    if (!result || !focusAxis) return { min: 0, max: 1 }
+    const arr = result.samples.map(sample => sample.featureValues[focusAxis])
     let min = Infinity
     let max = -Infinity
     for (let i = 0; i < arr.length; i++) {
       const v = arr[i]
-      if (!isNaN(v)) {
+      if (Number.isFinite(v)) {
         if (v < min) min = v
         if (v > max) max = v
       }
     }
     if (min === Infinity) return { min: 0, max: 1 }
     return { min, max: max === min ? min + 1 : max }
-  }, [data, focusAxis])
+  }, [result, focusAxis])
 
   // Sample points with x coordinate on focusAxis
   const samplePointsWithCoord = useMemo(() => {
-    if (!result?.samples || !data || !focusAxis) return []
-    const arr = data.numeric[focusAxis]
-    if (!arr) return []
+    if (!result?.samples || !focusAxis) return []
 
     return result.samples.map((s) => {
-      const rowIdx = data.rowIndex.get(s.rowId)
-      const xVal = rowIdx !== undefined ? arr[rowIdx] : NaN
+      const xVal = s.featureValues[focusAxis]
       // deterministic small jitter for visual separation
       const hash = Math.sin(Number(s.rowId.replace(/\D/g, '') || '1') * 997) * 0.04
       const yCoord = s.actual === 1 ? 1.0 - Math.abs(hash) : 0.0 + Math.abs(hash)
@@ -304,7 +304,7 @@ export default function LogisticRegressionPage() {
         jitterY: yCoord,
       }
     }).filter((p) => !isNaN(p.xVal))
-  }, [result?.samples, data, focusAxis])
+  }, [result?.samples, focusAxis])
 
   // Map to SVG coordinates
   const scaleX = (val: number) => {
@@ -326,32 +326,43 @@ export default function LogisticRegressionPage() {
   }, [axisCurve, axisMinMax])
 
   // Brush drag interaction
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return
+  const plotCoordinates = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return null
     const rect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    if (!rect.width || !rect.height) return null
+    return { x: (e.clientX - rect.left) * chartWidth / rect.width, y: (e.clientY - rect.top) * chartHeight / rect.height, rect }
+  }
+  const handleMouseDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return
+    const point = plotCoordinates(e)
+    if (!point) return
+    const { x, y } = point
+    brushStart.current = { x, y, clientX: e.clientX, clientY: e.clientY }
+    e.currentTarget.setPointerCapture(e.pointerId)
     setBrushBox({ startX: x, startY: y, currentX: x, currentY: y })
   }
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!brushBox) return
-    if (!svgRef.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+  const handleMouseMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!brushStart.current) return
+    const point = plotCoordinates(e)
+    if (!point) return
+    const { x, y } = point
     setBrushBox((prev) => (prev ? { ...prev, currentX: x, currentY: y } : null))
   }
 
-  const handleMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!brushBox) return
-    const xMin = Math.min(brushBox.startX, brushBox.currentX)
-    const xMax = Math.max(brushBox.startX, brushBox.currentX)
-    const yMin = Math.min(brushBox.startY, brushBox.currentY)
-    const yMax = Math.max(brushBox.startY, brushBox.currentY)
+  const handleMouseUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const start = brushStart.current
+    const end = plotCoordinates(e)
+    brushStart.current = null
+    setBrushBox(null)
+    if (!start || !end) return
+    const xMin = Math.min(start.x, end.x)
+    const xMax = Math.max(start.x, end.x)
+    const yMin = Math.min(start.y, end.y)
+    const yMax = Math.max(start.y, end.y)
 
     // Check if dragging was intentional (> 4px)
-    if (xMax - xMin > 4 || yMax - yMin > 4) {
+    if (Math.abs(e.clientX - start.clientX) > 4 || Math.abs(e.clientY - start.clientY) > 4) {
       const selected: string[] = []
       for (const pt of samplePointsWithCoord) {
         const px = scaleX(pt.xVal)
@@ -360,11 +371,18 @@ export default function LogisticRegressionPage() {
           selected.push(pt.rowId)
         }
       }
-      if (selected.length > 0) {
-        handleSelectRows(selected, e)
+      handleSelectRows(selected)
+    } else {
+      let nearest: string | null = null
+      let distance = 49
+      for (const pt of samplePointsWithCoord) {
+        const dx = (scaleX(pt.xVal) - end.x) * end.rect.width / chartWidth
+        const dy = (scaleY(pt.jitterY) - end.y) * end.rect.height / chartHeight
+        const squared = dx * dx + dy * dy
+        if (squared < distance) { nearest = pt.rowId; distance = squared }
       }
+      if (nearest) dispatch(selectionApplied({ rowIds: [nearest], operation: 'toggle', label: 'ロジスティック回帰の点選択' }))
     }
-    setBrushBox(null)
   }
 
   // Odds ratio forest plot data
@@ -517,6 +535,13 @@ export default function LogisticRegressionPage() {
             </Button>
           </Col>
         </Row>
+        <Space style={{ marginTop: 12 }} wrap>
+          <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+            const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+            setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+          }} />
+          <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
+        </Space>
 
         {result && (
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -554,6 +579,11 @@ export default function LogisticRegressionPage() {
             style={{ marginTop: 12 }}
           />
         )}
+        {result?.diagnostics?.completeSeparation === true && <Alert type="warning" showIcon style={{ marginTop: 12 }}
+          message="完全分離が検出されました。"
+          description="説明変数で2クラスを完全に分離できます。通常の最尤推定では有限の係数が定まらないため、係数・標準誤差・p値・信頼区間を通常の推論として解釈できません。正則化や変数の見直しを検討してください。" />}
+        {result?.diagnostics?.completeSeparation === null && <Alert type="warning" showIcon style={{ marginTop: 12 }}
+          message="完全分離の診断を確定できませんでした。" />}
       </Card>
 
       {/* Main Content Area */}
@@ -587,14 +617,18 @@ export default function LogisticRegressionPage() {
                 }
               >
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
+                  <L1Legend />
                   <svg
                     ref={svgRef}
-                    width={chartWidth}
-                    height={chartHeight}
-                    style={{ background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none' }}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
+                    data-testid="logistic-sigmoid-svg"
+                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                    width="100%"
+                    style={{ aspectRatio: `${chartWidth} / ${chartHeight}`, background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
+                    onPointerDown={handleMouseDown}
+                    onPointerMove={handleMouseMove}
+                    onPointerUp={handleMouseUp}
+                    onPointerCancel={() => { brushStart.current = null; setBrushBox(null) }}
+                    onLostPointerCapture={() => { brushStart.current = null; setBrushBox(null) }}
                   >
                     {/* Axes */}
                     <line
@@ -673,18 +707,21 @@ export default function LogisticRegressionPage() {
                       const isMisclassified = (pt.predictedProb >= cutoff ? 1 : 0) !== pt.actual
 
                       return (
+                        <g key={pt.rowId}>
+                        {isMisclassified && <circle cx={cx} cy={cy} r={isSelected ? 8 : 6} fill="none" stroke="#ff4d4f" strokeWidth={1.5} pointerEvents="none" />}
                         <circle
-                          key={pt.rowId}
+                          data-row-id={pt.rowId}
                           cx={cx}
                           cy={cy}
                           r={isSelected ? 5.5 : 3.5}
-                          fill={isSelected ? '#ff4d4f' : pt.actual === 1 ? '#1890ff' : '#52c41a'}
-                          stroke={isSelected ? '#780608' : isMisclassified ? '#ff4d4f' : '#ffffff'}
-                          strokeWidth={isSelected ? 2 : isMisclassified ? 1.5 : 0.8}
+                          fill={getColor(pt.rowId)}
+                          stroke={isSelected ? selectionColor : '#ffffff'}
+                          strokeWidth={isSelected ? 2 : 0.8}
                           opacity={0.85}
                         >
                           <title>{`Row: ${pt.rowId}\n${questionText(focusAxis)}: ${pt.xVal}\nActual: ${pt.actual} (${result.classes[pt.actual]})\nProb: ${pt.predictedProb}`}</title>
                         </circle>
+                        </g>
                       )
                     })}
 

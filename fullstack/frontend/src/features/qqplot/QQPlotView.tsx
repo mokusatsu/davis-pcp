@@ -1,3 +1,4 @@
+import { selectOrdinaryVariables } from '../../app/store'
 import CanvasColumnQuestions from '../common/CanvasColumnQuestions'
 import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -49,13 +50,13 @@ export default function QQPlotView() {
   const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const data = useColumnarData(selection.datasetId)
 
   const numericColumns = useMemo(() => {
     if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
+    const activeVarSet = new Set(globalVars.activeVariableIds)
     return data.schema
       .filter((c) => c.semanticType === 'numeric' && (!activeVarSet || activeVarSet.has(c.name)))
       .map((c) => c.name)

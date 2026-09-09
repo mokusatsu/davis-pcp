@@ -125,7 +125,7 @@ describe('Feature 13: Discriminant Analysis Client Logic', () => {
     }
 
     store.dispatch(activeVariablesSet(traceStep.activeVariables))
-    expect(store.getState().globalVariables.activeVariableIds).toEqual([
+    expect(store.getState().globalVariables.activeEntities?.map(entity => entity.kind === 'column' ? entity.columnId : entity.groupId)).toEqual([
       'petal_length',
       'sepal_width',
       'petal_width',

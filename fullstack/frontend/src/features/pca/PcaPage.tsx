@@ -1,11 +1,12 @@
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useSelector } from 'react-redux'
 import { Alert, Button, Radio, Segmented, Space, Typography, message } from 'antd'
 import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { api } from '../../api/client'
 import { ScreePlot } from './ScreePlot'
 import { LoadingTable } from './LoadingTable'
@@ -17,14 +18,16 @@ import { useFocusMode } from '../common/FocusMode'
 export default function PcaPage() {
   const { focused, isTargetActive } = useFocusMode()
   const selection = useSelector((s: RootState) => s.selection)
-  const data = useColumnarData(selection.datasetId)
-
-  const numericColumns = useMemo(
-    () => (data ? data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) : []),
-    [data]
-  )
-
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const rowIds = useSelector(selectEffectiveRowIds)
+  const globalVariables = useSelector(selectOrdinaryVariables)
+  const { columns, schemaRevision } = useCodebook()
+  const candidates = columns.filter(c => !c.multiResponseGroup && ['question', 'attribute'].includes(c.role)
+    && ['interval', 'ratio', 'ordinal'].includes(c.scaleType) && globalVariables.activeVariableIds.includes(c.name))
+  const numericColumns = candidates.map(c => c.name)
+  const [chosen, setChosen] = useState<{ datasetId: string; names: string[] } | null>(null)
+  const selectedColumns = (chosen?.datasetId === selection.datasetId ? chosen.names
+    : candidates.filter(c => c.scaleType !== 'ordinal').map(c => c.name)).filter(name => numericColumns.includes(name))
+  const setSelectedColumns = (names: string[]) => setChosen({ datasetId: selection.datasetId!, names })
   const [useCorrelation, setUseCorrelation] = useState(true)
   const [loading, setLoading] = useState(false)
   const [pcaData, setPcaData] = useState<PcaResponse | null>(null)
@@ -34,12 +37,14 @@ export default function PcaPage() {
   const [selectedY, setSelectedY] = useState(1)
   const [viewMode, setViewMode] = useState<'biplot' | 'matrix'>('biplot')
 
-  // Initialize selected columns when data loads
+  const context = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, selectedColumns, useCorrelation])
+  const contextRef = useRef(context)
+  contextRef.current = context
+  const requestVersion = useRef(0)
   useEffect(() => {
-    if (numericColumns.length >= 2 && selectedColumns.length === 0) {
-      setSelectedColumns(numericColumns)
-    }
-  }, [numericColumns, selectedColumns.length])
+    requestVersion.current++
+    setPcaData(null); setLoading(false); setError(null)
+  }, [context])
 
   const runPca = useCallback(
     async (rowSubset?: string[]) => {
@@ -50,32 +55,31 @@ export default function PcaPage() {
       }
       setLoading(true)
       setError(null)
+      const version = ++requestVersion.current, startedContext = contextRef.current
+      const isCurrent = () => version === requestVersion.current && startedContext === contextRef.current
       try {
         const res = await api.post<PcaResponse>('/models/pca', {
           datasetId: selection.datasetId,
           columns: selectedColumns,
           useCorrelation,
-          rowIds: rowSubset && rowSubset.length > 0 ? rowSubset : undefined,
+          rowIds: rowSubset === undefined ? rowIds : rowIds.filter(id => rowSubset.includes(id)),
+          expectedSchemaRevision: schemaRevision,
+          expectedDataRevision: selection.dataRevision,
         })
+        if (!isCurrent()) return
         setPcaData(res)
         setSelectedX(0)
         setSelectedY(Math.min(1, (res.nComponents || res.eigenvalues.length) - 1))
       } catch (err) {
+        if (!isCurrent()) return
         const e = err as { message: string }
         setError(e.message || 'PCAの計算に失敗しました。')
       } finally {
-        setLoading(false)
+        if (isCurrent()) setLoading(false)
       }
     },
-    [selection.datasetId, selectedColumns, useCorrelation]
+    [selection.datasetId, selection.dataRevision, schemaRevision, rowIds, selectedColumns, useCorrelation]
   )
-
-  // Auto-run on first load once columns are set
-  useEffect(() => {
-    if (selection.datasetId && selectedColumns.length >= 2 && !pcaData && !loading) {
-      void runPca()
-    }
-  }, [selection.datasetId, selectedColumns, pcaData, loading, runPca])
 
   const handleComponentSelectFromScree = (compIndex: number) => {
     if (compIndex === selectedX) {
@@ -136,6 +140,7 @@ export default function PcaPage() {
               type="primary"
               icon={<PlayCircleOutlined />}
               loading={loading}
+              disabled={selectedColumns.length < 2}
               onClick={() => void runPca()}
               data-testid="pca-run-button"
             >
@@ -144,7 +149,7 @@ export default function PcaPage() {
             <Button
               icon={<ReloadOutlined />}
               loading={loading}
-              disabled={!hasSelectedRows}
+              disabled={!hasSelectedRows || selectedColumns.length < 2}
               onClick={() => void runPca(selection.selectedRowIds)}
               data-testid="pca-run-subset-button"
             >

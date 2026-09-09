@@ -17,6 +17,8 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from ..algorithms.models.pca import compute_pca
 from ..algorithms.models.kda import run_kda
 from ..domain.errors import BizError
+from ..domain.analysis_columns import resolve_analysis_columns
+from .multi_response import _collect_revisions, _check_revisions, _scope_hash
 from ..domain.codebook_adapter import CodebookAdapter, normalize_code
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
@@ -27,6 +29,8 @@ _results: dict[str, dict] = {}
 
 
 class PcaRequest(BaseModel):
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
     datasetId: str | None = None
     dataset_id: str | None = None
     columns: list[str] | None = None
@@ -44,26 +48,46 @@ def run_pca(req: PcaRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
-    df = CodebookAdapter(df, store.load_codebook(dataset_id)).analysis_frame()
+    with store.lock(dataset_id):
+        return _run_pca(dataset_id, req)
+
+
+def _run_pca(dataset_id, req):
+    meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id) or {}
+    revisions = _collect_revisions(meta, codebook)
+    _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+    plan = resolve_analysis_columns(codebook, req.columns,
+        scales={'interval', 'ratio', 'ordinal'} if req.columns is not None else {'interval', 'ratio'})
+    df = store.get_dataframe(dataset_id, columns=['__rowId__', *plan.dependencies])
     use_corr = req.useCorrelation if req.use_correlation is None else req.use_correlation
     if use_corr is None:
         use_corr = True
     n_comp = req.nComponents if req.n_components is None else req.n_components
     row_ids = req.rowIds if req.rowIds is not None else req.row_ids
+    if row_ids is not None:
+        df = df.filter(pl.col('__rowId__').is_in(row_ids))
+    scope_count, scope_hash = df.height, _scope_hash(df['__rowId__'].to_list())
+    adapter = CodebookAdapter(df, codebook)
+    df = df.with_columns([adapter.analysis_series(name) for name in plan.names])
 
     result = compute_pca(
         df=df,
-        columns=req.columns,
+        columns=plan.names,
         use_correlation=use_corr,
         n_components=n_comp,
-        row_ids=row_ids,
+        row_ids=None,
     )
-    return result
+    return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
+            'scopeCount': scope_count, 'usedRows': result['nSamples'], 'usedColumns': plan.names,
+            'excludedCounts': {'ordinaryMissing': scope_count - result['nSamples']}, 'method': 'pca-ordinary-columns'}
 
 
 
 class ModelRequest(BaseModel):
+    rowIds: list[str] | None = None
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
     datasetId: str
     modelType: Literal["decision_tree", "random_forest"] = "decision_tree"
     taskType: Literal["auto", "classification", "regression"] = "auto"
@@ -92,6 +116,8 @@ def _tree_structure(tree: Any, feature_names: list[str], class_labels: list[str]
     leaf_ids = tree.apply(matrix)
 
     def value_counts(node_id: int) -> list[dict[str, Any]]:
+        if class_labels is None:
+            return []
         counts = t.value[node_id][0]
         total = float(counts.sum())
         out: list[dict[str, Any]] = []
@@ -123,7 +149,9 @@ def _tree_structure(tree: Any, feature_names: list[str], class_labels: list[str]
         else:
             # Majority class for the leaf badge.
             values = node["values"]
-            node["majority"] = values[0]["label"] if values else None
+            node["majority"] = values[0]["label"] if values else f'{float(t.value[node_id][0][0]):.4g}'
+            if class_labels is None:
+                node["prediction"] = float(t.value[node_id][0][0])
             node["rowIds"] = [str(i) for i in members.tolist()] if False else None
         return node
 
@@ -150,13 +178,39 @@ def _tree_membership(tree: Any, matrix: np.ndarray) -> list[dict[str, Any]]:
 
 @router.post("/models")
 def create_model(req: ModelRequest) -> dict:
+    with store.lock(req.datasetId):
+        return _create_model(req)
+
+
+def _create_model(req: ModelRequest) -> dict:
     meta = store.get_meta(req.datasetId)
-    df = store.get_dataframe(req.datasetId)
-    missing = [c for c in req.features + [req.target] if c not in df.columns]
-    if missing:
-        raise BizError("COLUMN_NOT_FOUND", f"列が見つかりません: {', '.join(missing)}",
-                       details={"columnIds": missing})
-    adapter = CodebookAdapter(df, store.load_codebook(req.datasetId))
+    codebook = store.load_codebook(req.datasetId) or {}
+    revisions = _collect_revisions(meta, codebook)
+    _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+    scales = {'nominal', 'ordinal', 'interval', 'ratio'}
+    features = resolve_analysis_columns(codebook, req.features, scales=scales, allow_ma_options=True)
+    target = resolve_analysis_columns(codebook, [req.target], scales=scales, allow_ma_options=True)
+    if set(features.names) & set(target.names) or {g['groupId'] for g in features.groups} & {g['groupId'] for g in target.groups}:
+        raise BizError('MA_METHOD_UNSUPPORTED', '目的変数と同じ列・MA設問の子は特徴量にできません。', status_code=422)
+    plan = resolve_analysis_columns(codebook, [*features.names, *target.names], scales=scales, allow_ma_options=True)
+    req = req.model_copy(update={'features': features.names, 'target': target.names[0]})
+    df = store.get_dataframe(req.datasetId, columns=['__rowId__', *plan.dependencies])
+    if req.rowIds is not None:
+        df = df.filter(pl.col('__rowId__').is_in(req.rowIds))
+    scope_hash, scope_count = _scope_hash(df['__rowId__'].to_list()), df.height
+    df, excluded = plan.prepare(df)
+    normalized_columns = []
+    for column in codebook.get('columns', []):
+        if column['name'] not in plan.names:
+            continue
+        normalized = dict(column)
+        if column.get('multiResponseGroup'):
+            normalized.update(missingCodes=[], missingReasons={}, isReversed=False, categoryOrder=['0', '1'],
+                              valueLabels={'0': '非選択', '1': '選択'},
+                              scaleType='nominal' if column['name'] == req.target else 'ratio',
+                              label=column.get('multiResponseOptionLabel') or column.get('label') or column['name'])
+        normalized_columns.append(normalized)
+    adapter = CodebookAdapter(df, {**codebook, 'columns': normalized_columns})
     feature_values, feature_names, feature_sources = [], [], []
     for c in req.features:
         spec = adapter.get_column_spec_optional(c) or {}
@@ -182,7 +236,7 @@ def create_model(req: ModelRequest) -> dict:
     task = req.taskType
     if task == "auto":
         task = "classification" if target_spec.get("scaleType") == "nominal" else ("regression" if target_spec.get("scaleType") in ("ordinal", "ratio", "interval") else _infer_task(y_series))
-    mask = np.isfinite(X).all(axis=1) & np.array([normalize_code(v) is not None for v in y_series])
+    mask = np.isfinite(X).all(axis=1) & np.array([normalize_code(v) is not None for v in y_series], dtype=bool)
     X = X[mask]
     y = [v for v, keep in zip(y_series, mask) if keep]
     row_ids = [r for r, keep in zip(df["__rowId__"], mask) if keep]
@@ -215,6 +269,8 @@ def create_model(req: ModelRequest) -> dict:
     representative_index: int | None = None
     forest_agreement: float | None = None
     tree_agreements: list[float] | None = None
+    tree_maes: list[float] | None = None
+    forest_mae: float | None = None
     if req.modelType == "random_forest":
         if task == "classification":
             forest_pred = [str(v) for v in model.predict(X)]
@@ -236,18 +292,14 @@ def create_model(req: ModelRequest) -> dict:
             for tree in trees:
                 tree_pred = _decode_tree_preds(tree.predict(X))
                 agreements.append(float(np.mean([a == b for a, b in zip(tree_pred, forest_pred)])))
+            tree_agreements = [round(a, 4) for a in agreements]
+            representative_index = int(np.argmax(agreements))
+            forest_agreement = round(agreements[representative_index], 4)
         else:
-            def _norm_reg(values: list[Any]) -> list[str]:
-                return [str(round(float(v), 4)) for v in values]
-
-            forest_pred = _norm_reg(list(model.predict(X)))
-            agreements = []
-            for tree in trees:
-                tree_pred = _norm_reg(list(tree.predict(X)))
-                agreements.append(float(np.mean([a == b for a, b in zip(tree_pred, forest_pred)])))
-        tree_agreements = [round(a, 4) for a in agreements]
-        representative_index = int(np.argmax(agreements))
-        forest_agreement = round(agreements[representative_index], 4)
+            forest_pred = model.predict(X)
+            tree_maes = [float(np.mean(np.abs(tree.predict(X) - forest_pred))) for tree in trees]
+            representative_index = int(np.argmin(tree_maes))
+            forest_mae = tree_maes[representative_index]
 
     # Full structure of the representative tree (forest) / the tree (single).
     structure_source = trees[representative_index] if representative_index is not None else trees[0]
@@ -264,6 +316,10 @@ def create_model(req: ModelRequest) -> dict:
 
     result_id = f"mdl-{int(time.time() * 1000):x}"
     payload = {
+        **revisions, 'scopeHash': scope_hash, 'scopeCount': scope_count,
+        'usedColumns': plan.names, 'usedRows': len(X), 'excludedCounts': excluded,
+        'ordinaryMissingExcluded': df.height - len(X), 'method': 'model-valid-ma-population',
+        'importanceScope': 'child-only',
         "resultId": result_id,
         "datasetId": req.datasetId,
         "schemaRevision": meta.get("schemaRevision", 1),
@@ -282,6 +338,8 @@ def create_model(req: ModelRequest) -> dict:
             "index": representative_index,
             "forestAgreement": forest_agreement,
             "treeAgreements": tree_agreements,
+            "forestMae": forest_mae,
+            "treeMaes": tree_maes,
         },
         "classLabels": display_classes,
         "nodes": nodes,

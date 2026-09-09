@@ -11,6 +11,19 @@ vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: () =>
 vi.mock('../src/engine/graphClient', () => ({ graphEngine: { pcpGeometry: vi.fn() } }))
 
 describe('PCP geometry during axis changes', () => {
+  it('masks MA gaps in the coordinates used by painting and selection without changing ordinary missing axes', async () => {
+    const testStore = configureStore({ reducer: () => store.getState() })
+    const wrapper = ({ children }: any) => <Provider store={testStore}>{children}</Provider>
+    const source = { ...data, columns: { A: [null], B: [null] }, schema: [], numeric: {}, minMax: {}, categories: {} }
+    const axes: PcpAxis[] = [{ key: 'A', label: 'A', type: 'numeric', min: 0, max: 1 },
+      { key: 'B', label: 'B', type: 'numeric', min: 0, max: 1, missingAsGap: true }]
+    const rows = [0]
+    vi.mocked(graphEngine.pcpGeometry).mockResolvedValue({ points: new Float64Array([10, 20, 30, 40]), axisPos: [10, 30], bounds: { left: 0, right: 500, top: 0, bottom: 300 } })
+    const { result } = renderHook(() => usePcpGeometry({ source, width: 500, height: 300, orderedVisibleAxes: axes, activeRowIndexes: rows }), { wrapper })
+    await waitFor(() => expect(result.current).not.toBeNull())
+    expect(Array.from(result.current!.points)).toEqual([10, 20, NaN, NaN])
+    expect(result.current!.rowIds).toEqual(['r'])
+  })
   it('withholds old coordinates until the new axis order is computed', async () => {
     const testStore = configureStore({ reducer: () => store.getState() })
     const wrapper = ({ children }: any) => <Provider store={testStore}>{children}</Provider>

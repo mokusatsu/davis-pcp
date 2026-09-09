@@ -31,22 +31,22 @@ describe('Feature 15: Global Variable & Observation Selection Suite', () => {
 
     let state = store.getState().globalVariables
     expect(state.allVariables).toHaveLength(5)
-    expect(state.activeVariableIds).toHaveLength(5)
+    expect(state.activeEntities?.map(entity => entity.kind === 'column' ? entity.columnId : entity.groupId)).toHaveLength(5)
     expect(state.targetVariableId).toBe('species')
 
     // Test activeVariablesSet
     store.dispatch(activeVariablesSet(['petal_length', 'petal_width']))
     state = store.getState().globalVariables
-    expect(state.activeVariableIds).toEqual(['petal_length', 'petal_width'])
+    expect(state.activeEntities?.map(entity => entity.kind === 'column' ? entity.columnId : entity.groupId)).toEqual(['petal_length', 'petal_width'])
 
     // Test variableToggled
     store.dispatch(variableToggled('sepal_length'))
     state = store.getState().globalVariables
-    expect(state.activeVariableIds).toContain('sepal_length')
+    expect(state.activeEntities?.map(entity => entity.kind === 'column' ? entity.columnId : entity.groupId)).toContain('sepal_length')
 
     store.dispatch(variableToggled('sepal_length'))
     state = store.getState().globalVariables
-    expect(state.activeVariableIds).not.toContain('sepal_length')
+    expect(state.activeEntities?.map(entity => entity.kind === 'column' ? entity.columnId : entity.groupId)).not.toContain('sepal_length')
 
     // Test variableOrderReordered
     store.dispatch(variableOrderReordered(['species', 'petal_width', 'petal_length']))
@@ -78,11 +78,13 @@ describe('Feature 15: Global Variable & Observation Selection Suite', () => {
     expect(state.globalObservations.scopeMode).toBe('selected')
     expect(selectEffectiveRowIds(state)).toEqual(['row_1', 'row_2'])
 
-    // Clear selection -> scope should fall back to 'active'
+    // Empty selected scope remains empty rather than expanding to active rows
     store.dispatch(selectionCleared())
     state = store.getState()
     expect(state.globalObservations.selectedRowIds).toHaveLength(0)
-    expect(state.globalObservations.scopeMode).toBe('active')
+    expect(state.globalObservations.scopeMode).toBe('selected')
+
+        expect(selectEffectiveRowIds(state)).toEqual([])
 
     // Apply sampling
     const sampledIds = ['row_0', 'row_4', 'row_8']

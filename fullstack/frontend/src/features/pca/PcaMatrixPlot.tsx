@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FC, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Space, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
@@ -13,7 +13,7 @@ interface PcaMatrixPlotProps {
 }
 
 export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
-  const { isTargetActive } = useFocusMode()
+  const { isTargetActive, focused, zoom } = useFocusMode()
   const active = isTargetActive('pca-matrix')
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
@@ -134,10 +134,10 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
             ctx.beginPath()
             if (isSelected) {
               ctx.arc(px, py, 3.5, 0, Math.PI * 2)
-              ctx.fillStyle = selectionColor
+              ctx.fillStyle = color
               ctx.fill()
               ctx.lineWidth = 1.5
-              ctx.strokeStyle = '#ffffff'
+              ctx.strokeStyle = selectionColor
               ctx.stroke()
             } else {
               ctx.arc(px, py, 2.0, 0, Math.PI * 2)
@@ -162,27 +162,28 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
       ctx.lineWidth = 1.5
       ctx.strokeRect(rx, ry, rw, rh)
     }
-  }, [pcaData, k, compBounds, cellW, cellH, isRowSelected, getColor, selectionColor, dragBox])
+  }, [focused, zoom, pcaData, k, compBounds, cellW, cellH, isRowSelected, getColor, selectionColor, dragBox])
 
   // Mouse drag handlers
-  const handleMouseDown = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const x = (e.clientX - rect.left) * width / rect.width
+    const y = (e.clientY - rect.top) * height / rect.height
     isDragging.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
     dragStart.current = { x, y }
     dragEnd.current = { x, y }
     setDragBox({ x1: x, y1: y, x2: x, y2: y })
   }
 
-  const handleMouseMove = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!isDragging.current) return
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const x = (e.clientX - rect.left) * width / rect.width
+    const y = (e.clientY - rect.top) * height / rect.height
     dragEnd.current = { x, y }
     setDragBox({
       x1: dragStart.current.x,
@@ -192,7 +193,7 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
     })
   }
 
-  const handleMouseUp = (e?: ReactMouseEvent<HTMLCanvasElement>) => {
+  const handlePointerUp = (e?: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!isDragging.current || !pcaData || compBounds.length < k) {
       isDragging.current = false
       setDragBox(null)
@@ -202,7 +203,10 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
 
     if (e && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect()
-      dragEnd.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      dragEnd.current = {
+        x: (e.clientX - rect.left) * width / rect.width,
+        y: (e.clientY - rect.top) * height / rect.height,
+      }
     }
 
     const bx1 = Math.min(dragStart.current.x, dragEnd.current.x)
@@ -210,7 +214,10 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
     const by1 = Math.min(dragStart.current.y, dragEnd.current.y)
     const by2 = Math.max(dragStart.current.y, dragEnd.current.y)
 
-    if (bx2 - bx1 > 4 || by2 - by1 > 4) {
+    const display = canvasRef.current!.getBoundingClientRect()
+    const scaleX = display.width / width, scaleY = display.height / height
+    const brush = (bx2 - bx1) * scaleX > 4 || (by2 - by1) * scaleY > 4
+    {
       // Find which cell the drag was initiated in
       const c = Math.floor((dragStart.current.x - margin.left) / cellW)
       const r = Math.floor((dragStart.current.y - margin.top) / cellH)
@@ -222,26 +229,31 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
         const bY = compBounds[r]
 
         const hitIds: string[] = []
+        let nearestDistance = 49
         for (const item of pcaData.scores) {
           const vx = item.pc[c] ?? 0
           const vy = item.pc[r] ?? 0
           const px = cellX + ((vx - bX.min) / (bX.max - bX.min)) * cellW
           const py = cellY + cellH - ((vy - bY.min) / (bY.max - bY.min)) * cellH
 
-          if (px >= bx1 && px <= bx2 && py >= by1 && py <= by2) {
+          if (brush && px >= bx1 && px <= bx2 && py >= by1 && py <= by2) {
             hitIds.push(item.rowId || item.row_id || '')
+          } else if (!brush) {
+            const distance = ((px - dragEnd.current.x) * scaleX) ** 2 + ((py - dragEnd.current.y) * scaleY) ** 2
+            if (distance < nearestDistance) {
+              nearestDistance = distance
+              hitIds.splice(0, hitIds.length, item.rowId || item.row_id || '')
+            }
           }
         }
 
-        if (hitIds.length > 0) {
-          dispatch(
-            selectionApplied({
-              rowIds: hitIds,
-              operation: getBrushOp(),
-              label: `PCAマトリクス選択 [PC${c + 1} vs PC${r + 1}] (${hitIds.length}行)`,
-            })
-          )
-        }
+        dispatch(
+          selectionApplied({
+            rowIds: hitIds,
+            operation: brush ? getBrushOp() : 'toggle',
+            label: `PCAマトリクス選択 [PC${c + 1} vs PC${r + 1}] (${hitIds.length}行)`,
+          })
+        )
       }
     }
 
@@ -328,11 +340,14 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
                 maxWidth: active ? '100%' : undefined,
                 aspectRatio: `${width} / ${height}`,
                 cursor: 'crosshair',
+                touchAction: 'none',
                 display: 'block',
               }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={() => { isDragging.current = false; setDragBox(null) }}
+              onLostPointerCapture={() => { isDragging.current = false; setDragBox(null) }}
               data-testid="pca-matrix-canvas"
             />
           </div>

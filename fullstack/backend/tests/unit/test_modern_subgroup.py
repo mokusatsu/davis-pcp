@@ -208,7 +208,11 @@ def test_api_modern_subgroup_endpoint():
             {"columnId": "satisfaction", "role": "question", "semanticType": "numeric"},
         ],
     }
-    store.save(ds_id, meta, df)
+    store.save(ds_id, meta, df.with_columns(pl.col('id').alias('__rowId__')))
+    store.save_codebook(ds_id, {'datasetId': ds_id, 'schemaRevision': 1, 'columns': [
+        {**column, 'name': column['columnId'], 'scaleType': 'nominal' if column['semanticType'] == 'categorical' else 'ratio'}
+        for column in meta['schema']
+    ]})
 
     resp = client.post(
         "/api/v1/mining/modern-subgroup",
@@ -254,7 +258,11 @@ def test_omnipresent_auto_mining_all_questions():
             {"columnId": "q2_service", "role": "question", "semanticType": "numeric"},
         ],
     }
-    store.save(ds_id, meta, df)
+    store.save(ds_id, meta, df.with_columns(pl.col('id').alias('__rowId__')))
+    store.save_codebook(ds_id, {'datasetId': ds_id, 'schemaRevision': 1, 'columns': [
+        {**column, 'name': column['columnId'], 'scaleType': 'nominal' if column['semanticType'] == 'categorical' else 'ratio'}
+        for column in meta['schema']
+    ]})
 
     # Call API without specifying targetQuestions
     resp = client.post(
@@ -279,5 +287,3 @@ def test_omnipresent_auto_mining_all_questions():
         elif ins.get("target_pair"):
             questions_covered.add(":".join(ins["target_pair"]))
     assert len(questions_covered) >= 2
-
-

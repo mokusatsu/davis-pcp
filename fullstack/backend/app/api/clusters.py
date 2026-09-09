@@ -15,6 +15,9 @@ from ..algorithms.clustering.cobweb import cobweb_cluster
 from ..algorithms.clustering.disc import disc_cluster
 from ..algorithms.outliers.core import detect as detect_outliers
 from ..domain.errors import BizError
+from ..domain.analysis_columns import resolve_analysis_columns
+from ..domain.codebook_adapter import CodebookAdapter
+from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
 
@@ -22,17 +25,34 @@ router = APIRouter()
 store = DatasetStore()
 
 
-def _numeric_matrix(dataset_id: str, columns: list[str], row_ids: list[str] | None = None,
-                    scaling: str = "none") -> tuple[np.ndarray, list[str], dict]:
-    meta = store.get_meta(dataset_id)
-    df = store.get_dataframe(dataset_id)
+def _analysis_frame(dataset_id, numeric, categorical, row_ids, expected_schema, expected_data, *, allow_ma_options=True):
+    codebook = store.load_codebook(dataset_id) or {}
+    revisions = _collect_revisions(store.get_meta(dataset_id), codebook)
+    _check_revisions(revisions, expected_schema, expected_data)
+    numeric_plan = resolve_analysis_columns(codebook, numeric, scales={'ordinal', 'interval', 'ratio'}, allow_ma_options=allow_ma_options)
+    categorical_plan = resolve_analysis_columns(codebook, categorical, scales={'nominal', 'ordinal', 'interval', 'ratio'}, allow_ma_options=allow_ma_options)
+    plan = resolve_analysis_columns(codebook, [*numeric_plan.names, *categorical_plan.names], scales={'nominal', 'ordinal', 'interval', 'ratio'}, allow_ma_options=allow_ma_options)
+    frame = store.get_dataframe(dataset_id, columns=['__rowId__', *plan.dependencies])
     if row_ids is not None:
-        wanted = set(row_ids)
-        df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
-    missing_cols = [c for c in columns if c not in df.columns]
-    if missing_cols:
-        raise BizError("COLUMN_NOT_FOUND", f"列が見つかりません: {', '.join(missing_cols)}",
-                       details={"columnIds": missing_cols})
+        frame = frame.filter(pl.col('__rowId__').is_in(row_ids))
+    scope_count, scope_hash = frame.height, _scope_hash(frame['__rowId__'].to_list())
+    frame, excluded = plan.prepare(frame)
+    ma_names = {column['name'] for group in plan.groups for column in group['columns']}
+    adapter = CodebookAdapter(frame, codebook)
+    frame = frame.with_columns([adapter.analysis_series(name) for name in plan.names if name not in ma_names])
+    return frame, numeric_plan.names, categorical_plan.names, {**revisions, 'scopeCount': scope_count,
+        'scopeHash': scope_hash, 'excludedCounts': excluded, 'excludedRowCount': scope_count - frame.height,
+        'usedRows': frame.height, 'usedColumns': plan.names, 'inputMethod': 'clusters-explicit-columns'}
+
+
+def _numeric_matrix(dataset_id: str, columns: list[str], row_ids: list[str] | None = None,
+                    scaling: str = "none", frame: pl.DataFrame | None = None) -> tuple[np.ndarray, list[str], dict]:
+    if frame is None:
+        frame, names, _, meta = _analysis_frame(dataset_id, columns, [], row_ids, None, None)
+        columns[:] = names
+    else:
+        meta = {}
+    df = frame
     arrays = []
     kept_columns: list[str] = []
     dropped_columns: list[str] = []
@@ -45,7 +65,8 @@ def _numeric_matrix(dataset_id: str, columns: list[str], row_ids: list[str] | No
         col_values = [np.nan if v is None else float(v) for v in series.to_list()]
         # Audit #13: drop all-NaN and zero-variance columns — they carry no
         # clustering signal and break z-scaling / covariance paths.
-        finite = [v for v in col_values if not np.isnan(v)]
+        col_values = [v if np.isfinite(v) else np.nan for v in col_values]
+        finite = [v for v in col_values if np.isfinite(v)]
         if not finite:
             dropped_columns.append(c)
             continue
@@ -63,6 +84,7 @@ def _numeric_matrix(dataset_id: str, columns: list[str], row_ids: list[str] | No
     if dropped_columns:
         columns[:] = kept_columns
     col_means = np.nanmean(matrix, axis=0)
+    meta = {**meta, 'droppedColumns': dropped_columns, 'imputedCounts': {name: int(np.isnan(matrix[:, index]).sum()) for index, name in enumerate(kept_columns)}}
     nan_idx = np.where(np.isnan(matrix))
     matrix[nan_idx] = np.take(col_means, nan_idx[1])
     if scaling == "zscore":
@@ -78,6 +100,9 @@ def _numeric_matrix(dataset_id: str, columns: list[str], row_ids: list[str] | No
 
 
 class ClusterRequest(BaseModel):
+    activeRowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
     datasetId: str
     method: Literal["kmeans", "kmedoids", "divisive", "gmm", "class_variable", "agglomerative", "cobweb", "disc"]
     columns: list[str]
@@ -102,12 +127,24 @@ _cluster_results: dict[str, dict] = {}
 
 @router.post("/clusters")
 def create_cluster(req: ClusterRequest) -> dict:
+    with store.lock(req.datasetId):
+        return _create_cluster(req)
+
+
+def _create_cluster(req: ClusterRequest) -> dict:
+    numeric_info = {}
     started = time.perf_counter()
+    numeric = [] if req.method == 'class_variable' else req.columns
+    categorical = [req.classColumn] if req.method == 'class_variable' and req.classColumn else (req.categoricalColumns or [])
+    df, numeric_names, categorical_names, input_info = _analysis_frame(req.datasetId, numeric, categorical,
+        req.activeRowIds, req.expectedSchemaRevision, req.expectedDataRevision)
+    if df.height == 0:
+        raise BizError('CLUSTERING_TOO_FEW_ROWS', '有効な対象行がありません。', status_code=422)
+    req = req.model_copy(update={'columns': numeric_names, 'categoricalColumns': categorical_names,
+        'classColumn': categorical_names[0] if req.method == 'class_variable' and categorical_names else req.classColumn})
     if req.method == "class_variable":
         if not req.classColumn:
             raise BizError("CLASS_COLUMN_REQUIRED", "class_variableにはclassColumnの指定が必要です。")
-        meta = store.get_meta(req.datasetId)
-        df = store.get_dataframe(req.datasetId)
         classes = df[req.classColumn].cast(pl.String).to_list()
         result = clustering.class_variable(classes)
         columns_used = [req.classColumn]
@@ -119,11 +156,10 @@ def create_cluster(req: ClusterRequest) -> dict:
                            suggested_actions=["数値軸またはカテゴリ軸を含むデータセットを使用してください"])
 
         if req.columns:
-            matrix, row_ids, _meta = _numeric_matrix(req.datasetId, req.columns, scaling=req.scaling)
+            matrix, row_ids, numeric_info = _numeric_matrix(req.datasetId, req.columns, scaling=req.scaling, frame=df)
             columns_used = req.columns
         else:
             matrix = None
-            df = store.get_dataframe(req.datasetId)
             row_ids = df["__rowId__"].to_list() if "__rowId__" in df.columns else [str(i) for i in range(df.height)]
             columns_used = req.categoricalColumns or []
 
@@ -141,13 +177,11 @@ def create_cluster(req: ClusterRequest) -> dict:
         elif req.method == "cobweb":
             cat_cols = None
             if req.categoricalColumns:
-                df = store.get_dataframe(req.datasetId)
                 cat_cols = [df[c].cast(pl.String).to_list() for c in req.categoricalColumns if c in df.columns]
             result = cobweb_cluster(matrix, cat_columns=cat_cols, k=req.k, acuity=req.acuity, cutoff=req.cutoff)
         elif req.method == "disc":
             cat_cols = None
             if req.categoricalColumns:
-                df = store.get_dataframe(req.datasetId)
                 cat_cols = [df[c].cast(pl.String).to_list() for c in req.categoricalColumns if c in df.columns]
             result = disc_cluster(
                 matrix,
@@ -184,16 +218,21 @@ def create_cluster(req: ClusterRequest) -> dict:
             total_var = float(eigenvalues.sum())
             pca_projection = {
                 "pc1": [round(float(v), 5) for v in projected[:, 0]],
-                "pc2": [round(float(v), 5) for v in projected[:, 1]],
+                "pc2": [round(float(v), 5) for v in projected[:, 1]] if projected.shape[1] > 1 else [0.0] * len(row_ids),
                 "varianceRatio": [
                     round(float(eigenvalues[order[0]] / total_var), 4),
-                    round(float(eigenvalues[order[1]] / total_var), 4),
+                    round(float(eigenvalues[order[1]] / total_var), 4) if len(order) > 1 else 0.0,
                 ],
             }
         except Exception:
             pca_projection = None
+    if req.method in ('cobweb', 'disc'):
+        columns_used = list(dict.fromkeys([*columns_used, *(req.categoricalColumns or [])]))
     result_id = f"clu-{int(time.time() * 1000):x}"
     payload = {
+        **input_info,
+        "requestedColumns": input_info["usedColumns"],
+        "usedColumns": columns_used,
         "resultId": result_id,
         "datasetId": req.datasetId,
         "method": req.method,
@@ -205,7 +244,7 @@ def create_cluster(req: ClusterRequest) -> dict:
         "rowIds": row_ids,
         "labels": result["labels"],
         "k": result["k"],
-        "diagnostics": {**result.get("diagnostics", {}), "runtimeMs": round(runtime_ms, 2)},
+        "diagnostics": {**result.get("diagnostics", {}), **numeric_info, "runtimeMs": round(runtime_ms, 2)},
         "linkageMatrix": result.get("linkageMatrix"),
         "conceptTree": result.get("conceptTree"),
         "categoryMatrices": result.get("categoryMatrices"),
@@ -255,6 +294,9 @@ def get_dendrogram(result_id: str) -> dict:
 
 
 class OutlierRequest(BaseModel):
+    activeRowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
     datasetId: str
     method: Literal["iqr", "robust_z", "isolation_forest", "lof"]
     columns: list[str]
@@ -269,26 +311,39 @@ _outlier_results: dict[str, dict] = {}
 
 @router.post("/outliers")
 def create_outliers(req: OutlierRequest) -> dict:
+    with store.lock(req.datasetId):
+        return _create_outliers(req)
+
+
+def _create_outliers(req: OutlierRequest) -> dict:
     started = time.perf_counter()
     if not req.columns:
         raise BizError("OUTLIER_NO_COLUMNS", "外れ値検出対象の数値列がありません。",
                        suggested_actions=["数値軸を含むデータセットを使用してください"])
-    matrix, row_ids, _meta = _numeric_matrix(req.datasetId, req.columns, scaling=req.scaling)
+    frame, names, _, input_info = _analysis_frame(req.datasetId, req.columns, [], req.activeRowIds,
+        req.expectedSchemaRevision, req.expectedDataRevision)
+    if frame.height == 0:
+        raise BizError('OUTLIER_TOO_FEW_ROWS', '有効な対象行がありません。', status_code=422)
+    matrix, row_ids, _meta = _numeric_matrix(req.datasetId, names, scaling=req.scaling, frame=frame)
     result = detect_outliers(req.method, matrix, contamination=req.contamination,
                              seed=req.seed, threshold=req.threshold)
     runtime_ms = (time.perf_counter() - started) * 1000
     result_id = f"out-{int(time.time() * 1000):x}"
     payload = {
+        **input_info,
+        "inputMethod": "outliers-explicit-columns",
+        "requestedColumns": input_info["usedColumns"],
+        "usedColumns": names,
         "resultId": result_id,
         "datasetId": req.datasetId,
         "method": result["method"],
         "algorithmVersion": result["algorithmVersion"],
         "evidenceClass": result["evidenceClass"],
-        "columns": req.columns,
+        "columns": names,
         "rowIds": row_ids,
         "outlierRowIds": [rid for rid, flag in zip(row_ids, result["flags"]) if flag],
         "count": result["count"],
-        "diagnostics": {**result["diagnostics"], "runtimeMs": round(runtime_ms, 2)},
+        "diagnostics": {**result["diagnostics"], **_meta, "runtimeMs": round(runtime_ms, 2)},
         "createdAt": now_iso(),
     }
     _outlier_results[result_id] = payload

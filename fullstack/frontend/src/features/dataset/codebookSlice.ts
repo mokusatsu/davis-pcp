@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { CodebookColumn, getCodebook, updateCodebook } from '../../api/client'
+import { CodebookColumn, MultiResponseGroup, getCodebook, updateCodebook } from '../../api/client'
 import type { RootState } from '../../app/store'
 import { CodebookPreset } from './codebookPresets'
 import { ParsedOption } from './codebookParsers'
@@ -10,6 +10,8 @@ export interface CodebookState {
   schemaRevision: number
   columns: CodebookColumn[]
   draftColumns: CodebookColumn[]
+  multiResponseGroups: MultiResponseGroup[]
+  draftMultiResponseGroups: MultiResponseGroup[]
   selectedColumnIds: string[]
   activeColumnId: string | null
   viewMode: 'detail' | 'grid'
@@ -32,6 +34,8 @@ const initialState: CodebookState = {
   schemaRevision: 1,
   columns: [],
   draftColumns: [],
+  multiResponseGroups: [],
+  draftMultiResponseGroups: [],
   selectedColumnIds: [],
   activeColumnId: null,
   viewMode: 'detail',
@@ -63,6 +67,7 @@ export const saveCodebookThunk = createAsyncThunk(
     if (!state.datasetId) throw new Error('No dataset loaded')
 
     const snapshotColumns = JSON.parse(JSON.stringify(state.draftColumns)) as CodebookColumn[]
+    const snapshotGroups = structuredClone(state.draftMultiResponseGroups)
     const patches = snapshotColumns.map((col) => ({
       columnId: col.columnId,
       name: col.name,
@@ -75,12 +80,17 @@ export const saveCodebookThunk = createAsyncThunk(
       missingReasons: col.missingReasons,
       isReversed: col.isReversed,
       multiResponseGroup: col.multiResponseGroup,
+      multiResponseOptionLabel: col.multiResponseOptionLabel,
     }))
-    const res = await updateCodebook(state.datasetId, patches)
+    const res = await updateCodebook(state.datasetId, patches, {
+      multiResponseGroups: snapshotGroups,
+      expectedSchemaRevision: state.schemaRevision,
+    })
     return {
       ...res,
       datasetId: state.datasetId,
       columns: snapshotColumns,
+      multiResponseGroups: snapshotGroups,
     }
   }
 )
@@ -198,7 +208,29 @@ export const codebookSlice = createSlice({
     },
     draftReverted(state) {
       state.draftColumns = JSON.parse(JSON.stringify(state.columns))
+      state.draftMultiResponseGroups = JSON.parse(JSON.stringify(state.multiResponseGroups))
       state.hasChanges = false
+    },
+    draftMultiResponseGroupUpdated(state, action: PayloadAction<{ group: MultiResponseGroup; columnIds: string[] }>) {
+      const { group, columnIds } = action.payload
+      const ids = new Set(columnIds)
+      const index = state.draftMultiResponseGroups.findIndex(g => g.groupId === group.groupId)
+      if (index < 0) state.draftMultiResponseGroups.push(group)
+      else state.draftMultiResponseGroups[index] = group
+      for (const column of state.draftColumns) {
+        if (ids.has(column.columnId)) {
+          column.multiResponseGroup = group.groupId
+          column.scaleType = 'nominal'
+        } else if (column.multiResponseGroup === group.groupId) column.multiResponseGroup = null
+      }
+      state.hasChanges = true
+    },
+    draftMultiResponseGroupRemoved(state, action: PayloadAction<string>) {
+      state.draftMultiResponseGroups = state.draftMultiResponseGroups.filter(g => g.groupId !== action.payload)
+      for (const column of state.draftColumns) {
+        if (column.multiResponseGroup === action.payload) column.multiResponseGroup = null
+      }
+      state.hasChanges = true
     },
   },
   extraReducers: (builder) => {
@@ -215,6 +247,8 @@ export const codebookSlice = createSlice({
           state.schemaRevision = 1
           state.columns = []
           state.draftColumns = []
+          state.multiResponseGroups = []
+          state.draftMultiResponseGroups = []
           state.selectedColumnIds = []
           state.activeColumnId = null
           state.hasChanges = false
@@ -227,9 +261,11 @@ export const codebookSlice = createSlice({
         state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
         state.columns = action.payload.columns
+        state.multiResponseGroups = action.payload.multiResponseGroups ?? []
 
         if (!state.hasChanges) {
           state.draftColumns = JSON.parse(JSON.stringify(action.payload.columns))
+          state.draftMultiResponseGroups = JSON.parse(JSON.stringify(state.multiResponseGroups))
           state.hasChanges = false
           if (state.draftColumns.length > 0 && !state.activeColumnId) {
             state.activeColumnId = state.draftColumns[0].columnId
@@ -249,7 +285,9 @@ export const codebookSlice = createSlice({
         state.isSaving = false
         state.schemaRevision = action.payload.schemaRevision
         state.columns = JSON.parse(JSON.stringify(action.payload.columns))
+        state.multiResponseGroups = action.payload.multiResponseGroups
         state.hasChanges = !isColumnEqual(state.draftColumns, action.payload.columns)
+          || JSON.stringify(state.draftMultiResponseGroups) !== JSON.stringify(action.payload.multiResponseGroups)
       })
       .addCase(saveCodebookThunk.rejected, (state) => {
         state.isSaving = false
@@ -272,4 +310,6 @@ export const {
   quickValueLabelsApplied,
   draftReverted,
   codebookReset,
+  draftMultiResponseGroupUpdated,
+  draftMultiResponseGroupRemoved,
 } = codebookSlice.actions

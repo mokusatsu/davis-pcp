@@ -114,11 +114,13 @@ def run_logistic_regression(
     p_dim = len(feature_columns)
     means = np.mean(X_raw, axis=0)
     stds = np.std(X_raw, axis=0, ddof=1)
-    # Avoid zero std
-    stds = np.where(stds < 1e-12, 1.0, stds)
+    constant_columns = [name for name, values in zip(feature_columns, X_raw.T) if np.all(values == values[0])]
+    if constant_columns:
+        raise BizError('LOGISTIC_CONSTANT_FEATURES', '有効な対象行で値が一定の説明変数を外してください。',
+                       details={'columns': constant_columns})
 
-    # Standardized X for fitting
-    X_scaled = (X_raw - means) / stds
+    # Centering without an intercept changes the model origin and cannot be undone.
+    X_scaled = (X_raw - means if intercept else X_raw) / stds
 
     # Design matrix: prepend 1s if intercept
     if intercept:
@@ -129,6 +131,13 @@ def run_logistic_regression(
         feature_names_with_intercept = list(feature_columns)
 
     k_params = X_design.shape[1]
+
+    # A strict separating hyperplane exists iff all signed margins can reach 1.
+    signed_design = X_design * (2 * y - 1)[:, None]
+    separation = optimize.linprog(np.zeros(k_params), A_ub=-signed_design,
+        b_ub=-np.ones(n_samples), bounds=[(None, None)] * k_params, method='highs')
+    complete_separation = (True if separation.success and np.min(signed_design @ separation.x) > 0
+                           else False if separation.status == 2 else None)
 
     # Optimization
     reg = regularization.lower() if regularization else "none"
@@ -347,6 +356,8 @@ def run_logistic_regression(
         curves[feat_name] = curve_points
 
     return {
+        "diagnostics": {"completeSeparation": complete_separation,
+                        "separationMethod": "strict-margin-linear-feasibility"},
         "target": target_column,
         "classes": classes,
         "features": feature_columns,

@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from ...domain.codebook_adapter import CodebookAdapter, normalize_code
+from ...domain.codebook_adapter import CodebookAdapter, is_not_applicable_reason, normalize_code
 
 
 def numeric_summary(values: np.ndarray) -> dict:
@@ -96,7 +96,7 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
         if cnt == 0:
             continue
         reason = missing_reasons.get(code, "")
-        if "非該当" in reason or "not_applicable" in reason.lower() or "skip" in reason.lower():
+        if is_not_applicable_reason(reason):
             not_applicable += cnt
         else:
             missing += cnt

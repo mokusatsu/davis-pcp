@@ -1,45 +1,44 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Empty, Progress, Space, Spin, Typography } from 'antd'
 
 import { ClearOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons'
 import type { AppDispatch, RootState } from '../../app/store'
-import { selectionCleared, focusSelected, deleteSelected, selectEffectiveRowIds } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
+import SelectionMenu from '../selection/SelectionMenu'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
 import { MosaicControlPanel } from './MosaicControlPanel'
 import { LineMosaicCanvas } from './LineMosaicCanvas'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
+import { mosaicPathLabel } from './types'
 
 export default function LineMosaicPage() {
   const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
-
-  const allColumns = useMemo(() => {
-    if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
-    return activeVarSet
-      ? data.schema.filter((c) => activeVarSet.has(c.name)).map((c) => c.name)
-      : data.schema.map((c) => c.name)
-  }, [data, globalVars?.activeVariableIds])
-
-  const categoricalColumns = useMemo(() => {
-    if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
-    return data.schema
-      .filter((c) => c.semanticType !== 'numeric' && (!activeVarSet || activeVarSet.has(c.name)))
-      .map((c) => c.name)
-  }, [data, globalVars?.activeVariableIds])
-
-  const [colVars, setColVars] = useState<string[]>([])
-  const [rowVars, setRowVars] = useState<string[]>([])
-  const [targetVar, setTargetVar] = useState<string | null>(null)
+  const { columns: definitions, schemaRevision } = useCodebook()
+  const entities = useSelector(selectVariableEntities)
+  const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
+    .map(item => ({ groupId: item.name, label: item.label }))
+  const allColumns = definitions.filter(column => ['question', 'attribute'].includes(column.role)
+    && (column.multiResponseGroup ? added.datasetId === selection.datasetId && added.names.includes(column.name)
+      && groups.some(group => group.groupId === column.multiResponseGroup)
+      : globalVars.activeVariableIds.includes(column.name) && ['nominal', 'ordinal'].includes(column.scaleType))).map(column => column.name)
+  const [inputs, setInputs] = useState<{ datasetId: string | null; columns: string[]; rows: string[]; target: string | null }>({ datasetId: null, columns: [], rows: [], target: null })
+  const colVars = inputs.datasetId === selection.datasetId ? inputs.columns.filter(name => allColumns.includes(name)) : []
+  const rowVars = inputs.datasetId === selection.datasetId ? inputs.rows.filter(name => allColumns.includes(name)) : []
+  const targetVar = inputs.datasetId === selection.datasetId && allColumns.includes(inputs.target ?? '') ? inputs.target : null
+  const setColVars = (columns: string[]) => setInputs({ datasetId: selection.datasetId, columns, rows: rowVars, target: targetVar })
+  const setRowVars = (rows: string[]) => setInputs({ datasetId: selection.datasetId, columns: colVars, rows, target: targetVar })
+  const setTargetVar = (target: string | null) => setInputs({ datasetId: selection.datasetId, columns: colVars, rows: rowVars, target })
   const [normalization, setNormalization] = useState<'global' | 'row'>('global')
 
   const [mosaicData, setMosaicData] = useState<LineMosaicResponse | null>(null)
@@ -47,61 +46,40 @@ export default function LineMosaicPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedCell, setSelectedCell] = useState<LineMosaicCell | null>(null)
 
-  // Initialize default variables based on dataset columns
+  const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, colVars, rowVars, targetVar, effectiveRowIds])
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const [resultKey, setResultKey] = useState<string | null>(null)
   useEffect(() => {
-    if (allColumns.length > 0 && colVars.length === 0 && rowVars.length === 0) {
-      if (categoricalColumns.length >= 2) {
-        setColVars([categoricalColumns[0]])
-        setRowVars([categoricalColumns[1]])
-        if (categoricalColumns.length >= 3) {
-          setTargetVar(categoricalColumns[2])
-        }
-      } else if (categoricalColumns.length === 1) {
-        setColVars([categoricalColumns[0]])
-        // Pick one numeric or other column
-        const other = allColumns.find((c) => c !== categoricalColumns[0])
-        if (other) setRowVars([other])
-      } else {
-        // Pick first 2 columns
-        setColVars([allColumns[0]])
-        if (allColumns.length > 1) setRowVars([allColumns[1]])
-      }
-    }
-  }, [allColumns, categoricalColumns, colVars.length, rowVars.length])
-
-  // Fetch mosaic contingency table
-  const fetchMosaic = useCallback(async () => {
+    let cancelled = false
+    setSelectedCell(null)
+    setError(null)
     if (!selection.datasetId || (colVars.length === 0 && rowVars.length === 0)) {
-      setMosaicData(null)
+      setLoading(false)
       return
     }
-
     setLoading(true)
-    setError(null)
-    try {
-      const res = await api.post<LineMosaicResponse>('/summaries/line_mosaic', {
+    void api.post<LineMosaicResponse>('/summaries/line_mosaic', {
         datasetId: selection.datasetId,
         columnVariables: colVars,
         rowVariables: rowVars,
         targetVariable: targetVar || undefined,
-        rowIds: effectiveRowIds.length < (data?.rowIds.length ?? 0) ? effectiveRowIds : undefined,
-      })
+        rowIds: effectiveRowIds,
+        expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision,
+      }).then(res => {
+      if (cancelled || currentInput.current !== inputKey) return
       setMosaicData(res)
-      setSelectedCell(null)
-    } catch (err) {
+      setResultKey(inputKey)
+    }).catch(err => {
+      if (cancelled || currentInput.current !== inputKey) return
       const e = err as { message: string }
       setError(e.message || 'モザイクプロットの集計に失敗しました。')
-      setMosaicData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [selection.datasetId, colVars, rowVars, targetVar, effectiveRowIds, data])
+    }).finally(() => { if (!cancelled && currentInput.current === inputKey) setLoading(false) })
+    return () => { cancelled = true }
+  }, [inputKey])
 
-  useEffect(() => {
-    void fetchMosaic()
-  }, [fetchMosaic])
-
-  if (!data) {
+  if (!selection.datasetId) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <Spin size="large" />
@@ -125,6 +103,13 @@ export default function LineMosaicPage() {
       }}
     >
       {/* Top Controls */}
+      {!focused && <Space wrap>
+        <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+          const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+          setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+        }} />
+        <Typography.Text type="secondary">属性とMA選択肢の選択／非選択を比較できます。</Typography.Text>
+      </Space>}
       {!focused && (
         <MosaicControlPanel
           allColumns={allColumns}
@@ -157,6 +142,18 @@ export default function LineMosaicPage() {
             ドラッグで矩形範囲選択 · 右クリックで Focus/Delete
           </Typography.Text>
           <Space>
+            <SelectionMenu testId="selection-menu" />
+            {resultKey === inputKey && mosaicData && (
+              <Typography.Text
+                type="secondary"
+                style={{ fontSize: 12 }}
+                data-testid="mosaic-scope-summary"
+              >
+                対象{mosaicData.scopeCount ?? effectiveRowIds.length}行
+                / 使用{mosaicData.usedRows ?? 0}行
+                / 除外{mosaicData.excludedRowCount ?? 0}行
+              </Typography.Text>
+            )}
             <FocusEnterButton targetId="line-mosaic" title="Line Mosaic Plot" />
           </Space>
         </div>
@@ -193,14 +190,15 @@ export default function LineMosaicPage() {
               <div style={{ padding: 40, textAlign: 'center' }}>
                 <Spin tip="モザイククロス集計を計算中..." />
               </div>
-            ) : mosaicData && mosaicData.cells.length > 0 ? (
+            ) : resultKey === inputKey && mosaicData && mosaicData.cells.length > 0 ? (
               <LineMosaicCanvas
+                key={resultKey}
                 mosaicData={mosaicData}
                 normalization={normalization}
                 onSelectCell={setSelectedCell}
               />
             ) : (
-              <Empty description="表示可能なセルがありません。変数を指定してください。" />
+              <Empty description={mosaicData && resultKey === inputKey ? '対象範囲に表示可能な行がありません。' : '表示可能なセルがありません。変数を指定してください。'} />
             )}
           </FocusTarget>
         </div>
@@ -218,14 +216,14 @@ export default function LineMosaicPage() {
                 <div>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>行条件 (Row Path):</Typography.Text>
                   <div>
-                    <Typography.Text strong>{selectedCell.rowPath.join(' / ') || '(All)'}</Typography.Text>
+                    <Typography.Text strong>{mosaicData && mosaicPathLabel(mosaicData, 'row', selectedCell.rowPath) || '(All)'}</Typography.Text>
                   </div>
                 </div>
 
                 <div>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>列条件 (Column Path):</Typography.Text>
                   <div>
-                    <Typography.Text strong>{selectedCell.colPath.join(' / ') || '(All)'}</Typography.Text>
+                    <Typography.Text strong>{mosaicData && mosaicPathLabel(mosaicData, 'col', selectedCell.colPath) || '(All)'}</Typography.Text>
                   </div>
                 </div>
 
@@ -253,7 +251,7 @@ export default function LineMosaicPage() {
                         return (
                           <div key={cat}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                              <span style={{ color }}>{cat}</span>
+                              <span style={{ color }}>{mosaicData.target?.valueLabels?.[cat] ?? cat}</span>
                               <span>{count} ({pct.toFixed(1)}%)</span>
                             </div>
                             <Progress
@@ -281,7 +279,7 @@ export default function LineMosaicPage() {
               <Button
                 size="small"
                 icon={<FilterOutlined />}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || !(resultKey === inputKey && selectedCell)}
                 onClick={() => dispatch(focusSelected())}
               >
                 Focus Selected ({selectedCount}行)
@@ -290,7 +288,7 @@ export default function LineMosaicPage() {
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || !(resultKey === inputKey && selectedCell)}
                 onClick={() => dispatch(deleteSelected())}
               >
                 Delete Selected
@@ -302,6 +300,13 @@ export default function LineMosaicPage() {
                 onClick={() => dispatch(selectionCleared())}
               >
                 選択解除
+              </Button>
+              <Button
+                size="small"
+                disabled={selectedCount === 0}
+                onClick={() => dispatch(resetWorkingSet())}
+              >
+                Reset to Base Data
               </Button>
             </div>
           </Card>

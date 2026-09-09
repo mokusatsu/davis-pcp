@@ -9,13 +9,53 @@ import polars as pl
 from ..algorithms.mining.subgroup import run_subgroup_mining
 from ..algorithms.mining.modern_subgroup import run_modern_subgroup_mining
 from ..domain.errors import BizError
+from ..domain.analysis_columns import resolve_analysis_columns
+from .multi_response import _collect_revisions, _check_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
 store = DatasetStore()
 
 
+def _prepare_mining(dataset_id, attributes, questions, row_ids, expected_schema, expected_data):
+    meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id) or {}
+    revisions = _collect_revisions(meta, codebook)
+    _check_revisions(revisions, expected_schema, expected_data)
+    scales = {'nominal', 'ordinal', 'interval', 'ratio'}
+    attrs = resolve_analysis_columns(codebook, attributes, scales=scales, roles={'attribute'}, allow_ma_options=True)
+    targets = resolve_analysis_columns(codebook, questions, scales=scales, roles={'question'}, allow_ma_options=True)
+    if not attrs.names or not targets.names:
+        raise BizError('EMPTY_ANALYSIS_INPUT', '属性と質問をそれぞれ1つ以上指定してください。', status_code=422)
+    if set(attrs.names) & set(targets.names):
+        raise BizError('MA_METHOD_UNSUPPORTED', '同じ列を属性と目的の両方に指定できません。', status_code=422)
+    plan = resolve_analysis_columns(codebook, [*attrs.names, *targets.names], scales=scales, allow_ma_options=True)
+    frame = store.get_dataframe(dataset_id, columns=['__rowId__', *plan.dependencies])
+    if row_ids is not None:
+        frame = frame.filter(pl.col('__rowId__').is_in(row_ids))
+    scope_hash = _scope_hash(frame['__rowId__'].to_list())
+    scope_count = frame.height
+    frame, excluded = plan.prepare(frame)
+    columns_meta = []
+    for column in codebook.get('columns', []):
+        if column['name'] not in plan.names:
+            continue
+        normalized = dict(column)
+        if column.get('multiResponseGroup'):
+            normalized.update(missingCodes=[], missingReasons={}, categoryOrder=['0', '1'],
+                              valueLabels={'0': '非選択', '1': '選択'}, isReversed=False,
+                              label=column.get('multiResponseOptionLabel') or column.get('label') or column['name'])
+        columns_meta.append(normalized)
+    return frame, columns_meta, attrs.names, targets.names, {
+        'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash, 'scopeCount': scope_count,
+        'usedRows': frame.height, 'usedColumns': plan.names, 'excludedCounts': excluded, 'method': 'mining-valid-ma-population',
+    }
+
+
 class SubgroupMiningRequest(BaseModel):
+    rowIds: list[str] | None = None
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
     datasetId: str | None = None
     dataset_id: str | None = None
     attributeCols: list[str] | None = None
@@ -38,14 +78,16 @@ def mine_subgroups(req: SubgroupMiningRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
-    meta = store.get_meta(dataset_id)
-    schema = meta.get("schema", [])
-    codebook = store.load_codebook(dataset_id)
-    columns_meta = codebook.get("columns", []) if codebook else schema
+    with store.lock(dataset_id):
+        return _mine_subgroups(dataset_id, req)
+
+
+def _mine_subgroups(dataset_id, req):
 
     attr_cols = req.attributeCols if req.attribute_cols is None else req.attribute_cols
     q_cols = req.questionCols if req.question_cols is None else req.question_cols
+    df, columns_meta, attr_cols, q_cols, info = _prepare_mining(dataset_id, attr_cols, q_cols, req.rowIds,
+        req.expectedSchemaRevision, req.expectedDataRevision)
     min_size = req.minGroupSize if req.min_group_size is None else req.min_group_size
     min_pct = req.minPctDiff if req.min_pct_diff is None else req.min_pct_diff
     max_levels = req.maxSubgroupLevels if req.max_subgroup_levels is None else req.max_subgroup_levels
@@ -61,10 +103,13 @@ def mine_subgroups(req: SubgroupMiningRequest) -> dict[str, Any]:
         max_subgroup_levels=max_levels if max_levels is not None else 8,
         weights=req.weights,
     )
-    return {**result, "schemaRevision": meta.get("schemaRevision", 1), "fingerprint": meta.get("fingerprint")}
+    return {**result, **info}
 
 
 class ModernSubgroupRequest(BaseModel):
+    rowIds: list[str] | None = None
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
     datasetId: str | None = None
     dataset_id: str | None = None
     mode: str = "standard"  # "standard" | "emm_kendall"
@@ -98,31 +143,22 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
-    meta = store.get_meta(dataset_id)
-    schema = meta.get("schema", [])
-    codebook = store.load_codebook(dataset_id)
-    columns_meta = codebook.get("columns", []) if codebook else schema
+    with store.lock(dataset_id):
+        return _mine_modern_subgroups(dataset_id, req)
 
-    # Filter by selected row IDs if provided (active population connection contract)
+
+def _mine_modern_subgroups(dataset_id, req):
+
     filter_ids = req.selectedRowIds if req.selected_row_ids is None else req.selected_row_ids
-    if filter_ids is not None:
-        id_col = None
-        for c in ["__rowId__", "id", "ID", "row_id", "rowId"]:
-            if c in df.columns:
-                id_col = c
-                break
-        if id_col:
-            id_set = set(str(i) for i in filter_ids)
-            df = df.filter(pl.col(id_col).cast(pl.String).is_in(list(id_set)))
-
     t_questions = req.targetQuestions if req.target_questions is None else req.target_questions
-    # If not specified or empty, run_modern_subgroup_mining will automatically evaluate all questions!
-    if t_questions and len(t_questions) == 0:
-        t_questions = None
-
     t_binary = req.targetBinaryCategory if req.target_binary_category is None else req.target_binary_category
     attr_cols = req.attributeCols if req.attribute_cols is None else req.attribute_cols
+    scope_ids = req.rowIds
+    if filter_ids is not None:
+        selected = set(filter_ids)
+        scope_ids = filter_ids if scope_ids is None else [row_id for row_id in scope_ids if row_id in selected]
+    df, columns_meta, attr_cols, t_questions, info = _prepare_mining(dataset_id, attr_cols, t_questions, scope_ids,
+        req.expectedSchemaRevision, req.expectedDataRevision)
     m_depth = req.maxDepth if req.max_depth is None else req.max_depth
     b_width = req.beamWidth if req.beam_width is None else req.beam_width
     m_size = req.minGroupSize if req.min_group_size is None else req.min_group_size
@@ -147,7 +183,7 @@ def mine_modern_subgroups(req: ModernSubgroupRequest) -> dict[str, Any]:
             overlap_threshold=overlap if overlap is not None else 0.8,
             min_effect_diff=effect_diff,
         )
-        return {**result, "schemaRevision": meta.get("schemaRevision", 1), "fingerprint": meta.get("fingerprint")}
+        return {**result, **info}
     except BizError:
         raise
     except Exception as e:
@@ -165,6 +201,8 @@ from ..algorithms.mining.feature_ranking import compute_feature_rankings
 
 
 class FeatureRankingRequest(BaseModel):
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
     datasetId: str | None = None
     dataset_id: str | None = None
     targetColumn: str | None = None
@@ -194,22 +232,50 @@ def run_feature_ranking(req: FeatureRankingRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
+    with store.lock(dataset_id):
+        return _run_feature_ranking(dataset_id, req)
+
+
+def _run_feature_ranking(dataset_id, req):
+    from ..domain.codebook_adapter import CodebookAdapter
+    meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id) or {}
+    revisions = _collect_revisions(meta, codebook)
+    _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
     target = req.targetColumn if req.target_column is None else req.target_column
     features = req.featureColumns if req.feature_columns is None else req.feature_columns
+    scales = {'nominal', 'ordinal', 'interval', 'ratio'}
+    target_plan = resolve_analysis_columns(codebook, [target] if target else [], scales=scales, allow_ma_options=True)
+    target = target_plan.names[0] if target_plan.names else None
+    feature_plan = resolve_analysis_columns(codebook, features, scales=scales, allow_ma_options=True)
+    features = [name for name in feature_plan.names if name != target]
     if not features:
-        meta = store.get_meta(dataset_id)
-        schema = meta.get("schema", [])
-        features = [col["name"] for col in schema if col.get("semanticType") == "numeric" and col["name"] != target]
-
+        raise BizError('EMPTY_ANALYSIS_INPUT', '評価対象の特徴量を1つ以上指定してください。', status_code=422)
+    if set(g['groupId'] for g in target_plan.groups) & set(g['groupId'] for g in feature_plan.groups):
+        raise BizError('MA_METHOD_UNSUPPORTED', '目的変数と同じMA設問の子は特徴量にできません。', status_code=422)
+    plan = resolve_analysis_columns(codebook, [*features, *target_plan.names], scales=scales, allow_ma_options=True)
+    df = store.get_dataframe(dataset_id, columns=['__rowId__', *plan.dependencies])
     active_rows = req.activeRowIds if req.active_row_ids is None else req.active_row_ids
+    if active_rows is not None:
+        df = df.filter(pl.col('__rowId__').is_in(active_rows))
+    scope_hash, scope_count = _scope_hash(df['__rowId__'].to_list()), df.height
+    df, excluded = plan.prepare(df)
+    adapter = CodebookAdapter(df, codebook)
+    ordinary = [c['name'] for c in codebook.get('columns', []) if c['name'] in plan.names and not c.get('multiResponseGroup')]
+    df = df.with_columns([adapter.analysis_series(name) for name in ordinary])
+    before_missing = df.height
+    df = df.drop_nulls(plan.names)
+    float_names = [name for name in plan.names if df[name].dtype in (pl.Float32, pl.Float64)]
+    if float_names:
+        df = df.filter(pl.all_horizontal([pl.col(name).is_finite() for name in float_names]))
+    ordinary_excluded = before_missing - df.height
 
     try:
         result = compute_feature_rankings(
             df=df,
             feature_columns=features,
             target_column=target,
-            active_row_ids=active_rows,
+            active_row_ids=None,
             methods=req.methods,
             k_neighbors=req.kNeighbors or req.k_neighbors or 10,
             relieff_sample_size=req.relieffSampleSize or req.relieff_sample_size,
@@ -217,7 +283,10 @@ def run_feature_ranking(req: FeatureRankingRequest) -> dict[str, Any]:
             use_permutation_importance=bool(req.usePermutationImportance or req.use_permutation_importance),
             seed=req.seed if req.seed is not None else 42,
         )
-        return result
+        return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash, 'scopeCount': scope_count,
+                'usedColumns': plan.names, 'usedRows': df.height, 'excludedCounts': excluded,
+                'ordinaryMissingExcluded': ordinary_excluded, 'method': 'feature-ranking-valid-ma-population',
+                'importanceScope': 'child-only'}
     except ValueError as e:
         raise BizError("FEATURE_RANKING_ERROR", str(e), status_code=400)
     except Exception as e:

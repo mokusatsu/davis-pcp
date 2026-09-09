@@ -19,6 +19,7 @@ class PyodideClient {
   private statusListeners = new Set<StatusListener>()
   private currentStatus: WasmStatus = { stage: 'idle', progress: 0, message: '初期化待機中' }
   private initPromise: Promise<void> | null = null
+  private runtimeError: Error | null = null
 
   constructor() {
     // Worker is lazily created on init() or first request
@@ -47,6 +48,13 @@ class PyodideClient {
     }
   }
 
+  private failRuntime(error: Error) {
+    this.runtimeError = error
+    this.notifyStatus({ stage: 'error', progress: 0, message: error.message })
+    for (const request of this.pending.values()) request.reject(error)
+    this.pending.clear()
+  }
+
   public init(): Promise<void> {
     if (this.initPromise) return this.initPromise
 
@@ -69,7 +77,9 @@ class PyodideClient {
             if (msg.stage === 'ready') {
               resolve()
             } else if (msg.stage === 'error') {
-              reject(new Error(msg.message))
+              const error = new Error(msg.message)
+              this.failRuntime(error)
+              reject(error)
             }
           } else if (msg.type === 'RESPONSE') {
             const p = this.pending.get(msg.id)
@@ -93,8 +103,9 @@ class PyodideClient {
 
         this.worker.onerror = (err) => {
           console.error('Pyodide Worker uncaught error:', err)
-          this.notifyStatus({ stage: 'error', progress: 0, message: `Workerエラー: ${err.message}` })
-          reject(err)
+          const error = new Error(`Workerエラー: ${err.message}`)
+          this.failRuntime(error)
+          reject(error)
         }
 
         // Determine base URL for pyodide assets (relative to page)
@@ -104,8 +115,9 @@ class PyodideClient {
           pyodideBaseUrl: baseUrl,
         })
       } catch (err: any) {
-        this.notifyStatus({ stage: 'error', progress: 0, message: err?.message || String(err) })
-        reject(err)
+        const error = err instanceof Error ? err : new Error(String(err))
+        this.failRuntime(error)
+        reject(error)
       }
     })
 
@@ -118,6 +130,7 @@ class PyodideClient {
     } else {
       await this.initPromise
     }
+    if (this.runtimeError) throw this.runtimeError
   }
 
   public async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -164,6 +177,7 @@ class PyodideClient {
 
     const id = this.nextId++
     const arrayBuffer = await file.arrayBuffer()
+    if (this.runtimeError) throw this.runtimeError
 
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
@@ -188,13 +202,14 @@ class PyodideClient {
     datasetId: string,
     columns?: string[],
     rowIds?: string[],
+    options?: { maAxes?: { key: string; kind: 'maOption' | 'maCount'; groupId: string; columnId?: string }[]; expectedSchemaRevision?: number; expectedDataRevision?: number },
   ): Promise<Record<string, unknown[]>> {
     await this.waitForReady()
 
     const rawBuffer = await this.request<ArrayBuffer>(`/datasets/${datasetId}/view`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ columns, rowIds }),
+      body: JSON.stringify({ columns, rowIds, ...options }),
     })
 
     const { tableFromIPC } = await import('apache-arrow')

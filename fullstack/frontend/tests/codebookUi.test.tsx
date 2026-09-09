@@ -101,6 +101,8 @@ describe('Codebook UI Components E2E Flow', () => {
           schemaRevision: 1,
           columns: mockColumns,
           draftColumns: JSON.parse(JSON.stringify(mockColumns)),
+          multiResponseGroups: [],
+          draftMultiResponseGroups: [],
           selectedColumnIds: [],
           activeColumnId: 'col-1',
           viewMode: 'detail' as const,

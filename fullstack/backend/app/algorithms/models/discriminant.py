@@ -149,6 +149,13 @@ def run_discriminant_analysis(
     X_full = np.column_stack([
         sub_df[feat].cast(pl.Float64).to_numpy() for feat in feature_columns
     ])
+    constant_columns = [name for name, values in zip(feature_columns, X_full.T) if np.all(values == values[0])]
+    if constant_columns:
+        raise BizError('DISCRIMINANT_CONSTANT_FEATURES', '有効な対象行で値が一定の説明変数を外してください。',
+                       details={'columns': constant_columns})
+    if n_samples <= n_classes:
+        raise BizError('DISCRIMINANT_INSUFFICIENT_WITHIN_CLASS_SAMPLES', 'クラス内の分散を推定できる行数が必要です。',
+                       details={'sampleCount': n_samples, 'classCount': n_classes})
 
     selected_features = list(feature_columns)
     stepwise_trace: list[dict[str, Any]] | None = None
@@ -282,6 +289,24 @@ def run_discriminant_analysis(
     sub_cols = [feature_columns.index(feat) for feat in selected_features]
     X = X_full[:, sub_cols]
     n_features = len(selected_features)
+    centered = X - X.mean(axis=0)
+    spread = np.std(centered, axis=0)
+    standardized = centered / np.where(spread > 0, spread, 1)
+    within = standardized.copy()
+    for index in range(n_classes):
+        mask = y_indices == index
+        within[mask] -= standardized[mask].mean(axis=0)
+    total_rank = int(np.linalg.matrix_rank(standardized))
+    within_rank = int(np.linalg.matrix_rank(within))
+    if within_rank == 0:
+        raise BizError('DISCRIMINANT_NO_WITHIN_CLASS_VARIATION', '説明変数にクラス内の変動がなく、判別軸を推定できません。',
+                       details={'columns': selected_features, 'classCounts': dict(zip(classes, class_counts))})
+    diagnostics = {'inputDimensions': len(feature_columns), 'usedDimensions': n_features,
+        'sampleCount': n_samples, 'classCounts': dict(zip(classes, class_counts)),
+        'totalRank': total_rank, 'withinClassRank': within_rank,
+        'collinear': total_rank < n_features,
+        'singularWithinClassCovariance': within_rank < n_features,
+        'qdaSmallClasses': [classes[index] for index, count in enumerate(class_counts) if count <= n_features] if method == 'qda' else []}
 
     # Priors
     if priors == "uniform":
@@ -522,6 +547,7 @@ def run_discriminant_analysis(
         }
 
     return {
+        "diagnostics": diagnostics,
         "target": target_column,
         "classes": classes,
         "features": selected_features,

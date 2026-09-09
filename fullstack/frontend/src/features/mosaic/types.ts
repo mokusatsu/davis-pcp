@@ -20,6 +20,7 @@ export interface LineMosaicGrid {
 }
 
 export interface LineMosaicTarget {
+  valueLabels?: Record<string, string>
   name: string
   categories: string[]
   colors: string[]
@@ -41,10 +42,21 @@ export interface LineMosaicCell {
 }
 
 export interface LineMosaicResponse {
+  valueLabels?: Record<string, Record<string, string>>
   grid: LineMosaicGrid
   target: LineMosaicTarget | null
   maxCellFrequency: number
   max_cell_frequency?: number
   cells: LineMosaicCell[]
   evidenceClass: string
+  scopeCount?: number
+  usedRows?: number
+  usedColumns?: string[]
+  excludedCounts?: Record<string, Record<string, number>>
+  excludedRowCount?: number
+}
+
+export function mosaicPathLabel(data: LineMosaicResponse, direction: 'row' | 'col', path: string[]): string {
+  const variables = direction === 'row' ? data.grid.rowVariables : data.grid.colVariables
+  return path.map((value, index) => data.valueLabels?.[variables[index]]?.[value] ?? value).join(' / ')
 }

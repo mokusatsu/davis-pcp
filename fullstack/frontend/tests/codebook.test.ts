@@ -138,6 +138,8 @@ describe('codebookSlice reducers', () => {
     schemaRevision: 1,
     columns: [dummyCol1, dummyCol2],
     draftColumns: [dummyCol1, dummyCol2],
+    multiResponseGroups: [],
+    draftMultiResponseGroups: [],
     selectedColumnIds: [],
     activeColumnId: 'col-001',
     viewMode: 'detail',

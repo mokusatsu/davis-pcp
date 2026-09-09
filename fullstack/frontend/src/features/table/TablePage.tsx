@@ -1,100 +1,83 @@
+import { selectVariableEntities } from '../../app/store'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Checkbox, Dropdown, Input, Segmented, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Checkbox, Dropdown, Input, Pagination, Popover, Segmented, Space, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
-import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
+import { api } from '../../api/client'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+
+type Entity = { kind: 'column' | 'ma' | 'maOption' | 'maCount'; columnId?: string; groupId?: string }
+type Cell = { value?: unknown; text?: string; isMissing?: boolean; status?: string; selectedCount?: number; labels?: string[] }
+type TableResult = { rows: { rowId: string; cells: Cell[] }[]; total: number; entities: (Entity & { label: string; sortable: boolean })[] }
 
 export default function TablePage() {
   const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const entitySelection = useSelector(selectVariableEntities)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
   const [search, setSearch] = useState('')
   const [scopeFilter, setScopeFilter] = useState<'all' | 'selected'>('all')
   const [valueDisplayMode, setValueDisplayMode] = useState<'labels' | 'raw'>('labels')
 
-  const { getColumn, getOrderedCategories } = useCodebook()
-
-  const toDisplayText = (columnName: string, rawValue: unknown) => {
-    if (valueDisplayMode === 'raw') {
-      return {
-        cell: String(rawValue ?? ''),
-        tooltipParts: [],
-        isMissing: false,
-        reason: '',
+  const { columns, schemaRevision } = useCodebook()
+  const groups = useSelector((s: RootState) => s.codebook.multiResponseGroups)
+  const [entityPage, setEntityPage] = useState(1)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(100)
+  const [expanded, setExpanded] = useState<string[]>([])
+  const [sort, setSort] = useState<{ entityIndex: number; order: 'ascend' | 'descend' }>()
+  const [result, setResult] = useState<TableResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const entities = useMemo(() => {
+    const list: Entity[] = []
+    for (const item of entitySelection.items) {
+      if (!entitySelection.selected.has(item.key)) continue
+      if (item.entity.kind === 'column') { list.push(item.entity); continue }
+      const groupId = item.entity.groupId
+      list.push({ kind: 'ma', groupId })
+      if (expanded.includes(groupId)) {
+        const members = columns.filter(c => c.multiResponseGroup === groupId)
+        const order = groups.find(g => g.groupId === groupId)?.optionOrder
+        const ids = order?.length ? order : members.map(c => c.columnId)
+        list.push({ kind: 'maCount', groupId }, ...ids.map(columnId => ({ kind: 'maOption' as const, groupId, columnId })))
       }
     }
-    if (rawValue === null) {
-      return {
-        cell: '無回答',
-        tooltipParts: ['生コード: 無回答'],
-        isMissing: false,
-        reason: '',
-      }
-    }
-    const code = normalizeCode(rawValue)
-    const rawText = rawValue === null || rawValue === undefined ? '無回答' : String(rawValue)
-    if (code === null) {
-      return {
-        cell: rawText,
-        tooltipParts: [`生コード: ${rawText}`],
-        isMissing: false,
-        reason: '',
-      }
-    }
-    const col = getColumn(columnName)
-    const missingReason = col?.missingReasons?.[code]
-    const isMissing = (col?.missingCodes ?? []).includes(code)
-    if (missingReason || isMissing) {
-      return {
-        cell: missingReason || '欠損',
-        tooltipParts: [
-          `生コード: ${rawText}`,
-          `ラベル: ${col?.valueLabels?.[code] ?? code}`,
-          `missingReasons: ${missingReason || '未設定'}`,
-        ],
-        isMissing: true,
-        reason: missingReason || '欠損',
-      }
-    }
-    const label = col?.valueLabels?.[code] ?? code
-    const labelText = label === code ? label : `${label} (${code})`
-    return {
-      cell: labelText,
-      tooltipParts: [
-        `生コード: ${rawText}`,
-        `ラベル: ${label}`,
-        col?.missingReasons?.[code] ? `missingReasons: ${col.missingReasons[code]}` : `missingReasons: `,
-      ],
-      isMissing: false,
-      reason: '',
-    }
-  }
-
-  const makeCellRenderer = (columnName: string) => (value: unknown) => {
-    const display = toDisplayText(columnName, value)
-    if (valueDisplayMode === 'raw' || !display.isMissing) {
-      return <span title={display.tooltipParts.filter(Boolean).join(' / ')}>{display.cell}</span>
-    }
-    return (
-      <Tag
-        color="orange"
-        style={{ fontWeight: 600 }}
-        title={display.tooltipParts.filter(Boolean).join(' / ')}
-      >
-        {display.reason}
-      </Tag>
-    )
-  }
+    return list
+  }, [columns, groups, entitySelection, expanded])
+  const currentEntityPage = Math.min(entityPage, Math.max(1, Math.ceil(entities.length / 12)))
+  const visibleEntities = entities.slice((currentEntityPage - 1) * 12, currentEntityPage * 12)
+  const scopedRows = scopeFilter === 'selected'
+    ? effectiveRowIds.filter(id => selection.selectedRowIds.includes(id)) : effectiveRowIds
+  const scopeKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, scopedRows, search, valueDisplayMode, visibleEntities])
+  const [pageScope, setPageScope] = useState(scopeKey)
+  const currentPage = pageScope === scopeKey ? page : 1
+  const currentSort = pageScope === scopeKey ? sort : undefined
+  const requestKey = JSON.stringify([scopeKey, currentPage, pageSize, currentSort, currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : null])
+  useEffect(() => {
+    if (!selection.datasetId || !columns.length) return
+    let current = true
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    api.post<TableResult>(`/datasets/${selection.datasetId}/table-view`, {
+      entityIds: visibleEntities, rowIds: scopedRows, offset: (currentPage - 1) * pageSize,
+      limit: pageSize, displayMode: valueDisplayMode, search, sort: currentSort,
+      expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
+      rowWeights: currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : undefined,
+    }).then(value => { if (current) setResult(value) })
+      .catch(reason => { if (current) setError(reason.message || '表を取得できませんでした。') })
+      .finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [requestKey, columns.length])
+  const rows = (result?.rows ?? []).map(row => ({ key: row.rowId, __rowId__: row.rowId, cells: row.cells }))
 
   const contextMenuItems = [
     {
@@ -122,66 +105,39 @@ export default function TablePage() {
     },
   ]
 
-  const columnsData = useMemo(() => {
-    if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
-    const schema = activeVarSet ? data.schema.filter((c) => activeVarSet.has(c.name)) : data.schema
-    return schema.map((column) => ({
-      title: <ColumnQuestionTooltip nameOrId={column.name}>{valueDisplayMode === 'labels'
-        ? `${getColumn(column.name)?.label || column.name} (${column.name})`
-        : column.name}</ColumnQuestionTooltip>,
-      dataIndex: column.name,
-      key: column.name,
-      sorter: (a: Record<string, unknown>, b: Record<string, unknown>) => {
-        if (column.semanticType === 'ordinal') {
-          const order = getOrderedCategories(column.name, getColumn(column.name)?.categoryOrder)
-          const orderIndex = new Map(order.map((value, idx) => [value, idx]))
-          const av = normalizeCode(a[column.name])
-          const bv = normalizeCode(b[column.name])
-          const ai = av === null ? Number.MAX_SAFE_INTEGER : (orderIndex.get(av) ?? Number.MAX_SAFE_INTEGER)
-          const bi = bv === null ? Number.MAX_SAFE_INTEGER : (orderIndex.get(bv) ?? Number.MAX_SAFE_INTEGER)
-          if (ai !== bi) return ai - bi
-        }
-        const av = a[column.name]
-        const bv = b[column.name]
-        if (typeof av === 'number' && typeof bv === 'number') return av - bv
-        return String(av).localeCompare(String(bv))
+  const statusLabels: Record<string, string> = { valid: '有効', partial: '部分回答', missing: '無回答', notApplicable: '非該当', invalid: '不正値' }
+  const columnsData = (result?.entities ?? []).map((entity, index) => {
+    const column = columns.find(c => c.columnId === entity.columnId)
+    const columnLabel = (entity.kind === 'maOption' ? column?.multiResponseOptionLabel : undefined) || column?.label || column?.name
+    return {
+      key: String(index), width: entity.kind === 'ma' ? 260 : 160,
+      title: entity.kind === 'ma' ? <Space size={4}>
+        <span>{entity.label}</span><Tag>複数回答</Tag>
+        <Button size="small" type="text" onClick={() => setExpanded(prev => prev.includes(entity.groupId!) ? prev.filter(id => id !== entity.groupId) : [...prev, entity.groupId!])}>
+          {expanded.includes(entity.groupId!) ? '折りたたむ' : '選択肢'}
+        </Button>
+      </Space> : column ? <ColumnQuestionTooltip nameOrId={column.columnId}>{valueDisplayMode === 'raw' ? column.name : `${columnLabel} (${column.name})`}</ColumnQuestionTooltip> : `${entity.label}・選択数`,
+      sorter: entity.sortable,
+      sortOrder: currentSort?.entityIndex === index ? currentSort.order : null,
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const cell = (row.cells as Cell[])[index]
+        if (entity.kind === 'ma') return <Space size={4} wrap>
+          {valueDisplayMode === 'raw' ? <Typography.Text ellipsis style={{ maxWidth: 240 }} title={cell.text}>{cell.text}</Typography.Text>
+            : <>{cell.labels?.slice(0, 3).map((label, i) => <Tag key={i} title={label}>{label}</Tag>)}
+              {(cell.labels?.length ?? 0) > 3 && <Popover title="選択項目" content={<div style={{ maxWidth: 360, maxHeight: 300, overflow: 'auto' }}>{cell.labels?.map((label, i) => <div key={i}>{label}</div>)}</div>}>
+                <Button size="small" type="link">ほか{cell.labels!.length - 3}件</Button>
+              </Popover>}</>}
+          {cell.selectedCount === 0 && cell.status === 'valid' && <span>選択なし</span>}
+          {cell.status !== 'valid' && <Tag color="orange">{statusLabels[cell.status!]}</Tag>}
+        </Space>
+        const text = valueDisplayMode === 'labels' && !cell.isMissing && cell.value != null && cell.text !== String(cell.value)
+          ? `${cell.text} (${cell.value})` : cell.text
+        return <span title={`生コード: ${cell.value ?? '無回答'}`}>
+          {cell.isMissing && valueDisplayMode === 'labels' ? <Tag color="orange">{text}</Tag> : text}
+        </span>
       },
-      render: makeCellRenderer(column.name),
-    }))
-  }, [data, globalVars?.activeVariableIds, getColumn, getOrderedCategories, valueDisplayMode, makeCellRenderer])
-
-  const rows = useMemo(() => {
-    if (!data) return []
-    const selectedSet = new Set(selection.selectedRowIds)
-    let indexes = data.rowIds.map((id, index) => ({ id, index }))
-    const effectiveSet = new Set(effectiveRowIds)
-    indexes = indexes.filter((row) => effectiveSet.has(row.id))
-    if (scopeFilter === 'selected') indexes = indexes.filter((row) => selectedSet.has(row.id))
-    const query = search.trim().toLowerCase()
-    if (query) {
-      indexes = indexes.filter(({ id, index }) =>
-        id.toLowerCase().includes(query)
-        || data.schema.some((c) => {
-          const colVal = data.columns[c.name]?.[index]
-          const raw = String(colVal ?? '').toLowerCase()
-          if (raw.includes(query)) return true
-          if (valueDisplayMode === 'labels') {
-            const display = toDisplayText(c.name, colVal)
-            const label = display.cell.toLowerCase()
-            if (label.includes(query)) return true
-            const reason = display.tooltipParts?.find((t) => t.startsWith('missingReasons: '))
-            return reason ? reason.toLowerCase().includes(query) : false
-          }
-          return false
-        }))
     }
-    return indexes.map(({ id, index }) => ({
-      key: id,
-      __rowId__: id,
-      ...Object.fromEntries(data.schema.map((c) => [c.name, data.columns[c.name]?.[index]])),
-    }))
-  }, [data, effectiveRowIds, selection.selectedRowIds, scopeFilter, search, valueDisplayMode, toDisplayText])
+  })
 
   const isBootstrapSampled = obs?.scopeMode === 'sampled' && obs?.sampling?.enabled && obs?.sampling?.method === 'with_replacement'
 
@@ -207,11 +163,8 @@ export default function TablePage() {
       title: 'Weight',
       key: '__weight__',
       width: 80,
-      sorter: (a: Record<string, unknown>, b: Record<string, unknown>) => {
-        const wa = obs.sampling.sampledRowWeights[a.__rowId__ as string] ?? 1
-        const wb = obs.sampling.sampledRowWeights[b.__rowId__ as string] ?? 1
-        return wa - wb
-      },
+      sorter: true,
+      sortOrder: currentSort?.entityIndex === -1 ? currentSort.order : null,
       render: (_: unknown, row: Record<string, unknown>) => {
         const w = obs.sampling.sampledRowWeights[row.__rowId__ as string] ?? 1
         return w > 1 ? (
@@ -270,11 +223,13 @@ export default function TablePage() {
               </Tag>
             )}
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              表示 {rows.length} / 総 {data?.rowIds.length ?? 0} 行 · 右クリックで操作
+              表示 {result?.total ?? 0} / 総 {effectiveRowIds.length} 行 · 右クリックで操作
             </Typography.Text>
           </Space>
         </div>
       )}
+      {error && <Alert type="error" message={error} />}
+      {entities.length > 12 && <Space><Typography.Text>表示項目</Typography.Text><Pagination size="small" current={currentEntityPage} pageSize={12} total={entities.length} showSizeChanger={false} onChange={setEntityPage} /></Space>}
       <FocusTarget id="table" title="データテーブル">
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
           <div
@@ -295,7 +250,15 @@ export default function TablePage() {
               size="small"
               columns={tableColumns}
               dataSource={rows}
-              pagination={{ pageSize: 25, pageSizeOptions: [10, 25, 50, 100], showSizeChanger: true }}
+              loading={loading}
+              pagination={{ current: currentPage, total: result?.total ?? 0, pageSize, pageSizeOptions: [25, 50, 100, 200], showSizeChanger: true }}
+              onChange={(pagination, _filters, sorter, extra) => {
+                setPageScope(scopeKey)
+                setPage(extra.action === 'sort' ? 1 : pagination.current ?? 1)
+                setPageSize(pagination.pageSize ?? 100)
+                const item = Array.isArray(sorter) ? sorter[0] : sorter
+                setSort(item.order ? { entityIndex: item.columnKey === '__weight__' ? -1 : Number(item.columnKey), order: item.order } : undefined)
+              }}
               scroll={{ x: true, y: focused ? 'calc(100vh - 120px)' : undefined }}
               rowClassName={(row) => (selection.selectedRowIds.includes(row.__rowId__ as string) ? 'ant-table-row-selected' : '')}
               onRow={(row) => ({

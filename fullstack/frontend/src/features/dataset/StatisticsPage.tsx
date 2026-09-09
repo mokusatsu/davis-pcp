@@ -1,3 +1,4 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -18,6 +19,7 @@ import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import { normalizeCode, useCodebook } from './useCodebookColumn'
 import { QuestionCard } from '../distribution/QuestionCard'
+import MultiResponseStatistics from './MultiResponseStatistics'
 
 interface StatsRow {
   key: string
@@ -42,9 +44,11 @@ export default function StatisticsPage() {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const pcpColorBy = useSelector((s: RootState) => s.pcp.colorBy)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
+  const entities = useSelector(selectVariableEntities)
+  const maCount = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key)).length
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
+  const data = useColumnarData(selection.datasetId, [...globalVars.activeVariableIds, ...(pcpColorBy ? [pcpColorBy] : [])])
   const { getColumn, formatValueLabel, getOrderedCategories } = useCodebook()
   const { focused, isTargetActive } = useFocusMode()
   const theme = vizTheme(false)
@@ -98,7 +102,7 @@ export default function StatisticsPage() {
 
   const targetSchema = useMemo(() => {
     if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
+    const activeVarSet = new Set(globalVars.activeVariableIds)
     return activeVarSet ? data.schema.filter((c) => activeVarSet.has(c.name)) : data.schema
   }, [data, globalVars?.activeVariableIds])
 
@@ -241,10 +245,10 @@ export default function StatisticsPage() {
           <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic
-                title="総変数数"
-                value={data?.schema.length ?? 0}
+                title="集計対象の変数"
+                value={targetSchema.length + maCount}
                 prefix={<TableOutlined />}
-                suffix={`列 (数値 ${numericColumns.length})`}
+                suffix={`項目 (通常 ${targetSchema.length}・MA ${maCount})`}
               />
             </Card>
           </Col>
@@ -282,6 +286,7 @@ export default function StatisticsPage() {
       )}
 
       <L1Legend />
+      {!focused && <MultiResponseStatistics rowIds={statsScope === 'selected' ? selection.selectedRowIds : effectiveRowIds} />}
       {loadingStats && (
         <Card size="small" style={{ textAlign: 'center', padding: '30px 20px', background: '#fafafa', borderRadius: 8 }}>
           <Spin size="large" tip="記述統計量を集計中..." />

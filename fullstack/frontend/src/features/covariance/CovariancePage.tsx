@@ -1,15 +1,16 @@
+import { selectOrdinaryVariables } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Button, Radio, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Radio, Space, Spin, Tag, Typography } from 'antd'
 import { AppstoreOutlined, ArrowRightOutlined, LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import { truncateText } from '../../utils/textUtils'
 
 interface CovarianceResponse {
@@ -35,9 +36,12 @@ export default function CovariancePage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(datasetId)
+  const { columns, schemaRevision } = useCodebook()
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const requestGeneration = useRef(0)
+  const [error, setError] = useState<string | null>(null)
 
   const [mode, setMode] = useState<'cov' | 'corr' | 'prec'>('cov')
   const [selectedColumns, setSelectedColumns] = useState<string[]>([])
@@ -46,17 +50,23 @@ export default function CovariancePage() {
   const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; col1: string; col2: string } | null>(null)
 
   const numericColumns = useMemo(
-    () => (data ? data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) : []),
-    [data],
+    () => columns.filter(c => !c.multiResponseGroup && ['attribute', 'question'].includes(c.role) && ['interval', 'ratio', 'ordinal'].includes(c.scaleType)).map(c => c.name),
+    [columns],
   )
 
   const activeNumericColumns = useMemo(() => {
-    if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
-    return data.schema
-      .filter((c) => c.semanticType === 'numeric' && (!activeVarSet || activeVarSet.has(c.name)))
+    const activeVarSet = new Set(globalVars.activeVariableIds)
+    return columns
+      .filter((c) => numericColumns.includes(c.name) && c.scaleType !== 'ordinal' && (!activeVarSet || activeVarSet.has(c.name)))
       .map((c) => c.name)
-  }, [data, globalVars?.activeVariableIds])
+  }, [columns, numericColumns, globalVars?.activeVariableIds])
+
+  useEffect(() => {
+    setSelectedColumns(previous => {
+      const valid = previous.filter(name => numericColumns.includes(name))
+      return valid.length === previous.length ? previous : valid
+    })
+  }, [numericColumns])
 
   useEffect(() => {
     if (activeNumericColumns.length >= 2 && selectedColumns.length === 0) {
@@ -65,21 +75,26 @@ export default function CovariancePage() {
   }, [activeNumericColumns, selectedColumns.length])
 
   const fetchCov = useCallback(async () => {
-    if (!datasetId || selectedColumns.length < 2) return
+    const generation = ++requestGeneration.current
+    setCovData(null)
+    setError(null)
+    if (!datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !numericColumns.includes(c))) { setLoading(false); return }
     setLoading(true)
     try {
       const res = await api.post<CovarianceResponse>('/statistics/covariance', {
         datasetId,
         columns: selectedColumns,
         rowIds: effectiveRowIds,
+        expectedSchemaRevision: schemaRevision,
+        expectedDataRevision: dataRevision,
       })
-      setCovData(res)
+      if (generation === requestGeneration.current) setCovData(res)
     } catch (err) {
-      console.error('Failed to fetch Covariance', err)
+      if (generation === requestGeneration.current) setError((err as Error).message || '共分散の計算に失敗しました。')
     } finally {
-      setLoading(false)
+      if (generation === requestGeneration.current) setLoading(false)
     }
-  }, [datasetId, selectedColumns, effectiveRowIds])
+  }, [datasetId, selectedColumns, effectiveRowIds, schemaRevision, dataRevision, numericColumns])
 
   useEffect(() => {
     void fetchCov()
@@ -176,6 +191,7 @@ export default function CovariancePage() {
         minHeight: 0,
       }}
     >
+      {error && <Alert type="error" message={error} />}
       {/* Controls Card */}
       {!focused && (
         <div

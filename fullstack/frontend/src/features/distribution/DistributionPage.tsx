@@ -1,9 +1,11 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Card, Col, Dropdown, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Alert, Card, Col, Dropdown, Pagination, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, SlidersOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
@@ -16,9 +18,10 @@ import { getSvgPoint } from '../../utils/svgCoordinates'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import QQPlotView from '../qqplot/QQPlotView'
 import EmptyStatePanel from '../common/EmptyStatePanel'
-import { api } from '../../api/client'
+import { api, type MultiResponseSummary, type MultiResponseSummaryResponse } from '../../api/client'
 import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
 import QuestionCard from './QuestionCard'
+import MultiResponseCard from './MultiResponseCard'
 
 interface BoxStats {
   low: number
@@ -49,50 +52,43 @@ interface PanelData {
  *  Range brush selects the value interval under the drag band. */
 export default function DistributionPage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
+  const entitySelection = useSelector(selectVariableEntities)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
   const focused = useFocusMode().focused
   const svgRef = useRef<SVGSVGElement>(null)
   const [brushOp] = useBrushOp()
-  const { getColumn, isLoading: isCodebookLoading, schemaRevision } = useCodebook()
+  const { columns: codebookColumns, getColumn, isLoading: isCodebookLoading, schemaRevision } = useCodebook()
   const [viewMode, setViewMode] = useState<'cards' | 'boxplot' | 'qqplot'>('cards')
+  const [rawDatasetIds, setRawDatasetIds] = useState<string[]>([])
+  useEffect(() => {
+    if (viewMode === 'boxplot' && selection.datasetId) setRawDatasetIds(ids => ids.includes(selection.datasetId!) ? ids : [...ids, selection.datasetId!])
+  }, [viewMode, selection.datasetId])
+  const data = useColumnarData(selection.datasetId && rawDatasetIds.includes(selection.datasetId) ? selection.datasetId : null)
+  const [selectedCounts, setSelectedCounts] = useState<Record<string, Record<string, number>>>({})
   const [cardsRoleFilter, setCardsRoleFilter] = useState<'all' | 'question' | 'attribute'>('all')
   const [summaryData, setSummaryData] = useState<Record<string, any> | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [loadingSummaries, setLoadingSummaries] = useState<boolean>(false)
+  const [cardPage, setCardPage] = useState(1)
+  const [maSummaries, setMaSummaries] = useState<MultiResponseSummary[]>([])
+  const [matching, setMatching] = useState(false)
+  const [matchError, setMatchError] = useState<string | null>(null)
+  const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds])
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const matchGeneration = useRef(0)
+  const summaryInput = useRef('')
   const [orientation, setOrientation] = useState<'horizontal' | 'vertical'>('horizontal')
   const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const dragRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
 
-  useEffect(() => {
-    if (viewMode !== 'cards' || !selection.datasetId) return
-    let cancelled = false
-    setSummaryData(null)
-    setSummaryError(null)
-    setLoadingSummaries(true)
-    api.post<{ columns: Record<string, any> }>('/summaries', {
-      datasetId: selection.datasetId,
-      rowIds: effectiveRowIds,
-    }).then((res) => {
-      if (!cancelled && res?.columns) {
-        setSummaryData(res.columns)
-      }
-    }).catch((error: unknown) => {
-      if (!cancelled) {
-        setSummaryError(error instanceof Error ? error.message : '要約集計データの取得に失敗しました。')
-      }
-    }).finally(() => {
-      if (!cancelled) setLoadingSummaries(false)
-    })
-    return () => { cancelled = true }
-  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision])
-
   const numericColumns = useMemo(() => {
     if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
+    const activeVarSet = new Set(globalVars.activeVariableIds)
     return data.schema
       .filter((c) => c.semanticType === 'numeric' && (!activeVarSet || activeVarSet.has(c.name)))
       .map((c) => c.name)
@@ -100,18 +96,17 @@ export default function DistributionPage() {
 
   const categoricalColumns = useMemo(() => {
     if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
+    const activeVarSet = new Set(globalVars.activeVariableIds)
     return data.schema
       .filter((c) => c.semanticType !== 'numeric' && (!activeVarSet || activeVarSet.has(c.name)))
       .map((c) => c.name)
   }, [data, globalVars?.activeVariableIds])
 
   const cardColumns = useMemo(() => {
-    if (!data) return []
-    const activeVarSet = globalVars?.activeVariableIds?.length ? new Set(globalVars.activeVariableIds) : null
-    return data.schema
+    return entitySelection.items.filter(item => entitySelection.selected.has(item.key))
+      .flatMap(item => codebookColumns.filter(c => item.entity.kind === 'ma'
+        ? c.multiResponseGroup === item.entity.groupId : c.columnId === item.entity.columnId))
       .filter((c) => {
-        if (activeVarSet && !activeVarSet.has(c.name)) return false
         if (isCodebookLoading || cardsRoleFilter === 'all') return true
         const meta = getColumn(c.name)
         if (cardsRoleFilter === 'question' && meta?.role !== 'question') return false
@@ -119,37 +114,88 @@ export default function DistributionPage() {
         return true
       })
       .map((c) => c.name)
-  }, [data, globalVars?.activeVariableIds, cardsRoleFilter, getColumn, isCodebookLoading])
+  }, [codebookColumns, entitySelection, cardsRoleFilter, getColumn, isCodebookLoading])
 
-  const effectiveRowIdSet = useMemo(() => new Set(effectiveRowIds), [effectiveRowIds])
+  const cardEntities = useMemo(() => {
+    const seen = new Set<string>()
+    return cardColumns.flatMap<{ kind: 'column' | 'ma'; id: string }>(name => {
+      const groupId = getColumn(name)?.multiResponseGroup
+      if (!groupId) return [{ kind: 'column' as const, id: name }]
+      if (seen.has(groupId)) return []
+      seen.add(groupId)
+      return [{ kind: 'ma' as const, id: groupId }]
+    })
+  }, [cardColumns, getColumn])
+  const visibleEntities = cardEntities.slice((Math.min(cardPage, Math.max(1, Math.ceil(cardEntities.length / 12))) - 1) * 12,
+    Math.min(cardPage, Math.max(1, Math.ceil(cardEntities.length / 12))) * 12)
+  const visibleKey = JSON.stringify(visibleEntities)
+  useEffect(() => { setCardPage(1) }, [selection.datasetId, cardsRoleFilter])
 
-  const handleSelectCategory = (colName: string, code: string | number | null, label?: string) => {
-    if (!data) return
-    const colVals = data.columns[colName]
-    if (!colVals) return
-    const normalizedCode = code === null ? null : normalizeCode(code)
-    const matchedIds: string[] = []
-    for (const rowId of effectiveRowIdSet) {
-      const index = data.rowIndex.get(rowId)
-      if (index === undefined) continue
-      if (normalizeCode(colVals[index]) === normalizedCode) {
-        matchedIds.push(rowId)
-      }
+  useEffect(() => {
+    if (viewMode !== 'cards' || !selection.datasetId || isCodebookLoading || !codebookColumns.length) return
+    let cancelled = false
+    const entities = JSON.parse(visibleKey) as { kind: 'ma' | 'column'; id: string }[]
+    const columns = entities.filter(e => e.kind === 'column').map(e => e.id)
+    const groupIds = entities.filter(e => e.kind === 'ma').map(e => e.id)
+    const key = JSON.stringify([inputKey, visibleKey])
+    if (summaryInput.current !== key) {
+      setSummaryData(null)
+      setMaSummaries([])
+      summaryInput.current = key
     }
-    const colMeta = getColumn(colName)
-    const displayCol = colMeta?.label || colName
-    const displayVal = label || (code === null ? '(欠損)' : String(code))
-    dispatch(
-      selectionApplied({
-        rowIds: matchedIds,
-        operation: brushOp,
-        label: `${displayCol} = ${displayVal}`,
+    setSummaryError(null)
+    setLoadingSummaries(true)
+    const common = { datasetId: selection.datasetId, rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision }
+    Promise.all([
+      columns.length ? api.post<{ columns: Record<string, any>; selectedCountByCode?: Record<string, Record<string, number>> }>('/summaries', { ...common, columns, selectedRowIds: selection.selectedRowIds }) : Promise.resolve({ columns: {}, selectedCountByCode: {} }),
+      groupIds.length ? api.post<MultiResponseSummaryResponse>('/summaries/multi-response', {
+        ...common, groupIds, selectedRowIds: selection.selectedRowIds,
+      }) : Promise.resolve({ groups: [] }),
+    ]).then(([sa, ma]) => {
+      if (!cancelled) { setSummaryData(sa.columns); setSelectedCounts(sa.selectedCountByCode ?? {}); setMaSummaries(ma.groups) }
+    }).catch((error: { message?: string }) => {
+      if (!cancelled) setSummaryError(error.message ?? '要約集計データの取得に失敗しました。')
+    }).finally(() => { if (!cancelled) setLoadingSummaries(false) })
+    return () => { cancelled = true }
+  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision, visibleKey, selection.selectedRowIds, isCodebookLoading, codebookColumns.length])
+
+  const selectMa = async (groupId: string, optionColumnIds: string[], predicate: string, status?: string, goToPcp?: boolean) => {
+    const generation = ++matchGeneration.current
+    const requestedInput = inputKey
+    setMatching(true)
+    setMatchError(null)
+    try {
+      const result = await api.post<{ rowIds: string[]; schemaRevision: number }>(`/datasets/${selection.datasetId}/matches`, {
+        groupId, optionColumnIds, predicate, status, rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
       })
-    )
+      if (generation !== matchGeneration.current || requestedInput !== currentInput.current || result.schemaRevision !== schemaRevision) return
+      dispatch(selectionApplied({ rowIds: result.rowIds, operation: brushOp, label: `MA: ${groupId}` }))
+      if (goToPcp) navigate('/pcp')
+    } catch (error) {
+      if (requestedInput === currentInput.current) setMatchError((error as { message?: string }).message ?? '回答者の選択に失敗しました。')
+    } finally { if (generation === matchGeneration.current) setMatching(false) }
+  }
+
+  const handleSelectCategory = async (colName: string, code: string | number | null, label?: string) => {
+    const column = getColumn(colName)
+    if (!column) return
+    const generation = ++matchGeneration.current
+    const requestedInput = inputKey
+    setMatching(true)
+    setMatchError(null)
+    try {
+      const result = await api.post<{ rowIds: string[]; schemaRevision: number }>(`/datasets/${selection.datasetId}/column-matches`, {
+        columnId: column.columnId, code: code === null ? null : normalizeCode(code), rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
+      })
+      if (generation !== matchGeneration.current || requestedInput !== currentInput.current || result.schemaRevision !== schemaRevision) return
+      dispatch(selectionApplied({ rowIds: result.rowIds, operation: brushOp, label: `${column.label || colName} = ${label || code || '(欠損)'}` }))
+    } catch (error) {
+      if (requestedInput === currentInput.current) setMatchError((error as { message?: string }).message ?? '回答者の選択に失敗しました。')
+    } finally { if (generation === matchGeneration.current) setMatching(false) }
   }
 
   const theme = useMemo(() => vizTheme(false), [])
-  const { getColor } = useRowColorResolver()
+  const { getColor } = useRowColorResolver(data)
   const domains = useL1ColorDomains(data)
   const domain = domains.find(d => d.key === pcp.colorBy)
   const groupBy = domain?.key ?? null
@@ -351,24 +397,6 @@ export default function DistributionPage() {
 
   const selectedSet = new Set(selection.selectedRowIds)
   const hoveredId = selection.hoveredRowId
-
-  const selectedCountByCodeByColumn = useMemo(() => {
-    if (!data) return {}
-    const next: Record<string, Record<string, number>> = {}
-    for (const rowId of selection.selectedRowIds) {
-      const index = data.rowIndex.get(rowId)
-      if (index === undefined) continue
-      for (const colName of cardColumns) {
-        const colValues = data.columns[colName]
-        if (!colValues) continue
-        const rawCode = normalizeCode(colValues[index])
-        const key = rawCode === null ? '__null__' : rawCode
-        if (!next[colName]) next[colName] = {}
-        next[colName][key] = (next[colName][key] ?? 0) + 1
-      }
-    }
-    return next
-  }, [cardColumns, data, selection.selectedRowIds])
 
   const contextMenuItems = [
     {
@@ -611,7 +639,7 @@ export default function DistributionPage() {
             <Card size="small">
               <Statistic
                 title="分析数値変数"
-                value={numericColumns.length}
+                value={viewMode === 'cards' ? cardColumns.filter(name => ['interval', 'ratio'].includes(getColumn(name)?.scaleType ?? '')).length : numericColumns.length}
                 prefix={<BarChartOutlined />}
                 suffix="軸"
               />
@@ -621,7 +649,7 @@ export default function DistributionPage() {
             <Card size="small">
               <Statistic
                 title="カテゴリ変数"
-                value={categoricalColumns.length}
+                value={viewMode === 'cards' ? cardEntities.filter(e => e.kind === 'ma' || !['interval', 'ratio'].includes(getColumn(e.id)?.scaleType ?? '')).length : categoricalColumns.length}
                 prefix={<TableOutlined />}
                 suffix="列"
               />
@@ -631,9 +659,9 @@ export default function DistributionPage() {
             <Card size="small">
               <Statistic
                 title="有効データ件数"
-                value={activeIndexes.length}
+                value={effectiveRowIds.length}
                 prefix={<CheckCircleOutlined />}
-                suffix={`/ ${data?.rowIds.length ?? 0} 行`}
+                suffix={`/ ${selection.allRowIds.length} 行`}
               />
             </Card>
           </Col>
@@ -665,15 +693,26 @@ export default function DistributionPage() {
             description={summaryError}
             showIcon
           />
-        ) : cardColumns.length === 0 ? (
+        ) : cardEntities.length === 0 ? (
           <EmptyStatePanel message="表示可能な設問がありません。変数選択またはフィルタをご確認ください。" />
         ) : (
           <div data-testid="question-cards-container" style={{ padding: '4px 0' }}>
+            {matchError && <Alert type="error" message={matchError} showIcon />}
+            <Pagination size="small" current={Math.min(cardPage, Math.max(1, Math.ceil(cardEntities.length / 12)))}
+              pageSize={12} total={cardEntities.length} showSizeChanger={false} onChange={setCardPage} style={{ marginBottom: 12 }} />
             <Row gutter={[16, 16]}>
-              {cardColumns.map((colName) => {
+              {visibleEntities.map((entity) => {
+                if (entity.kind === 'ma') {
+                  const summary = maSummaries.find(g => g.groupId === entity.id)
+                  return summary ? <Col key={`ma:${entity.id}`} xs={24} lg={12}>
+                    <MultiResponseCard summary={summary} loading={matching}
+                      onSelect={(ids, predicate, status, goToPcp) => void selectMa(entity.id, ids, predicate, status, goToPcp)} />
+                  </Col> : null
+                }
+                const colName = entity.id
                 const colMeta = getColumn(colName)
                 const colSum = summaryData?.[colName] || {}
-                const selectedCountByCode = selectedCountByCodeByColumn[colName] || {}
+                const selectedCountByCode = selectedCounts[colName] || {}
                 const cardProps: ComponentProps<typeof QuestionCard> & { selectedCountByCode: Record<string, number> } = {
                   summary: {
                     columnId: colName,

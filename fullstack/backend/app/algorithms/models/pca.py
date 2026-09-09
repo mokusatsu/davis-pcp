@@ -29,7 +29,7 @@ def compute_pca(
 
     # Filter columns
     all_numeric = [c for c in df.columns if c != "__rowId__" and df[c].dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64)]
-    if columns is None or len(columns) == 0:
+    if columns is None:
         selected_columns = all_numeric
     else:
         for c in columns:
@@ -52,7 +52,7 @@ def compute_pca(
     X = np.array(raw_matrix, dtype=np.float64).T
 
     # Drop NaNs
-    valid_mask = ~np.isnan(X).any(axis=1)
+    valid_mask = np.isfinite(X).all(axis=1)
     if not np.any(valid_mask):
         raise BizError("PCA_ALL_ROWS_NAN", "指定された列に有効な（非欠損）データ行がありません。")
 

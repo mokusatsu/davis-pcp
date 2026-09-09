@@ -84,6 +84,11 @@ def test_feature_ranking_iris_benchmark(tmp_path):
         ],
     }
     store.save(ds_id, meta, df)
+    store.save_codebook(ds_id, {'datasetId': ds_id, 'schemaRevision': 1, 'columns': [
+        {'columnId': column['columnId'], 'name': column['name'], 'role': 'question',
+         'scaleType': 'nominal' if column['name'] == 'Species' else 'ratio', 'missingCodes': []}
+        for column in meta['schema']
+    ]})
 
     resp = client.post("/api/v1/mining/feature-ranking", json={
         "datasetId": ds_id,
@@ -168,4 +173,3 @@ def test_feature_ranking_categorical_columns_and_ties():
     # With two identical features out of 2 valid numeric features, both should get rank 1.5
     assert tie1["scores"]["fStatistic"]["rank"] == 1.5
     assert tie2["scores"]["fStatistic"]["rank"] == 1.5
-

@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
-import { api, fetchArrowView } from '../../api/client'
+import { api, fetchArrowView, type MaDisplayAxis } from '../../api/client'
 
 export interface SchemaColumn {
   columnId: string
@@ -26,51 +26,49 @@ export interface ColumnarData {
   categories: Record<string, string[]>
 }
 
-let cache: { key: string | null; data: ColumnarData | null } = { key: null, data: null }
-let pending: { key: string; promise: Promise<ColumnarData> } | null = null
+const cache = new Map<string, ColumnarData>()
+const pending = new Map<string, Promise<ColumnarData>>()
 
 export function invalidateColumnarCache() {
-  cache = { key: null, data: null }
-  pending = null
+  cache.clear()
+  pending.clear()
 }
 
-export function useColumnarData(datasetId: string | null): ColumnarData | null {
-  const revision = useSelector((s: RootState) => s.selection.revision ?? 0)
-  const schemaRevision = useSelector((s: RootState) => s.codebook?.datasetId === datasetId ? s.codebook.schemaRevision : 0)
-  const cacheKey = datasetId ? `${datasetId}:${revision}:${schemaRevision}` : null
-  const [data, setData] = useState<ColumnarData | null>(() =>
-    cache.key === cacheKey ? cache.data : null)
-  const loadedKey = useRef(cache.key === cacheKey ? cacheKey : null)
+export function useColumnarData(datasetId: string | null, columns?: string[], maAxes?: MaDisplayAxis[]): ColumnarData | null {
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision ?? 1)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const axesKey = maAxes?.length ? JSON.stringify([...maAxes].sort((a, b) => a.key.localeCompare(b.key))) : null
+  const columnKey = columns === undefined ? null : JSON.stringify([...new Set(columns)].sort())
+  const cacheKey = datasetId ? JSON.stringify([datasetId, dataRevision, columnKey, axesKey, axesKey ? schemaRevision : null]) : null
+  const [data, setData] = useState<ColumnarData | null>(() => cacheKey ? cache.get(cacheKey) ?? null : null)
+  const loadedKey = useRef(cacheKey && cache.has(cacheKey) ? cacheKey : null)
 
   useEffect(() => {
-    if (!datasetId || !cacheKey) {
-      setData(null)
-      return
-    }
-    if (cache.key === cacheKey && cache.data) {
-      loadedKey.current = cacheKey
-      setData(cache.data)
-      return
-    }
+    if (!datasetId || !cacheKey) { setData(null); return }
+    const cached = cache.get(cacheKey)
+    if (cached) { loadedKey.current = cacheKey; setData(cached); return }
     let cancelled = false
     setData(null)
-    if (pending?.key !== cacheKey) {
-      const request = {
-        key: cacheKey,
-        promise: Promise.all([
-          api.get<{ schema: SchemaColumn[] }>(`/datasets/${datasetId}`), fetchArrowView(datasetId),
-        ]).then(([meta, view]) => buildColumnar(view.__rowId__ as string[], meta.schema, view)),
-      }
-      pending = request
-      void request.promise.then(built => {
-        if (pending === request) cache = { key: cacheKey, data: built }
-      }).catch(() => undefined).finally(() => { if (pending === request) pending = null })
+    let request = pending.get(cacheKey)
+    if (!request) {
+      const wanted: string[] | undefined = columnKey === null ? undefined : JSON.parse(columnKey)
+      const projectedAxes: MaDisplayAxis[] = axesKey ? JSON.parse(axesKey) : []
+      request = Promise.all([
+        api.get<{ schema: SchemaColumn[] }>(`/datasets/${datasetId}`),
+        projectedAxes.length ? fetchArrowView(datasetId, wanted, undefined, { maAxes: projectedAxes, expectedDataRevision: dataRevision, expectedSchemaRevision: schemaRevision }) : fetchArrowView(datasetId, wanted),
+      ]).then(([meta, view]) => buildColumnar(view.__rowId__ as string[],
+        [...(wanted === undefined ? meta.schema : meta.schema.filter(column => wanted.includes(column.name))),
+          ...projectedAxes.map(axis => ({ name: axis.key, columnId: axis.key, semanticType: 'numeric' }))], view))
+      pending.set(cacheKey, request)
+      const shared = request
+      void request.then(built => { if (pending.get(cacheKey) === shared) cache.set(cacheKey, built) })
+        .catch(() => undefined).finally(() => { if (pending.get(cacheKey) === shared) pending.delete(cacheKey) })
     }
-    void pending.promise.then(built => {
+    void request.then(built => {
       if (!cancelled) { loadedKey.current = cacheKey; setData(built) }
     }).catch(() => undefined)
     return () => { cancelled = true }
-  }, [datasetId, cacheKey, revision])
+  }, [datasetId, cacheKey, columnKey])
   return loadedKey.current === cacheKey ? data : null
 }
 

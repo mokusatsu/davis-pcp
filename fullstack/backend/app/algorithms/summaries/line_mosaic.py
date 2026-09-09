@@ -42,8 +42,8 @@ def compute_line_mosaic(
         wanted = set(row_ids)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
 
-    if df.height == 0:
-        raise BizError("MOSAIC_EMPTY_DATA", "有効なデータ行がありません。")
+    # Empty scope is a normal zero result (20a 7.5: 集計APIは0件結果を正常返却).
+    # Levels come from the codebook order, so the grid stays defined with 0 counts.
 
     col_vars = [c for c in (column_variables or []) if c in df.columns]
     row_vars = [r for r in (row_variables or []) if r in df.columns]
@@ -134,6 +134,7 @@ def compute_line_mosaic(
             "name": target_variable,
             "categories": target_categories,
             "colors": target_colors,
+            "valueLabels": (adapter.get_column_spec_optional(target_variable) or {}).get("valueLabels", {}),
         }
 
     # Initialize cells grid

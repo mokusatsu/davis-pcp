@@ -1,3 +1,4 @@
+import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -23,9 +24,16 @@ import {
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, activeVariablesSet, selectEffectiveRowIds } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { selectionApplied, activeEntitiesSet, selectEffectiveRowIds } from '../../app/store'
+import type { VariableEntity } from '../selection/variableEntities'
+import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import { useRowColorResolver } from '../../theme/useRowColor'
+import L1Legend from '../common/L1Legend'
+import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import { getBrushOp } from '../selection/SelectionMenu'
+import DiscriminantDiagnostics, { type DiscriminantDiagnosticsData } from './DiscriminantDiagnostics'
 
 export interface CanonicalAxisInfo {
   axisIndex: number
@@ -70,6 +78,7 @@ export interface BoundaryMesh {
 }
 
 export interface DiscriminantResponse {
+  diagnostics: DiscriminantDiagnosticsData
   target: string
   classes: string[]
   features: string[]
@@ -100,15 +109,32 @@ const CLASS_PALETTE = [
 ]
 
 export default function DiscriminantAnalysisPage() {
+  const { focused, zoom } = useFocusMode()
+  const { getColor, selectionColor } = useRowColorResolver()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
+  const { schemaRevision, columns: definitions } = useCodebook()
 
-  // Configuration
-  const [targetColumn, setTargetColumn] = useState<string>('')
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const entities = useSelector(selectVariableEntities)
+  const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
+    .map(item => ({ groupId: item.name, label: item.label }))
+  const candidates = definitions.filter(column => ['question', 'attribute'].includes(column.role)
+    && (column.multiResponseGroup ? added.datasetId === selection.datasetId && added.names.includes(column.name)
+      && groups.some(group => group.groupId === column.multiResponseGroup) : globalVars.activeVariableIds.includes(column.name)))
+
+  // Form state
+  const [requestedTarget, setTargetColumn] = useState<string>('')
+  const [requestedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const allColumns = candidates.filter(column => column.multiResponseGroup || ['nominal', 'ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name)
+  const targetColumn = allColumns.includes(requestedTarget) ? requestedTarget : ''
+  const targetGroup = candidates.find(column => column.name === targetColumn)?.multiResponseGroup
+  const numericColumns = candidates.filter(column => column.name !== targetColumn && (!targetGroup || column.multiResponseGroup !== targetGroup)
+    && (column.multiResponseGroup || ['ordinal', 'interval', 'ratio'].includes(column.scaleType))).map(column => column.name)
+  const selectedFeatures = requestedFeatures.filter(name => numericColumns.includes(name))
+  useEffect(() => { setTargetColumn(''); setSelectedFeatures([]) }, [selection.datasetId])
   const [method, setMethod] = useState<'lda' | 'qda' | 'stepwise'>('lda')
   const [shrinkage, setShrinkage] = useState<'none' | 'auto'>('none')
   const [priors, setPriors] = useState<'proportional' | 'uniform'>('proportional')
@@ -118,42 +144,23 @@ export default function DiscriminantAnalysisPage() {
   // Execution state
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<DiscriminantResponse | null>(null)
+  const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds,
+    targetColumn, selectedFeatures, method, shrinkage, priors, fEnter, fRemove])
+  const currentInput = useRef(inputKey)
+  currentInput.current = inputKey
+  const runVersion = useRef(0)
+  useEffect(() => {
+    setResult(null)
+    setLoading(false)
+    return () => { runVersion.current++ }
+  }, [inputKey])
 
   // Brush state on 2D Map
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [brushBox, setBrushBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
 
-  // Available columns
-  const allColumns = useMemo(() => {
-    if (!data?.schema) return []
-    return data.schema.map((c) => c.name)
-  }, [data])
-
-  const numericColumns = useMemo(() => {
-    if (!data?.schema) return []
-    return data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name)
-  }, [data])
-
-  // Initialize target and features
-  useEffect(() => {
-    if (!allColumns.length) return
-    if (!targetColumn) {
-      const defaultTarget = globalVars.targetVariableId || allColumns[allColumns.length - 1]
-      setTargetColumn(defaultTarget)
-    }
-  }, [allColumns, globalVars.targetVariableId, targetColumn])
-
-  useEffect(() => {
-    if (!targetColumn) return
-    const candidateFeats = globalVars.activeVariableIds.filter(
-      (v) => v !== targetColumn && numericColumns.includes(v)
-    )
-    if (candidateFeats.length > 0) {
-      setSelectedFeatures(candidateFeats)
-    } else {
-      setSelectedFeatures(numericColumns.filter((v) => v !== targetColumn).slice(0, 4))
-    }
-  }, [targetColumn, globalVars.activeVariableIds, numericColumns])
+  const brushStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
+  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey, focused, zoom])
 
   // Run analysis
   const handleRunAnalysis = async () => {
@@ -162,23 +169,28 @@ export default function DiscriminantAnalysisPage() {
       return
     }
     setLoading(true)
+    setResult(null)
+    const version = ++runVersion.current
     try {
       const res = await api.post<DiscriminantResponse>('/models/discriminant', {
         datasetId: selection.datasetId,
         targetColumn,
         featureColumns: selectedFeatures,
-        activeRowIds: effectiveRowIds.length ? effectiveRowIds : undefined,
+        activeRowIds: effectiveRowIds,
+        expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision,
         method,
         shrinkage,
         priors,
         stepwiseConfig: method === 'stepwise' ? { fEnter, fRemove, maxSteps: 20 } : undefined,
       })
+      if (version !== runVersion.current || currentInput.current !== inputKey) return
       setResult(res)
       message.success('判別分析を実行しました。')
     } catch (err: any) {
-      message.error(err?.message || '判別分析の実行に失敗しました。')
+      if (version === runVersion.current && currentInput.current === inputKey) message.error(err?.message || '判別分析の実行に失敗しました。')
     } finally {
-      setLoading(false)
+      if (version === runVersion.current) setLoading(false)
     }
   }
 
@@ -186,9 +198,8 @@ export default function DiscriminantAnalysisPage() {
   const selectedRowIdSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
 
   // Row selection handler
-  const handleSelectRows = (rowIds: string[], e?: React.MouseEvent) => {
-    if (!rowIds.length) return
-    const op = e?.shiftKey ? 'add' : e?.altKey ? 'subtract' : 'replace'
+  const handleSelectRows = (rowIds: string[], _event?: React.MouseEvent) => {
+    const op = getBrushOp()
     dispatch(selectionApplied({ rowIds, operation: op, label: '判別分析選択' }))
   }
 
@@ -203,7 +214,16 @@ export default function DiscriminantAnalysisPage() {
 
   // Apply stepwise variables to globalVariables
   const handleApplyStepwiseVars = (vars: string[]) => {
-    dispatch(activeVariablesSet(vars))
+    const entities: VariableEntity[] = []
+    const seen = new Set<string>()
+    for (const name of vars) {
+      const column = definitions.find(column => column.name === name)
+      if (!column) continue
+      const entity: VariableEntity = column.multiResponseGroup ? { kind: 'ma', groupId: column.multiResponseGroup } : { kind: 'column', columnId: column.columnId }
+      const key = JSON.stringify(entity)
+      if (!seen.has(key)) { seen.add(key); entities.push(entity) }
+    }
+    dispatch(activeEntitiesSet(entities))
     message.success(`グローバル有効変数を [${vars.join(', ')}] に更新しました。`)
   }
 
@@ -249,45 +269,70 @@ export default function DiscriminantAnalysisPage() {
     return padding.top + (1.0 - (ld2 - yMin) / (yMax - yMin)) * innerHeight
   }
 
-  // 2D Brush drag
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return
+  const sampleY = (sample: DiscriminantSamplePoint) => {
+    if ((result?.axes.length ?? 0) >= 2) return scaleMapY(sample.ld2)
+    const jitter = (((sample.rowId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) * 17) % 100) / 100 - 0.5) * innerHeight * 0.4
+    return padding.top + innerHeight / 2 + jitter
+  }
+
+  // Brush drag interaction
+  const plotCoordinates = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return null
     const rect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    if (!rect.width || !rect.height) return null
+    return { x: (e.clientX - rect.left) * mapWidth / rect.width, y: (e.clientY - rect.top) * mapHeight / rect.height, rect }
+  }
+  const handleMouseDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return
+    const point = plotCoordinates(e)
+    if (!point) return
+    const { x, y } = point
+    brushStart.current = { x, y, clientX: e.clientX, clientY: e.clientY }
+    e.currentTarget.setPointerCapture(e.pointerId)
     setBrushBox({ startX: x, startY: y, currentX: x, currentY: y })
   }
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!brushBox) return
-    if (!svgRef.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+  const handleMouseMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!brushStart.current) return
+    const point = plotCoordinates(e)
+    if (!point) return
+    const { x, y } = point
     setBrushBox((prev) => (prev ? { ...prev, currentX: x, currentY: y } : null))
   }
 
-  const handleMouseUp = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!brushBox || !result?.samples) return
-    const xMin = Math.min(brushBox.startX, brushBox.currentX)
-    const xMax = Math.max(brushBox.startX, brushBox.currentX)
-    const yMin = Math.min(brushBox.startY, brushBox.currentY)
-    const yMax = Math.max(brushBox.startY, brushBox.currentY)
+  const handleMouseUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const start = brushStart.current
+    const end = plotCoordinates(e)
+    brushStart.current = null
+    setBrushBox(null)
+    if (!start || !end) return
+    const xMin = Math.min(start.x, end.x)
+    const xMax = Math.max(start.x, end.x)
+    const yMin = Math.min(start.y, end.y)
+    const yMax = Math.max(start.y, end.y)
 
-    if (xMax - xMin > 4 || yMax - yMin > 4) {
+    // Check if dragging was intentional (> 4px)
+    if (Math.abs(e.clientX - start.clientX) > 4 || Math.abs(e.clientY - start.clientY) > 4) {
       const selected: string[] = []
-      for (const s of result.samples) {
-        const px = scaleMapX(s.ld1)
-        const py = result.axes.length >= 2 ? scaleMapY(s.ld2) : padding.top + innerHeight / 2
+      for (const pt of result?.samples ?? []) {
+        const px = scaleMapX(pt.ld1)
+        const py = sampleY(pt)
         if (px >= xMin && px <= xMax && py >= yMin && py <= yMax) {
-          selected.push(s.rowId)
+          selected.push(pt.rowId)
         }
       }
-      if (selected.length > 0) {
-        handleSelectRows(selected, e)
+      handleSelectRows(selected)
+    } else {
+      let nearest: string | null = null
+      let distance = 49
+      for (const pt of result?.samples ?? []) {
+        const dx = (scaleMapX(pt.ld1) - end.x) * end.rect.width / mapWidth
+        const dy = (sampleY(pt) - end.y) * end.rect.height / mapHeight
+        const squared = dx * dx + dy * dy
+        if (squared < distance) { nearest = pt.rowId; distance = squared }
       }
+      if (nearest) dispatch(selectionApplied({ rowIds: [nearest], operation: 'toggle', label: '判別分析の点選択' }))
     }
-    setBrushBox(null)
   }
 
   // Biplot dimensions
@@ -307,9 +352,9 @@ export default function DiscriminantAnalysisPage() {
   }, [result?.classes])
 
   return (
-    <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
+    <div style={{ padding: focused ? 0 : 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
       {/* Configuration Card */}
-      <Card size="small" style={{ marginBottom: 16 }}>
+      {!focused && <Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 12]} align="middle">
           <Col xs={24} sm={12} md={6}>
             <Typography.Text strong>目的クラス Y (Target / Class):</Typography.Text>
@@ -382,6 +427,14 @@ export default function DiscriminantAnalysisPage() {
           </Col>
         </Row>
 
+        <Space style={{ marginTop: 12 }} wrap>
+          <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+            const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+            setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+          }} />
+          <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
+        </Space>
+
         {method === 'stepwise' && (
           <Row gutter={[16, 8]} style={{ marginTop: 12 }} align="middle">
             <Col xs={12} sm={6}>
@@ -446,8 +499,9 @@ export default function DiscriminantAnalysisPage() {
             style={{ marginTop: 12 }}
           />
         )}
-      </Card>
+      </Card>}
 
+      {!focused && result?.diagnostics && <Card size="small" style={{ marginBottom: 16 }}><DiscriminantDiagnostics value={result.diagnostics} /></Card>}
       {/* Main Content */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -458,8 +512,10 @@ export default function DiscriminantAnalysisPage() {
           {/* Top Row: 2D Canonical Map + Loadings Biplot */}
           <Row gutter={[16, 16]}>
             {/* 2D Canonical Map */}
-            <Col xs={24} lg={13}>
+            <Col xs={24} lg={focused ? 24 : 13}>
+              <FocusTarget id="discriminant-map" title="正準判別空間マップ">
               <Card
+                extra={!focused && <FocusEnterButton targetId="discriminant-map" title="正準判別空間マップ" />}
                 size="small"
                 title={
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -477,12 +533,15 @@ export default function DiscriminantAnalysisPage() {
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
                   <svg
                     ref={svgRef}
-                    width={mapWidth}
-                    height={mapHeight}
-                    style={{ background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none' }}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
+                    data-testid="discriminant-map-svg"
+                    viewBox={`0 0 ${mapWidth} ${mapHeight}`}
+                    width="100%"
+                    style={{ aspectRatio: `${mapWidth} / ${mapHeight}`, touchAction: 'none', background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none' }}
+                    onPointerDown={handleMouseDown}
+                    onPointerMove={handleMouseMove}
+                    onPointerUp={handleMouseUp}
+                    onPointerCancel={() => { brushStart.current = null; setBrushBox(null) }}
+                    onLostPointerCapture={() => { brushStart.current = null; setBrushBox(null) }}
                   >
                     {/* Boundary Mesh Background (if available) */}
                     {result.boundaryMesh && (
@@ -553,26 +612,26 @@ export default function DiscriminantAnalysisPage() {
                     {/* Samples */}
                     {result.samples.map((s) => {
                       const cx = scaleMapX(s.ld1)
-                      const jitterY = result.axes.length < 2
-                        ? (((s.rowId.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) * 17) % 100) / 100 - 0.5) * (innerHeight * 0.4)
-                        : 0
-                      const cy = result.axes.length >= 2 ? scaleMapY(s.ld2) : padding.top + innerHeight / 2 + jitterY
+                      const cy = sampleY(s)
                       const isSelected = selectedRowIdSet.has(s.rowId)
-                      const color = classColorMap[s.actualClass] || '#1890ff'
+                      const color = getColor(s.rowId)
 
                       return (
+                        <g key={s.rowId}>
+                        {s.isMisclassified && <circle cx={cx} cy={cy} r={isSelected ? 9 : 7} fill="none" stroke="#ff4d4f" strokeWidth={1.5} />}
                         <circle
-                          key={s.rowId}
+                          data-row-id={s.rowId}
                           cx={cx}
                           cy={cy}
                           r={isSelected ? 6 : 4}
-                          fill={isSelected ? '#ff4d4f' : color}
-                          stroke={isSelected ? '#a8071a' : s.isMisclassified ? '#ff4d4f' : '#ffffff'}
-                          strokeWidth={isSelected ? 2.5 : s.isMisclassified ? 2.0 : 0.8}
+                          fill={color}
+                          stroke={isSelected ? selectionColor : '#ffffff'}
+                          strokeWidth={isSelected ? 2.5 : 0.8}
                           opacity={0.88}
                         >
                           <title>{`Row: ${s.rowId}\nActual: ${s.actualClass}\nPred: ${s.predictedClass}\nLD1: ${s.ld1}\nLD2: ${s.ld2}\nDist: ${s.mahalanobisDistance}`}</title>
                         </circle>
+                        </g>
                       )
                     })}
 
@@ -583,9 +642,10 @@ export default function DiscriminantAnalysisPage() {
                         y={Math.min(brushBox.startY, brushBox.currentY)}
                         width={Math.abs(brushBox.currentX - brushBox.startX)}
                         height={Math.abs(brushBox.currentY - brushBox.startY)}
-                        fill="rgba(24, 144, 255, 0.2)"
-                        stroke="#1890ff"
-                        strokeDasharray="3 3"
+                        fill="rgba(42,120,214,0.15)"
+                        stroke="#2a78d6"
+                        strokeWidth={1.5}
+                        pointerEvents="none"
                       />
                     )}
 
@@ -614,9 +674,11 @@ export default function DiscriminantAnalysisPage() {
                   </svg>
                 </div>
 
+                <L1Legend />
                 {/* Class legend */}
                 <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-                  {result.classes.map((cls) => (
+                  {result.boundaryMesh && <Typography.Text type="secondary" style={{ fontSize: 11 }}>背景の予測クラス:</Typography.Text>}
+                  {result.boundaryMesh && result.classes.map((cls) => (
                     <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <div
                         style={{
@@ -634,10 +696,11 @@ export default function DiscriminantAnalysisPage() {
                   </Typography.Text>
                 </div>
               </Card>
+              </FocusTarget>
             </Col>
 
             {/* Loadings Biplot */}
-            <Col xs={24} lg={11}>
+            {!focused && <Col xs={24} lg={11}>
               <Card size="small" title="▼ 正準判別負荷量バイプロット (Canonical Loadings)">
                 {result.axes.length >= 2 ? (
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -730,9 +793,10 @@ export default function DiscriminantAnalysisPage() {
                   </div>
                 )}
               </Card>
-            </Col>
+            </Col>}
           </Row>
 
+          {!focused && <>
           {/* Diagnostics Bar */}
           <Card size="small">
             <Row gutter={[16, 8]} align="middle">
@@ -837,6 +901,7 @@ export default function DiscriminantAnalysisPage() {
               />
             </Card>
           )}
+          </>}
         </Space>
       ) : (
         <Card size="small" style={{ textAlign: 'center', padding: 40 }}>

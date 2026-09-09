@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
@@ -8,6 +8,7 @@ import { buildAxes, buildValues } from '../src/features/pcp/usePcpPipeline'
 import { normalizeCode, useCodebookColumn } from '../src/features/dataset/useCodebookColumn'
 import TablePage from '../src/features/table/TablePage'
 import type { CodebookColumn } from '../src/api/client'
+import { api } from '../src/api/client'
 
 const fixture = vi.hoisted(() => ({
   rowIds: ['r1', 'r2', 'r3'], rowIndex: new Map([['r1', 0], ['r2', 1], ['r3', 2]]),
@@ -27,7 +28,7 @@ function testStore() {
     codebook: { ...state.codebook, datasetId: 'ds', columns: [spec] },
   }) })
 }
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('codebook propagation', () => {
   it('uses codebook order, zero-count categories and missing mask in PCP geometry', () => {
@@ -40,13 +41,19 @@ describe('codebook propagation', () => {
     expect(normalizeCode(1.0)).toBe('1')
     expect(normalizeCode('01')).toBe('01')
   })
-  it('switches table labels and keeps raw code in tooltip', () => {
+  it('switches table labels and keeps raw code in tooltip', async () => {
+    vi.spyOn(api, 'post').mockImplementation(async (_path, body: any) => ({
+      total: 3, entities: [{ kind: 'column', columnId: 'q', label: '満足度', sortable: true }],
+      rows: fixture.rowIds.map((rowId, i) => ({ rowId, cells: [{ value: fixture.columns.Q[i],
+        text: body.displayMode === 'raw' ? String(fixture.columns.Q[i]) : ['満足', '不満', '無回答'][i], isMissing: i === 2 }] })),
+    }) as any)
     render(<Provider store={testStore()}><TablePage /></Provider>)
-    expect(screen.getByText('満足 (1)')).toBeInTheDocument()
+    expect(await screen.findByText('満足 (1)')).toBeInTheDocument()
     const cell = screen.getByText('満足 (1)')
     expect(cell.closest('[title]')?.getAttribute('title')).toContain('生コード')
     fireEvent.click(within(screen.getByTestId('table-value-display')).getByText('生値'))
-    expect(screen.queryByText('満足 (1)')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('満足 (1)')).not.toBeInTheDocument())
+    expect(api.post).toHaveBeenLastCalledWith('/datasets/ds/table-view', expect.objectContaining({ limit: 100, displayMode: 'raw', entityIds: [{ kind: 'column', columnId: 'q' }] }))
   })
   it('ignores a late response from the previous dataset', () => {
     let state = codebookSlice.reducer(undefined, fetchCodebookThunk.pending('old', 'old-ds'))

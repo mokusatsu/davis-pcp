@@ -29,6 +29,7 @@ from .api import statistics as statistics_api
 from .api import observations as observations_api
 from .api import logistic as logistic_api
 from .api import discriminant as discriminant_api
+from .api import multi_response as multi_response_api
 from .config import settings
 from .domain.errors import BizError, biz_error_handler
 
@@ -83,6 +84,7 @@ app.include_router(statistics_api.router, prefix="/api/v1")
 app.include_router(observations_api.router, prefix="/api/v1")
 app.include_router(logistic_api.router, prefix="/api/v1")
 app.include_router(discriminant_api.router, prefix="/api/v1")
+app.include_router(multi_response_api.router, prefix="/api/v1")
 
 _frontend_env = os.environ.get("DAVIS_PCP_FRONTEND_DIST")
 _frontend_dist = Path(_frontend_env) if _frontend_env else (Path(__file__).resolve().parents[2] / "frontend" / "dist")

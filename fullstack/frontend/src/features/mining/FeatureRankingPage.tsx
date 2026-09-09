@@ -1,8 +1,10 @@
+import { selectOrdinaryVariables } from '../../app/store'
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useCodebook } from '../dataset/useCodebookColumn'
 import {
   Card,
   Row,
@@ -24,31 +26,10 @@ import {
 } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState, AppDispatch } from '../../app/store'
-import { activeVariablesSet, variableOrderReordered, selectEffectiveRowIds } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { activeEntitiesSet, variableOrderReordered, selectEffectiveRowIds, selectVariableEntities } from '../../app/store'
+import MaAxisPicker from '../pcp/MaAxisPicker'
+import type { VariableEntity } from '../selection/variableEntities'
 import { api } from '../../api/client'
-
-function computePearson(x: number[], y: number[]): number {
-  let n = 0
-  let sumX = 0, sumY = 0, sumX2 = 0, sumY2 = 0, sumXY = 0
-  for (let i = 0; i < x.length; i++) {
-    const xi = x[i]
-    const yi = y[i]
-    if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue
-    n++
-    sumX += xi
-    sumY += yi
-    sumX2 += xi * xi
-    sumY2 += yi * yi
-    sumXY += xi * yi
-  }
-  if (n < 2) return 0
-  const cov = sumXY - (sumX * sumY) / n
-  const varX = sumX2 - (sumX * sumX) / n
-  const varY = sumY2 - (sumY * sumY) / n
-  const denom = Math.sqrt(Math.max(0, varX) * Math.max(0, varY))
-  return denom > 1e-12 ? cov / denom : 0
-}
 
 export interface MetricScoreItem {
   rawScore: number
@@ -72,9 +53,13 @@ export interface VariableRankItem {
 }
 
 export interface FeatureRankingResponse {
+  scopeCount: number
+  usedRows: number
+  ordinaryMissingExcluded: number
   target?: string | null
   taskType: 'classification' | 'regression' | 'unsupervised'
   evaluatedVariables: string[]
+  redundancyMatrix: number[][]
   rankings: VariableRankItem[]
   suggestedTopK: number
   executionTimeMs: number
@@ -92,12 +77,24 @@ const METHOD_COLORS: Record<string, string> = {
 export default function FeatureRankingPage() {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const globalVars = useSelector((s: RootState) => s.globalVariables)
+  const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId)
+  const { schemaRevision, columns: dictionary } = useCodebook()
+  const entities = useSelector(selectVariableEntities)
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key)
+    && ['question', 'attribute'].includes(item.role)).map(item => ({ groupId: item.name, label: item.label }))
+  const [maChoices, setMaChoices] = useState<{ datasetId: string; names: string[] } | null>(null)
+  const candidates = dictionary.filter(c => ['question', 'attribute'].includes(c.role)
+    && (c.multiResponseGroup ? maChoices?.datasetId === selection.datasetId && maChoices.names.includes(c.name)
+      && groups.some(g => g.groupId === c.multiResponseGroup)
+      : ['nominal', 'ordinal', 'interval', 'ratio'].includes(c.scaleType) && globalVars.activeVariableIds.includes(c.name)))
 
-  const [targetColumn, setTargetColumn] = useState<string | undefined>(undefined)
-  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const [requestedTarget, setTargetColumn] = useState<string | undefined>(undefined)
+  const targetColumn = candidates.find(c => c.name === requestedTarget)?.name
+  const targetGroup = candidates.find(c => c.name === targetColumn)?.multiResponseGroup
+  const [requestedFeatures, setSelectedFeatures] = useState<string[]>([])
+  const featureCandidates = candidates.filter(c => c.name !== targetColumn && (!targetGroup || c.multiResponseGroup !== targetGroup))
+  const selectedFeatures = requestedFeatures.filter(name => featureCandidates.some(c => c.name === name))
   const [selectedMethods, setSelectedMethods] = useState<string[]>([
     'relieff',
     'mutual_info',
@@ -111,19 +108,25 @@ export default function FeatureRankingPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<FeatureRankingResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const inputContext = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision,
+    effectiveRowIds, targetColumn, selectedFeatures, selectedMethods])
+  const contextRef = useRef(inputContext)
+  contextRef.current = inputContext
+  const requestVersion = useRef(0)
+  useEffect(() => {
+    requestVersion.current++
+    setResult(null)
+    setError(null)
+    setLoading(false)
+  }, [inputContext])
 
   // Initialize targets and features
   useEffect(() => {
-    if (!data?.schema) return
-    const schema = data.schema
-    const defaultTarget = globalVars.targetVariableId || schema.find((c) => c.semanticType !== 'numeric')?.name || schema[schema.length - 1]?.name
+    if (!dictionary.length) return
+    const defaultTarget = candidates.find(c => c.name === globalVars.targetVariableId)?.name
     setTargetColumn(defaultTarget)
-
-    const numericCols = schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name)
-    const activeSet = new Set(globalVars.activeVariableIds)
-    const defaultFeatures = numericCols.filter((c) => c !== defaultTarget && (activeSet.size === 0 || activeSet.has(c)))
-    setSelectedFeatures(defaultFeatures.length > 0 ? defaultFeatures : numericCols.filter((c) => c !== defaultTarget))
-  }, [data, globalVars.targetVariableId])
+    setSelectedFeatures(candidates.filter(c => c.name !== defaultTarget && ['interval', 'ratio'].includes(c.scaleType)).map(c => c.name))
+  }, [selection.datasetId, dictionary, globalVars.targetVariableId])
 
   const runRanking = async () => {
     if (!selection.datasetId || selectedFeatures.length === 0) {
@@ -132,33 +135,32 @@ export default function FeatureRankingPage() {
     }
     setLoading(true)
     setError(null)
+    const version = ++requestVersion.current
+    const startedContext = contextRef.current
+    const isCurrent = () => version === requestVersion.current && startedContext === contextRef.current
     try {
       const resp = await api.post<FeatureRankingResponse>('/mining/feature-ranking', {
         datasetId: selection.datasetId,
         targetColumn: targetColumn || undefined,
         featureColumns: selectedFeatures,
         methods: selectedMethods,
-        activeRowIds: effectiveRowIds.length > 0 ? effectiveRowIds : undefined,
+        activeRowIds: effectiveRowIds,
+        expectedSchemaRevision: schemaRevision,
+        expectedDataRevision: selection.dataRevision,
         seed: 42,
       })
+      if (!isCurrent()) return
       setResult(resp)
       setTopK(resp.suggestedTopK || Math.min(resp.rankings.length, 3))
       message.success(`特徴量ランキング計算完了 (${resp.executionTimeMs}ms)`)
     } catch (err) {
+      if (!isCurrent()) return
       const e = err as { message?: string }
       setError(e.message || '特徴量ランキング計算に失敗しました。')
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }
-
-  // Auto-run once dataset is available
-  useEffect(() => {
-    if (selection.datasetId && selectedFeatures.length > 0 && !result && !loading) {
-      void runRanking()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection.datasetId, selectedFeatures.length])
 
   // Top-K items based on selection metric
   const sortedRankings = useMemo(() => {
@@ -181,30 +183,20 @@ export default function FeatureRankingPage() {
   }, [sortedRankings, topK])
 
   const pairwiseCorr = useMemo(() => {
-    if (!data || !result) return new Map<string, number>()
+    if (!result) return new Map<string, number>()
     const map = new Map<string, number>()
-    const vars = result.rankings.map((r) => r.variable)
-    const effectiveSet = new Set(effectiveRowIds)
-    const indices: number[] = []
-    for (let i = 0; i < data.rowIds.length; i++) {
-      if (effectiveSet.has(data.rowIds[i])) indices.push(i)
-    }
+    const vars = result.evaluatedVariables
     for (let i = 0; i < vars.length; i++) {
       for (let j = i + 1; j < vars.length; j++) {
         const v1 = vars[i]
         const v2 = vars[j]
-        const arr1 = data.numeric[v1]
-        const arr2 = data.numeric[v2]
-        if (!arr1 || !arr2) continue
-        const sub1 = indices.map((idx) => arr1[idx])
-        const sub2 = indices.map((idx) => arr2[idx])
-        const corr = Math.abs(computePearson(sub1, sub2))
+        const corr = result.redundancyMatrix[i][j]
         map.set(`${v1}:::${v2}`, corr)
         map.set(`${v2}:::${v1}`, corr)
       }
     }
     return map
-  }, [data, result, effectiveRowIds])
+  }, [result])
 
   const getDynamicRedundancy = useCallback((variable: string, fallback: number): number => {
     if (!pairwiseCorr.size || topKVariables.length === 0) return fallback
@@ -226,9 +218,19 @@ export default function FeatureRankingPage() {
 
   const handleApplyToActiveVariables = () => {
     if (topKVariables.length === 0) return
-    dispatch(activeVariablesSet(topKVariables))
-    const remaining = globalVars.allVariables.filter((id) => !topKVariables.includes(id))
-    dispatch(variableOrderReordered([...topKVariables, ...remaining]))
+    const selected: VariableEntity[] = []
+    for (const name of topKVariables) {
+      const column = dictionary.find(c => c.name === name)
+      if (!column) continue
+      const entity: VariableEntity = column.multiResponseGroup ? { kind: 'ma', groupId: column.multiResponseGroup }
+        : { kind: 'column', columnId: column.columnId }
+      if (!selected.some(item => JSON.stringify(item) === JSON.stringify(entity))) selected.push(entity)
+    }
+    dispatch(activeEntitiesSet(selected))
+    const orderedNames = selected.map(entity => entity.kind === 'ma' ? entity.groupId
+      : dictionary.find(c => c.columnId === entity.columnId)!.name)
+    const remaining = entities.items.map(item => item.name).filter(name => !orderedNames.includes(name))
+    dispatch(variableOrderReordered([...orderedNames, ...remaining]))
     message.success(`上位 ${topKVariables.length} 変数を共通 Variable Selector に適用しました！`)
   }
 
@@ -332,7 +334,7 @@ export default function FeatureRankingPage() {
               placeholder="教師なし (Unsupervised)"
               value={targetColumn}
               onChange={(v) => setTargetColumn(v)}
-              options={(data?.schema || []).map((c) => ({ label: `${c.name} (${c.semanticType})`, value: c.name }))}
+              options={candidates.map(c => ({ label: `${c.name}: ${c.label || c.name}`, value: c.name }))}
               data-testid="ranking-target-select"
             />
           </Col>
@@ -344,8 +346,7 @@ export default function FeatureRankingPage() {
               style={{ width: '100%', marginTop: 4 }}
               value={selectedFeatures}
               onChange={setSelectedFeatures}
-              options={(data?.schema || [])
-                .filter((c) => c.name !== targetColumn && c.semanticType === 'numeric')
+              options={featureCandidates
                 .map((c) => ({ label: c.name, value: c.name }))}
               data-testid="ranking-features-select"
             />
@@ -355,6 +356,7 @@ export default function FeatureRankingPage() {
               type="primary"
               icon={<ThunderboltOutlined />}
               loading={loading}
+              disabled={selectedFeatures.length === 0 || selectedMethods.length === 0}
               onClick={runRanking}
               style={{ width: '100%', marginTop: 20 }}
               data-testid="compute-ranking-btn"
@@ -363,6 +365,15 @@ export default function FeatureRankingPage() {
             </Button>
           </Col>
         </Row>
+
+        <div style={{ marginTop: 10 }}>
+          <MaAxisPicker allowCount={false} groups={groups} columns={dictionary} onAdd={axes => {
+            const added = axes.map(axis => dictionary.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
+            setMaChoices({ datasetId: selection.datasetId!, names: [...new Set([...(maChoices?.datasetId === selection.datasetId ? maChoices.names : []), ...added])] })
+            setSelectedFeatures(previous => [...new Set([...previous, ...added])])
+          }} />
+          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>MAは指定した子だけを評価します。重要度は子別です。</Typography.Text>
+        </div>
 
         <div style={{ marginTop: 10 }}>
           <Typography.Text strong style={{ fontSize: 12, marginRight: 8 }}>評価手法:</Typography.Text>
@@ -381,6 +392,10 @@ export default function FeatureRankingPage() {
       </Card>
 
       {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+      {result && <Typography.Text type="secondary">
+        分析対象 {result.usedRows} / {result.scopeCount} 行
+        （除外 {result.scopeCount - result.usedRows} 行、うち通常変数の欠損 {result.ordinaryMissingExcluded} 行）
+      </Typography.Text>}
 
       {/* Top-K Action Bar (Key Requirement FEAT-014) */}
       {result && (

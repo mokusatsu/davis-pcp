@@ -54,3 +54,20 @@ def test_line_mosaic_empty_or_defaults():
     assert res["grid"]["nCols"] >= 1
     assert res["grid"]["nRows"] >= 1
     assert sum(c["totalCount"] for c in res["cells"]) == 3
+
+
+def test_line_mosaic_empty_scope_returns_zero_cells():
+    df = pl.DataFrame({
+        "A": ["a1", "a2"],
+        "B": ["b1", "b2"],
+    })
+    codebook = {"columns": [
+        {"columnId": "A", "name": "A", "valueLabels": {"a1": "a1", "a2": "a2"},
+         "categoryOrder": ["a1", "a2"], "missingCodes": []},
+        {"columnId": "B", "name": "B", "valueLabels": {"b1": "b1", "b2": "b2"},
+         "categoryOrder": ["b1", "b2"], "missingCodes": []},
+    ]}
+    res = compute_line_mosaic(df.head(0), column_variables=["A"], row_variables=["B"], codebook=codebook)
+    assert res["grid"]["nCols"] == 2 and res["grid"]["nRows"] == 2
+    assert sum(c["totalCount"] for c in res["cells"]) == 0
+    assert all(c["rowIds"] == [] for c in res["cells"])

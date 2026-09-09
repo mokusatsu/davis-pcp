@@ -2,7 +2,7 @@ import { l1Index, useL1ColorDomains } from './useL1ColorDomain'
 import { useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../app/store'
-import { useColumnarData } from '../features/pcp/useDatasetColumns'
+import { useColumnarData, type ColumnarData } from '../features/pcp/useDatasetColumns'
 import { composedColor, l1Color, vizTheme, SELECTION, CONTEXT_LINE } from './viz'
 
 export interface RowColorResolver {
@@ -18,10 +18,11 @@ export interface RowColorResolver {
  * Shared hook that resolves row colors based on L1 (nominal scale colorBy)
  * and L2 (analytical cluster groups) per AGENTS.md rule 4.
  */
-export function useRowColorResolver(): RowColorResolver {
+export function useRowColorResolver(source?: ColumnarData | null): RowColorResolver {
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
-  const data = useColumnarData(selection.datasetId)
+  const loaded = useColumnarData(source === undefined ? selection.datasetId : null, pcp.colorBy ? [pcp.colorBy] : [])
+  const data = source === undefined ? loaded : source
   const theme = useMemo(() => vizTheme(false), [])
 
   const domains = useL1ColorDomains(data)

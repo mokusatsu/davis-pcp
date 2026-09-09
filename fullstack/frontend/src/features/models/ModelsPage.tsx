@@ -8,8 +8,8 @@ import {
 } from 'antd'
 import { AimOutlined, BranchesOutlined, CheckCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
-import { selectionApplied, modelResultStored } from '../../app/store'
-import { useColumnarData } from '../pcp/useDatasetColumns'
+import { selectionApplied, modelResultStored, selectEffectiveRowIds, selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
+import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
@@ -33,6 +33,8 @@ interface TreeNode {
 }
 
 interface ModelResponse {
+  scopeCount: number
+  ordinaryMissingExcluded: number
   resultId: string
   modelType: string
   taskType: string
@@ -43,7 +45,7 @@ interface ModelResponse {
   featureImportance: Record<string, number>
   leafMembership?: LeafMembership[]
   treeStructures?: TreeNode[]
-  representativeTree?: { index: number; forestAgreement: number | null; treeAgreements: number[] | null }
+  representativeTree?: { index: number; forestAgreement: number | null; treeAgreements: number[] | null; forestMae: number | null; treeMaes: number[] | null }
   classLabels?: string[] | null
   nodeCount?: number
   leafCount?: number
@@ -56,12 +58,21 @@ export default function ModelsPage() {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const { focused, isTargetActive } = useFocusMode()
-  const data = useColumnarData(selection.datasetId)
-  const { columns: codebookColumns, schemaRevision, getColumn } = useCodebook()
+  const rowIds = useSelector(selectEffectiveRowIds)
+  const globalVariables = useSelector(selectOrdinaryVariables)
+  const entities = useSelector(selectVariableEntities)
+  const { columns: codebookColumns, schemaRevision } = useCodebook()
   const contextRef = useRef('')
-  contextRef.current = `${selection.datasetId}:${schemaRevision}`
+  const requestVersion = useRef(0)
   const [modelType, setModelType] = useState<'decision_tree' | 'random_forest'>('decision_tree')
   const [target, setTarget] = useState<string | null>(null)
+  const [chosen, setChosen] = useState<{ datasetId: string; names: string[]; children: string[] } | null>(null)
+  const current = chosen?.datasetId === selection.datasetId ? chosen : null
+  const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key)
+    && ['question', 'attribute'].includes(item.role)).map(item => ({ groupId: item.name, label: item.label }))
+  const candidates = codebookColumns.filter(c => ['question', 'attribute'].includes(c.role)
+    && (c.multiResponseGroup ? current?.children.includes(c.name) && groups.some(g => g.groupId === c.multiResponseGroup)
+      : ['nominal', 'ordinal', 'interval', 'ratio'].includes(c.scaleType) && globalVariables.activeVariableIds.includes(c.name)))
   const [maxDepth, setMaxDepth] = useState(4)
   const [nEstimators, setNEstimators] = useState(100)
   const storedModel = useSelector((s: RootState) => s.selection.modelResult) as ModelResponse | null
@@ -73,18 +84,24 @@ export default function ModelsPage() {
   }, [storedModel])
   const [error, setError] = useState<{ message: string } | null>(null)
   const [running, setRunning] = useState(false)
-  useEffect(() => { setResult(null); setRunning(false); dispatch(modelResultStored(null)) }, [schemaRevision, selection.datasetId, dispatch])
-
-  const numericColumns = data?.schema.filter((c) => {
-    const spec = getColumn(c.name)
-    return spec ? spec.role === 'attribute' && ['nominal', 'ordinal', 'interval', 'ratio'].includes(spec.scaleType) : c.semanticType === 'numeric'
-  }).map((c) => c.name) ?? []
-  const allColumns = data?.schema.map((c) => c.name) ?? []
-  const targetValue = target && allColumns.includes(target) ? target : codebookColumns.find(c => c.role === 'question')?.name ?? allColumns.find((c) => !numericColumns.includes(c)) ?? allColumns[numericColumns.length - 1] ?? null
+  const allColumns = candidates.map(c => c.name)
+  const targetValue = target && allColumns.includes(target) ? target : candidates.find(c => c.role === 'question' && !c.multiResponseGroup)?.name ?? null
+  const targetGroup = candidates.find(c => c.name === targetValue)?.multiResponseGroup
+  const featureCandidates = candidates.filter(c => c.name !== targetValue && (!targetGroup || c.multiResponseGroup !== targetGroup))
+  const numericColumns = (current?.names ?? []).filter(name => featureCandidates.some(c => c.name === name))
+  const inputContext = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, numericColumns,
+    targetValue, modelType, maxDepth, nEstimators])
+  contextRef.current = inputContext
+  useEffect(() => {
+    requestVersion.current++
+    setResult(null); setRunning(false); setError(null); dispatch(modelResultStored(null))
+  }, [inputContext, dispatch])
 
   const runModel = async () => {
-    if (!selection.datasetId || !targetValue) return
+    if (!selection.datasetId || !targetValue || !numericColumns.length) return
     const context = contextRef.current
+    const version = ++requestVersion.current
+    const isCurrent = () => context === contextRef.current && version === requestVersion.current
     setRunning(true)
     setError(null)
     try {
@@ -97,15 +114,18 @@ export default function ModelsPage() {
         maxDepth,
         nEstimators,
         seed: 42,
+        rowIds,
+        expectedSchemaRevision: schemaRevision,
+        expectedDataRevision: selection.dataRevision,
       })
-      if (context !== contextRef.current) return
+      if (!isCurrent()) return
       setResult(response)
       dispatch(modelResultStored(response))
       message.success(`${modelType === 'decision_tree' ? '決定木' : 'ランダムフォレスト'}学習完了`)
     } catch (err) {
-      if (context === contextRef.current) setError(err as { message: string })
+      if (isCurrent()) setError(err as { message: string })
     } finally {
-      if (context === contextRef.current) setRunning(false)
+      if (isCurrent()) setRunning(false)
     }
   }
 
@@ -144,6 +164,7 @@ export default function ModelsPage() {
                 type="primary"
                 icon={<ThunderboltOutlined />}
                 loading={running}
+                disabled={!targetValue || !numericColumns.length}
                 onClick={() => void runModel()}
               >
                 モデル学習
@@ -179,16 +200,31 @@ export default function ModelsPage() {
               )}
               <Col>
                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  説明変数: 数値列 {numericColumns.filter((c) => c !== targetValue).length}本
+                  説明変数: {numericColumns.length}項目
                 </Typography.Text>
               </Col>
             </Row>
+            <Space wrap>
+              <Typography.Text>説明変数:</Typography.Text>
+              <Select mode="multiple" aria-label="モデルの説明変数" style={{ minWidth: 300 }} maxTagCount={4} value={numericColumns}
+                options={featureCandidates.map(c => ({ value: c.name, label: c.multiResponseOptionLabel || c.label || c.name }))}
+                onChange={(names: string[]) => setChosen({ datasetId: selection.datasetId!, names, children: current?.children ?? [] })} />
+              <MaAxisPicker allowCount={false} groups={groups} columns={codebookColumns} onAdd={axes => {
+                const added = axes.map(axis => codebookColumns.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
+                setChosen({ datasetId: selection.datasetId!, names: [...new Set([...numericColumns, ...added])], children: [...new Set([...(current?.children ?? []), ...added])] })
+              }} />
+              <Typography.Text type="secondary">MAの重要度は子別です。</Typography.Text>
+            </Space>
             {error && <Alert type="error" showIcon message={error.message} style={{ marginTop: 6 }} />}
           </Space>
         </Card>
       )}
 
       {/* Summary KPI Cards */}
+      {!focused && result && <Typography.Text type="secondary">
+        分析対象 {result.trainedRows} / {result.scopeCount} 行
+        （除外 {result.scopeCount - result.trainedRows} 行、うち通常変数の欠損 {result.ordinaryMissingExcluded} 行）
+      </Typography.Text>}
       {!focused && result && (
         <Row gutter={[12, 12]}>
           <Col xs={12} sm={6}>
@@ -303,7 +339,9 @@ export default function ModelsPage() {
               onLeafSelect={selectLeaf}
               headerNote={
                 result.modelType === 'random_forest' && result.representativeTree
-                  ? ` — 森の予測との一致率 ${(result.representativeTree.forestAgreement! * 100).toFixed(1)}%（木${result.representativeTree.index}／${result.representativeTree.treeAgreements?.length}本中、最も高い）`
+                  ? result.taskType === 'regression'
+                    ? ` — 森の予測との平均絶対差 ${result.representativeTree.forestMae?.toFixed(4)}（木${result.representativeTree.index}／${result.representativeTree.treeMaes?.length}本中、最小。学習行で比較）`
+                    : ` — 森の予測との一致率 ${(result.representativeTree.forestAgreement! * 100).toFixed(1)}%（木${result.representativeTree.index}／${result.representativeTree.treeAgreements?.length}本中、最も高い）`
                   : undefined
               }
             />
@@ -434,7 +472,9 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
             const isActive = node.nodeId === activeLeafNodeId
             return (
               <g key={node.nodeId} style={{ cursor: 'pointer' }}
+                role="button" tabIndex={0} aria-label={`葉${node.nodeId}の${node.count}行を選択`} aria-pressed={isActive}
                 onClick={() => selectByNode(node.nodeId)}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectByNode(node.nodeId) } }}
                 data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`}
               >
                 <title>クリックでこのリーフの行を選択{isActive ? '（選択中）' : ''}</title>

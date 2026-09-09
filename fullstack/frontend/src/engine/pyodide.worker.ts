@@ -4,6 +4,8 @@
  * All dependencies and wheels are loaded from local static assets.
  */
 
+import { createSerialQueue } from './serialQueue'
+
 declare const self: DedicatedWorkerGlobalScope & {
   loadPyodide: (options: { indexURL: string }) => Promise<any>
 }
@@ -263,13 +265,11 @@ async function handleApiRequest(msg: WorkerApiRequest) {
 
     // Sync filesystem if mutative operation
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      try {
-        const FS = pyodideInstance.FS
-        if (FS.filesystems?.IDBFS) {
-          FS.syncfs(false, () => {})
-        }
-      } catch {
-        /* ignore */
+      const FS = pyodideInstance.FS
+      if (FS.filesystems?.IDBFS) {
+        await new Promise<void>((resolve, reject) => {
+          FS.syncfs(false, (error: unknown) => error ? reject(error) : resolve())
+        })
       }
     }
 
@@ -309,11 +309,14 @@ async function handleApiRequest(msg: WorkerApiRequest) {
   }
 }
 
-self.onmessage = async (e: MessageEvent<WorkerIncomingMessage>) => {
+const enqueue = createSerialQueue()
+self.onmessage = (e: MessageEvent<WorkerIncomingMessage>) => {
   const msg = e.data
-  if (msg.type === 'INIT') {
-    await initPyodide(msg.pyodideBaseUrl)
-  } else if (msg.type === 'REQUEST') {
-    await handleApiRequest(msg)
-  }
+  void enqueue(async () => {
+    if (msg.type === 'INIT') {
+      await initPyodide(msg.pyodideBaseUrl)
+    } else if (msg.type === 'REQUEST') {
+      await handleApiRequest(msg)
+    }
+  }).catch(err => postStatus('error', 0, err?.message || String(err)))
 }

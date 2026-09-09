@@ -86,6 +86,7 @@ export default function AppShell() {
   const loadDataset = useCallback(async (datasetId: string, name?: string) => {
     const meta = await api.get<{
       name: string
+      dataRevision: number
       schema: Array<{
         columnId: string
         name: string
@@ -95,13 +96,14 @@ export default function AppShell() {
       }>
     }>(`/datasets/${datasetId}`)
     const { fetchArrowView } = await import('../api/client')
-    const data = await fetchArrowView(datasetId)
-    dispatch(datasetLoaded({ datasetId, name: name || meta.name, rowIds: data.__rowId__ as string[] }))
+    const data = await fetchArrowView(datasetId, [])
+    dispatch(datasetLoaded({ datasetId, name: name || meta.name, rowIds: data.__rowId__ as string[], dataRevision: meta.dataRevision }))
 
     const colNames = meta.schema.map((c) => c.name)
     const varMeta: Record<string, VariableMetaItem> = {}
     meta.schema.forEach((c) => {
       varMeta[c.name] = {
+        columnId: c.columnId,
         name: c.name,
         semanticType: (c.semanticType as any) || 'numeric',
         physicalType: c.physicalType || 'Float64',
@@ -109,7 +111,7 @@ export default function AppShell() {
         isTargetCandidate: c.semanticType === 'nominal' || c.semanticType === 'ordinal' || c.semanticType === 'categorical',
       }
     })
-    dispatch(variablesInitialized({ variables: colNames, meta: varMeta }))
+    dispatch(variablesInitialized({ variables: colNames, meta: varMeta, datasetId }))
   }, [dispatch])
 
   // Bootstrap: auto-load built-in Iris sample on first launch.

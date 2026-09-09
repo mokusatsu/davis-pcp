@@ -63,15 +63,18 @@ export const api = {
   },
 }
 
-export async function fetchArrowView(datasetId: string, columns?: string[], rowIds?: string[]): Promise<Record<string, unknown[]>> {
+export type MaDisplayAxis = { key: string; kind: 'maOption' | 'maCount'; groupId: string; columnId?: string }
+export type ArrowViewOptions = { maAxes?: MaDisplayAxis[]; expectedSchemaRevision?: number; expectedDataRevision?: number }
+
+export async function fetchArrowView(datasetId: string, columns?: string[], rowIds?: string[], options?: ArrowViewOptions): Promise<Record<string, unknown[]>> {
   if (IS_STATIC_BUILD) {
-    return pyodideClient.fetchArrowView(datasetId, columns, rowIds)
+    return pyodideClient.fetchArrowView(datasetId, columns, rowIds, options)
   }
 
   const response = await fetch(`${BASE}/datasets/${datasetId}/view`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ columns, rowIds }),
+    body: JSON.stringify({ columns, rowIds, ...options }),
   })
   if (!response.ok) throw new Error(`view failed: ${response.status}`)
   const { tableFromIPC } = await import('apache-arrow')
@@ -119,12 +122,24 @@ export interface CodebookColumn {
   missingReasons: Record<string, string>
   isReversed: boolean
   multiResponseGroup: string | null
+  multiResponseOptionLabel?: string
+}
+
+export interface MultiResponseGroup {
+  groupId: string
+  label: string
+  selectedCodes: string[]
+  unselectedCodes: string[]
+  allUnselectedMeaning: 'valid' | 'missing' | 'notApplicable'
+  maxSelections: number | null
+  optionOrder: string[]
 }
 
 export interface CodebookResponse {
   datasetId: string
   schemaRevision: number
   columns: CodebookColumn[]
+  multiResponseGroups?: MultiResponseGroup[]
 }
 
 export async function getCodebook(datasetId: string): Promise<CodebookResponse> {
@@ -133,9 +148,16 @@ export async function getCodebook(datasetId: string): Promise<CodebookResponse> 
 
 export async function updateCodebook(
   datasetId: string,
-  columns: Partial<CodebookColumn>[]
+  columns: Partial<CodebookColumn>[],
+  options?: {
+    multiResponseGroups?: MultiResponseGroup[]
+    expectedSchemaRevision?: number
+  }
 ): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number }> {
-  return api.put(`/datasets/${datasetId}/codebook`, { columns })
+  return api.put(`/datasets/${datasetId}/codebook`, {
+    columns,
+    ...(options ?? {}),
+  })
 }
 
 export async function importCodebook(
@@ -159,4 +181,37 @@ export async function downloadCodebookExport(datasetId: string, format: 'csv' | 
   anchor.click()
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export interface MultiResponseSummary {
+  groupId: string
+  label: string
+  denominators: {
+    total: number
+    target: number
+    valid: number
+    missing: number
+    partial: number
+    invalid: number
+    notApplicable: number
+  }
+  allUnselectedN: number
+  totalResponses: number
+  items: {
+    columnId: string
+    name: string
+    label: string
+    selectedN: number
+    selectedInSelection: number
+    pctRespondent: number | null
+    pctResponse: number | null
+  }[]
+}
+
+export interface MultiResponseSummaryResponse {
+  datasetId: string
+  schemaRevision: number
+  dataRevision: number
+  scopeHash: string
+  groups: MultiResponseSummary[]
 }
