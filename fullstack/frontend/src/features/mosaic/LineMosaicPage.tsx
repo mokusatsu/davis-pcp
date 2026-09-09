@@ -105,7 +105,9 @@ export default function LineMosaicPage() {
       {/* Top Controls */}
       {!focused && <Space wrap>
         <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
-          const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+          const byId = new Map(definitions.map(column => [column.columnId, column.name]))
+          const names = axes.map(axis => (axis.columnId ? byId.get(axis.columnId) : undefined)).filter((name): name is string => Boolean(name))
+          if (!names.length) return
           setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
         }} />
         <Typography.Text type="secondary">属性とMA選択肢の選択／非選択を比較できます。</Typography.Text>
