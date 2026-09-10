@@ -186,8 +186,8 @@ def evaluate_robustness(
 
             if frac > 0:
                 perturbations.append({
-                    "strategy": "quality_removal",
-                    "label": f"品質下位{int(frac * 100)}%除去",
+                    "strategy": "outlier_removal",
+                    "label": f"数値的外れ度下位{int(frac * 100)}%除去",
                     "param": frac,
                     "estimate": round(perturbed_est, 4),
                     "drift": round(drift, 4),

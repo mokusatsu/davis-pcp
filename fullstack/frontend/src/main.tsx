@@ -27,6 +27,7 @@ import BarChartPage from './features/barchart/BarChartPage'
 import LoessPlotPage from './features/loess/LoessPlotPage'
 import CovariancePage from './features/covariance/CovariancePage'
 import FeatureRankingPage from './features/mining/FeatureRankingPage'
+import CrosstabPage from './features/crosstab/CrosstabPage'
 import LogisticRegressionPage from './features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from './features/models/DiscriminantAnalysisPage'
 import { store } from './app/store'
@@ -62,6 +63,7 @@ const routeChildren = [
   { path: 'covariance', element: <CovariancePage /> },
   { path: 'logistic', element: <LogisticRegressionPage /> },
   { path: 'discriminant', element: <DiscriminantAnalysisPage /> },
+  { path: 'crosstab', element: <CrosstabPage /> },
 ]
 
 const router = IS_STATIC_BUILD

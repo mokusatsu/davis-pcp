@@ -38,8 +38,17 @@ def get_loess(req: LoessRequest) -> dict[str, Any]:
     if not x_col or not y_col:
         raise BizError("COLUMNS_REQUIRED", "xCol と yCol の両方を指定してください。")
 
+    from ..domain.codebook_adapter import CodebookAdapter
+
+    codebook = store.load_codebook(dataset_id) or {}
     df = store.get_dataframe(dataset_id)
     wanted_rows = req.rowIds if req.row_ids is None else req.row_ids
+    if x_col in df.columns and y_col in df.columns:
+        adapter = CodebookAdapter(df, codebook)
+        df = df.with_columns([
+            adapter.mask_missing_values(x_col),
+            adapter.mask_missing_values(y_col),
+        ])
 
     return compute_loess(
         df=df,

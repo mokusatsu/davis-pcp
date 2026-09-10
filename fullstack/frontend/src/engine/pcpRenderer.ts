@@ -57,6 +57,10 @@ export interface PcpRenderSpec {
   /** Vertical shift (CSS px) from virtual plot space to this viewport.
    *  Non-zero when the plot is vertically scrollable in vertical orientation. */
   viewportY?: number
+  /** Sparse imputation mask: per drawn row, the set of axis indexes whose
+   *  point was imputed. Only rows present here get extra marker rendering —
+   *  plain rows cost nothing. Axis indexes follow spec.axes order. */
+  imputedAxes?: Map<number, Set<number>>
 }
 
 /** Resolve the CSS color for a row from its packed slots. Shared by worker and
@@ -249,6 +253,46 @@ export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderi
       }
       ctx.stroke()
     }
+  }
+
+  // Imputed-point markers: diamond at each imputed point plus a dashed
+  // overlay on the two segments touching it. Normal rows cost nothing.
+  if (spec.imputedAxes && spec.imputedAxes.size > 0) {
+    ctx.save()
+    ctx.globalAlpha = 1
+    for (const [row, axes] of spec.imputedAxes) {
+      if (row < 0 || row >= nRows) continue
+      const base = row * nAxes * 2
+      ctx.strokeStyle = '#7c3aed'
+      ctx.fillStyle = '#7c3aed'
+      ctx.lineWidth = Math.max(1.5, spec.style.lineWidth)
+      ctx.setLineDash([4, 3])
+      for (const axis of axes) {
+        if (axis < 0 || axis >= nAxes) continue
+        for (const neighbor of [axis - 1, axis]) {
+          if (neighbor < 0 || neighbor >= nAxes - 1) continue
+          const x1 = points[base + neighbor * 2], y1 = points[base + neighbor * 2 + 1]
+          const x2 = points[base + (neighbor + 1) * 2], y2 = points[base + (neighbor + 1) * 2 + 1]
+          if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) continue
+          ctx.beginPath()
+          ctx.moveTo(x1, y1)
+          ctx.lineTo(x2, y2)
+          ctx.stroke()
+        }
+        const px = points[base + axis * 2], py = points[base + axis * 2 + 1]
+        if (!Number.isFinite(px) || !Number.isFinite(py)) continue
+        const size = 4
+        ctx.beginPath()
+        ctx.moveTo(px, py - size)
+        ctx.lineTo(px + size, py)
+        ctx.lineTo(px, py + size)
+        ctx.lineTo(px - size, py)
+        ctx.closePath()
+        ctx.fill()
+      }
+      ctx.setLineDash([])
+    }
+    ctx.restore()
   }
 
   // Hover highlight.

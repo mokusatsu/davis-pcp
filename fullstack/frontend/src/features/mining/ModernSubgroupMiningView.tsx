@@ -17,6 +17,7 @@ import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
 import { useMiningTargets } from './useMiningTargets'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
+import VerificationConfigModal from './VerificationConfigModal'
 import { useCodebook } from '../dataset/useCodebookColumn'
 
 export interface ModernCondition {
@@ -76,6 +77,10 @@ export interface ModernInsight {
 export interface ModernMiningResult {
   run_id: string
   mode: string
+  inferenceMode?: 'exploration' | 'verification'
+  algorithmMode?: string
+  candidateSetHash?: string
+  explorationNote?: string
   summary: {
     total_candidates_explored: number
     non_redundant_insights_count: number
@@ -107,6 +112,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
   }
 
   const [miningMode, setMiningMode] = useState<'auto' | 'standard' | 'emm_kendall'>('auto')
+  const [verificationModalOpen, setVerificationModalOpen] = useState(false)
   const [maxDepth, setMaxDepth] = useState<number>(2)
   const [minGroupSize, setMinGroupSize] = useState<number>(30)
   const [topK, setTopK] = useState<number>(12)
@@ -218,7 +224,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} md={7}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
-              探索モード:
+              探索アルゴリズム:
             </Typography.Text>
             <Radio.Group
               value={miningMode}
@@ -420,6 +426,15 @@ export const ModernSubgroupMiningView: React.FC = () => {
       )}
 
       {/* Result Cards & Detail View */}
+      {result?.inferenceMode === 'exploration' && !loading && (
+        <Alert
+          type="warning"
+          showIcon
+          message="🔍 探索的候補"
+          description={result.explorationNote ?? 'この結果は全データ上の探索であり、母集団への確証ではありません。'}
+          data-testid="modern-exploration-badge"
+        />
+      )}
       {result && !loading && (
         <Row gutter={[16, 16]}>
           {/* Left: Insight Cards List */}
@@ -635,6 +650,13 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   </Button>
                   <Button
                     block
+                    onClick={() => setVerificationModalOpen(true)}
+                    data-testid="modern-to-verification-btn"
+                  >
+                    検証モードへ移行（候補を固定して評価）
+                  </Button>
+                  <Button
+                    block
                     icon={<ThunderboltOutlined />}
                     onClick={() => {
                       const targetCol = selectedInsight.target_question || (selectedInsight.target_pair ? selectedInsight.target_pair[0] : undefined)
@@ -651,7 +673,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                     }}
                     data-testid="modern-send-to-robustness-btn"
                   >
-                    この結論の頑健性を検証 (Send to Robustness)
+                    この結論の感度分析へ (Send to Robustness)
                   </Button>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     該当行を共通の選択に反映してPCPへ移動します。PCPの表示軸は保持されます。
@@ -666,6 +688,15 @@ export const ModernSubgroupMiningView: React.FC = () => {
           </Col>
         </Row>
       )}
+      <VerificationConfigModal
+        open={verificationModalOpen}
+        candidateCount={result?.insights.length ?? 0}
+        candidateSetHash={result?.candidateSetHash ?? null}
+        datasets={[]}
+        currentDatasetId={datasetId}
+        onCancel={() => setVerificationModalOpen(false)}
+        onRun={() => setVerificationModalOpen(false)}
+      />
     </div>
   )
 }

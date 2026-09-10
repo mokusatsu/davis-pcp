@@ -202,6 +202,8 @@ class CodebookAdapter:
         series = self.mask_missing_values(col_name)
         if spec.get("scaleType") == "ordinal":
             categories = self.get_ordered_categories(col_name)
+            if not categories:
+                raise KeyError(f"Column '{col_name}' has no fixed ordinal categories.")
             if spec.get("isReversed"):
                 categories = list(reversed(categories))
             scores = {code: float(i + 1) for i, code in enumerate(categories)}
@@ -226,6 +228,8 @@ class CodebookAdapter:
 
     def get_reversed_numeric_series(self, col_name: str) -> pl.Series:
         """逆転項目 (isReversed=True) の場合、値を反転（max + min - X）させた数値を返却"""
+        from .errors import BizError
+
         series = self.mask_missing_values(col_name)
         spec = self.get_column_spec_optional(col_name)
         if not spec or not spec.get("isReversed", False):
@@ -233,16 +237,17 @@ class CodebookAdapter:
 
         numeric_series = series.map_elements(_to_float_if_possible, return_dtype=pl.Float64, skip_nulls=False)
         category_order = spec.get("categoryOrder") or []
-        category_order_values = [v for v in [_to_float_if_possible(v) for v in category_order] if v is not None]
+        missing_codes = {normalize_code(v) for v in (spec.get("missingCodes") or [])}
+        missing_codes.discard(None)
+        category_order_values = [v for v in [_to_float_if_possible(v) for v in category_order]
+                                 if v is not None and normalize_code(v) not in missing_codes]
 
         if category_order_values:
             max_val = max(category_order_values)
             min_val = min(category_order_values)
         else:
-            observed = [v for v in numeric_series.to_list() if v is not None]
-            if not observed:
-                return series
-            max_val = max(observed)
-            min_val = min(observed)
+            raise BizError("CODEBOOK_REVERSE_RANGE_MISSING",
+                           f"逆転項目 '{col_name}' には固定の尺度範囲(categoryOrder)が必要です。",
+                           status_code=422)
 
         return ((max_val + min_val) - numeric_series).rename(col_name)

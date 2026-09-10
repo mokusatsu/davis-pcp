@@ -4,6 +4,7 @@
 作成日: 2026-09-07
 優先度: 2
 前提仕様: DAVIS-FEAT-017, DAVIS-FEAT-019
+実装タスク・引き継ぎ: [tasks/DAVIS-FEAT-025-026.md](../tasks/DAVIS-FEAT-025-026.md#feature-26-実装仕様)
 対象コンポーネント: 
 - fullstack/backend/app/algorithms/summaries/
 - fullstack/backend/app/api/

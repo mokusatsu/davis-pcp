@@ -55,6 +55,8 @@ def run_kda(
     y = sub_df[outcome].to_numpy().astype(float)
     X = sub_df.select(actual_drivers).to_numpy().astype(float)
     k = len(actual_drivers)
+    if float(np.std(y, ddof=1)) <= 1e-9 if n_valid > 1 else True:
+        raise ValueError("目的変数にばらつきがないため重要度を算定できません。(NO_TARGET_VARIATION)")
 
     # Standardize X and y
     y_mean = float(np.mean(y))
@@ -166,12 +168,17 @@ def run_kda(
                 prev_r2 = curr_r2
         shapley_values = phi_sum / n_samples
 
-    # Normalize Shapley percentages
+    # Normalize Shapley percentages; zero total explanatory power stays zero
+    # instead of fabricating an even 100% split.
     sum_shapley = np.sum(shapley_values)
     if sum_shapley > 1e-6:
         importance_pcts = (shapley_values / sum_shapley) * 100.0
     else:
-        importance_pcts = np.ones(k) * (100.0 / k)
+        importance_pcts = np.zeros(k)
+        warnings_explain_none = True
+    warnings = []
+    if sum_shapley <= 1e-6:
+        warnings.append("説明力がほぼゼロのため重要度は0%として返します。最優先ドライバーは提示しません。")
 
     # Rank drivers and generate diagnostic notes
     drivers_out = []
@@ -182,7 +189,6 @@ def run_kda(
     shap_ranks = {idx: rank for rank, idx in enumerate(shap_rank_order)}
     corr_ranks = {idx: rank for rank, idx in enumerate(corr_rank_order)}
 
-    warnings = []
     if zero_variance_drivers:
         warnings.append(f"分散が0のドライバーが含まれています: {', '.join(zero_variance_drivers)}")
     if vif_max > 10.0:
@@ -195,7 +201,9 @@ def run_kda(
         c_rank = corr_ranks[j]
 
         note = "主因"
-        if c_rank < s_rank - 1:
+        if sum_shapley <= 1e-6:
+            note = "説明力なし"
+        elif c_rank < s_rank - 1:
             note = "⚠️見かけの相関（共線性により真の寄与は控えめ）"
         elif s_rank < c_rank - 1:
             note = "💎隠れた重要ドライバー（相関以上の貢献度）"

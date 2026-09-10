@@ -1,7 +1,7 @@
 import Table from '../common/ColumnTable'
 import { QuestionTooltip, useQuestionText } from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -66,6 +66,19 @@ export interface RobustnessResponse {
   conclusions: ConclusionItem[]
 }
 
+export interface SensitivityResponse {
+  runId: string
+  method: string
+  threshold: number
+  bootstrapB?: number
+  seed?: number
+  baseline: { n: number; effectSize: number; confidenceInterval: [number, number] | null; direction: string; scopeHash: string }
+  sensitivity: { n: number; excludedN: number; effectSize: number; confidenceInterval: [number, number] | null; direction: string; scopeHash: string }
+  comparison: { relativeChange: number | null; baselineCiCrossesZero: boolean; sensitivityCiCrossesZero: boolean; directionPreserved: boolean; maxRelativeChange: number; isRobust: boolean; reason: string }
+  outlierRowIds: string[]
+  weightApplied: boolean
+}
+
 export default function RobustnessPage() {
   const questionText = useQuestionText()
   const conclusionQuestions = (c: { target_col?: string; group_col?: string }) =>
@@ -82,19 +95,31 @@ export default function RobustnessPage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [data, setData] = useState<RobustnessResponse | null>(null)
   const [selectedConclusionId, setSelectedConclusionId] = useState<string | null>(null)
+  const [sensitivity, setSensitivity] = useState<SensitivityResponse | null>(null)
+  const [sensitivityLoading, setSensitivityLoading] = useState(false)
+  const [sensitivityError, setSensitivityError] = useState<string | null>(null)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const inputContext = useMemo(() => JSON.stringify([datasetId, dataRevision, customConclusion]), [datasetId, dataRevision, customConclusion])
+  const contextRef = useRef(inputContext)
+  contextRef.current = inputContext
+  const requestVersion = useRef(0)
 
-  const fetchRobustness = async (targetConclusion = customConclusion) => {
-    if (!datasetId) return
+  const fetchRobustness = async (targetConclusion = customConclusion, overrideDatasetId?: string) => {
+    const effectiveDatasetId = overrideDatasetId ?? datasetId
+    if (!effectiveDatasetId) return
+    const version = ++requestVersion.current
+    const startedContext = contextRef.current
     setLoading(true)
     try {
       const payload: Record<string, any> = {
-        datasetId,
+        datasetId: effectiveDatasetId,
         bootstrapB: 100,
       }
       if (targetConclusion) {
         payload.conclusions = [targetConclusion]
       }
       const res = await api.post<RobustnessResponse>('/robustness/evaluate', payload)
+      if (version !== requestVersion.current || startedContext !== contextRef.current) return
       setData(res)
       if (res.conclusions.length > 0) {
         setSelectedConclusionId(res.conclusions[0].id)
@@ -102,14 +127,53 @@ export default function RobustnessPage() {
     } catch (err) {
       console.error(err)
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current && startedContext === contextRef.current) setLoading(false)
+    }
+  }
+
+  const runSensitivity = async () => {
+    if (!datasetId || !customConclusion?.target_col) return
+    const version = ++requestVersion.current
+    const startedContext = contextRef.current
+    setSensitivityLoading(true)
+    setSensitivityError(null)
+    try {
+      const res = await api.post<SensitivityResponse>('/robustness/sensitivity', {
+        datasetId,
+        targetColumn: customConclusion.target_col,
+        candidate: {
+          type: customConclusion.type ?? 'subgroup_diff',
+          groupColumn: customConclusion.group_col ?? null,
+          compareGroups: customConclusion.compare_groups ?? null,
+          rowIds: customConclusion.subgroup_row_ids ?? null,
+        },
+        outlierMethod: 'standardized_deviation',
+        threshold: 3.0,
+        bootstrapB: 200,
+        seed: 42,
+      })
+      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      setSensitivity(res)
+    } catch (err: any) {
+      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      setSensitivityError(err?.message || '感度分析の実行に失敗しました。')
+    } finally {
+      if (version === requestVersion.current && startedContext === contextRef.current) setSensitivityLoading(false)
     }
   }
 
   useEffect(() => {
-    if (datasetId) {
-      void fetchRobustness()
+    const snapshot = datasetId
+    requestVersion.current += 1
+    setData(null)
+    setSelectedConclusionId(null)
+    setLoading(false)
+    setSensitivity(null)
+    setSensitivityError(null)
+    if (snapshot) {
+      void fetchRobustness(customConclusion, snapshot)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
 
   const currentConclusion = useMemo(() => {
@@ -239,8 +303,67 @@ export default function RobustnessPage() {
 
       {loading && !data && (
         <div style={{ textAlign: 'center', padding: 60 }}>
-          <Spin size="large" tip="摂動シミュレーション（品質除去・ブートストラップ・ジャックナイフ）実行中..." />
+          <Spin size="large" tip="数値的外れ度に基づく感度分析（外れ値除外・ブートストラップ・ジャックナイフ）実行中..." />
         </div>
+      )}
+
+      {!focused && (
+        <Card size="small" style={{ marginBottom: 16 }} data-testid="sensitivity-comparison-panel">
+          <Typography.Text strong style={{ fontSize: 14 }}>数値的外れ度に基づく感度分析</Typography.Text>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: '4px 0 12px' }}>
+            baseline（全データ）と外れ値除外後のsensitivityを同じ効果量・CI方法で比較します。除外行の確認だけで、datasetや中央Selectionは自動で変更しません。
+          </Typography.Paragraph>
+          <Space wrap>
+            <Button
+              type="primary"
+              onClick={() => void runSensitivity()}
+              loading={sensitivityLoading}
+              disabled={!customConclusion?.target_col}
+              data-testid="sensitivity-run-btn"
+            >
+              数値的外れ度に基づく感度分析を実行
+            </Button>
+            {sensitivity && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                method={sensitivity.method}／threshold={sensitivity.threshold}／除外 {sensitivity.sensitivity.excludedN} 行
+              </Typography.Text>
+            )}
+          </Space>
+          {sensitivityError && <Alert type="error" showIcon message={sensitivityError} style={{ marginTop: 8 }} />}
+          {sensitivity && (
+            <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
+              <Col xs={24} lg={12}>
+                <Card size="small" title={`baseline（全データ, n=${sensitivity.baseline.n}）`}>
+                  <Statistic title="効果量" value={sensitivity.baseline.effectSize} precision={3} />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    CI: {sensitivity.baseline.confidenceInterval ? `[${sensitivity.baseline.confidenceInterval[0]}, ${sensitivity.baseline.confidenceInterval[1]}]` : '—'}／方向: {sensitivity.baseline.direction}
+                  </Typography.Text>
+                </Card>
+              </Col>
+              <Col xs={24} lg={12}>
+                <Card size="small" title={`sensitivity（除外後, n=${sensitivity.sensitivity.n}）`}>
+                  <Statistic title="効果量" value={sensitivity.sensitivity.effectSize} precision={3} />
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    CI: {sensitivity.sensitivity.confidenceInterval ? `[${sensitivity.sensitivity.confidenceInterval[0]}, ${sensitivity.sensitivity.confidenceInterval[1]}]` : '—'}／方向: {sensitivity.sensitivity.direction}
+                  </Typography.Text>
+                </Card>
+              </Col>
+              <Col span={24}>
+                <Alert
+                  type={sensitivity.comparison.isRobust ? 'success' : 'warning'}
+                  showIcon
+                  message={sensitivity.comparison.isRobust ? '頑健: 方向とCIの0跨ぎが保持されました' : '敏感: 方向・CI・相対変化のいずれかが変化しました'}
+                  description={`相対変化=${sensitivity.comparison.relativeChange}（上限 ${sensitivity.comparison.maxRelativeChange}）／理由=${sensitivity.comparison.reason}／weightApplied=${String(sensitivity.weightApplied)}`}
+                />
+                {sensitivity.outlierRowIds.length > 0 && (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    除外行を確認: {sensitivity.outlierRowIds.slice(0, 10).join(', ')}{sensitivity.outlierRowIds.length > 10 ? `（他 ${sensitivity.outlierRowIds.length - 10} 行）` : ''}
+                  </Typography.Text>
+                )}
+              </Col>
+            </Row>
+          )}
+        </Card>
       )}
 
       {currentConclusion && (
@@ -371,11 +494,11 @@ export default function RobustnessPage() {
 
                 {/* Quality Sweep Curve Table / View */}
                 {(!focused || isTargetActive('robustness-sweep')) && (
-                  <FocusTarget id="robustness-sweep" title="品質除去スイープ曲線">
+                  <FocusTarget id="robustness-sweep" title="数値的外れ度除外スイープ曲線">
                     <Card
                       size="small"
-                      title="回答者品質除去スイープ曲線 (Quality Sweep Curve)"
-                      extra={<FocusEnterButton targetId="robustness-sweep" title="品質除去スイープ曲線" />}
+                      title="数値的外れ度に基づく感度スイープ曲線 (Sensitivity Sweep Curve)"
+                      extra={<FocusEnterButton targetId="robustness-sweep" title="数値的外れ度除外スイープ曲線" />}
                       data-testid="quality-sweep-curve"
                       style={{
                         height: focused ? '100%' : undefined,
@@ -391,7 +514,7 @@ export default function RobustnessPage() {
                         pagination={false}
                         dataSource={currentConclusion.sweep_curve.map((s, idx) => ({ ...s, key: idx }))}
                         columns={[
-                          { title: '品質除去率', dataIndex: 'pct_label' },
+                          { title: '外れ値除外率', dataIndex: 'pct_label' },
                           { title: '再評価推定値', dataIndex: 'estimate', render: (v: number) => v.toFixed(3) },
                           { title: '基準とのドリフト', dataIndex: 'drift', render: (v: number) => `${(v * 100).toFixed(1)}%` },
                           {

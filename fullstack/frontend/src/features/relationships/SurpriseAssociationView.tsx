@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Slider, Tag,
-  Segmented, Statistic, Empty, Spin, Select, Alert,
+  Segmented, Statistic, Empty, Spin, Select, Alert, Tooltip,
 } from 'antd'
 import {
   FireOutlined, AimOutlined, AppstoreOutlined,
@@ -19,11 +19,22 @@ import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
+function CorrectedVTip() {
+  return (
+    <Tooltip
+      title="補正V（Cramér's V系）：補正Cramér's V系。公式PhiKとは呼ばない（適用範囲：カテゴリ関連）"
+      aria-label="補正Vの説明"
+    >
+      <span tabIndex={0} role="img" aria-label="補正Vの説明" style={{ cursor: 'help', marginLeft: 4 }}>ⓘ</span>
+    </Tooltip>
+  )
+}
+
 export interface PairItem {
   id: string
   x: { name: string; label: string; type: string }
   y: { name: string; label: string; type: string }
-  primary: { measure: string; value: number; sign: number; signed_value: number }
+  primary: { measure: string; displayName?: string; formula?: string; scope?: string; value: number; sign: number; signed_value: number }
   secondary: {
     pearson_r: number | null
     spearman_rho: number | null
@@ -227,7 +238,7 @@ export default function SurpriseAssociationView() {
 
       {loading && !result && (
         <div style={{ textAlign: 'center', padding: 60 }}>
-          <Spin size="large" tip="Phik および意外性スコアを全ペア計算中..." />
+          <Spin size="large" tip="補正V および意外性スコアを全ペア計算中..." />
         </div>
       )}
 
@@ -310,7 +321,7 @@ export default function SurpriseAssociationView() {
                         意外性スコア (Unexpectedness) →
                       </text>
                       <text x={12} y={200} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151" transform="rotate(-90 12 200)">
-                        関連強度 (|φ_k|) →
+                        関連強度 (|補正V|) →
                       </text>
 
                       {result.pairs.map((p) => {
@@ -360,7 +371,7 @@ export default function SurpriseAssociationView() {
             {mode === 'heatmap' && (
               <Card
                 size="small"
-                title="クラスタリング済み Phik (φ_k) 相関ヒートマップ"
+                title={<span>クラスタリング済み 補正V 相関ヒートマップ<CorrectedVTip /></span>}
                 extra={<FocusEnterButton targetId="surprise-heatmap" title="相関ヒートマップ" />}
                 data-testid="surprise-heatmap"
                 style={{
@@ -422,7 +433,7 @@ export default function SurpriseAssociationView() {
                                   border: '1px solid #f0f0f0',
                                   color: Math.abs(val) > 0.5 ? '#fff' : '#333',
                                 }}
-                                title={`${rowCol} × ${colCol}: φ_k = ${val}`}
+                                title={`${rowCol} × ${colCol}: 補正V = ${val}`}
                               >
                                 {val !== 0 ? val.toFixed(2) : '0'}
                               </td>
@@ -449,7 +460,7 @@ export default function SurpriseAssociationView() {
                   })}
                   columns={[
                     { title: '変数ペア', render: (_, r) => `${r.x.name} × ${r.y.name}` },
-                    { title: 'Phik (強度)', dataIndex: 'strength', render: (v: number) => v.toFixed(3) },
+                    { title: (<span>補正V (強度)<CorrectedVTip /></span>), dataIndex: 'strength', render: (v: number) => v.toFixed(3) },
                     { title: '非自明性 (意外性)', render: (_, r) => r.surprise.unexpectedness.toFixed(3) },
                     {
                       title: 'Surprise Score',
@@ -500,7 +511,7 @@ export default function SurpriseAssociationView() {
                   <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
                     <Col span={12}>
                       <Statistic
-                        title="統一強度 (Phik φ_k)"
+                        title={<span>統一強度 (補正V)<CorrectedVTip /></span>}
                         value={currentPair.primary.signed_value}
                         precision={3}
                         valueStyle={{ color: currentPair.primary.sign > 0 ? '#cf1322' : '#0958d9' }}

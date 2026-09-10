@@ -13,6 +13,7 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
@@ -176,7 +177,7 @@ export default function ImputationModal({
           <Typography.Title level={5} style={{ margin: 0 }}>
             欠損値補完フィルター (Replace Missing Values)
           </Typography.Title>
-          <Tag color="purple">TabDiff / Statistical</Tag>
+          <Tag color="purple">実験的条件付き補完 / Statistical</Tag>
         </Space>
       }
       width={840}
@@ -254,7 +255,7 @@ export default function ImputationModal({
             <Segmented
               data-testid="impute-strategy"
               options={[
-                { label: 'TabDiff (拡散生成モデル)', value: 'tabdiff' },
+                { label: '実験的条件付き補完', value: 'tabdiff' },
                 { label: 'KNN (k近傍)', value: 'knn' },
                 { label: 'Mean (平均値)', value: 'mean' },
                 { label: 'Median (中央値)', value: 'median' },
@@ -271,8 +272,14 @@ export default function ImputationModal({
             {strategy === 'tabdiff' && (
               <div style={{ background: '#f8fafc', padding: 12, borderRadius: 6, border: '1px solid #e2e8f0' }}>
                 <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-                  <b>TabDiff (Tabular Diffusion):</b>{' '}
-                  観測された特徴量の同時結合条件をスコア関数として学習し、混合数値・カテゴリデータに対して現実的な条件付き分布から段階的にデノイジング生成します。
+                  <b>実験的条件付き補完:</b>{' '}
+                  Gaussian条件付き平均と周辺頻度による近似（適用範囲：欠損補完の実験機能）。
+                  <Tooltip
+                    title="Gaussian条件付き平均と周辺頻度による近似（適用範囲：欠損補完の実験機能）"
+                    aria-label="実験的条件付き補完の説明"
+                  >
+                    <span tabIndex={0} role="img" aria-label="実験的条件付き補完の説明" style={{ cursor: 'help', marginLeft: 4 }}>ⓘ</span>
+                  </Tooltip>
                 </Typography.Paragraph>
                 <Space wrap size="middle">
                   <Space>

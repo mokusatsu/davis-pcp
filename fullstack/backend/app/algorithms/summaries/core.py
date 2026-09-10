@@ -158,11 +158,13 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
     auxiliary_stats: dict[str, Any] = {}
     if valid > 0 and scale_type in ("ordinal", "interval", "ratio", "numeric"):
         valid_vals: list[float] = []
-        score_map = {code: idx + 1 for idx, code in enumerate(ordered_valid_codes)}
+        missing_code_set_local = set(missing_code_set)
+        fixed_order = [c for c in ordered_valid_codes if c not in missing_code_set_local]
+        score_map = {code: idx + 1 for idx, code in enumerate(fixed_order)}
         ordinal_scores = score_map
 
         reversed_numeric_values = []
-        for code in ordered_valid_codes:
+        for code in fixed_order:
             try:
                 numeric_value = float(code)
             except (TypeError, ValueError):
@@ -176,7 +178,7 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             reversed_min = None
             reversed_max = None
 
-        for code in ordered_valid_codes:
+        for code in fixed_order:
             cnt = raw_counts.get(code, 0)
             if cnt == 0:
                 continue
@@ -201,13 +203,13 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             auxiliary_stats["q3"] = round(float(q3), 2)
             auxiliary_stats["iqr"] = round(float(q3 - q1), 2)
 
-        if len(ordered_valid_codes) >= 2:
-            top2_codes = ordered_valid_codes[-2:]
+        if len(fixed_order) >= 2:
+            top2_codes = fixed_order[-2:]
             top2_n = sum(raw_counts.get(c, 0) for c in top2_codes)
             top2_pct = round(top2_n / valid * 100, 1)
             auxiliary_stats["top2Box"] = {"pct": top2_pct, "n": top2_n}
 
-            bottom2_codes = ordered_valid_codes[:2]
+            bottom2_codes = fixed_order[:2]
             bottom2_n = sum(raw_counts.get(c, 0) for c in bottom2_codes)
             bottom2_pct = round(bottom2_n / valid * 100, 1)
             auxiliary_stats["bottom2Box"] = {"pct": bottom2_pct, "n": bottom2_n}
@@ -267,9 +269,23 @@ def _weighted_column_summary(
     is_reversed = bool(spec.get("isReversed", False))
     if adapter is None:
         adapter = CodebookAdapter(series.to_frame(), {"columns": [{**spec, "name": series.name}]})
-    ordered = adapter.get_ordered_categories(series.name)
+    ordered = [c for c in adapter.get_ordered_categories(series.name) if c not in missing_codes]
     if is_reversed:
-        ordered = list(reversed(ordered))
+        if scale_type == "ordinal":
+            ordered = list(reversed(ordered))
+        else:
+            fixed_numeric = []
+            for code in ordered:
+                try:
+                    fixed_numeric.append(float(code))
+                except (TypeError, ValueError):
+                    continue
+            if not fixed_numeric:
+                from ...domain.errors import BizError
+                raise BizError("CODEBOOK_REVERSE_RANGE_MISSING",
+                               f"逆転項目 '{series.name}' には固定の尺度範囲(categoryOrder)が必要です。",
+                               status_code=422)
+            reversed_min, reversed_max = min(fixed_numeric), max(fixed_numeric)
 
     raw = series.to_list()
     counts: dict[str, float] = {}
@@ -312,8 +328,10 @@ def _weighted_column_summary(
         for code, count in counts.items():
             try:
                 score = float(score_map[code]) if scale_type == "ordinal" else float(code)
-            except ValueError:
+            except (TypeError, ValueError):
                 score = float(score_map.get(code, 0))
+            if is_reversed and scale_type != "ordinal":
+                score = reversed_max + reversed_min - score
             total += score * count
         weighted["weightedMean"] = round(total / weighted_n, 4)
         if scale_type == "ordinal":

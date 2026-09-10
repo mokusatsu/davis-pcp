@@ -235,7 +235,10 @@ class TestB11ClusteringTooFewRows:
             "v2": [4.0, 5.0, 6.0],
         })
         ds_id = "test_b11_ds"
-        store.save(ds_id, {"datasetId": ds_id, "name": "test", "schema": []}, df)
+        from app.services.dataset_service import generate_initial_codebook
+        schemas = [{"name": "v1", "semanticType": "numeric"}, {"name": "v2", "semanticType": "numeric"}]
+        cb = generate_initial_codebook(ds_id, schemas)
+        store.save(ds_id, {"datasetId": ds_id, "name": "test", "schema": []}, df, codebook=cb)
 
         req = ClusterRequest(
             datasetId=ds_id,

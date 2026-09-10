@@ -233,7 +233,7 @@ def tabdiff_impute(
                 "imputedMean": float(np.mean(imp_v)) if len(imp_v) else None,
                 "observedStd": float(np.std(obs_v)) if len(obs_v) else None,
                 "imputedStd": float(np.std(imp_v)) if len(imp_v) else None,
-                "wassersteinDist": float(np.abs(np.mean(obs_v) - np.mean(imp_v))) if (len(obs_v) and len(imp_v)) else 0.0,
+                "absoluteMeanDifference": float(np.abs(np.mean(obs_v) - np.mean(imp_v))) if (len(obs_v) and len(imp_v)) else 0.0,
             }
 
     # --- 2. Process Categorical Columns via Mode / Conditional Multinomial ---
@@ -248,9 +248,15 @@ def tabdiff_impute(
             unique_cats = ["UNKNOWN"]
             cat_probs = np.array([1.0])
         else:
+            # Frequency-descending with code-string tie-break so the mode is
+            # deterministic even though Polars value_counts order is not.
             vc = non_null_s.value_counts()
-            unique_cats = vc[c].to_list()
-            counts = vc["count"].to_numpy().astype(np.float64)
+            pairs = sorted(
+                zip(vc[c].to_list(), vc["count"].to_list()),
+                key=lambda kv: (-int(kv[1]), str(kv[0])),
+            )
+            unique_cats = [v for v, _ in pairs]
+            counts = np.array([float(n) for _, n in pairs], dtype=np.float64)
             cat_probs = counts / np.sum(counts)
             most_freq = unique_cats[0]
 
@@ -287,8 +293,15 @@ def tabdiff_impute(
 
     final_df = pl.DataFrame(new_cols)
 
+    from ...domain.method_names import display_of
+    method_info = display_of("tabdiff")
+
     diagnostics = {
         "method": "tabdiff",
+        "displayName": method_info["displayName"],
+        "formula": method_info["formula"],
+        "scope": method_info["scope"],
+        "deprecatedAlias": method_info["deprecatedAlias"],
         "algorithmVersion": "2.0.0",
         "evidenceClass": "DIFFUSION_GENERATIVE",
         "numSteps": num_steps,

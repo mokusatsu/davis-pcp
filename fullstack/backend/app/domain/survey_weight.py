@@ -63,7 +63,11 @@ def weight_candidates(codebook: dict[str, Any] | None) -> list[dict[str, Any]]:
     return result
 
 
-def extract_weights(frame: pl.DataFrame, column_name: str) -> tuple[list[float | None], int, bool]:
+def extract_weights(
+    frame: pl.DataFrame,
+    column_name: str,
+    weight_spec: dict[str, Any] | None = None,
+) -> tuple[list[float | None], int, bool]:
     """Convert raw weight values. Returns (weights, missing_count, has_invalid).
 
     - None / null / NaN / ±Infinity / non-numeric strings are invalid, except
@@ -71,10 +75,18 @@ def extract_weights(frame: pl.DataFrame, column_name: str) -> tuple[list[float |
     - Negative values and non-convertible strings are invalid (422 upstream).
     - Zero is allowed but contributes nothing to the weighted denominator.
     """
+    missing_codes: set[str] = set()
+    if weight_spec is not None:
+        missing_codes = {c for c in (normalize_code(v) for v in (weight_spec.get("missingCodes") or []))
+                         if c is not None}
     weights: list[float | None] = []
     missing = 0
     has_invalid = False
     for raw in frame[column_name].to_list():
+        if normalize_code(raw) in missing_codes:
+            weights.append(None)
+            missing += 1
+            continue
         if raw is None:
             weights.append(None)
             missing += 1

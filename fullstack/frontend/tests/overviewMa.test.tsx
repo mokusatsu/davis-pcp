@@ -11,6 +11,7 @@ vi.mock('../src/features/dataset/BinningModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/OneHotModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/ImputationModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/AddVariableModal', () => ({ default: () => null }))
+vi.mock('../src/features/dataset/ProvenanceHistoryPanel', () => ({ default: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 it('counts MA once as a question and folds physical options without changing row selection', async () => {

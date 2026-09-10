@@ -120,17 +120,18 @@ def _tree_structure(tree: Any, feature_names: list[str], class_labels: list[str]
             return []
         counts = t.value[node_id][0]
         total = float(counts.sum())
+        node_n = float(t.n_node_samples[node_id]) if total > 0 else 0.0
         out: list[dict[str, Any]] = []
         for i, c in enumerate(counts):
-            if c <= 0:
-                continue
+            proportion = float(c) / total if total > 0 else 0.0
             label = class_labels[i] if class_labels and i < len(class_labels) else str(i)
-            out.append({"label": label, "count": int(c), "ratio": round(float(c) / max(total, 1), 3)})
+            out.append({"label": label, "count": round(proportion * node_n),
+                        "ratio": round(proportion, 3)})
         return sorted(out, key=lambda x: -x["count"])
 
     def build(node_id: int) -> dict[str, Any]:
         is_leaf = t.children_left[node_id] == -1
-        members = np.where(leaf_ids == node_id)[0]
+        members = np.where(tree.decision_path(matrix).getcol(node_id).toarray().ravel() > 0)[0]
         node: dict[str, Any] = {
             "nodeId": int(node_id),
             "isLeaf": bool(is_leaf),
@@ -159,12 +160,12 @@ def _tree_structure(tree: Any, feature_names: list[str], class_labels: list[str]
 
 
 def _tree_membership(tree: Any, matrix: np.ndarray) -> list[dict[str, Any]]:
-    """Return node records with row membership from leaf application."""
-    leaf_ids = tree.apply(matrix)
+    """Return node records with row membership via decision paths."""
+    paths = tree.decision_path(matrix)
     nodes = []
     tree_structure = tree.tree_
     for node_id in range(tree_structure.node_count):
-        member_rows = np.where(leaf_ids == node_id)[0]
+        member_rows = np.where(paths.getcol(node_id).toarray().ravel() > 0)[0]
         is_leaf = tree_structure.children_left[node_id] == -1
         nodes.append({
             "nodeId": int(node_id),

@@ -276,7 +276,9 @@ def compute_feature_rankings(
 
     scores_by_method: Dict[str, Dict[str, float]] = {}
 
-    # 1. ReliefF
+    # 1. ReliefF (supervised) / variance proxy (unsupervised). Display names
+    # come from method_names; routing keys stay for compatibility.
+    method_labels: dict[str, dict[str, str]] = {}
     if "relieff" in methods:
         sample_size = relieff_sample_size or min(n_rows, 500)
         if task_type != "unsupervised" and y is not None:
@@ -307,24 +309,48 @@ def compute_feature_rankings(
                 mean_corr = np.nanmean(corr_mat, axis=1)
                 scores_by_method["mutualInfo"] = {f: float(mean_corr[i]) for i, f in enumerate(valid_features)}
 
-    # 3. Random Forest (MDI & optional MDA)
+    # 3. Random Forest: MDI stays pure; permutation is a separate signed array.
+    rf_meta: dict[str, Any] = {"available": False}
+    perm_meta: dict[str, Any] = {"available": False}
+    perm_means: list[float | None] = [None] * len(valid_features)
+    perm_stds: list[float | None] = [None] * len(valid_features)
     if "random_forest" in methods:
+        estimator = None
+        criterion = "gini"
         if task_type == "classification" and y is not None:
             clf = RandomForestClassifier(n_estimators=n_estimators, random_state=seed, max_depth=6)
             clf.fit(X, y)
-            importances = clf.feature_importances_
-            if use_permutation_importance and n_rows >= 10:
-                perm = permutation_importance(clf, X, y, n_repeats=5, random_state=seed)
-                importances = (importances + np.maximum(0, perm.importances_mean)) / 2.0
-            scores_by_method["randomForest"] = {f: float(importances[i]) for i, f in enumerate(valid_features)}
+            estimator = clf
+            criterion = "gini"
+            scores_by_method["randomForest"] = {f: float(clf.feature_importances_[i]) for i, f in enumerate(valid_features)}
         elif task_type == "regression" and y is not None:
             reg = RandomForestRegressor(n_estimators=n_estimators, random_state=seed, max_depth=6)
             reg.fit(X, y)
-            importances = reg.feature_importances_
-            if use_permutation_importance and n_rows >= 10:
-                perm = permutation_importance(reg, X, y, n_repeats=5, random_state=seed)
-                importances = (importances + np.maximum(0, perm.importances_mean)) / 2.0
-            scores_by_method["randomForest"] = {f: float(importances[i]) for i, f in enumerate(valid_features)}
+            estimator = reg
+            criterion = "squared_error"
+            scores_by_method["randomForest"] = {f: float(reg.feature_importances_[i]) for i, f in enumerate(valid_features)}
+        if estimator is not None:
+            rf_meta = {"available": True, "scope": "train", "model": "RandomForest",
+                       "criterion": criterion, "nEstimators": n_estimators, "seed": seed,
+                       "evaluatedRows": int(n_rows)}
+        perm_requested = bool(use_permutation_importance)
+        perm_eligible = estimator is not None and y is not None and task_type != "unsupervised" and n_rows >= 10
+        if perm_requested and perm_eligible:
+            perm = permutation_importance(estimator, X, y, n_repeats=5, random_state=seed)
+            perm_means = [None if (v is None or (isinstance(v, float) and np.isnan(v))) else float(v)
+                          for v in perm.importances_mean.tolist()]
+            perm_stds = [None if (v is None or (isinstance(v, float) and np.isnan(v))) else float(v)
+                         for v in perm.importances_std.tolist()]
+            perm_meta = {"available": True, "scope": "train", "repeats": 5, "seed": seed,
+                         "scoring": "model_default", "evaluatedRows": int(n_rows)}
+        elif perm_requested:
+            perm_means = [None] * len(valid_features)
+            perm_stds = [None] * len(valid_features)
+            perm_meta = {"available": False, "scope": "train",
+                         "reason": "教師ありのみ" if task_type == "unsupervised" else "insufficient_rows"}
+        else:
+            perm_means = [None] * len(valid_features)
+            perm_stds = [None] * len(valid_features)
 
     # 4. F-Statistic / ANOVA
     if "f_statistic" in methods and task_type != "unsupervised" and y is not None:
@@ -423,12 +449,53 @@ def compute_feature_rankings(
     suggested_top_k = min(len(valid_features), max(2, int(len(valid_features) * 0.5)))
     execution_time_ms = (time.perf_counter() - start_time) * 1000.0
 
+    from ...domain.method_names import display_of
+
+    supervised = task_type != "unsupervised"
+    method_display = {
+        "relieff": display_of("relieff_supervised" if supervised else "relieff_unsupervised"),
+        "mutualInfo": display_of("mutual_info_supervised" if supervised else "mutual_info_unsupervised"),
+        "randomForest": {"displayName": "Random Forest (MDI)", "formula": "feature_importances_",
+                         "scope": "train", "deprecatedAlias": ""},
+        "fStatistic": {"displayName": "F値 / ANOVA", "formula": "f_classif / f_regression",
+                       "scope": "train", "deprecatedAlias": ""},
+        "pcaDispersion": {"displayName": "PCA分散", "formula": "上位主成分の寄与配分",
+                          "scope": "unsupervised", "deprecatedAlias": ""},
+    }
+    mdi_scores = scores_by_method.get("randomForest", {})
+    mdi_order = sorted(valid_features, key=lambda f: (-(mdi_scores.get(f) if mdi_scores.get(f) is not None else float("-inf")), f))
+    mdi_rank = {f: i + 1 for i, f in enumerate(mdi_order) if mdi_scores.get(f) is not None}
+    perm_order = sorted(valid_features, key=lambda f: (-(perm_means[valid_features.index(f)]
+                                                         if perm_means[valid_features.index(f)] is not None else float("-inf")), f))
+    perm_rank = {f: i + 1 for i, f in enumerate(perm_order) if perm_means[valid_features.index(f)] is not None}
+    importance = {
+        "mdi": [{"featureName": f, "importance": round(float(mdi_scores[f]), 6), "rank": mdi_rank[f]}
+                for f in mdi_order if mdi_scores.get(f) is not None],
+        "permutation_train": ([{"featureName": f, "importanceMean": perm_means[valid_features.index(f)],
+                                "importanceStd": perm_stds[valid_features.index(f)], "rank": perm_rank[f]}
+                               for f in perm_order if perm_means[valid_features.index(f)] is not None]
+                              if perm_meta.get("available") else []),
+    }
+
     return {
         "target": target_column,
         "taskType": task_type,
         "evaluatedVariables": valid_features,
         "redundancyMatrix": np.nan_to_num(corr_matrix, nan=0.0).tolist(),
         "rankings": rankings,
+        "methodDisplay": method_display,
+        "importance": importance,
+        "importanceMetadata": {
+            "mdi": {**rf_meta, "criterion": rf_meta.get("criterion")},
+            "permutation_train": perm_meta if perm_meta.get("available") else {
+                **perm_meta, "reason": perm_meta.get("reason", "教師ありのみ")},
+        },
+        "metadata": {
+            "warnings": [
+                "訓練データ上の重要度は予測への貢献であり、因果効果ではない",
+                "相関した変数間では重要度が分散する場合がある",
+            ],
+        },
         "suggestedTopK": suggested_top_k,
         "executionTimeMs": round(execution_time_ms, 2),
         "evidenceClass": "SLIDES-2005",

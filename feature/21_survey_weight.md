@@ -1,9 +1,13 @@
 <実装計画書: 調査ウェイト統合 (DAVIS-FEAT-021)>
 文書ID: DAVIS-FEAT-021
-版: 1.0.0
+版: 1.1.0
 作成日: 2026-09-07
+更新日: 2026-09-10
 優先度: 2
 前提仕様: DAVIS-FEAT-017
+実装タスク・引き継ぎ: [tasks/DAVIS-FEAT-021-022.md](../tasks/DAVIS-FEAT-021-022.md#feature-21-調査ウェイト)
+
+版1.1.0では、調査ウェイトの適用対象・非適用対象、非適用時のAPI/UI契約、負値等の検証結果を明確化した。
 対象コンポーネント: 
 - `fullstack/backend/app/algorithms/summaries/core.py`
 - `fullstack/backend/app/api/v1/` 配下の全集計系エンドポイント
@@ -20,10 +24,29 @@
 1. **ウェイト列指定**: コードブックにて `role=weight` が設定されている列、またはグローバルヘッダーのドロップダウンでウェイト列を指定できる。
 2. **加重集計（第一段階範囲）**: 加重平均、加重比率、加重度数を算出する。
 3. **併記表示**: 非加重の実人数(n)と加重値を並べて表示する。
-4. **全エンドポイントへの共通パラメータ**: `summaries`, `mining`, `distribution`, `models`等のAPIリクエストに `weightColumn` パラメータを追加する。
-5. **未対応分析の明示**: ウェイト適用未対応の分析結果には「ウェイト未適用」と明示する。
-6. **制限事項の明示**: 画面上に「標準誤差は非加重n基準。母集団推論には調査設計情報が必要」との注記を表示する。
-7. **将来拡張（本計画外）**: 層化、PSU/クラスター、複製ウェイトのサポートは第二段階とする。
+4. **共通コンテキスト**: 対象APIには `weightColumn` を渡せるようにする。ただし、パラメータを受け取ることと、計算へ適用することは別に扱う。
+5. **適用範囲の明示**: 加重計算を行う画面、行単位の値をそのまま表示する画面、未対応分析を明確に分ける。
+6. **未対応分析の明示**: ウェイト適用未対応の分析結果には「ウェイト未適用」と明示する。
+7. **制限事項の明示**: 画面上に「標準誤差は非加重n基準。母集団推論には調査設計情報が必要」との注記を表示する。
+8. **将来拡張（本計画外）**: 層化、PSU/クラスター、複製ウェイトのサポートは第二段階とする。
+
+### 2.1 適用対象と非適用対象
+
+「ウェイトを選択できる」ことだけでは加重計算の完了とはみなさない。以下の表で、`加重計算`が「する」の行だけがFeature 21の加重結果を返す。
+
+| 画面・API・処理 | `weightColumn` | 加重計算 | 表示・動作 |
+|---|---:|---:|---|
+| `POST /summaries` | 送る | **する** | 非加重nと加重平均・度数・比率を併記する |
+| Distributionの設問カード、Statisticsの記述集計 | `/summaries`へ含める | **する** | `weightStatus=applied`、分母、注記を表示する |
+| Feature 22のLikert分布 | `/summaries`へ含める | **する** | 非加重/加重の表示基準を明示して切り替える。検定p値は加重しない |
+| Table、PCP、Selection、Focus、Delete、Reset | 送らない | **しない** | 元の行値・rowId・選択集合をそのまま扱う。ウェイトで行を増減させない |
+| Mosaic、Bar Chart、FEDF、QQ、LOESS、Covariance | 受領可（未対応表示用） | **しない**（第一段階） | 結果を非加重で出す場合は「ウェイト未適用」を表示する。加重値を返さない |
+| Mining、Ranking、Key Drivers、Penalty-Reward、Robustness | 受領可（未対応表示用） | **しない**（第一段階） | 既存のscore/距離/再標本化重みとは分離し、未適用理由を表示する |
+| Models、Logistic、Discriminant、Clusters、PCA、Touring | 受領可（未対応表示用） | **しない**（第一段階） | 学習・距離・p値へ調査ウェイトを入れず、警告を返す |
+| Relationships、Surprise、相関・検定 | 受領可（未対応表示用） | **しない**（第一段階） | Pearson/Kendall等は非加重のまま。母集団推論と誤認させない |
+| `sampledRowWeights` | 別の既存パラメータ | **調査ウェイトではない** | 抽出行の重複回数・Table並べ替えだけに使い、`weightColumn`と合成しない |
+
+非適用画面でウェイトを選択していても、分析値を加重値へ置き換えない。APIは`weightApplied=false`と`WEIGHT_UNSUPPORTED`を返し、UIは「ウェイト未適用」と表示する。Table/PCP/Selectionのような行単位の画面は、ウェイトを受け取らず、未適用警告も表示しない。その画面でウェイトが値を変えないことが仕様だからである。
 
 ## 3. GUI設計（ASCIIモックアップ付き）
 
@@ -61,8 +84,10 @@
 
 ## 4. API仕様（エンドポイント、リクエスト/レスポンスJSON）
 
-**エンドポイント**: `/api/v1/summaries` (他集計系APIも同様)
+**エンドポイント**: `/api/v1/summaries`
 **HTTPメソッド**: `POST`
+
+Distributionの設問カード、Statistics、Feature 22のLikert分布はこの応答を利用するため加重対象である。Mosaic、Bar Chart、FEDF、Mining、Modelsなどは表2.1の非適用対象であり、`weightColumn`を受け取る場合も警告だけを返して加重値を返さない。
 
 **リクエストJSON例**:
 ```json
@@ -77,6 +102,11 @@
 ```json
 {
   "status": "success",
+  "weightStatus": "applied",
+  "weightApplied": true,
+  "weightColumn": "weight_col",
+  "unweightedN": 1200,
+  "weightedN": 1000.5,
   "data": {
     "Q1_満足度": {
       "type": "categorical",
@@ -94,7 +124,26 @@
       }
     }
   },
-  "warnings": []
+  "warnings": [],
+  "dataRevision": 1,
+  "schemaRevision": 2,
+  "scopeHash": "..."
+}
+```
+
+非適用分析の例は、分析結果を非加重のまま返す場合でも次のように明示する。
+
+```json
+{
+  "status": "success",
+  "weightStatus": "unsupported",
+  "weightApplied": false,
+  "warnings": [
+    {
+      "code": "WEIGHT_UNSUPPORTED",
+      "message": "この分析は調査ウェイトを適用しません。"
+    }
+  ]
 }
 ```
 
@@ -108,7 +157,7 @@
    - `calculate_summary` 関数に `weight_column` 引数を追加。
    - PandasまたはNumPyを用いた加重計算ロジック（加重平均 `np.average(x, weights=w)`、加重度数 `df.groupby().apply(lambda x: x[w].sum())`）を実装。
    - `unweighted` と `weighted` の結果辞書を生成して返す。
-   - 指定された `weight_column` の値に負の数や欠損値がある場合のハンドリング（例: 負の重みは警告を出して0扱いとする等）。
+   - 指定された `weight_column` の値を検証する。nullは`weightMissingCount`へ数えてその行の加重分母から除外し、負数・NaN・無限値・変換不能値は422 `WEIGHT_VALUE_INVALID`として拒否する。負の重みを0扱いにして続行しない。
 
 ## 6. フロントエンド実装詳細（コンポーネント構成と状態管理）
 
@@ -118,7 +167,7 @@
 
 2. **グローバルヘッダー (`fullstack/frontend/src/features/selection/GlobalHeaderControlBar.tsx`)**:
    - `globalWeight` を選択するドロップダウン（Selectコンポーネント）を追加。
-   - 選択肢はメタデータから `role=weight` の変数、あるいは数値型の変数を抽出して表示。
+   - 選択肢はコードブックで `role=weight` かつ数値尺度の変数だけを抽出して表示する。数値型でもroleがweightでない列は候補にしない。
 
 3. **集計コンポーネント (`fullstack/frontend/src/features/summaries/SummaryCard.tsx` 等)**:
    - APIレスポンスから `unweighted` と `weighted` を受け取り、テーブルまたはグリッド形式で併記する。
@@ -131,7 +180,8 @@
   - `test_weighted_mean`: 既知のデータとウェイトで算出される加重平均が手計算（期待値）と一致するか検証。
   - `test_weighted_pct`: 加重割合（カテゴリ比率）が正しく計算されるか検証。
   - `test_unweighted_coexistence`: APIレスポンスに非加重値（unweighted）と加重値（weighted）が正しく同時に含まれているか検証。
-  - `test_weight_column_validation`: ウェイト列に負の値や不正な値が含まれる場合に適切な警告（warning）が返るか検証。
+  - `test_weight_column_validation`: ウェイト列に負の値、NaN、無限値、不正な文字列が含まれる場合に422 `WEIGHT_VALUE_INVALID`となり、nullだけは`weightMissingCount`へ数えられることを検証。
+  - `test_unsupported_analysis_weight_warning`: 非適用分析へ`weightColumn`を渡したとき、加重値を返さず`weightApplied=false`と`WEIGHT_UNSUPPORTED`を返すことを検証。
 
 - **Vitest (フロントエンド)**
   - `test_global_weight_state`: Reduxストアで `setGlobalWeight` が正しく状態を更新するか検証。
@@ -143,7 +193,7 @@
 
 ## 8. 実装手順チェックリスト（エージェントが順に実行する手順）
 
-- [ ] 1. バックエンド: APIリクエストスキーマ（`/api/v1/` 配下）に `weightColumn` パラメータを追加。
+- [ ] 1. バックエンド: 表2.1の適用対象・非適用対象をAPI一覧へ反映し、適用対象のリクエストスキーマに `weightColumn` パラメータを追加。
 - [ ] 2. バックエンド: `core.py` など集計エンジンに加重計算（加重平均、加重比率、加重度数）のロジックを実装。
 - [ ] 3. バックエンド: レスポンス形式を改修し、`unweighted` と `weighted` を返すように変更。
 - [ ] 4. バックエンド: pytestを実行し、`test_weighted_mean` などのテストケースを追加・パスさせる。
@@ -153,3 +203,4 @@
 - [ ] 8. フロントエンド: ウェイト未対応コンポーネントに警告表示を追加。
 - [ ] 9. フロントエンド: Vitestでコンポーネントと状態管理のテストを追加・パスさせる。
 - [ ] 10. 全体動作確認: 結合テストおよびE2Eテストシナリオの動作確認を行う。
+- [ ] 11. Feature 21の受入時に、表2.1の各行をAPI応答・画面表示・非加重動作のいずれかで確認し、適用対象を暗黙に増やしていないことを記録する。

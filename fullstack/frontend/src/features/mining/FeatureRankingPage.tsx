@@ -18,6 +18,7 @@ import {
   Typography,
   Spin,
   Alert,
+  Tooltip,
   message,
 } from 'antd'
 import {
@@ -52,7 +53,17 @@ export interface VariableRankItem {
   }
 }
 
+export interface ImportanceEntry {
+  featureName: string
+  importance?: number | null
+  importanceMean?: number | null
+  importanceStd?: number | null
+  rank: number
+}
+
 export interface FeatureRankingResponse {
+  weightApplied?: boolean
+  weightStatus?: string
   scopeCount: number
   usedRows: number
   ordinaryMissingExcluded: number
@@ -61,9 +72,46 @@ export interface FeatureRankingResponse {
   evaluatedVariables: string[]
   redundancyMatrix: number[][]
   rankings: VariableRankItem[]
+  methodDisplay?: Record<string, { displayName: string; formula: string; scope: string; deprecatedAlias: string }>
+  importance?: { mdi: ImportanceEntry[]; permutation_train: ImportanceEntry[] }
+  importanceMetadata?: {
+    mdi?: { available: boolean; scope?: string; model?: string; criterion?: string; reason?: string }
+    permutation_train?: { available: boolean; scope?: string; repeats?: number; seed?: number; reason?: string }
+  }
+  metadata?: { warnings?: string[] }
   suggestedTopK: number
   executionTimeMs: number
   evidenceClass: string
+}
+
+function MethodInfoTip({ methodKey, display, taskType }: {
+  methodKey: string
+  display?: { displayName: string; formula: string; scope: string; deprecatedAlias: string }
+  taskType?: string
+}) {
+  if (!display) return null
+  const supervised = taskType !== 'unsupervised'
+  const label = methodKey === 'relieff'
+    ? (supervised ? 'ReliefF' : '分散（教師なし代理指標）')
+    : methodKey === 'mutualInfo'
+      ? (supervised ? '相互情報量' : '平均絶対相関（教師なし代理指標）')
+      : display.displayName
+  return (
+    <Tooltip
+      title={`${label}：${display.formula}（適用範囲：${display.scope}）`}
+      aria-label={`${label}の説明`}
+    >
+      <span
+        tabIndex={0}
+        role="img"
+        aria-label={`${label}の説明`}
+        aria-describedby={`${methodKey}-formula`}
+        style={{ cursor: 'help', marginLeft: 4 }}
+      >
+        ⓘ
+      </span>
+    </Tooltip>
+  )
 }
 
 const METHOD_COLORS: Record<string, string> = {
@@ -104,6 +152,7 @@ export default function FeatureRankingPage() {
   const [topK, setTopK] = useState<number>(3)
   const [rankingMetric, setRankingMetric] = useState<string>('borda')
   const [highlightedVar, setHighlightedVar] = useState<string | null>(null)
+  const [usePermutation, setUsePermutation] = useState<boolean>(true)
 
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<FeatureRankingResponse | null>(null)
@@ -147,6 +196,7 @@ export default function FeatureRankingPage() {
         activeRowIds: effectiveRowIds,
         expectedSchemaRevision: schemaRevision,
         expectedDataRevision: selection.dataRevision,
+        usePermutationImportance: usePermutation,
         seed: 42,
       })
       if (!isCurrent()) return
@@ -274,13 +324,13 @@ export default function FeatureRankingPage() {
       render: (score: number) => <strong>{score}</strong>,
     },
     {
-      title: 'ReliefF',
+      title: (<span>{result?.taskType === 'unsupervised' ? '分散（教師なし代理指標）' : 'ReliefF'} <MethodInfoTip methodKey="relieff" display={result?.methodDisplay?.relieff} taskType={result?.taskType} /></span>),
       key: 'relieff',
       render: (_: unknown, row: VariableRankItem) =>
         row.scores.relieff ? `${row.scores.relieff.normalizedScore} (#${row.scores.relieff.rank})` : '-',
     },
     {
-      title: '相互情報量 (MI)',
+      title: (<span>{result?.taskType === 'unsupervised' ? '平均絶対相関（教師なし代理指標）' : '相互情報量'} <MethodInfoTip methodKey="mutualInfo" display={result?.methodDisplay?.mutualInfo} taskType={result?.taskType} /></span>),
       key: 'mutualInfo',
       render: (_: unknown, row: VariableRankItem) =>
         row.scores.mutualInfo ? `${row.scores.mutualInfo.normalizedScore} (#${row.scores.mutualInfo.rank})` : '-',
@@ -381,13 +431,22 @@ export default function FeatureRankingPage() {
             value={selectedMethods}
             onChange={(v) => setSelectedMethods(v as string[])}
             options={[
-              { label: 'ReliefF', value: 'relieff' },
-              { label: '相互情報量 (MI)', value: 'mutual_info' },
+              { label: 'ReliefF / 分散（教師なし代理指標）', value: 'relieff' },
+              { label: '相互情報量 / 平均絶対相関（教師なし代理指標）', value: 'mutual_info' },
               { label: 'Random Forest (MDI)', value: 'random_forest' },
               { label: 'ANOVA F / F-値', value: 'f_statistic' },
               { label: 'PCA分散 (Dispersion)', value: 'pca_dispersion' },
             ]}
           />
+          <div style={{ marginTop: 8 }}>
+            <Checkbox
+              checked={usePermutation}
+              onChange={(e) => setUsePermutation(e.target.checked)}
+              data-testid="ranking-permutation-toggle"
+            >
+              Permutation Importance（訓練データ、教師ありのみ）も計算する
+            </Checkbox>
+          </div>
         </div>
       </Card>
 
@@ -473,6 +532,74 @@ export default function FeatureRankingPage() {
         <div style={{ padding: 40, textAlign: 'center' }}>
           <Spin size="large" tip="各評価エンジンで特徴量ランキングを計算中..." />
         </div>
+      )}
+
+      {/* Importance warnings (Feature 23: contribution, not causation) */}
+      {result && !loading && result.metadata?.warnings && (
+        <Alert
+          type="warning"
+          showIcon
+          message={result.metadata.warnings.join('／')}
+          data-testid="importance-warnings"
+          style={{ marginBottom: 0 }}
+        />
+      )}
+
+      {/* Importance split: MDI (left) vs Permutation train (right) */}
+      {result && !loading && result.importance && (
+        <Row gutter={[16, 16]} data-testid="importance-split">
+          <Col xs={24} lg={12}>
+            <Card
+              size="small"
+              title={<span>MDI (Mean Decrease Impurity) <MethodInfoTip methodKey="mdi" display={{ displayName: 'MDI', formula: 'feature_importances_', scope: 'train', deprecatedAlias: '' }} taskType={result.taskType} /></span>}
+              extra={<Tag>高カーディナリティ特徴にバイアス</Tag>}
+            >
+              {(result.importance.mdi ?? []).map((item) => {
+                const max = Math.max(...result.importance!.mdi.map((i) => i.importance ?? 0), 1e-9)
+                return (
+                  <div key={item.featureName} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <ColumnQuestionTooltip nameOrId={item.featureName}>{item.featureName}</ColumnQuestionTooltip>
+                    </span>
+                    <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 2 }}>
+                      <div style={{ width: `${Math.round(((item.importance ?? 0) / max) * 100)}%`, height: '100%', background: '#722ed1', borderRadius: 2 }} />
+                    </div>
+                    <span style={{ width: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{(item.importance ?? 0).toFixed(3)}</span>
+                  </div>
+                )
+              })}
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card
+              size="small"
+              title={<span>Permutation Importance（訓練データ） <MethodInfoTip methodKey="permutation" display={{ displayName: 'Permutation', formula: 'permutation_importance（5 repeats）', scope: 'train', deprecatedAlias: '' }} taskType={result.taskType} /></span>}
+              extra={<Tag>過学習の影響を受ける</Tag>}
+            >
+              {result.importanceMetadata?.permutation_train?.available === false ? (
+                <Typography.Text type="secondary">教師ありのみ</Typography.Text>
+              ) : (
+                (result.importance.permutation_train ?? []).map((item) => {
+                  const vals = (result.importance!.permutation_train ?? []).map((i) => Math.abs(i.importanceMean ?? 0))
+                  const max = Math.max(...vals, 1e-9)
+                  return (
+                    <div key={item.featureName} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <ColumnQuestionTooltip nameOrId={item.featureName}>{item.featureName}</ColumnQuestionTooltip>
+                      </span>
+                      <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 2 }}>
+                        <div style={{ width: `${Math.round((Math.abs(item.importanceMean ?? 0) / max) * 100)}%`, height: '100%', background: '#1890ff', borderRadius: 2 }} />
+                      </div>
+                      <span style={{ width: 110, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {(item.importanceMean ?? 0).toFixed(3)} ± {(item.importanceStd ?? 0).toFixed(3)}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
+            </Card>
+          </Col>
+        </Row>
       )}
 
       {/* Visualizations: Multi-Metric Bar & Relevance vs Redundancy Bubble Plot */}

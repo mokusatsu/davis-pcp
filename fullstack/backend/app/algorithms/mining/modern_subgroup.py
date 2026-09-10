@@ -650,10 +650,7 @@ def run_modern_subgroup_mining(
         eval_questions = [c for c in (target_questions if target_questions is not None else allowed_questions) if c in allowed_questions]
         attribute_cols = [c for c in (requested_attributes if requested_attributes is not None else allowed_attributes) if c in allowed_attributes]
 
-    # Adapt effective min group size if dataset is small
     effective_min_group_size = min_group_size
-    if df.height < min_group_size * 3:
-        effective_min_group_size = max(3, df.height // 6)
 
     # Pre-generate attribute descriptors
     # Only explicitly designated question columns (role == "question") are strictly excluded from attribute descriptors,
@@ -724,19 +721,22 @@ def run_modern_subgroup_mining(
         if target_cat is not None or sem_type == "binary":
             is_binary = True
         elif dtype == pl.String or sem_type == "categorical":
-            non_null_unique = t_series.drop_nulls().unique().to_list()
+            from ...domain.codebook_adapter import normalize_code as _normalize_code
+            non_null_unique = sorted({_normalize_code(v) for v in t_series.drop_nulls().to_list()
+                                      if _normalize_code(v) is not None})
             if len(non_null_unique) == 2:
                 is_binary = True
                 if target_cat is None:
                     target_cat = non_null_unique[0]
             else:
-                # String column with != 2 categories cannot be converted to float target
                 continue
 
         if is_binary:
+            from ...domain.codebook_adapter import normalize_code as _normalize_code
             vals = t_series.to_list()
+            target_norm = _normalize_code(target_cat)
             arr = np.array([
-                np.nan if v is None else (1.0 if v == target_cat else 0.0)
+                np.nan if _normalize_code(v) is None else (1.0 if _normalize_code(v) == target_norm else 0.0)
                 for v in vals
             ], dtype=float)
             sd = float(np.nanstd(arr)) if len(arr) > 0 else 1.0
@@ -901,10 +901,18 @@ def run_modern_subgroup_mining(
         if cand.target_question:
             t_label = (adapter.get_column_spec_optional(cand.target_question) or {}).get("label") or cand.target_question
             if "delta_proportion" in cand.target_stats:
-                narrative = (
-                    f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
-                    f"質問【{t_label}】の該当割合が補集合に比べ{cand.target_stats['delta_proportion'] * 100:+.1f}%ポイント異なります。"
-                )
+                delta = float(cand.target_stats["delta_proportion"])
+                direction = "高く" if delta > 1e-12 else ("低く" if delta < -1e-12 else "同じで")
+                if abs(delta) <= 1e-12:
+                    narrative = (
+                        f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
+                        f"質問【{t_label}】の該当割合に補集合との実質差がありません。"
+                    )
+                else:
+                    narrative = (
+                        f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
+                        f"質問【{t_label}】の該当割合が補集合に比べ{abs(delta) * 100:.1f}%ポイント{direction}なります。"
+                    )
             else:
                 if cand.parent_insight_id and cand.parent_delta_mean is not None:
                     narrative = (
@@ -912,10 +920,18 @@ def run_modern_subgroup_mining(
                         f"質問【{t_label}】において親集団よりさらに平均{cand.parent_delta_mean:+.2f}異なる突出・例外セグメントです。"
                     )
                 else:
-                    narrative = (
-                        f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
-                        f"質問【{t_label}】において補集合に比べ平均{cand.target_stats['delta_mean']:+.2f}高く、回答がまとまっています。"
-                    )
+                    _delta = float(cand.target_stats.get("delta_mean", 0.0))
+                    _direction = "高く" if _delta > 1e-12 else ("低く" if _delta < -1e-12 else "同じで")
+                    if abs(_delta) <= 1e-12:
+                        narrative = (
+                            f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
+                            f"質問【{t_label}】において補集合との実質差がありません。"
+                        )
+                    else:
+                        narrative = (
+                            f"「{full_text}」の層（{cand.n_subgroup}名, {cand.n_subgroup / df.height * 100:.1f}%）は、"
+                            f"質問【{t_label}】において補集合に比べ平均{abs(_delta):.2f}{_direction}、回答がまとまっています。"
+                        )
         else:
             q_pair_str = f"{cand.target_pair[0]} × {cand.target_pair[1]}" if cand.target_pair else "質問ペア"
             rev_text = "（順位相関が逆転）" if cand.emm_stats and cand.emm_stats.get("reversal") else ""
@@ -949,13 +965,20 @@ def run_modern_subgroup_mining(
             "narrative": narrative,
         })
 
+    skipped = sorted({q for q in (target_questions or []) if q not in question_arrays}
+                     | {q for q in eval_questions if q not in question_arrays})
+    skipped_targets = [{"column": q,
+                        "reason": "unsupported_target_type",
+                        "detail": "二値化できない3値以上の名義尺度は対象外です。"} for q in skipped]
     return {
         "run_id": str(uuid.uuid4()),
         "mode": mode,
         "summary": {
             "total_candidates_explored": len(seen_rules) * max(1, len(eval_questions)),
             "non_redundant_insights_count": len(insights_out),
-            "questions_evaluated_count": len(eval_questions),
+            "questions_evaluated_count": len(question_arrays),
+            "questions_requested_count": len(eval_questions),
+            "skippedTargets": skipped_targets,
         },
         "insights": insights_out,
     }

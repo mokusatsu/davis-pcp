@@ -50,9 +50,14 @@ def impute_dataframe(
 ) -> tuple[pl.DataFrame, dict[str, Any]]:
     """Impute missing values across specified columns in a dataframe."""
     opts = options or {}
-    target_cols = columns or [c for c in df.columns if c != "__rowId__"]
+    if columns is not None:
+        target_cols = list(columns)
+    else:
+        target_cols = [c for c in df.columns if c != "__rowId__"]
     valid_cols = [c for c in target_cols if c in df.columns and c != "__rowId__"]
 
+    if columns is not None and len(valid_cols) == 0:
+        raise BizError("IMPUTATION_NO_COLUMNS", "補完対象の列が指定されていないか、存在しません。")
     if not valid_cols:
         raise BizError("IMPUTATION_NO_COLUMNS", "補完対象の列が指定されていないか、存在しません。")
 
@@ -123,14 +128,20 @@ def impute_dataframe(
             col_diagnostics[c] = {"imputedCount": null_count, "fillValue": str(mode_val)}
 
         elif strategy == "constant":
-            raw_const = opts.get("constant_value", 0)
+            if "constant_value" not in opts:
+                raise BizError("IMPUTATION_CONSTANT_MISSING", "定数補完にはconstant_valueが必要です。")
+            raw_const = opts.get("constant_value")
             if is_numeric:
                 try:
                     const_val = float(raw_const)
-                    if s.dtype in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
-                        const_val = int(const_val)
-                except ValueError:
-                    const_val = 0
+                except (TypeError, ValueError):
+                    raise BizError("IMPUTATION_CONSTANT_INVALID", "定数値を数値に変換できません。")
+                if not np.isfinite(const_val):
+                    raise BizError("IMPUTATION_CONSTANT_INVALID", "定数値は有限値にしてください。")
+                if s.dtype in (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
+                    if not float(const_val).is_integer():
+                        raise BizError("IMPUTATION_CONSTANT_INVALID", "整数列には整数の定数を指定してください。")
+                    const_val = int(const_val)
             else:
                 const_val = str(raw_const)
             new_s = s.fill_nan(const_val).fill_null(const_val) if is_float else s.fill_null(const_val)

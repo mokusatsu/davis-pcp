@@ -1,6 +1,7 @@
 # 列名の設問文ポップアップとL1色分け拡張
 
 状態: 実装済み（検証記録: [DAVIS-FEAT-028](../tasks/DAVIS-FEAT-028.md)）
+詳細仕様・引き継ぎ: [tasks/DAVIS-FEAT-027-028.md](../tasks/DAVIS-FEAT-027-028.md#feature-28-実装仕様)
 
 ## 1. 仕様
 

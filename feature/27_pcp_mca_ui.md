@@ -4,6 +4,7 @@
 作成日: 2026-09-07
 優先度: 4
 前提仕様: なし
+実装タスク・引き継ぎ: [tasks/DAVIS-FEAT-027-028.md](../tasks/DAVIS-FEAT-027-028.md#feature-27-実装仕様)
 対象コンポーネント: 
 - `fullstack/backend/app/algorithms/models/mca.py`
 - `fullstack/backend/app/api/models.py`

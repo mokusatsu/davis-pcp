@@ -48,7 +48,7 @@ def test_ma_survives_calculation_imputation_copy_and_member_deletion(tmp_path, m
 
 def test_failed_transform_does_not_publish_dictionary_or_revision(tmp_path, monkeypatch):
     store, _, _ = setup_dataset(tmp_path, monkeypatch)
-    before = {path.name: path.read_bytes() for path in store.root.iterdir()}
+    before = {path.name: path.read_bytes() for path in store.root.iterdir() if path.is_file()}
     write = dataset_store.atomic_write_bytes
 
     def fail(path, payload):
@@ -59,4 +59,4 @@ def test_failed_transform_does_not_publish_dictionary_or_revision(tmp_path, monk
     monkeypatch.setattr(dataset_store, 'atomic_write_bytes', fail)
     with pytest.raises(OSError, match='disk failure'):
         datasets.transform_dataset('d', datasets.TransformRequest(type='binning', source_column='Score', options={'num_bins': 2}))
-    assert {path.name: path.read_bytes() for path in store.root.iterdir()} == before
+    assert {path.name: path.read_bytes() for path in store.root.iterdir() if path.is_file()} == before

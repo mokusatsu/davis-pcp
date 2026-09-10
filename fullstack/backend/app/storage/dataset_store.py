@@ -102,6 +102,9 @@ class DatasetStore:
         recovery_failed = False
         try:
             for path, _ in payloads:
+                if path.is_dir():
+                    backups[path] = None
+                    continue
                 if path.exists():
                     fd, name = tempfile.mkstemp(dir=str(path.parent), suffix=".bak")
                     os.close(fd)
@@ -203,6 +206,199 @@ class DatasetStore:
     def _codebook_path(self, dataset_id: str) -> Path:
         return self.root / f"{dataset_id}.codebook.json"
 
+    # --- Feature 25: provenance sidecars ---------------------------------
+    def _provenance_path(self, dataset_id: str) -> Path:
+        return self.root / f"{dataset_id}.provenance.json"
+
+    def _mask_path(self, dataset_id: str) -> Path:
+        return self.root / f"{dataset_id}.imputation-mask.json"
+
+    def _raw_path(self, dataset_id: str) -> Path:
+        return self.root / f"{dataset_id}.raw.parquet"
+
+    def _snapshot_dir(self, dataset_id: str) -> Path:
+        return self.root / f"{dataset_id}.revisions"
+
+    def _snapshot_path(self, dataset_id: str, data_revision: int) -> Path:
+        return self._snapshot_dir(dataset_id) / f"{int(data_revision)}.parquet"
+
+    def load_provenance(self, dataset_id: str) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_provenance(dataset_id)
+
+    def _read_provenance(self, dataset_id: str) -> dict[str, Any] | None:
+        path = self._provenance_path(dataset_id)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def load_mask(self, dataset_id: str) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_mask(dataset_id)
+
+    def _read_mask(self, dataset_id: str) -> dict[str, Any] | None:
+        path = self._mask_path(dataset_id)
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def mask_revision(self, dataset_id: str) -> int | None:
+        mask = self.load_mask(dataset_id)
+        if mask is None:
+            return None
+        try:
+            return int(mask.get("maskRevision", 0))
+        except (TypeError, ValueError):
+            return None
+
+    def read_snapshot(self, dataset_id: str, data_revision: int) -> pl.DataFrame:
+        with self.lock(dataset_id):
+            path = self._snapshot_path(dataset_id, data_revision)
+            if not path.exists():
+                raise BizError("PROVENANCE_SNAPSHOT_MISSING",
+                               f"revision {int(data_revision)} のスナップショットが存在しません。",
+                               status_code=422)
+            try:
+                return pl.read_parquet(path)
+            except Exception as exc:
+                raise BizError("PROVENANCE_SNAPSHOT_MISSING",
+                               f"revision {int(data_revision)} のスナップショットを読み込めません: {exc}",
+                               status_code=422) from exc
+
+    def read_raw(self, dataset_id: str) -> pl.DataFrame:
+        with self.lock(dataset_id):
+            path = self._raw_path(dataset_id)
+            if not path.exists():
+                raise BizError("PROVENANCE_RAW_MISSING",
+                               "原データのスナップショットが存在しません。",
+                               status_code=422)
+            try:
+                return pl.read_parquet(path)
+            except Exception as exc:
+                raise BizError("PROVENANCE_RAW_MISSING",
+                               f"原データのスナップショットを読み込めません: {exc}",
+                               status_code=422) from exc
+
+    def commit_data_change(
+        self,
+        dataset_id: str,
+        meta: dict[str, Any],
+        df: pl.DataFrame,
+        codebook: dict[str, Any] | None,
+        step: dict[str, Any],
+        mask_entries: list[dict[str, Any]] | None = None,
+        replace_mask: bool = False,
+        raw_df: pl.DataFrame | None = None,
+    ) -> dict[str, Any]:
+        """Atomically publish values + snapshot + provenance + mask.
+
+        Never leaves values ahead of provenance (or vice versa): every file
+        is written to temp paths first, checksummed, then renamed together.
+        On any failure the current values and history stay untouched and
+        PROVENANCE_COMMIT_FAILED is raised.
+        """
+        import io
+
+        with self.lock(dataset_id):
+            previous = self.get_meta(dataset_id) if self._meta_path(dataset_id).exists() else None
+            previous_revision = int((previous or {}).get("dataRevision", 0))
+            new_revision = previous_revision + 1 if previous else int(meta.get("dataRevision", 1))
+            updated = {**meta, "dataRevision": new_revision,
+                       "valuesFingerprint": values_fingerprint(df)}
+
+            provenance = self._read_provenance(dataset_id) or {
+                "datasetId": dataset_id,
+                "operations": [],
+                "currentOperationId": None,
+                "rawDataRevision": None,
+            }
+            existing_mask = self._read_mask(dataset_id) or {
+                "datasetId": dataset_id, "maskRevision": 0, "entries": [],
+            }
+            if replace_mask:
+                merged_entries: list[dict[str, Any]] = list(mask_entries or [])
+            else:
+                merged_entries = list(existing_mask.get("entries", [])) + list(mask_entries or [])
+            new_mask_revision = int(existing_mask.get("maskRevision", 0)) + (1 if mask_entries else 0)
+            mask_doc = {"datasetId": dataset_id, "dataRevision": new_revision,
+                        "maskRevision": new_mask_revision, "entries": merged_entries}
+
+            step_doc = {**step, "inputDataRevision": previous_revision or new_revision,
+                        "outputDataRevision": new_revision,
+                        "currentOperationId": step.get("operationId")}
+            operations = list(provenance.get("operations", [])) + [step_doc]
+            provenance_doc = {**provenance, "datasetId": dataset_id,
+                              "operations": operations,
+                              "currentOperationId": step.get("operationId")}
+            if provenance_doc.get("rawDataRevision") is None and previous is None:
+                provenance_doc["rawDataRevision"] = new_revision
+
+            buffer = io.BytesIO()
+            try:
+                df.write_parquet(buffer)
+            except Exception:
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                table = pa.Table.from_pydict(df.to_dict(as_series=False))
+                pq.write_table(table, buffer)
+
+            snapshot_dir = self._snapshot_dir(dataset_id)
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+            payloads: list[tuple[Path, bytes]] = [
+                (self._parquet_path(dataset_id), buffer.getvalue()),
+                (self._meta_path(dataset_id),
+                 json.dumps(updated, ensure_ascii=False, indent=2).encode("utf-8")),
+                (self._provenance_path(dataset_id),
+                 json.dumps(provenance_doc, ensure_ascii=False, indent=2).encode("utf-8")),
+                (self._mask_path(dataset_id),
+                 json.dumps(mask_doc, ensure_ascii=False, indent=2).encode("utf-8")),
+                (self._snapshot_path(dataset_id, new_revision), buffer.getvalue()),
+            ]
+            if codebook is not None:
+                payloads.append((self._codebook_path(dataset_id),
+                                 json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
+            if raw_df is not None or previous is None:
+                raw_buffer = io.BytesIO()
+                try:
+                    (raw_df if raw_df is not None else df).write_parquet(raw_buffer)
+                except Exception:
+                    import pyarrow as pa
+                    import pyarrow.parquet as pq
+                    table = pa.Table.from_pydict(
+                        (raw_df if raw_df is not None else df).to_dict(as_series=False))
+                    pq.write_table(table, raw_buffer)
+                payloads.append((self._raw_path(dataset_id), raw_buffer.getvalue()))
+            if provenance_doc.get("rawDataRevision") is None:
+                provenance_doc["rawDataRevision"] = new_revision
+                payloads = [(p, (json.dumps(provenance_doc, ensure_ascii=False, indent=2).encode("utf-8")
+                                 if p == self._provenance_path(dataset_id) else b))
+                            for p, b in payloads]
+
+            failed_checksums: list[str] = []
+            for path, payload in payloads:
+                if not isinstance(payload, (bytes, bytearray)) or len(payload) == 0:
+                    raise BizError("PROVENANCE_COMMIT_FAILED",
+                                   f"データ変更の確定に失敗しました: empty payload for {path.name}",
+                                   status_code=500)
+                try:
+                    hashlib.sha256(bytes(payload)).hexdigest()
+                except Exception:
+                    failed_checksums.append(path.name)
+            if failed_checksums:
+                raise BizError("PROVENANCE_COMMIT_FAILED",
+                               "データ変更の確定に失敗しました: checksum error",
+                               status_code=500,
+                               details={"files": failed_checksums})
+            self._publish_files(payloads)
+            meta.update(updated)
+            return {"provenance": provenance_doc, "mask": mask_doc}
+
     def save_codebook(self, dataset_id: str, codebook: dict[str, Any] | Any) -> None:
         if hasattr(codebook, "model_dump"):
             payload = codebook.model_dump()
@@ -230,14 +426,32 @@ class DatasetStore:
             return None
 
     def delete(self, dataset_id: str) -> None:
-        self.get_meta(dataset_id)
-        self._meta_path(dataset_id).unlink()
-        parquet = self._parquet_path(dataset_id)
-        if parquet.exists():
-            parquet.unlink()
-        codebook = self._codebook_path(dataset_id)
-        if codebook.exists():
-            codebook.unlink()
+        with self.lock(dataset_id):
+            self._read_meta_nolock(dataset_id)
+            for path in (
+                self._meta_path(dataset_id),
+                self._parquet_path(dataset_id),
+                self._codebook_path(dataset_id),
+                self._provenance_path(dataset_id),
+                self._mask_path(dataset_id),
+                self._raw_path(dataset_id),
+            ):
+                if path.exists():
+                    path.unlink()
+            snapshot_dir = self._snapshot_dir(dataset_id)
+            if snapshot_dir.exists():
+                shutil.rmtree(snapshot_dir, ignore_errors=True)
+            for sibling in self.root.glob(f"{dataset_id}.*"):
+                if sibling.is_file():
+                    sibling.unlink(missing_ok=True)
+
+    def _read_meta_nolock(self, dataset_id: str) -> dict[str, Any]:
+        path = self._meta_path(dataset_id)
+        if not path.exists():
+            raise BizError("DATASET_NOT_FOUND", f"データセット {dataset_id} が見つかりません。",
+                           status_code=404,
+                           suggested_actions=["データセット一覧を確認してください"])
+        return json.loads(path.read_text(encoding="utf-8"))
 
 
 def assign_row_identity(df: pl.DataFrame, id_column: str | None = None, schemas: list[Any] | None = None) -> tuple[pl.DataFrame, str]:

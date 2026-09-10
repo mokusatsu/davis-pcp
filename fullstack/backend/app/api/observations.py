@@ -33,10 +33,20 @@ class RangeSelectionRequest(BaseModel):
 @router.post("/sample")
 def sample_observations(dataset_id: str, req: SamplingRequest) -> dict[str, Any]:
     """Execute simple random sampling (with/without replacement)."""
+    from ..domain.errors import BizError as _BizError
+
     df = store.get_dataframe(dataset_id)
     all_row_ids: list[str] = [str(x) for x in df["__rowId__"].to_list()]
+    known = set(all_row_ids)
 
     candidates = req.activeRowIds if req.activeRowIds is not None else all_row_ids
+    if req.activeRowIds is not None:
+        unknown = sorted({str(v) for v in req.activeRowIds} - known)
+        if unknown:
+            raise _BizError("SAMPLING_UNKNOWN_ROW", "存在しないrowIdが指定されています。",
+                            status_code=422,
+                            details={"unknownRowIds": unknown[:20], "unknownCount": len(unknown)})
+        candidates = [v for v in candidates if v in known]
     if len(candidates) > MAX_ROW_COUNT:
         raise BizError(
             "PAYLOAD_TOO_LARGE",

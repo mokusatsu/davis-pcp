@@ -11,6 +11,7 @@ import BinningModal from './BinningModal'
 import OneHotModal from './OneHotModal'
 import ImputationModal from './ImputationModal'
 import AddVariableModal from './AddVariableModal'
+import ProvenanceHistoryPanel from './ProvenanceHistoryPanel'
 import { editorModalOpened, fetchCodebookThunk } from './codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from './useCodebookColumn'
@@ -186,6 +187,8 @@ export default function OverviewPage() {
         minHeight: 0,
       }}
     >
+      {!focused && <ProvenanceHistoryPanel />}
+
       {!focused && (
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
           <Descriptions title="データセット概要" size="small" bordered column={2}>
@@ -234,7 +237,7 @@ export default function OverviewPage() {
                   setImputeModalOpen(true)
                 }}
               >
-                欠損値補完 (TabDiff / 補完)
+                欠損値補完 (実験的条件付き補完 / 補完)
                 {columnsWithMissing.length > 0 && ` (${columnsWithMissing.length}列に欠損あり)`}
               </Button>
               <Button

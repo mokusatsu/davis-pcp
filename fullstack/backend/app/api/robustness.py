@@ -1,12 +1,16 @@
 """API endpoints for Robustness & Sensitivity Analysis (Feature 03)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
+import polars as pl
 
 from ..algorithms.robustness.engine import evaluate_robustness
+from ..algorithms.robustness.sensitivity import run_sensitivity_analysis
 from ..domain.errors import BizError
+from ..domain.weight_unsupported import weight_unsupported_block
+from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
@@ -48,3 +52,87 @@ def run_robustness_evaluation(req: RobustnessRequest) -> dict[str, Any]:
         quality_col=q_col,
     )
     return result
+
+
+class SensitivityCandidate(BaseModel):
+    type: str = "subgroup_diff"
+    groupColumn: str | None = None
+    compareGroups: list[str] | None = None
+    rowIds: list[str] | None = None
+
+
+class SensitivityRequest(BaseModel):
+    datasetId: str | None = None
+    dataset_id: str | None = None
+    targetColumn: str | None = None
+    target_column: str | None = None
+    candidate: SensitivityCandidate | None = None
+    outlierMethod: str = "standardized_deviation"
+    threshold: float = 3.0
+    scopeRowIds: list[str] | None = None
+    bootstrapB: int = 200
+    seed: int = 42
+    weightColumn: str | None = None
+    expectedSchemaRevision: int | None = None
+    expectedDataRevision: int | None = None
+
+
+@router.post("/robustness/sensitivity")
+def run_sensitivity(req: SensitivityRequest) -> dict[str, Any]:
+    dataset_id = req.datasetId or req.dataset_id
+    if not dataset_id:
+        raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
+    target = req.targetColumn if req.target_column is None else req.target_column
+    if not target:
+        raise BizError("SENSITIVITY_COLUMN_MISSING", "対象列を指定してください。",
+                       status_code=422)
+    candidate = req.candidate or SensitivityCandidate()
+    if candidate.type not in ("kpi", "subgroup_diff"):
+        raise BizError("SENSITIVITY_CONFIG_INVALID", "candidate.typeはkpi/subgroup_diffです。",
+                       status_code=422)
+    if (req.outlierMethod or "standardized_deviation") != "standardized_deviation":
+        raise BizError("SENSITIVITY_CONFIG_INVALID", "outlierMethodはstandardized_deviationです。",
+                       status_code=422)
+
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        codebook = store.load_codebook(dataset_id) or {}
+        revisions = _collect_revisions(meta, codebook)
+        _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        weight = weight_unsupported_block(codebook, req.weightColumn)
+        df = store.get_dataframe(dataset_id)
+        scope_ids = req.scopeRowIds
+        if scope_ids is not None:
+            df = df.filter(pl.col("__rowId__").is_in(scope_ids))
+        scope_hash = _scope_hash(df["__rowId__"].to_list())
+        group_column = candidate.groupColumn
+        compare = candidate.compareGroups
+        if candidate.rowIds:
+            membership = {str(v) for v in candidate.rowIds}
+            target_ids = [str(v) for v in df["__rowId__"].to_list()] if "__rowId__" in df.columns else []
+            in_ids = sorted(v for v in target_ids if v in membership)
+            out_ids = sorted(v for v in target_ids if v not in membership)
+            if not in_ids or not out_ids:
+                raise BizError("SENSITIVITY_CONFIG_INVALID",
+                               "candidate.rowIdsでは対象群と補集合の両方に回答者が必要です。",
+                               status_code=422)
+            marker = "__sensitivity_candidate__"
+            mapping = {v: "candidate" for v in in_ids} | {v: "complement" for v in out_ids}
+            df = df.with_columns(
+                pl.col("__rowId__").cast(pl.String).replace(mapping, default=None).alias(marker)
+            )
+            group_column = marker
+            compare = ["candidate", "complement"]
+        result = run_sensitivity_analysis(
+            df=df,
+            target_column=target,
+            group_column=group_column,
+            compare_groups=compare,
+            row_ids=None,
+            threshold=req.threshold if req.threshold is not None else 3.0,
+            seed=req.seed if req.seed is not None else 42,
+            scope_hash=scope_hash,
+            bootstrap_b=req.bootstrapB,
+        )
+        return {"datasetId": dataset_id, **revisions, "scopeHash": scope_hash,
+                "scopeCount": df.height, **weight, **result}

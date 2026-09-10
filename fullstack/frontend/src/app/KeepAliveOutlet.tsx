@@ -27,6 +27,7 @@ import CovariancePage from '../features/covariance/CovariancePage'
 import FeatureRankingPage from '../features/mining/FeatureRankingPage'
 import LogisticRegressionPage from '../features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from '../features/models/DiscriminantAnalysisPage'
+import CrosstabPage from '../features/crosstab/CrosstabPage'
 
 /**
  * Route path to Component registry.
@@ -56,6 +57,7 @@ const ROUTE_COMPONENTS: Record<string, React.ComponentType> = {
   '/covariance': CovariancePage,
   '/logistic': LogisticRegressionPage,
   '/discriminant': DiscriminantAnalysisPage,
+  '/crosstab': CrosstabPage,
 }
 
 /**

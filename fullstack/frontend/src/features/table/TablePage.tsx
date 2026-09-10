@@ -7,6 +7,7 @@ import { Alert, Button, Checkbox, Dropdown, Input, Pagination, Popover, Segmente
 import type { ColumnsType } from 'antd/es/table'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, hovered as hoverAction, selectEffectiveRowIds } from '../../app/store'
+import { maskFilterChanged } from '../dataset/provenanceSlice'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
@@ -27,7 +28,10 @@ export default function TablePage() {
   const [valueDisplayMode, setValueDisplayMode] = useState<'labels' | 'raw'>('labels')
 
   const { columns, schemaRevision } = useCodebook()
+  const provenance = useSelector((s: RootState) => s.provenance)
+  const maskFilter = provenance.maskFilter
   const groups = useSelector((s: RootState) => s.codebook.multiResponseGroups)
+  const [maskEntries, setMaskEntries] = useState<{ rowId: string; columnId: string; methodLabel: string }[]>([])
   const [entityPage, setEntityPage] = useState(1)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(100)
@@ -62,6 +66,27 @@ export default function TablePage() {
   const currentSort = pageScope === scopeKey ? sort : undefined
   const requestKey = JSON.stringify([scopeKey, currentPage, pageSize, currentSort, currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : null])
   useEffect(() => {
+    if (!selection.datasetId) return
+    let current = true
+    api.get<{ maskRevision: number; entries: { rowId: string; columnId: string; methodLabel: string }[] }>(
+      `/datasets/${selection.datasetId}/imputation-mask?expectedDataRevision=${selection.dataRevision}`,
+    ).then((mask) => { if (current) setMaskEntries(mask.entries) })
+      .catch(() => { if (current) setMaskEntries([]) })
+    return () => { current = false }
+  }, [selection.datasetId, selection.dataRevision])
+  const imputedByCell = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const entry of maskEntries) map.set(`${entry.rowId}::${entry.columnId}`, entry.methodLabel)
+    return map
+  }, [maskEntries])
+  const imputedRowIds = useMemo(() => new Set(maskEntries.map((e) => e.rowId)), [maskEntries])
+  const displayRows = useMemo(() => {
+    const base = (result?.rows ?? []).map(row => ({ key: row.rowId, __rowId__: row.rowId, cells: row.cells }))
+    if (maskFilter === 'all') return base
+    return base.filter((row) =>
+      maskFilter === 'hasImputed' ? imputedRowIds.has(row.__rowId__ as string) : !imputedRowIds.has(row.__rowId__ as string))
+  }, [result, maskFilter, imputedRowIds])
+  useEffect(() => {
     if (!selection.datasetId || !columns.length) return
     let current = true
     setLoading(true)
@@ -77,7 +102,7 @@ export default function TablePage() {
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
   }, [requestKey, columns.length])
-  const rows = (result?.rows ?? []).map(row => ({ key: row.rowId, __rowId__: row.rowId, cells: row.cells }))
+  const rows = displayRows
 
   const contextMenuItems = [
     {
@@ -121,6 +146,13 @@ export default function TablePage() {
       sortOrder: currentSort?.entityIndex === index ? currentSort.order : null,
       render: (_: unknown, row: Record<string, unknown>) => {
         const cell = (row.cells as Cell[])[index]
+        const columnId = entity.columnId ?? (result?.entities[index] as unknown as { columnId?: string } | undefined)?.columnId
+        const imputedLabel = columnId ? imputedByCell.get(`${row.__rowId__ as string}::${columnId}`) : undefined
+        const imputedBadge = imputedLabel ? (
+          <Tag color="purple" aria-label={`補完値 (${imputedLabel})`} title={`補完値 (${imputedLabel})`} style={{ marginLeft: 4 }}>
+            補完
+          </Tag>
+        ) : null
         if (entity.kind === 'ma') return <Space size={4} wrap>
           {valueDisplayMode === 'raw' ? <Typography.Text ellipsis style={{ maxWidth: 240 }} title={cell.text}>{cell.text}</Typography.Text>
             : <>{cell.labels?.slice(0, 3).map((label, i) => <Tag key={i} title={label}>{label}</Tag>)}
@@ -134,6 +166,7 @@ export default function TablePage() {
           ? `${cell.text} (${cell.value})` : cell.text
         return <span title={`生コード: ${cell.value ?? '無回答'}`}>
           {cell.isMissing && valueDisplayMode === 'labels' ? <Tag color="orange">{text}</Tag> : text}
+          {imputedBadge}
         </span>
       },
     }
@@ -213,6 +246,16 @@ export default function TablePage() {
               options={[{ label: '全active行', value: 'all' }, { label: `選択のみ (${selection.selectedRowIds.length})`, value: 'selected' }]}
               value={scopeFilter}
               onChange={(v) => setScopeFilter(v as 'all' | 'selected')}
+            />
+            <Segmented
+              data-testid="mask-filter"
+              options={[
+                { label: '全行', value: 'all' },
+                { label: `補完あり (${imputedRowIds.size})`, value: 'hasImputed' },
+                { label: '補完なし', value: 'noImputed' },
+              ]}
+              value={maskFilter}
+              onChange={(v) => dispatch(maskFilterChanged(v as 'all' | 'hasImputed' | 'noImputed'))}
             />
             <FocusEnterButton targetId="table" title="データテーブル" />
           </Space>

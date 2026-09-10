@@ -76,7 +76,7 @@ def _summaries(req: SummaryRequest) -> dict:
             df = df.filter(pl.col("__rowId__").is_in(req.rowIds))
         subset = df.select(columns)
         if weight_spec is not None:
-            weights, weight_missing, has_invalid = extract_weights(df, weight_name or "")
+            weights, weight_missing, has_invalid = extract_weights(df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
         payload = {
         "datasetId": req.datasetId,
@@ -119,7 +119,7 @@ def _summaries(req: SummaryRequest) -> dict:
             weight_df = store.get_dataframe(req.datasetId, columns=["__rowId__", weight_name or ""])
             if req.rowIds is not None:
                 weight_df = weight_df.filter(pl.col("__rowId__").is_in(req.rowIds))
-            weights, weight_missing, has_invalid = extract_weights(weight_df, weight_name or "")
+            weights, weight_missing, has_invalid = extract_weights(weight_df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
         else:
             weight_df = df
@@ -200,6 +200,188 @@ def qqplot_summary(req: QQPlotRequest) -> dict:
         wanted = set(req.rowIds)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
     return compute_qqplot(df, column=req.column, plotting_position=req.plottingPosition)
+
+
+class CrosstabContext(BaseModel):
+    datasetId: str
+    expectedDataRevision: int
+    expectedSchemaRevision: int
+    scope: str = "all"
+    rowIds: list[str] | None = None
+    activeRowIds: list[str] | None = None
+    selectedRowIds: list[str] | None = None
+    sampledRowIds: list[str] | None = None
+    weightColumn: str | None = None
+    missingPolicy: str = "exclude"
+
+
+class CrosstabRequest(BaseModel):
+    context: CrosstabContext
+    rowVariableId: str
+    colVariableId: str
+    includeRowIds: bool = True
+    maxRowIdsPerCell: int = 10000
+    inference: str = "pearson"
+
+
+class CrosstabCellRequest(BaseModel):
+    context: CrosstabContext
+    rowVariableId: str
+    colVariableId: str
+    rowCategoryId: str
+    colCategoryId: str
+
+
+@router.post("/summaries/crosstab")
+def crosstab_summary(req: CrosstabRequest) -> dict:
+    from ..algorithms.summaries.crosstab import compute_crosstab
+    from ..domain.context import (
+        build_meta,
+        check_revisions,
+        collect_revisions,
+        resolve_scope,
+    )
+    from ..domain.survey_weight import (
+        check_weights_valid,
+        extract_weights,
+        resolve_weight_column,
+        weighted_status,
+    )
+
+    context = req.context
+    with store.lock(context.datasetId):
+        meta = store.get_meta(context.datasetId)
+        codebook = store.load_codebook(context.datasetId) or {}
+        revisions = collect_revisions(meta, codebook)
+        check_revisions(revisions, context.expectedSchemaRevision, context.expectedDataRevision)
+        if context.scope == "explicit" and not context.rowIds:
+            raise BizError("ANALYSIS_CONTEXT_INCOMPLETE", "scope=explicitではrowIdsは必須です。",
+                           status_code=422)
+        if context.missingPolicy not in ("exclude", "include_missing", "separate_not_applicable"):
+            raise BizError("CROSSTAB_MISSING_POLICY", "missingPolicy が不正です。",
+                           status_code=422)
+        if req.inference not in ("pearson", "fisher_exact"):
+            raise BizError("CROSSTAB_INFERENCE", "inferenceはpearson/fisher_exactです。",
+                           status_code=422)
+        weight_spec = resolve_weight_column(codebook, context.weightColumn)
+        weight_name = weight_spec["name"] if weight_spec is not None else None
+        from ..domain.analysis_columns import resolve_analysis_columns
+
+        if req.rowVariableId == req.colVariableId:
+            raise BizError("CROSSTAB_SAME_VARIABLE", "行変数と列変数に同じ列を指定できません。",
+                           status_code=422)
+        try:
+            plan = resolve_analysis_columns(
+                codebook, [req.rowVariableId, req.colVariableId],
+                scales={"nominal", "ordinal", "binary"}, allow_ma_options=False,
+                roles={"question", "attribute", "weight", "numeric_axis",
+                       "categorical_axis", "feature"})
+        except BizError as exc:
+            if exc.code in ("MA_METHOD_UNSUPPORTED", "COLUMN_NOT_FOUND"):
+                raise BizError("CROSSTAB_CATEGORY_REQUIRED" if exc.code == "MA_METHOD_UNSUPPORTED"
+                               else "CROSSTAB_COLUMN_NOT_FOUND", exc.message,
+                               status_code=422) from exc
+            raise
+        if len(plan.names) != 2:
+            raise BizError("CROSSTAB_COLUMN_NOT_FOUND", "行変数または列変数が存在しません。",
+                           status_code=422)
+        row_name, col_name = plan.names[0], plan.names[1]
+        if row_name == col_name:
+            raise BizError("CROSSTAB_SAME_VARIABLE", "行変数と列変数に同じ列を指定できません。",
+                           status_code=422)
+        if weight_name is not None:
+            read_columns = ["__rowId__", row_name, col_name, weight_name]
+        else:
+            read_columns = ["__rowId__", row_name, col_name]
+        df = store.get_dataframe(context.datasetId, columns=read_columns)
+        scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
+                                   __import__("app.domain.context", fromlist=["AnalysisContext"])
+                                   .AnalysisContext(**context.model_dump()))
+        df = df.filter(pl.col("__rowId__").is_in(scope_ids)) if scope_ids else df.filter(
+            pl.col("__rowId__").is_in(["__none__"]))
+        weights: list[float | None] | None = None
+        weight_missing = 0
+        weight_status = "omitted"
+        positive_mass = 0.0
+        if weight_spec is not None:
+            weights, weight_missing, has_invalid = extract_weights(df, weight_name or "", weight_spec)
+            check_weights_valid(weights, has_invalid)
+            positive_mass = round(sum(w for w in weights if w is not None and w > 0), 4)
+            if positive_mass <= 0:
+                raise BizError("WEIGHT_NO_POSITIVE", "正のウェイトが存在しません。",
+                               status_code=422)
+            weight_status = weighted_status(True, positive_mass)
+        result = compute_crosstab(df, row_name, col_name, codebook=codebook,
+                                  missing_policy=context.missingPolicy, weights=weights,
+                                  include_row_ids=req.includeRowIds,
+                                  max_row_ids_per_cell=req.maxRowIdsPerCell,
+                                  inference=req.inference)
+        mask_revision = store.mask_revision(context.datasetId)
+        result_meta = build_meta(
+            dataset_id=context.datasetId, revisions=revisions, scope=context.scope,
+            scope_ids=scope_ids, effective_n=result["effectiveN"],
+            missing_count=result["missingCount"],
+            weight_applied=weight_status == "applied", weight_column=weight_name,
+            mask_revision=mask_revision, algorithm_version=result["algorithmVersion"],
+            is_explorative=False, warnings=result["warnings"])
+        payload = {**result, "meta": result_meta,
+                   "weightStatus": weight_status, "weightMissingCount": weight_missing,
+                   "weightedN": positive_mass if weight_status == "applied" else None}
+        return payload
+
+
+@router.post("/summaries/crosstab/cell-row-ids")
+def crosstab_cell_row_ids(req: CrosstabCellRequest) -> dict:  # noqa: C901
+    from ..algorithms.summaries.crosstab import _split_missing as _crosstab_split_missing
+    from ..algorithms.summaries.crosstab import _category_spec as _crosstab_spec
+    from ..domain.context import check_revisions, collect_revisions, resolve_scope
+
+    context = req.context
+    with store.lock(context.datasetId):
+        meta = store.get_meta(context.datasetId)
+        codebook = store.load_codebook(context.datasetId) or {}
+        revisions = collect_revisions(meta, codebook)
+        check_revisions(revisions, context.expectedSchemaRevision, context.expectedDataRevision)
+        from ..domain.analysis_columns import resolve_analysis_columns
+
+        try:
+            plan = resolve_analysis_columns(
+                codebook, [req.rowVariableId, req.colVariableId],
+                scales={"nominal", "ordinal", "binary"}, allow_ma_options=False,
+                roles={"question", "attribute", "weight", "numeric_axis",
+                       "categorical_axis", "feature"})
+        except BizError as exc:
+            if exc.code in ("MA_METHOD_UNSUPPORTED", "COLUMN_NOT_FOUND"):
+                raise BizError("CROSSTAB_CATEGORY_REQUIRED" if exc.code == "MA_METHOD_UNSUPPORTED"
+                               else "CROSSTAB_COLUMN_NOT_FOUND", exc.message,
+                               status_code=422) from exc
+            raise
+        if len(plan.names) != 2:
+            raise BizError("CROSSTAB_COLUMN_NOT_FOUND", "行変数または列変数が存在しません。",
+                           status_code=422)
+        row_name, col_name = plan.names[0], plan.names[1]
+        df = store.get_dataframe(context.datasetId, columns=["__rowId__", row_name, col_name])
+        scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
+                                   __import__("app.domain.context", fromlist=["AnalysisContext"])
+                                   .AnalysisContext(**context.model_dump()))
+        df = df.filter(pl.col("__rowId__").is_in(scope_ids)) if scope_ids else df.filter(
+            pl.col("__rowId__").is_in(["__none__"]))
+        row_spec = _crosstab_spec(codebook, req.rowVariableId)
+        col_spec = _crosstab_spec(codebook, req.colVariableId)
+        row_vals, _ = _crosstab_split_missing(df[row_name].to_list(), row_spec,
+                                              context.missingPolicy,
+                                              row_spec.get("missingReasons") or {})
+        col_vals, _ = _crosstab_split_missing(df[col_name].to_list(), col_spec,
+                                              context.missingPolicy,
+                                              col_spec.get("missingReasons") or {})
+        row_ids = [str(v) for v in df["__rowId__"].to_list()]
+
+        matched = [row_id for row_id, row, col in zip(row_ids, row_vals, col_vals)
+                   if row == req.rowCategoryId and col == req.colCategoryId]
+        matched.sort()
+        return {"datasetId": context.datasetId, **revisions,
+                "rowCategoryId": req.rowCategoryId, "colCategoryId": req.colCategoryId,
+                "rowIds": matched, "rowIdCount": len(matched), "rowIdsTruncated": False}
 
 
 class LineMosaicRequest(BaseModel):

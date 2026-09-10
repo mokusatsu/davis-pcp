@@ -506,6 +506,7 @@ export function selectEffectiveRowIds(state: RootState): string[] {
 }
 
 import { codebookSlice, fetchCodebookThunk, saveCodebookThunk } from '../features/dataset/codebookSlice'
+import { provenanceReducer } from '../features/dataset/provenanceSlice'
 
 export const store = configureStore({
   reducer: {
@@ -514,6 +515,7 @@ export const store = configureStore({
     globalVariables: globalVariablesSlice.reducer,
     globalObservations: globalObservationsSlice.reducer,
     codebook: codebookSlice.reducer,
+    provenance: provenanceReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

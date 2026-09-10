@@ -14,6 +14,8 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
+from ..summaries.crosstab import adjusted_residual as shared_adjusted_residual
+
 
 def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> tuple[list[float], list[bool]]:
     """Compute Benjamini-Hochberg FDR adjusted p-values (q-values) and rejection flags."""
@@ -76,8 +78,14 @@ def run_subgroup_mining(
     max_subgroup_levels: int = 8,
     weights: dict[str, float] | None = None,
     surprise_scores: dict[str, float] | None = None,
+    compute_pvalues: bool = True,
 ) -> dict[str, Any]:
-    """Run full automated subgroup mining pipeline."""
+    """Run full automated subgroup mining pipeline.
+
+    When ``compute_pvalues`` is False (exploratory mode), no statistical test
+    is executed at all: p-values, q-values, and post-hoc adjustments are
+    None instead of being computed and hidden afterwards.
+    """
     w = {
         "stat": 0.35,
         "eff": 0.30,
@@ -160,10 +168,7 @@ def run_subgroup_mining(
         attribute_cols = [c for c in (requested_attributes if requested_attributes is not None else allowed_attributes) if c in allowed_attributes]
         question_cols = [c for c in (requested_questions if requested_questions is not None else allowed_questions) if c in allowed_questions]
 
-    # Effective min group size adjustments for small datasets
     effective_min_group_size = min_group_size
-    if df.height < min_group_size * 3:
-        effective_min_group_size = max(3, df.height // 10)
 
     # Prepare candidates
     raw_tests: list[dict[str, Any]] = []
@@ -214,14 +219,18 @@ def run_subgroup_mining(
                 else:
                     q_type = "categorical"
 
-            # Execute statistical test
+            # Execute statistical test (skipped entirely in exploratory mode)
             test_res = None
-            if q_type == "numeric":
-                test_res = _test_numeric(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
-            elif q_type == "ordinal":
-                test_res = _test_ordinal(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
+            if compute_pvalues:
+                if q_type == "numeric":
+                    test_res = _test_numeric(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
+                elif q_type == "ordinal":
+                    test_res = _test_ordinal(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
+                else:
+                    test_res = _test_categorical(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
             else:
-                test_res = _test_categorical(attr, q, unique_levels, attr_vals, q_series.to_list(), level_row_ids)
+                test_res = _describe_numeric(attr, q, unique_levels, attr_vals, q_series.to_list(),
+                                             level_row_ids, q_type=q_type)
 
             if test_res:
                 test_res["attr"] = attr
@@ -246,13 +255,21 @@ def run_subgroup_mining(
             "insights": [],
         }
 
-    # Multiple testing correction
-    p_values = [t["p_value"] for t in raw_tests]
-    q_values, rejected = benjamini_hochberg(p_values, alpha=alpha)
+    # Multiple testing correction (exploratory mode: never computed)
+    if compute_pvalues:
+        p_values = [t["p_value"] for t in raw_tests]
+        q_values, rejected = benjamini_hochberg(p_values, alpha=alpha)
 
-    bonferroni_thresh = alpha / max(1, len(raw_tests))
-    n_bonf_sig = sum(1 for p in p_values if p <= bonferroni_thresh)
-    n_fdr_sig = sum(1 for r in rejected if r)
+        bonferroni_thresh = alpha / max(1, len(raw_tests))
+        n_bonf_sig = sum(1 for p in p_values if p <= bonferroni_thresh)
+        n_fdr_sig = sum(1 for r in rejected if r)
+    else:
+        p_values = []
+        q_values = [None] * len(raw_tests)
+        rejected = [False] * len(raw_tests)
+        bonferroni_thresh = alpha / max(1, len(raw_tests))
+        n_bonf_sig = 0
+        n_fdr_sig = 0
 
     insights: list[dict[str, Any]] = []
 
@@ -260,7 +277,7 @@ def run_subgroup_mining(
         q_val = q_values[i]
         is_sig = rejected[i]
         t["q_value"] = q_val
-        t["significant"] = is_sig
+        t["significant"] = is_sig if compute_pvalues else False
 
         # Practical significance filters
         eff_label = t["effect"]["label"]
@@ -272,11 +289,17 @@ def run_subgroup_mining(
         if min_size < effective_min_group_size:
             warnings.append(f"最小グループサイズ ({min_size}) が閾値 ({effective_min_group_size}) 未満です。")
 
-        # Practical filters: must have non-negligible effect, delta_pct >= min_pct_diff (or significant difference)
-        passed_filters = is_sig and eff_label != "negligible" and (delta_pct >= min_pct_diff or t["effect"]["value"] >= 0.1)
+        # Practical filters: exploratory mode ranks by effect only (never by p-value).
+        if compute_pvalues:
+            passed_filters = is_sig and eff_label != "negligible" and (delta_pct >= min_pct_diff or t["effect"]["value"] >= 0.1)
+        else:
+            passed_filters = eff_label != "negligible" and (delta_pct >= min_pct_diff or t["effect"]["value"] >= 0.1)
 
         # Composite score
-        stat_score = min(max(1.0 - (q_val / max(alpha, 1e-9)), 0.0), 1.0)
+        if compute_pvalues and q_val is not None:
+            stat_score = min(max(1.0 - (q_val / max(alpha, 1e-9)), 0.0), 1.0)
+        else:
+            stat_score = 0.0
         eff_score = 1.0 if eff_label == "large" else (0.66 if eff_label == "medium" else 0.33)
         prac_score = min(max(delta_pct / (max(min_pct_diff, 1.0) * 5.0), 0.0), 1.0)
         
@@ -319,8 +342,8 @@ def run_subgroup_mining(
             "test": {
                 "method": t["test_method"],
                 "statistic": round(float(t["statistic"]), 4) if t["statistic"] is not None else None,
-                "p_value": float(f"{t['p_value']:.4e}"),
-                "q_value": float(f"{q_val:.4e}"),
+                "p_value": float(f"{t['p_value']:.4e}") if compute_pvalues else None,
+                "q_value": float(f"{q_val:.4e}") if compute_pvalues and q_val is not None else None,
                 "significant": is_sig,
             },
             "effect": t["effect"],
@@ -337,10 +360,10 @@ def run_subgroup_mining(
         }
         insights.append(insight_obj)
 
-    # Filter and sort
+    # Filter and sort (exploratory mode: never filter by significance)
     filtered_insights = [ins for ins in insights if ins["_passed_filter"]]
     # If filtered results are empty (e.g. strict alpha on small dataset), fallback to top sorted insights
-    if not filtered_insights:
+    if not filtered_insights and compute_pvalues:
         filtered_insights = [ins for ins in insights if ins["test"]["significant"]]
     if not filtered_insights:
         filtered_insights = insights[:10]
@@ -366,6 +389,78 @@ def run_subgroup_mining(
             "n_insights_after_filters": len(filtered_insights),
         },
         "insights": filtered_insights,
+    }
+
+
+def _describe_numeric(
+    attr: str,
+    q: str,
+    levels: list[str],
+    attr_vals: list[str],
+    q_vals: list[Any],
+    level_row_ids: dict[str, list[str]],
+    q_type: str = "numeric",
+) -> dict[str, Any] | None:
+    """Descriptive-only candidate summary for exploratory mode.
+
+    Computes group means, an effect-size label, and row-id sets without
+    running any statistical test, so no p-value ever exists to hide.
+    """
+    val_by_lvl: dict[str, list[float]] = {lvl: [] for lvl in levels}
+    for lvl, qv in zip(attr_vals, q_vals):
+        if lvl in val_by_lvl and qv is not None:
+            try:
+                fv = float(qv)
+                if not math.isnan(fv):
+                    val_by_lvl[lvl].append(fv)
+            except (ValueError, TypeError):
+                continue
+
+    valid_levels = [lvl for lvl in levels if len(val_by_lvl[lvl]) >= 2]
+    if len(valid_levels) < 2:
+        return None
+
+    group_stats = []
+    for lvl in valid_levels:
+        arr = np.array(val_by_lvl[lvl])
+        group_stats.append({
+            "group": lvl,
+            "n": len(arr),
+            "mean": round(float(np.mean(arr)), 4),
+            "sd": round(float(np.std(arr, ddof=1)), 4) if len(arr) > 1 else 0.0,
+            "median": round(float(np.median(arr)), 4),
+        })
+
+    high_g = max(group_stats, key=lambda g: g["mean"])
+    low_g = min(group_stats, key=lambda g: g["mean"])
+    overall_mean = float(np.mean([v for lvl in valid_levels for v in val_by_lvl[lvl]]))
+    delta = high_g["mean"] - low_g["mean"]
+    delta_pct = (delta / (abs(overall_mean) + 1e-6)) * 100.0
+
+    pooled_sd = math.sqrt(sum((np.std(val_by_lvl[lvl], ddof=1) or 0.0) ** 2
+                             for lvl in valid_levels) / max(1, len(valid_levels)))
+    cohen_d = abs(delta) / max(pooled_sd, 1e-6)
+    eff_label = label_effect(cohen_d, 0.20, 0.50, 0.80)
+    return {
+        "test_method": "descriptive_only",
+        "statistic": None,
+        "p_value": None,
+        "effect": {"measure": "cohens_d", "value": round(float(cohen_d), 4), "label": eff_label},
+        "group_stats": group_stats,
+        "direction": {
+            "highest_group": high_g["group"],
+            "lowest_group": low_g["group"],
+            "delta": round(delta, 4),
+            "delta_vs_overall": round(high_g["mean"] - overall_mean, 4),
+            "delta_pct": round(delta_pct, 2),
+            "overall_mean": round(overall_mean, 4),
+        },
+        "posthoc": [],
+        "row_ids": {
+            "highest_group": level_row_ids.get(high_g["group"], []),
+            "lowest_group": level_row_ids.get(low_g["group"], []),
+            "all_by_group": level_row_ids,
+        },
     }
 
 
@@ -642,15 +737,14 @@ def _test_categorical(
     eff_label = label_effect(cramers_v, thresh[0], thresh[1], thresh[2])
     effect = {"measure": "cramers_v", "value": round(cramers_v, 4), "label": eff_label}
 
-    # Adjusted standardized residuals: (O - E) / sqrt(E * (1 - r_i) * (1 - c_j))
+    # Adjusted standardized residuals: shared with crosstab (Feature 26).
     residuals = np.zeros((r, c), dtype=float)
     for i in range(r):
         for j in range(c):
-            E = expected[i, j]
-            row_prop = row_sums[i] / n_total
-            col_prop = col_sums[j] / n_total
-            denom = math.sqrt(max(1e-9, E * (1.0 - row_prop) * (1.0 - col_prop)))
-            residuals[i, j] = round(float((observed[i, j] - E) / denom), 3)
+            value = shared_adjusted_residual(float(observed[i, j]), float(expected[i, j]),
+                                             float(row_sums[i] / n_total),
+                                             float(col_sums[j] / n_total))
+            residuals[i, j] = round(value if value is not None else 0.0, 3)
 
     # Find cell with largest positive residual
     max_res_idx = np.unravel_index(np.argmax(residuals), residuals.shape)
@@ -701,11 +795,22 @@ def _generate_narrative(t: dict[str, Any]) -> str:
     """Generate Japanese narrative explaining the finding."""
     attr = t["attr"]
     q = t["q"]
-    q_val = t.get("q_value", 1.0)
+    q_val = t.get("q_value")
     eff_label = t["effect"]["label"]
     eff_val = t["effect"]["value"]
     direction = t.get("direction", {})
+    significance = f"（FDR q={q_val:.2e}, " if q_val is not None else "（探索的候補であり確証ではありません。"
 
+    if t["test_method"] == "descriptive_only":
+        high = direction.get("highest_group", "")
+        low = direction.get("lowest_group", "")
+        delta = direction.get("delta", 0.0)
+        overall = direction.get("overall_mean", 0.0)
+        return (
+            f"「{attr}」で見ると、「{q}」に探索的な差の候補があります"
+            f"{significance}効果量 {eff_label}={eff_val:.2f}）。"
+            f"特に【{high}】が最も高く（全体平均 {overall:.2f} / 最低群【{low}】との差 {delta:.2f}）。"
+        )
     if t["test_method"] in ("welch_ttest", "welch_anova", "mann_whitney_u", "kruskal_wallis"):
         high = direction.get("highest_group", "")
         low = direction.get("lowest_group", "")
@@ -714,7 +819,7 @@ def _generate_narrative(t: dict[str, Any]) -> str:
         overall = direction.get("overall_mean", 0.0)
         sign_char = "+" if delta_vs_overall >= 0 else ""
         return (
-            f"「{attr}」で見ると、「{q}」に有意な差が認められます（FDR q={q_val:.2e}, 効果量 {eff_label}={eff_val:.2f}）。"
+            f"「{attr}」で見ると、「{q}」に有意な差が認められます{significance}効果量 {eff_label}={eff_val:.2f}）。"
             f"特に【{high}】が最も高く（全体平均 {overall:.2f} に対し {sign_char}{delta_vs_overall:.2f} / 最低群【{low}】との差 {delta:.2f}）、"
             f"顕著なコントラストが形成されています。"
         )
@@ -723,6 +828,6 @@ def _generate_narrative(t: dict[str, Any]) -> str:
         cat = direction.get("characteristic_category", "")
         res = direction.get("max_residual", 0.0)
         return (
-            f"「{attr}」で見ると、「{q}」の構成比に有意な偏りがあります（FDR q={q_val:.2e}, Cramér's V={eff_val:.2f} [{eff_label}]）。"
+            f"「{attr}」で見ると、「{q}」の構成比に有意な偏りがあります{significance}Cramér's V={eff_val:.2f} [{eff_label}]）。"
             f"特に【{top_g}】において「{cat}」の出現度が期待値を大きく上回っています（調整済み残差 +{res:.1f}）。"
         )

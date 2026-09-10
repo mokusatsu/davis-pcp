@@ -1,6 +1,7 @@
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import VerificationConfigModal, { type VerificationConfig } from './VerificationConfigModal'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -28,8 +29,8 @@ export interface InsightItem {
   test: {
     method: string
     statistic: number | null
-    p_value: number
-    q_value: number
+    p_value: number | null
+    q_value: number | null
     significant: boolean
   }
   effect: {
@@ -81,6 +82,30 @@ export interface MiningResult {
     n_insights_after_filters: number
   }
   insights: InsightItem[]
+  analysisMode?: 'exploration' | 'verification'
+  isExploratory?: boolean
+  candidateSetHash?: string
+  explorationNote?: string
+  verification?: {
+    method: string
+    testUsed: string
+    correction: string
+    mHypotheses: number
+    seed: number
+    nSelection: number
+    nEvaluation: number
+    selectionScopeHash: string
+    evaluationScopeHash: string
+  }
+  results?: {
+    candidateId: string
+    effectSize: number
+    confidenceInterval: [number, number] | null
+    pValue: number
+    pAdjusted: number
+    isExploratory: boolean
+    nEvaluation: number
+  }[]
 }
 
 export default function SubgroupMiningPage() {
@@ -100,6 +125,11 @@ export default function SubgroupMiningPage() {
   const [miningResult, setMiningResult] = useState<MiningResult | null>(null)
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'modern' | 'classic'>('modern')
+  const [inferenceMode, setInferenceMode] = useState<'exploration' | 'verification'>('exploration')
+  const [verificationModalOpen, setVerificationModalOpen] = useState(false)
+  const [verificationResult, setVerificationResult] = useState<MiningResult['results'] | null>(null)
+  const [verificationInfo, setVerificationInfo] = useState<MiningResult['verification'] | null>(null)
+  const [verifying, setVerifying] = useState(false)
   const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, targets.attributes, targets.questions, alpha, minGroupSize]),
     [datasetId, dataRevision, schemaRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|'), alpha, minGroupSize])
   const latestContext = useRef(context)
@@ -109,7 +139,39 @@ export default function SubgroupMiningPage() {
   useEffect(() => {
     requestVersion.current += 1
     setMiningResult(null); setSelectedInsightId(null); setLoading(false); setError(null)
+    setVerificationResult(null); setVerificationInfo(null); setInferenceMode('exploration')
   }, [context])
+
+  const runVerification = async (config: VerificationConfig) => {
+    if (!datasetId || !miningResult) return
+    const version = ++requestVersion.current, startedContext = latestContext.current
+    setVerifying(true)
+    setError(null)
+    try {
+      const res = await api.post<MiningResult>('/mining/subgroups', {
+        datasetId,
+        attributeCols: targets.attributes,
+        questionCols: targets.questions,
+        rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
+        alpha,
+        minGroupSize,
+        analysisMode: 'verification',
+        verificationConfig: config,
+        candidateIds: miningResult.insights.map((ins) => ins.id),
+        candidateSetHash: miningResult.candidateSetHash,
+      })
+      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      setVerificationResult(res.results ?? null)
+      setVerificationInfo(res.verification ?? null)
+      setInferenceMode('verification')
+      setVerificationModalOpen(false)
+    } catch (err: any) {
+      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      setError({ message: err?.message || '検証の実行に失敗しました。' })
+    } finally {
+      if (version === requestVersion.current && startedContext === latestContext.current) setVerifying(false)
+    }
+  }
 
   const runMining = async () => {
     if (!datasetId || !targets.ready) return
@@ -221,6 +283,7 @@ export default function SubgroupMiningPage() {
               style={{ width: '100%', marginTop: 4 }}
               value={alpha}
               onChange={setAlpha}
+              disabled={inferenceMode === 'exploration'}
               options={[
                 { label: '0.01 (厳格)', value: 0.01 },
                 { label: '0.05 (標準)', value: 0.05 },
@@ -249,6 +312,18 @@ export default function SubgroupMiningPage() {
               style={{ width: '100%', marginTop: 22 }}
             >
               Run Auto Mining
+            </Button>
+          </Col>
+          <Col xs={24} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <Button
+              icon={<CheckCircleOutlined />}
+              onClick={() => setVerificationModalOpen(true)}
+              loading={verifying}
+              data-testid="mining-to-verification-btn"
+              disabled={!miningResult || miningResult.insights.length === 0}
+              style={{ width: '100%', marginTop: 22 }}
+            >
+              検証モードへ移行
             </Button>
           </Col>
                     </Row>
@@ -298,6 +373,28 @@ export default function SubgroupMiningPage() {
                       </div>
                     }
                     style={{ marginBottom: 12, flexShrink: 0 }}
+                  />
+                )}
+
+                {/* Exploration badge */}
+                {!focused && miningResult && inferenceMode === 'exploration' && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="🔍 探索的候補"
+                    description="この結果は全データ上の探索であり、母集団への確証ではありません。p値・q値・信頼区間は表示しません。"
+                    style={{ marginBottom: 12, flexShrink: 0 }}
+                    data-testid="exploration-badge"
+                  />
+                )}
+                {!focused && inferenceMode === 'verification' && verificationInfo && (
+                  <Alert
+                    type="success"
+                    showIcon
+                    message="検証済み候補"
+                    description={`手法: ${verificationInfo.method}／検定: ${verificationInfo.testUsed}／補正: ${verificationInfo.correction}／family=${verificationInfo.mHypotheses}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}`}
+                    style={{ marginBottom: 12, flexShrink: 0 }}
+                    data-testid="verification-badge"
                   />
                 )}
 
@@ -391,7 +488,13 @@ export default function SubgroupMiningPage() {
                                   </Space>
                                 </div>
                                 <div style={{ margin: '6px 0', fontSize: 12, color: '#555' }}>
-                                  {ins.test.method} (q={ins.test.q_value}) | {ins.effect.measure}: {ins.effect.value.toFixed(2)}
+                                  {ins.test.method} | {ins.effect.measure}: {ins.effect.value.toFixed(2)}
+                                  {inferenceMode === 'verification' && verificationResult && (
+                                    <span> | {(() => {
+                                      const v = verificationResult.find((r) => r.candidateId === ins.id)
+                                      return v ? `p=${v.pValue} adj=${v.pAdjusted}` : '評価対象外'
+                                    })()}</span>
+                                  )}
                                 </div>
                                 <Typography.Paragraph
                                   ellipsis={{ rows: 2 }}
@@ -630,19 +733,29 @@ export default function SubgroupMiningPage() {
                   </div>
                 )}
 
-                {/* Test & Score details */}
+                {/* Test & Score details: never mount p/q/CI in exploration */}
                 <Divider style={{ margin: '12px 0' }} />
                 <Row gutter={[12, 12]}>
-                  <Col span={6}>
+                  <Col span={inferenceMode === 'exploration' ? 12 : 6}>
                     <Statistic title="検定統計量" value={currentInsight.test.statistic ?? '-'} precision={3} />
                   </Col>
-                  <Col span={6}>
-                    <Statistic title="p値" value={currentInsight.test.p_value} />
-                  </Col>
-                  <Col span={6}>
-                    <Statistic title="q値 (FDR)" value={currentInsight.test.q_value} valueStyle={{ color: '#1677ff' }} />
-                  </Col>
-                  <Col span={6}>
+                  {inferenceMode === 'verification' && (() => {
+                    const v = verificationResult?.find((r) => r.candidateId === currentInsight.id)
+                    return (
+                      <>
+                        <Col span={6}>
+                          <Statistic title="p値" value={v?.pValue ?? '-'} />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic title="補正後p値 (BH-FDR)" value={v?.pAdjusted ?? '-'} valueStyle={{ color: '#1677ff' }} />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic title="95% CI" value={v?.confidenceInterval ? `[${v.confidenceInterval[0]}, ${v.confidenceInterval[1]}]` : '-'} valueStyle={{ fontSize: 14 }} />
+                        </Col>
+                      </>
+                    )
+                  })()}
+                  <Col span={inferenceMode === 'exploration' ? 12 : 6}>
                     <Statistic
                       title={`効果量 (${currentInsight.effect.measure})`}
                       value={currentInsight.effect.value}
@@ -664,6 +777,15 @@ export default function SubgroupMiningPage() {
             ),
           },
         ]}
+      />
+      <VerificationConfigModal
+        open={verificationModalOpen}
+        candidateCount={miningResult?.insights.length ?? 0}
+        candidateSetHash={miningResult?.candidateSetHash ?? null}
+        datasets={[]}
+        currentDatasetId={datasetId}
+        onCancel={() => setVerificationModalOpen(false)}
+        onRun={(config) => void runVerification(config)}
       />
     </div>
   )

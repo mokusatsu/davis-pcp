@@ -27,10 +27,76 @@ from ..services.import_service import (
     sqlite_tables,
 )
 from ..storage.dataset_store import DatasetStore, assign_row_identity, values_fingerprint
+from ..domain.provenance import new_operation_id
 
 router = APIRouter()
 
 store = DatasetStore()
+
+IMPUTE_METHOD_LABELS = {
+    "mean": "平均値補完",
+    "median": "中央値補完",
+    "mode": "最頻値補完",
+    "constant": "定数補完",
+    "knn": "KNN補完",
+    "tabdiff": "実験的条件付き補完",
+}
+
+
+def _provenance_step(operation: str, params: dict[str, Any], meta: dict[str, Any],
+                     codebook: dict[str, Any] | None, algorithm_version: str,
+                     target_row_ids: list[str] | None = None,
+                     target_cells: list[dict[str, Any]] | None = None,
+                     parent_operation_id: str | None = None) -> dict[str, Any]:
+    return {
+        "operationId": new_operation_id(),
+        "parentOperationId": parent_operation_id,
+        "operation": operation,
+        "params": dict(params or {}),
+        "targetRowIds": sorted({str(v) for v in (target_row_ids or [])}),
+        "targetCells": sorted(
+            ({"rowId": str(c.get("rowId")), "columnId": str(c.get("columnId"))}
+             for c in (target_cells or []) if isinstance(c, dict)),
+            key=lambda c: (c["rowId"], c["columnId"]),
+        ),
+        "inputSchemaRevision": int((codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1))),
+        "outputSchemaRevision": int((codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1))),
+        "algorithmVersion": algorithm_version,
+        "timestamp": now_iso(),
+        "createdBy": "local-session",
+    }
+
+
+def _mask_entries_for_impute(df_before: pl.DataFrame, df_after: pl.DataFrame,
+                              columns: list[str], strategy: str, operation_id: str,
+                              input_revision: int, mask_revision: int) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    row_ids = df_before["__rowId__"].to_list() if "__rowId__" in df_before.columns else []
+    for column in columns:
+        if column not in df_before.columns or column not in df_after.columns:
+            continue
+        before, after = df_before[column], df_after[column]
+        is_float = before.dtype in (pl.Float32, pl.Float64)
+        for idx, row_id in enumerate(row_ids):
+            old = before[idx]
+            old_missing = old is None or (is_float and isinstance(old, float) and old != old)
+            if not old_missing:
+                continue
+            new = after[idx]
+            new_missing = new is None or (is_float and isinstance(new, float) and new != new)
+            if new_missing:
+                continue
+            entries.append({
+                "rowId": str(row_id),
+                "columnId": column,
+                "methodId": strategy,
+                "methodLabel": IMPUTE_METHOD_LABELS.get(strategy, strategy),
+                "originalMissingReason": "user_missing",
+                "createdByOperationId": operation_id,
+                "inputDataRevision": input_revision,
+                "maskRevision": mask_revision,
+            })
+    return entries
 
 
 def _serialize_schema(df: pl.DataFrame) -> list[dict[str, Any]]:
@@ -53,6 +119,13 @@ def import_builtin_sample(request: BuiltinSampleRequest | None = None) -> dict:
     for item in store.list_datasets():
         if item.get("name") == target_name:
             meta = dict(store.get_meta(item["datasetId"]))
+            if store.load_codebook(item["datasetId"]) is None:
+                from ..services.dataset_service import generate_initial_codebook
+                try:
+                    cb = generate_initial_codebook(item["datasetId"], meta.get("schema", []))
+                    store.save_codebook(item["datasetId"], cb)
+                except Exception:
+                    pass
             meta.pop("rowIds", None)
             return meta
     df = build_builtin_iris()
@@ -294,9 +367,24 @@ def _finalize_dataset(
         "createdAt": now_iso(),
         "importOptions": options.model_dump(mode="json") if options else ImportOptions().model_dump(mode="json"),
     }
-    store.save(dataset_id, meta, df, codebook=cb)
+    seed_step = _provenance_step("import", {"name": name, "format": fmt,
+                                            "source_dataset_id": source_dataset_id}, meta, cb,
+                                 "import-1")
+    if source_dataset_id:
+        source_provenance = store.load_provenance(source_dataset_id) or {}
+        source_mask = store.load_mask(source_dataset_id) or {"entries": []}
+        seed_step["parentOperationId"] = source_provenance.get("currentOperationId")
+        seed_step["params"] = {**seed_step["params"],
+                               "copiedMaskEntries": len(source_mask.get("entries", []))}
+        commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step,
+                                           mask_entries=list(source_mask.get("entries", [])))
+    else:
+        commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step)
     meta.pop("rowIds", None)
-    return meta
+    provenance = commit["provenance"]
+    return {**meta, "provenance": {"currentOperationId": provenance["currentOperationId"],
+                                   "rawDataRevision": provenance.get("rawDataRevision"),
+                                   "operationCount": len(provenance.get("operations", []))}}
 
 
 @router.get("/datasets/{dataset_id}")
@@ -760,6 +848,11 @@ def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
     meta = store.get_meta(dataset_id)
     df = store.get_dataframe(dataset_id)
     by_name = {c["name"]: c for c in patch.columns}
+    input_revision = int(meta.get("dataRevision", 1))
+    current_cb = store.load_codebook(dataset_id) or {}
+    input_schema_revision = int(current_cb.get("schemaRevision", meta.get("schemaRevision", 1)))
+    provenance_before = store.load_provenance(dataset_id)
+    parent_op = (provenance_before or {}).get("currentOperationId")
     updated = []
     renamed = False
     for column_meta in meta["schema"]:
@@ -774,7 +867,7 @@ def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
                 renamed = renamed or old != override["newName"]
         updated.append(column_meta)
     meta["schema"] = updated
-    meta["schemaRevision"] = meta.get("schemaRevision", 1) + 1
+    meta["schemaRevision"] = input_schema_revision + 1
     cb = store.load_codebook(dataset_id)
     if cb:
         for column in cb["columns"]:
@@ -797,16 +890,14 @@ def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
     meta["fingerprint"] = hashlib.sha256(
         json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
     ).hexdigest()
-    if renamed:
-        store.save(dataset_id, meta, df, codebook=cb)
-    else:
-        if cb is None:
-            from ..services.dataset_service import generate_initial_codebook
-            cb = generate_initial_codebook(dataset_id, meta["schema"])
-            cb["schemaRevision"] = meta["schemaRevision"]
-        store.save_metadata(dataset_id, meta, cb)
+    step = _provenance_step("schema_update", {"columns": sorted(by_name.keys())}, meta, cb,
+                            "schema-patch-1", parent_operation_id=parent_op)
+    commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
     meta.pop("rowIds", None)
-    return meta
+    provenance = commit["provenance"]
+    return {**meta, "provenance": {"currentOperationId": provenance["currentOperationId"],
+                                   "rawDataRevision": provenance.get("rawDataRevision"),
+                                   "operationCount": len(provenance.get("operations", []))}}
 
 
 class TransformRequest(BaseModel):
@@ -889,13 +980,22 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, df, codebook=cb)
+    input_revision = int(store.get_meta(dataset_id).get("dataRevision", 1))
+    provenance_before = store.load_provenance(dataset_id)
+    step = _provenance_step("transform", {"type": request.type, "source_column": request.source_column,
+                                          "options": request.options}, meta, cb, "transform-1",
+                            parent_operation_id=(provenance_before or {}).get("currentOperationId"))
+    commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
     meta.pop("rowIds", None)
+    provenance = commit["provenance"]
 
     return {
         **meta,
         "createdColumns": created_columns,
         "binSummaries": bin_summaries,
+        "provenance": {"currentOperationId": provenance["currentOperationId"],
+                       "rawDataRevision": provenance.get("rawDataRevision"),
+                       "operationCount": len(provenance.get("operations", []))},
     }
 
 
@@ -925,9 +1025,21 @@ def _delete_column(dataset_id: str, column_name: str) -> dict:
     meta["columnCount"] = df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, df, codebook=cb)
+    provenance_before = store.load_provenance(dataset_id)
+    mask_doc = store.load_mask(dataset_id) or {"entries": [], "maskRevision": 0}
+    dropped = [e for e in mask_doc.get("entries", []) if e.get("columnId") == column_name]
+    step = _provenance_step("delete_column", {"column_name": column_name,
+                                              "droppedMaskEntries": len(dropped)}, meta, cb,
+                            "delete-column-1",
+                            parent_operation_id=(provenance_before or {}).get("currentOperationId"))
+    kept = [e for e in mask_doc.get("entries", []) if e.get("columnId") != column_name]
+    commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step,
+                                       mask_entries=kept, replace_mask=True)
     meta.pop("rowIds", None)
-    return meta
+    provenance = commit["provenance"]
+    return {**meta, "provenance": {"currentOperationId": provenance["currentOperationId"],
+                                   "rawDataRevision": provenance.get("rawDataRevision"),
+                                   "operationCount": len(provenance.get("operations", []))}}
 
 
 class ImputePreviewRequest(BaseModel):
@@ -987,11 +1099,31 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         meta["revision"] = meta.get("revision", 1) + 1
         meta["schemaRevision"] = schema_revision
 
-        store.save(dataset_id, meta, imputed_df, codebook=cb)
+        input_revision = int(store.get_meta(dataset_id).get("dataRevision", 1))
+        provenance_before = store.load_provenance(dataset_id)
+        mask_before = store.load_mask(dataset_id) or {"maskRevision": 0}
+        step = _provenance_step("impute", {"columns": request.columns, "strategy": request.strategy,
+                                           "options": request.options, "inPlace": True}, meta, cb,
+                                f"impute-{request.strategy}-1",
+                                parent_operation_id=(provenance_before or {}).get("currentOperationId"))
+        imputed_targets = [c for c in (request.columns or []) if c in df.columns]
+        if not imputed_targets:
+            imputed_targets = [c for c in df.columns if c != "__rowId__"]
+        mask_entries = _mask_entries_for_impute(
+            df, imputed_df, imputed_targets,
+            request.strategy, step["operationId"], input_revision,
+            int(mask_before.get("maskRevision", 0)) + 1)
+        commit = store.commit_data_change(dataset_id, meta, imputed_df, codebook=cb, step=step,
+                                           mask_entries=mask_entries)
         meta.pop("rowIds", None)
+        provenance = commit["provenance"]
         return {
             **meta,
             "diagnostics": diagnostics,
+            "provenance": {"currentOperationId": provenance["currentOperationId"],
+                           "rawDataRevision": provenance.get("rawDataRevision"),
+                           "operationCount": len(provenance.get("operations", []))},
+            "maskRevision": commit["mask"]["maskRevision"],
         }
     else:
         new_dataset_id = new_id("ds")
@@ -1064,12 +1196,21 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
     meta["columnCount"] = updated_df.width - 1
     meta["revision"] = meta.get("revision", 1) + 1
 
-    store.save(dataset_id, meta, updated_df, codebook=cb)
+    provenance_before = store.load_provenance(dataset_id)
+    step = _provenance_step("calculate", {"expression": request.expression,
+                                          "columnName": request.columnName}, meta, cb,
+                            "calculate-1",
+                            parent_operation_id=(provenance_before or {}).get("currentOperationId"))
+    commit = store.commit_data_change(dataset_id, meta, updated_df, codebook=cb, step=step)
     meta.pop("rowIds", None)
+    provenance = commit["provenance"]
 
     return {
         **meta,
         "createdColumn": col_meta,
+        "provenance": {"currentOperationId": provenance["currentOperationId"],
+                       "rawDataRevision": provenance.get("rawDataRevision"),
+                       "operationCount": len(provenance.get("operations", []))},
     }
 
 
@@ -1121,6 +1262,396 @@ def _dataset_view(dataset_id: str, body: dict) -> Response:
     if plans:
         df = append_ma_axes(df, plans).select([*columns, *[axis["key"] for axis, _ in plans]])
     return Response(content=_serialize_dataframe_to_arrow_bytes(df), media_type="application/vnd.apache.arrow.stream")
+
+
+class RevertRequest(BaseModel):
+    targetOperationId: str | None = None
+    targetDataRevision: int | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
+
+
+class UndoRedoRequest(BaseModel):
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
+
+
+@router.get("/datasets/{dataset_id}/provenance")
+def get_provenance(dataset_id: str) -> dict:
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        codebook = store.load_codebook(dataset_id) or {}
+        provenance = store.load_provenance(dataset_id) or {
+            "datasetId": dataset_id, "operations": [], "currentOperationId": None,
+            "rawDataRevision": None,
+        }
+        mask = store.load_mask(dataset_id) or {"maskRevision": 0, "entries": []}
+        summary = [
+            {"operationId": o.get("operationId"), "operation": o.get("operation"),
+             "outputDataRevision": o.get("outputDataRevision"),
+             "timestamp": o.get("timestamp"), "algorithmVersion": o.get("algorithmVersion")}
+            for o in provenance.get("operations", [])
+        ]
+        return {
+            "datasetId": dataset_id,
+            "dataRevision": int(meta.get("dataRevision", 1)),
+            "schemaRevision": int(codebook.get("schemaRevision", meta.get("schemaRevision", 1))),
+            "currentOperationId": provenance.get("currentOperationId"),
+            "rawDataRevision": provenance.get("rawDataRevision"),
+            "maskRevision": int(mask.get("maskRevision", 0)),
+            "operations": provenance.get("operations", []),
+            "steps": summary,
+        }
+
+
+def _restore_revision(dataset_id: str, target_revision: int, operation: str,
+                      params: dict[str, Any], expected_data: int | None,
+                      expected_schema: int | None) -> dict:
+    from ..domain.context import check_revisions, collect_revisions
+
+    meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id) or {}
+    revisions = collect_revisions(meta, codebook)
+    check_revisions(revisions, expected_schema, expected_data)
+    provenance = store.load_provenance(dataset_id) or {"operations": []}
+    if not any(int(o.get("outputDataRevision", -1)) == int(target_revision)
+               for o in provenance.get("operations", [])):
+        raise BizError("PROVENANCE_TARGET_MISSING",
+                       f"revision {int(target_revision)} の履歴が存在しません。",
+                       status_code=422)
+    snapshot = store.read_snapshot(dataset_id, int(target_revision))
+    mask_now = store.load_mask(dataset_id) or {"entries": []}
+    if operation == "revert" and int(target_revision) == int(provenance.get("rawDataRevision") or -1):
+        restored_mask: list[dict[str, Any]] = []
+    else:
+        restored_mask = [e for e in mask_now.get("entries", [])
+                         if e.get("columnId") in snapshot.columns]
+    parent_op = provenance.get("currentOperationId")
+    step = _provenance_step(operation, params, meta, codebook, f"{operation}-1",
+                            parent_operation_id=parent_op)
+    target_cb = _sync_codebook(dataset_id, snapshot, source_schema=meta.get("schema", []))
+    commit = store.commit_data_change(dataset_id, dict(meta), snapshot, codebook=target_cb,
+                                       step=step, mask_entries=restored_mask, replace_mask=True)
+    fresh_meta = store.get_meta(dataset_id)
+    fresh_codebook = store.load_codebook(dataset_id) or {}
+    return {
+        "datasetId": dataset_id,
+        "currentDataRevision": int(fresh_meta.get("dataRevision", 1)),
+        "currentOperationId": commit["provenance"]["currentOperationId"],
+        "maskRevision": int(commit["mask"]["maskRevision"]),
+        "schemaRevision": int(fresh_codebook.get("schemaRevision",
+                                                 fresh_meta.get("schemaRevision", 1))),
+        "targetDataRevision": int(target_revision),
+    }
+
+
+def _child_operations(provenance: dict[str, Any], operation_id: str | None) -> list[dict[str, Any]]:
+    return [o for o in provenance.get("operations", [])
+            if o.get("parentOperationId") == operation_id]
+
+
+@router.post("/datasets/{dataset_id}/revert")
+def revert_dataset(dataset_id: str, request: RevertRequest) -> dict:
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        provenance = store.load_provenance(dataset_id) or {"operations": []}
+        target_revision: int | None = request.targetDataRevision
+        if request.targetOperationId:
+            match = next((o for o in provenance.get("operations", [])
+                          if o.get("operationId") == request.targetOperationId), None)
+            if match is None:
+                raise BizError("PROVENANCE_TARGET_MISSING", "指定された操作が履歴に存在しません。",
+                               status_code=422)
+            target_revision = int(match["outputDataRevision"])
+        if target_revision is None:
+            raise BizError("PROVENANCE_TARGET_MISSING",
+                           "targetOperationId か targetDataRevision のいずれかを指定してください。",
+                           status_code=422)
+        return _restore_revision(
+            dataset_id, int(target_revision), "revert",
+            {"targetOperationId": request.targetOperationId,
+             "targetDataRevision": int(target_revision)},
+            request.expectedDataRevision, request.expectedSchemaRevision)
+
+
+@router.post("/datasets/{dataset_id}/undo")
+def undo_dataset(dataset_id: str, request: UndoRedoRequest) -> dict:
+    with store.lock(dataset_id):
+        provenance = store.load_provenance(dataset_id) or {"operations": []}
+        current_id = provenance.get("currentOperationId")
+        current = next((o for o in provenance.get("operations", [])
+                        if o.get("operationId") == current_id), None)
+        if current is None or current.get("parentOperationId") is None:
+            raise BizError("PROVENANCE_NOTHING_TO_UNDO", "取り消せる操作がありません。",
+                           status_code=409)
+        parent = next((o for o in provenance.get("operations", [])
+                       if o.get("operationId") == current["parentOperationId"]), None)
+        if parent is None:
+            raise BizError("PROVENANCE_TARGET_MISSING", "親操作の履歴が存在しません。",
+                           status_code=422)
+        return _restore_revision(
+            dataset_id, int(parent["outputDataRevision"]), "undo",
+            {"undoneOperationId": current_id},
+            request.expectedDataRevision, request.expectedSchemaRevision)
+
+
+@router.post("/datasets/{dataset_id}/redo")
+def redo_dataset(dataset_id: str, request: UndoRedoRequest) -> dict:
+    with store.lock(dataset_id):
+        provenance = store.load_provenance(dataset_id) or {"operations": []}
+        current_id = provenance.get("currentOperationId")
+        current = next((o for o in provenance.get("operations", [])
+                        if o.get("operationId") == current_id), None)
+        if current is not None:
+            undone_ids = {(o.get("params") or {}).get("undoneOperationId")
+                          for o in provenance.get("operations", [])
+                          if o.get("operation") == "undo"}
+            undone_ids.discard(None)
+            undo_ids = {o.get("operationId") for o in provenance.get("operations", [])
+                        if o.get("operation") == "undo"}
+            undone_parents = {o.get("parentOperationId")
+                              for o in provenance.get("operations", [])
+                              if o.get("operationId") in undone_ids}
+            branched_anchors = set(undone_parents) | set(undone_ids) | set(undo_ids)
+            branched = [o for o in provenance.get("operations", [])
+                        if o.get("operation") not in ("undo", "redo")
+                        and (o.get("parentOperationId") in branched_anchors
+                             or o.get("operationId") in undone_ids)]
+            anchor_groups: dict[str, list[dict[str, Any]]] = {}
+            for item in branched:
+                key = str(item.get("parentOperationId"))
+                anchor_groups.setdefault(key, []).append(item)
+            conflict = [item for group in anchor_groups.values() if len(group) >= 2 for item in group]
+            if not conflict and len(branched) >= 2 and current.get("operation") != "undo":
+                conflict = branched
+            if conflict:
+                raise BizError("REDO_AMBIGUOUS", "やり直し先が複数あるため対象を特定できません。",
+                               status_code=409,
+                               details={"childOperationIds":
+                                        [c.get("operationId") for c in conflict]})
+            undone_id = ((current.get("params") or {}).get("undoneOperationId")
+                         if current.get("operation") == "undo" else None)
+            if undone_id:
+                target = next((o for o in provenance.get("operations", [])
+                               if o.get("operationId") == undone_id), None)
+                if target is not None:
+                    return _restore_revision(
+                        dataset_id, int(target["outputDataRevision"]), "redo",
+                        {"redoneOperationId": undone_id},
+                        request.expectedDataRevision, request.expectedSchemaRevision)
+        children = _child_operations(provenance, provenance.get("currentOperationId"))
+        if not children:
+            raise BizError("PROVENANCE_NOTHING_TO_REDO", "やり直せる操作がありません。",
+                           status_code=409)
+        if len(children) > 1:
+            raise BizError("REDO_AMBIGUOUS", "やり直し先が複数あるため対象を特定できません。",
+                           status_code=409,
+                           details={"childOperationIds": [c.get("operationId") for c in children]})
+        child = children[0]
+        return _restore_revision(
+            dataset_id, int(child["outputDataRevision"]), "redo",
+            {"redoneOperationId": child.get("operationId")},
+            request.expectedDataRevision, request.expectedSchemaRevision)
+
+
+@router.get("/datasets/{dataset_id}/imputation-mask")
+def get_imputation_mask(dataset_id: str, rowIds: str | None = None,
+                        columnIds: str | None = None,
+                        expectedDataRevision: int | None = None) -> dict:
+    with store.lock(dataset_id):
+        from ..domain.context import check_revisions, collect_revisions, scope_hash
+
+        meta = store.get_meta(dataset_id)
+        codebook = store.load_codebook(dataset_id) or {}
+        revisions = collect_revisions(meta, codebook)
+        if expectedDataRevision is None:
+            raise BizError("ANALYSIS_CONTEXT_INCOMPLETE", "expectedDataRevision は必須です。",
+                           status_code=422)
+        check_revisions(revisions, None, expectedDataRevision)
+        mask = store.load_mask(dataset_id) or {"maskRevision": 0, "entries": []}
+        df = store.get_dataframe(dataset_id, columns=["__rowId__"])
+        current_ids = {str(v) for v in df["__rowId__"].to_list()}
+        wanted_rows = {s.strip() for s in (rowIds or "").split(",") if s.strip()} or None
+        wanted_cols = {s.strip() for s in (columnIds or "").split(",") if s.strip()} or None
+        entries = [e for e in mask.get("entries", [])
+                   if e.get("rowId") in current_ids
+                   and (wanted_rows is None or e.get("rowId") in wanted_rows)
+                   and (wanted_cols is None or e.get("columnId") in wanted_cols)]
+        return {
+            "datasetId": dataset_id,
+            "dataRevision": revisions["dataRevision"],
+            "maskRevision": int(mask.get("maskRevision", 0)),
+            "entries": entries,
+            "scopeHash": scope_hash(sorted(current_ids)),
+        }
+
+
+PACKAGE_VERSION = "provenance-package-1"
+
+
+@router.get("/datasets/{dataset_id}/export_package")
+def export_package(dataset_id: str):
+    import io
+    import zipfile
+    from fastapi.responses import Response
+
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        codebook = store.load_codebook(dataset_id) or {}
+        provenance = store.load_provenance(dataset_id) or {
+            "datasetId": dataset_id, "operations": [], "currentOperationId": None,
+            "rawDataRevision": None,
+        }
+        mask = store.load_mask(dataset_id) or {"maskRevision": 0, "entries": []}
+        current_df = store.get_dataframe(dataset_id)
+        raw_df = store.read_raw(dataset_id)
+        revisions = {"dataRevision": int(meta.get("dataRevision", 1)),
+                     "schemaRevision": int(codebook.get("schemaRevision",
+                                                        meta.get("schemaRevision", 1)))}
+
+        raw_buffer = io.BytesIO()
+        raw_df.write_csv(raw_buffer)
+        current_buffer = io.BytesIO()
+        current_df.write_parquet(current_buffer)
+        session_state = {"datasetId": dataset_id, **revisions,
+                         "scopeHash": None, "exportedAt": now_iso()}
+        files = {
+            "data/raw.csv": raw_buffer.getvalue(),
+            "data/current.parquet": current_buffer.getvalue(),
+            "metadata/codebook.json": json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8"),
+            "metadata/provenance.json": json.dumps(provenance, ensure_ascii=False,
+                                                   indent=2).encode("utf-8"),
+            "metadata/imputation-mask.json": json.dumps(mask, ensure_ascii=False,
+                                                        indent=2).encode("utf-8"),
+            "metadata/session-state.json": json.dumps(session_state, ensure_ascii=False,
+                                                      indent=2).encode("utf-8"),
+        }
+        manifest_files = []
+        for name, payload in files.items():
+            digest = hashlib.sha256(payload).hexdigest()
+            manifest_files.append({"path": name, "sha256": digest, "bytes": len(payload)})
+        manifest = {"packageVersion": PACKAGE_VERSION, "datasetId": dataset_id,
+                    "dataRevision": revisions["dataRevision"],
+                    "schemaRevision": revisions["schemaRevision"],
+                    "createdAt": now_iso(), "files": manifest_files}
+        files["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+        if not files["data/current.parquet"]:
+            raise BizError("PROVENANCE_EXPORT_FAILED", "現在値の出力に失敗しました。",
+                           status_code=500)
+        bundle = io.BytesIO()
+        with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, payload in files.items():
+                archive.writestr(name, payload)
+        return Response(content=bundle.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition":
+                                 f"attachment; filename=\"{dataset_id}-package.zip\""})
+
+
+@router.post("/datasets/import_package")
+async def import_package(file: UploadFile = File(...)) -> dict:
+    import io
+    import zipfile
+
+    raw = await _read_upload(file)
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(raw))
+        names = set(archive.namelist())
+    except Exception as exc:
+        raise BizError("PROVENANCE_PACKAGE_INVALID", "ZIPパッケージを開けません。",
+                       status_code=422) from exc
+    required = {"manifest.json", "data/raw.csv", "data/current.parquet",
+                "metadata/codebook.json", "metadata/provenance.json",
+                "metadata/imputation-mask.json", "metadata/session-state.json"}
+    if not required.issubset(names):
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       f"必須ファイルが不足しています: {sorted(required - names)}",
+                       status_code=422)
+    try:
+        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+    except Exception as exc:
+        raise BizError("PROVENANCE_PACKAGE_INVALID", "manifest.json を読み込めません。",
+                       status_code=422) from exc
+    if manifest.get("packageVersion") != PACKAGE_VERSION:
+        raise BizError("PROVENANCE_PACKAGE_VERSION",
+                       f"未対応のpackageVersionです: {manifest.get('packageVersion')}",
+                       status_code=422)
+    for entry in manifest.get("files", []):
+        try:
+            payload = archive.read(entry["path"])
+        except KeyError as exc:
+            raise BizError("PROVENANCE_PACKAGE_INVALID",
+                           f"ファイルが存在しません: {entry['path']}",
+                           status_code=422) from exc
+        if hashlib.sha256(payload).hexdigest() != entry.get("sha256"):
+            raise BizError("PROVENANCE_PACKAGE_CHECKSUM",
+                           f"checksum不一致: {entry['path']}", status_code=422)
+    try:
+        codebook = json.loads(archive.read("metadata/codebook.json").decode("utf-8"))
+        provenance = json.loads(archive.read("metadata/provenance.json").decode("utf-8"))
+        mask = json.loads(archive.read("metadata/imputation-mask.json").decode("utf-8"))
+        session_state = json.loads(archive.read("metadata/session-state.json").decode("utf-8"))
+        current_df = pl.read_parquet(io.BytesIO(archive.read("data/current.parquet")))
+        raw_df = pl.read_csv(io.BytesIO(archive.read("data/raw.csv")))
+    except Exception as exc:
+        raise BizError("PROVENANCE_PACKAGE_INVALID", f"パッケージ内容を読み込めません: {exc}",
+                       status_code=422) from exc
+    if "__rowId__" not in current_df.columns or current_df["__rowId__"].n_unique() != current_df.height:
+        raise BizError("PROVENANCE_PACKAGE_INVALID", "__rowId__ の一意性を確認できません。",
+                       status_code=422)
+    codebook_names = {c.get("name") for c in codebook.get("columns", []) if isinstance(c, dict)}
+    frame_names = {c for c in current_df.columns if c != "__rowId__"}
+    if codebook_names != frame_names:
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       f"codebookとデータ列が一致しません: {sorted(codebook_names ^ frame_names)[:10]}",
+                       status_code=422)
+    new_id_value = new_id("ds")
+    with store.lock(new_id_value):
+        meta = {
+            "datasetId": new_id_value,
+            "name": f"imported-{manifest.get('datasetId', 'package')}"[:80],
+            "fingerprint": values_fingerprint(current_df),
+            "format": "package",
+            "rowCount": current_df.height,
+            "columnCount": current_df.width - 1,
+            "schema": [{"name": c} for c in current_df.columns if c != "__rowId__"],
+            "schemaRevision": int(codebook.get("schemaRevision", 1)),
+            "rowIdentity": "preserved",
+            "rowIds": current_df["__rowId__"].to_list(),
+            "createdAt": now_iso(),
+            "importOptions": {"packageVersion": PACKAGE_VERSION},
+        }
+        step = _provenance_step("import", {"packageVersion": PACKAGE_VERSION,
+                                           "sourceDatasetId": manifest.get("datasetId"),
+                                           "sourceDataRevision": manifest.get("dataRevision")},
+                                meta, codebook, "import-package-1")
+        provenance_import = dict(provenance or {})
+        provenance_import["datasetId"] = new_id_value
+        provenance_import["operations"] = [
+            *provenance_import.get("operations", []),
+            {**step, "inputDataRevision": manifest.get("dataRevision", 1),
+             "outputDataRevision": 1},
+        ]
+        provenance_import["currentOperationId"] = step["operationId"]
+        mask_import = dict(mask or {})
+        mask_import["datasetId"] = new_id_value
+        commit = store.commit_data_change(new_id_value, meta, current_df, codebook=codebook,
+                                           step=provenance_import["operations"][-1],
+                                           mask_entries=list(mask_import.get("entries", [])))
+        store._provenance_path(new_id_value).write_text(
+            json.dumps(provenance_import, ensure_ascii=False, indent=2), encoding="utf-8")
+        if store.read_raw(new_id_value).height != raw_df.height:
+            store.delete(new_id_value)
+            raise BizError("PROVENANCE_PACKAGE_INVALID", "raw snapshotの検証に失敗しました。",
+                           status_code=422)
+        if [str(v) for v in store.get_dataframe(new_id_value)["__rowId__"].to_list()] != [
+                str(v) for v in current_df["__rowId__"].to_list()]:
+            store.delete(new_id_value)
+            raise BizError("PROVENANCE_PACKAGE_INVALID", "現在値の検証に失敗しました。",
+                           status_code=422)
+    return {"datasetId": new_id_value,
+            "dataRevision": int(store.get_meta(new_id_value).get("dataRevision", 1)),
+            "sessionState": session_state,
+            "provenance": {"operationCount": len(provenance_import.get("operations", []))}}
 
 
 @router.delete("/datasets/{dataset_id}")

@@ -46,6 +46,23 @@ export const api = {
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  downloadBlob: async (path: string, init?: RequestInit): Promise<Blob> => {
+    if (IS_STATIC_BUILD) {
+      throw new Error('再現パッケージ出力はstaticビルドで未対応です (ANALYSIS_CONTEXT_UNSUPPORTED)。')
+    }
+    const response = await fetch(`${BASE}${path}`, init)
+    if (!response.ok) {
+      let code = `HTTP ${response.status}`
+      try {
+        const body = await response.json()
+        if (body.error?.message) throw body.error
+      } catch (err) {
+        if ((err as { message?: string })?.message) throw err
+      }
+      throw new Error(code)
+    }
+    return response.blob()
+  },
   upload: async <T>(path: string, file: File, extra: Record<string, string> = {}) => {
     if (IS_STATIC_BUILD) {
       return pyodideClient.upload<T>(path, file, extra)

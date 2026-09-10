@@ -4,6 +4,7 @@
 作成日: 2026-09-07
 優先度: 2
 前提仕様: DAVIS-FEAT-017
+実装タスク・引き継ぎ: [tasks/DAVIS-FEAT-021-022.md](../tasks/DAVIS-FEAT-021-022.md#feature-22-順序尺度分析とlikertビュー)
 対象コンポーネント: 
 - fullstack/backend/app/algorithms/mining/modern_subgroup.py
 - fullstack/backend/app/algorithms/mining/subgroup.py

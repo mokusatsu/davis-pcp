@@ -129,6 +129,30 @@ export default function PcpPage() {
   const [orderingLoading, setOrderingLoading] = useState(false)
   const [firstFrameRendered, setFirstFrameRendered] = useState(false)
   const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [imputedCells, setImputedCells] = useState<Map<string, Set<string>>>(new Map())
+  useEffect(() => {
+    if (!selection.datasetId) {
+      setImputedCells(new Map())
+      return
+    }
+    let current = true
+    api.get<{ entries: { rowId: string; columnId: string }[] }>(
+      `/datasets/${selection.datasetId}/imputation-mask?expectedDataRevision=${selection.dataRevision}`,
+    ).then((mask) => {
+      if (!current) return
+      const map = new Map<string, Set<string>>()
+      for (const entry of mask.entries) {
+        let set = map.get(entry.rowId)
+        if (!set) {
+          set = new Set<string>()
+          map.set(entry.rowId, set)
+        }
+        set.add(entry.columnId)
+      }
+      setImputedCells(map)
+    }).catch(() => { if (current) setImputedCells(new Map()) })
+    return () => { current = false }
+  }, [selection.datasetId, selection.dataRevision])
 
   // Build axis metadata from schema (O(cols) via precomputed min/max/cats).
   const axes = useMemo<PcpAxis[]>(() => (data ? buildAxes(data, codebookColumns).map(axis => {
@@ -350,6 +374,26 @@ export default function PcpPage() {
       categories: a.categories,
       valueLabels: a.valueLabels,
     }))
+    const geometryRowIndexById = new Map<string, number>()
+    geometry.rowIds.forEach((id, index) => { geometryRowIndexById.set(id, index) })
+    const columnNameById = new Map(codebookColumns.map((c) => [c.columnId, c.name]))
+    const axisIndexByKey = new Map(orderedVisibleAxes.map((a, index) => [a.key, index]))
+    const imputedAxes = new Map<number, Set<number>>()
+    for (const [rowId, columnIds] of imputedCells) {
+      const row = geometryRowIndexById.get(rowId)
+      if (row === undefined) continue
+      for (const columnId of columnIds) {
+        const axis = axisIndexByKey.get(columnId)
+          ?? axisIndexByKey.get(columnNameById.get(columnId) ?? '')
+        if (axis === undefined) continue
+        let set = imputedAxes.get(row)
+        if (!set) {
+          set = new Set<number>()
+          imputedAxes.set(row, set)
+        }
+        set.add(axis)
+      }
+    }
     const spec: PcpRenderSpec = {
       width,
       height,
@@ -360,6 +404,7 @@ export default function PcpPage() {
       nAxes: geometry.nAxes,
       axisPos: geometry.axisPos,
       bounds: geometry.bounds,
+      imputedAxes: imputedAxes.size > 0 ? imputedAxes : undefined,
       axes: axesSpec,
       reversed: Object.fromEntries(orderedVisibleAxes.map(a => [a.key, Boolean(a.isReversed) !== Boolean(pcp.reversed[a.key])])),
       style: {
@@ -736,6 +781,11 @@ export default function PcpPage() {
       </div>
       <Typography.Text type="secondary">欠損を除く値が20種類以下の列</Typography.Text>
       <L1Legend />
+      {imputedCells.size > 0 && (
+        <Typography.Text type="secondary" aria-label="補完マーカーの説明">
+          ◆紫マーカー・点線＝補完値（{imputedCells.size}行に補完あり）
+        </Typography.Text>
+      )}
       {selection.groups.length > 0 && (
         <div>
           <label>

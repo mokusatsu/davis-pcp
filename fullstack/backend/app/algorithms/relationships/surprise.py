@@ -1,8 +1,8 @@
 """Surprise-First Association Scoring Engine (Feature 02).
 
-Computes unified association (Phik / Cramér's V with sample bias correction),
+Computes unified association (corrected Cramér's V with sample bias correction),
 calculates strength vs unexpectedness (empirical baseline + cell lift),
-and outputs quadrant scatter, clustered Phik matrix, and top-lift row links.
+and outputs quadrant scatter, clustered corrected-V matrix, and top-lift row links.
 """
 from __future__ import annotations
 
@@ -174,7 +174,7 @@ def compute_phik_and_surprise(
             if valid_count < min_n:
                 continue
 
-            # Chi-square and Phik
+            # Chi-square and corrected Cramér's V
             try:
                 chi2_res = stats.chi2_contingency(obs)
                 chi2_stat = float(chi2_res.statistic)
@@ -312,6 +312,10 @@ def compute_phik_and_surprise(
                 },
                 "primary": {
                     "measure": "phik",
+                    "displayName": "補正V（Cramér's V系）",
+                    "formula": "補正Cramér's V系。公式PhiKとは呼ばない",
+                    "scope": "カテゴリ関連（Surprise）",
+                    "deprecatedAlias": "Φk / Phik",
                     "value": round(corrected_v, 4),
                     "sign": int(sign),
                     "signed_value": signed_phik,

@@ -35,6 +35,7 @@ export const VIS_NAV_ITEMS = [
   { key: '/associations', label: 'Surprise' },
   { key: '/touring', label: 'Touring' },
   { key: '/mosaic', label: 'Mosaic' },
+  { key: '/crosstab', label: 'Crosstab' },
   { key: '/fedf', label: 'FEDF' },
   { key: '/barchart', label: 'Bar Chart' },
   { key: '/loess', label: 'Loess' },
