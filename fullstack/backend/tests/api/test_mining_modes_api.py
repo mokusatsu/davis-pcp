@@ -11,8 +11,8 @@ from app.main import app
 def mining_ds():
     with TestClient(app) as client:
         rows = []
-        for i in range(40):
-            seg = "a" if i < 20 else "b"
+        for i in range(200):
+            seg = "a" if i < 100 else "b"
             score = (10 + (i % 5)) if seg == "a" else (20 + (i % 5))
             rows.append(f"{seg},{score}")
         text = "seg,score\n" + "\n".join(rows) + "\n"
@@ -58,22 +58,41 @@ def test_verification_holdout_disjoint_and_adjusted(mining_ds):
     assert res["analysisMode"] == "verification" and res["isExploratory"] is False
     verification = res["verification"]
     assert verification["method"] == "holdout"
-    assert verification["testUsed"] == "one_sample_mean"
+    # VERIFY-01: the contrast is the group difference, never question-vs-0.
+    assert "one_sample_mean" not in verification["testUsed"]
+    assert verification["testUsed"] == ["welch_two_sample"]
     assert verification["seed"] == 42
-    assert verification["nSelection"] + verification["nEvaluation"] == 40
+    assert verification["nSelection"] + verification["nEvaluation"] == 200
     assert verification["mHypotheses"] >= 1
     assert verification["selectionScopeHash"] != verification["evaluationScopeHash"]
+    assert verification["candidateSetHash"] == first["candidateSetHash"]
     for item in res["results"]:
-        assert item["confidenceInterval"] is not None and item["pAdjusted"] is not None
-        assert item["isExploratory"] is False
+        assert item["testable"] is True
+        assert item["estimand"]["type"] == "mean_difference"
+        assert item["effect"]["estimate"] > 0
+        assert item["effect"]["ci95"] is not None
+        assert item["test"]["pValue"] is not None and item["test"]["pAdjusted"] is not None
+        # The two contrasted levels are the exploration's highest/lowest groups.
+        labels = [group["label"] for group in item["effect"]["groupStats"]]
+        assert labels == [item["estimand"]["numerator"], item["estimand"]["denominator"]]
 
     pinned = client.post("/api/v1/mining/subgroups", json={
         **body, "candidateIds": [first["insights"][0]["id"]]})
     assert pinned.status_code == 200
-    assert len(pinned.json()["results"]) >= 1
+    assert len(pinned.json()["results"]) == 1
     mismatch = client.post("/api/v1/mining/subgroups", json={
         **body, "candidateIds": ["no-such-candidate"]})
     assert mismatch.status_code == 422
+    assert mismatch.json()["error"]["code"] == "VERIFICATION_CANDIDATE_UNKNOWN"
+    # VERIFY-02: a candidate set from a stale revision is refused, not re-discovered.
+    expired = client.post("/api/v1/mining/subgroups", json={
+        **body, "candidateSetHash": "sha256:deadbeef"})
+    assert expired.status_code == 409
+    assert expired.json()["error"]["code"] == "VERIFICATION_CANDIDATE_SET_EXPIRED"
+    missing_hash = client.post("/api/v1/mining/subgroups", json={
+        **base_body(ds), "analysisMode": "verification"})
+    assert missing_hash.status_code == 422
+    assert missing_hash.json()["error"]["code"] == "VERIFICATION_CANDIDATE_SET_REQUIRED"
 
 
 def test_verification_cross_validation_reports_folds_and_seed(mining_ds):
@@ -89,14 +108,14 @@ def test_verification_cross_validation_reports_folds_and_seed(mining_ds):
     verification = payload["verification"]
     assert verification["method"] == "cross_validation"
     assert verification["seed"] == 42
-    # fold[0] (8 rows) is the evaluation split, the rest is selection.
-    assert verification["nEvaluation"] == 8
-    assert verification["nSelection"] == 32
-    assert verification["selectionScopeHash"] != verification["evaluationScopeHash"]
+    # Candidates are pinned, so every fold is reported and the headline result
+    # evaluates all rows (no candidate discovery per fold).
+    assert len(verification["folds"]) == 5
+    assert verification["nEvaluation"] == 200
     assert verification["mHypotheses"] >= 1
     for item in payload["results"]:
-        assert item["confidenceInterval"] is not None
-        assert item["pAdjusted"] is not None
+        assert item["effect"]["ci95"] is not None
+        assert item["test"]["pAdjusted"] is not None
 
 
 def test_verification_cross_validation_rejects_bad_k(mining_ds):
@@ -107,31 +126,19 @@ def test_verification_cross_validation_rejects_bad_k(mining_ds):
     assert res.status_code == 422
 
 
-def _import_verification_copy(client, source_rows: list[str], filename: str) -> str:
-    text = "seg,score\n" + "\n".join(source_rows) + "\n"
-    dataset_id = client.post(
-        "/api/v1/datasets/import", files={"file": (filename, text, "text/csv")}).json()["datasetId"]
-    cb = client.get(f"/api/v1/datasets/{dataset_id}/codebook").json()
-    by_name = {c["name"]: dict(c) for c in cb["columns"]}
-    by_name["score"].update(role="question")
-    assert client.put(f"/api/v1/datasets/{dataset_id}/codebook",
-                      json={"columns": list(by_name.values())}).status_code == 200
-    return dataset_id
-
-
 def test_verification_independent_success_and_overlap_rejected(mining_ds):
+    """VERIFY-04/A04: rowIds are dataset-scoped, so auto-generated ids that
+    happen to collide as strings must not be read as the same respondent."""
     client, ds = mining_ds
     first = client.post("/api/v1/mining/subgroups", json=base_body(ds)).json()
-    # Distinct uid column => disjoint __rowId__ sets, so the overlap guard passes.
-    rows = [f"id{i},{'a' if i < 20 else 'b'},{12 + (i % 5) if i < 20 else (22 + (i % 5))}"
+    # No rowIdColumn => both datasets generate ROW-000001… ids that collide
+    # textually; verification must rely on the dataset boundary, not the id.
+    rows = [f"{'a' if i < 20 else 'b'},{12 + (i % 5) if i < 20 else (22 + (i % 5))}"
             for i in range(40)]
-    import json as _json
-
-    text = "uid,seg,score\n" + "\n".join(rows) + "\n"
+    text = "seg,score\n" + "\n".join(rows) + "\n"
     other = client.post(
         "/api/v1/datasets/import",
-        files={"file": ("m_independent.csv", text, "text/csv")},
-        data={"options_json": _json.dumps({"rowIdColumn": "uid"})}).json()["datasetId"]
+        files={"file": ("m_independent.csv", text, "text/csv")}).json()["datasetId"]
     cb = client.get(f"/api/v1/datasets/{other}/codebook").json()
     by_name = {c["name"]: dict(c) for c in cb["columns"]}
     by_name["score"].update(role="question")
@@ -141,12 +148,16 @@ def test_verification_independent_success_and_overlap_rejected(mining_ds):
         ok = client.post("/api/v1/mining/subgroups",
                          json={**base_body(ds), "analysisMode": "verification",
                                "verificationConfig": {"method": "independent",
-                                                      "independent_dataset_id": other}})
+                                                      "independent_dataset_id": other},
+                               "candidateSetHash": first["candidateSetHash"]})
         assert ok.status_code == 200, ok.text
         payload = ok.json()
-        assert payload["verification"]["method"] == "independent"
-        assert payload["verification"]["nSelection"] == 40
-        assert payload["verification"]["nEvaluation"] == 40
+        verification = payload["verification"]
+        assert verification["method"] == "independent"
+        assert verification["rowIdNamespace"] == "dataset-scoped"
+        assert verification["nSelection"] == 200
+        assert verification["nEvaluation"] == 40
+        assert verification["evaluationScopeHash"] != verification["selectionScopeHash"]
         assert payload["results"], "independent data must yield evaluated candidates"
     finally:
         client.delete(f"/api/v1/datasets/{other}")
@@ -154,7 +165,8 @@ def test_verification_independent_success_and_overlap_rejected(mining_ds):
     same = client.post("/api/v1/mining/subgroups",
                        json={**base_body(ds), "analysisMode": "verification",
                              "verificationConfig": {"method": "independent",
-                                                    "independent_dataset_id": ds}})
+                                                    "independent_dataset_id": ds},
+                             "candidateSetHash": first["candidateSetHash"]})
     assert same.status_code == 422
     assert first["candidateSetHash"].startswith("sha256:")
 

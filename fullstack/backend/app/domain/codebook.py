@@ -63,11 +63,43 @@ class MultiResponseGroup(BaseModel):
         return self
 
 
+class WeightType(str, Enum):
+    """What a weight column means (WEIGHT-04/B04).
+
+    ``survey``   one row is one respondent; the weight corrects representativeness,
+                 so its overall scale is arbitrary and must not reach a test statistic.
+    ``frequency`` one row stands for that many identical observations, so the raw
+                 weighted counts *are* counts and an ordinary Pearson test applies.
+    """
+
+    SURVEY = "survey"
+    FREQUENCY = "frequency"
+
+
+class WeightConfig(BaseModel):
+    """Which weight column the dataset analyses use, and what it means."""
+
+    weightColumnId: str
+    weightType: WeightType
+
+
+class SurveyDesignSpec(BaseModel):
+    """Sampling design behind the final weight. All fields but the weight are optional."""
+
+    weightColumnId: str | None = None
+    strataColumnId: str | None = None
+    psuColumnId: str | None = None
+    fpcColumnId: str | None = None
+    replicateWeightColumnIds: list[str] = Field(default_factory=list)
+
+
 class Codebook(BaseModel):
     datasetId: str
     schemaRevision: int = 1
     columns: list[CodebookColumn] = Field(default_factory=list)
     multiResponseGroups: list[MultiResponseGroup] = Field(default_factory=list)
+    weightConfig: WeightConfig | None = None
+    surveyDesign: SurveyDesignSpec | None = None
 
 
 class CodebookColumnPatch(BaseModel):
@@ -88,4 +120,10 @@ class CodebookColumnPatch(BaseModel):
 class CodebookUpdateRequest(BaseModel):
     columns: list[CodebookColumnPatch] = Field(default_factory=list)
     multiResponseGroups: list[MultiResponseGroup] | None = None
+    weightConfig: WeightConfig | None = None
+    surveyDesign: SurveyDesignSpec | None = None
     expectedSchemaRevision: int | None = Field(default=None, gt=0)
+
+    def explicitly_set(self, field: str) -> bool:
+        """True when the caller sent the key at all (``null`` clears, absent leaves alone)."""
+        return field in self.model_fields_set

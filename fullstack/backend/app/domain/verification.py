@@ -2,11 +2,12 @@
 
 Classic uses ``analysisMode``; modern uses ``inferenceMode``. The modern
 algorithm ``mode`` (auto/standard/emm_kendall) is untouched.
+
+Candidate pinning (rules, estimands, hashing) lives in
+``domain.mining_candidate``; this module holds the split/inference helpers.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 from typing import Any, Literal
 
 import numpy as np
@@ -16,14 +17,18 @@ from .errors import BizError
 AnalysisMode = Literal["exploration", "verification"]
 
 
-def candidate_set_hash(candidates: list[dict[str, Any]]) -> str:
-    normalized = sorted(
-        ({"id": c.get("id"), "condition": c.get("condition"),
-          "target": c.get("target"), "scopeHash": c.get("scopeHash")} for c in candidates),
-        key=lambda c: str(c.get("id")),
-    )
-    payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
-    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+def candidate_set_hash(candidates: list[dict[str, Any]] | dict[str, Any]) -> str:
+    """Hash a pinned candidate set.
+
+    Kept as a thin wrapper so existing callers keep working; the canonical
+    implementation (rules + estimands + revisions + parameters) lives in
+    ``domain.mining_candidate``.
+    """
+    from .mining_candidate import compute_candidate_set_hash
+
+    if isinstance(candidates, dict):
+        return compute_candidate_set_hash(candidates)
+    return compute_candidate_set_hash({"candidates": list(candidates)})
 
 
 def split_holdout(row_ids: list[str], test_size: float, seed: int) -> tuple[list[str], list[str]]:

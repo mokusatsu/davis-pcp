@@ -81,9 +81,21 @@ export function useCodebook() {
     [columnMap]
   )
 
+  const weightConfig = useMemo(
+    () => (datasetId && codebook.datasetId === datasetId ? codebook.weightConfig : null),
+    [codebook.datasetId, codebook.weightConfig, datasetId]
+  )
+
+  const surveyDesign = useMemo(
+    () => (datasetId && codebook.datasetId === datasetId ? codebook.surveyDesign : null),
+    [codebook.datasetId, codebook.surveyDesign, datasetId]
+  )
+
   return {
     columns,
     schemaRevision: codebook.schemaRevision,
+    weightConfig,
+    surveyDesign,
     getColumn,
     formatValueLabel,
     getOrderedCategories,

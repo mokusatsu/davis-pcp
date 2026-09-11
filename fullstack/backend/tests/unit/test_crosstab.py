@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 
 import polars as pl
+import pytest
 from scipy import stats
 
 from app.algorithms.summaries.crosstab import (
@@ -54,11 +55,14 @@ def test_chi2_cramers_v_match_scipy_reference():
     result = compute_crosstab(df, "row", "col", codebook=codebook)
     observed = np.array([[10, 20, 70], [30, 30, 40]])
     chi2, p, dof, _ = stats.chi2_contingency(observed, correction=False)
-    assert result["statistics"]["chi2"] == round(float(chi2), 4)
-    assert result["statistics"]["df"] == dof == 2
-    assert result["statistics"]["pValue"] == float(p)
-    expected_v = round(math.sqrt(chi2 / (200 * 1)), 4)
-    assert result["statistics"]["cramersV"] == expected_v
+    assert result["descriptiveAssociation"]["pearsonChi2"] == pytest.approx(float(chi2))
+    assert result["descriptiveAssociation"]["df"] == dof == 2
+    assert result["inference"]["pValue"] == float(p)
+    assert result["inference"]["method"] == "pearson"
+    assert result["inference"]["statisticType"] == "chi2"
+    expected_v = math.sqrt(chi2 / (200 * 1))
+    assert result["descriptiveAssociation"]["cramersV"] == pytest.approx(expected_v)
+    assert result["descriptiveAssociation"]["weightedCramersV"] is None
 
 
 def test_asr_matches_shared_formula_and_thresholds():
@@ -77,7 +81,6 @@ def test_asr_matches_shared_formula_and_thresholds():
 
 def test_category_validation_and_empty_table():
     df, codebook = _fixture()
-    import pytest
 
     from app.domain.errors import BizError
 
@@ -86,5 +89,6 @@ def test_category_validation_and_empty_table():
     assert exc.value.code == "CROSSTAB_SAME_VARIABLE"
     empty = df.filter(pl.col("row") == "nope")
     result = compute_crosstab(empty, "row", "col", codebook=codebook)
-    assert result["statistics"]["chi2"] is None
+    assert result["descriptiveAssociation"]["pearsonChi2"] is None
+    assert result["inference"]["pValue"] is None
     assert result["warnings"]

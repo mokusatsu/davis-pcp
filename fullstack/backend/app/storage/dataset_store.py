@@ -55,6 +55,31 @@ def values_fingerprint(df: pl.DataFrame) -> str:
     return digest.hexdigest()
 
 
+def dataset_fingerprint(
+    schema_payload: list[dict[str, Any]] | None,
+    schema_revision: int,
+    df: pl.DataFrame,
+    fmt: str = "",
+    options: dict[str, Any] | None = None,
+) -> str:
+    """Single source of truth for the dataset fingerprint (schema identity + values).
+
+    Every write path (import, impute, calculate, column delete, revision restore)
+    must go through this helper so that a restored revision cannot keep the
+    fingerprint of the revision that was undone.
+    """
+    material = {
+        "schema": schema_payload or [],
+        "options": options or {},
+        "format": fmt,
+        "schemaRevision": int(schema_revision),
+    }
+    seed = values_fingerprint(df)
+    return hashlib.sha256(
+        json.dumps(material, sort_keys=True, ensure_ascii=False).encode("utf-8") + seed.encode()
+    ).hexdigest()
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
@@ -151,10 +176,43 @@ class DatasetStore:
         self._publish_files(payloads)
 
     def save_metadata(self, dataset_id: str, meta: dict[str, Any], codebook: dict[str, Any]) -> None:
-        """Publish dictionary and metadata together under the dataset operation lock."""
+        """Publish dictionary and metadata together under the dataset operation lock.
+
+        A codebook-only edit (labels, category order, missing codes) does not
+        create a new data revision, so the sidecar of the *current* revision is
+        refreshed too: "the codebook of revision N" means the codebook in force
+        while revision N was the head. Undo then restores the labels that were
+        in use at that revision instead of dropping them.
+        """
         with self.lock(dataset_id):
-            self._publish_files([(path, json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"))
-                                 for path, payload in [(self._codebook_path(dataset_id), codebook), (self._meta_path(dataset_id), meta)]])
+            payloads: list[tuple[Path, bytes]] = [
+                (self._codebook_path(dataset_id),
+                 json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")),
+                (self._meta_path(dataset_id),
+                 json.dumps(meta, ensure_ascii=False, indent=2).encode("utf-8")),
+            ]
+            revision = int(meta.get("dataRevision", 1))
+            previous = self.read_revision_state(dataset_id, revision) or {}
+            state_doc = {
+                "datasetId": dataset_id,
+                "dataRevision": revision,
+                "schema": meta.get("schema", []),
+                "schemaRevision": int((codebook or {}).get(
+                    "schemaRevision", meta.get("schemaRevision", 1))),
+                "rowCount": previous.get("rowCount", meta.get("rowCount")),
+                "columnCount": previous.get("columnCount", meta.get("columnCount")),
+                "rowIdentity": previous.get("rowIdentity", meta.get("rowIdentity")),
+                "format": meta.get("format"),
+                "importOptions": meta.get("importOptions"),
+                "sourceDatasetId": meta.get("sourceDatasetId"),
+                "fingerprint": meta.get("fingerprint"),
+                "valuesFingerprint": meta.get("valuesFingerprint"),
+            }
+            payloads.append((self._revision_state_path(dataset_id, revision),
+                             json.dumps(state_doc, ensure_ascii=False, indent=2).encode("utf-8")))
+            payloads.append((self._revision_codebook_path(dataset_id, revision),
+                             json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
+            self._publish_files(payloads)
 
     def get_meta(self, dataset_id: str) -> dict[str, Any]:
         path = self._meta_path(dataset_id)
@@ -221,6 +279,67 @@ class DatasetStore:
 
     def _snapshot_path(self, dataset_id: str, data_revision: int) -> Path:
         return self._snapshot_dir(dataset_id) / f"{int(data_revision)}.parquet"
+
+    # Feature 25 / HIST: per-revision state sidecars (schema, codebook, mask).
+    def _revision_state_path(self, dataset_id: str, data_revision: int) -> Path:
+        return self._snapshot_dir(dataset_id) / f"{int(data_revision)}.state.json"
+
+    def _revision_codebook_path(self, dataset_id: str, data_revision: int) -> Path:
+        return self._snapshot_dir(dataset_id) / f"{int(data_revision)}.codebook.json"
+
+    def _revision_mask_path(self, dataset_id: str, data_revision: int) -> Path:
+        return self._snapshot_dir(dataset_id) / f"{int(data_revision)}.mask.json"
+
+    def _read_json_sidecar(self, path: Path) -> dict[str, Any] | None:
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def read_revision_state(self, dataset_id: str, data_revision: int) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_json_sidecar(self._revision_state_path(dataset_id, data_revision))
+
+    def read_revision_codebook(self, dataset_id: str, data_revision: int) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_json_sidecar(self._revision_codebook_path(dataset_id, data_revision))
+
+    def read_revision_mask(self, dataset_id: str, data_revision: int) -> dict[str, Any] | None:
+        with self.lock(dataset_id):
+            return self._read_json_sidecar(self._revision_mask_path(dataset_id, data_revision))
+
+    def list_snapshots(self, dataset_id: str) -> list[int]:
+        directory = self._snapshot_dir(dataset_id)
+        if not directory.exists():
+            return []
+        revisions: list[int] = []
+        for path in directory.glob("*.parquet"):
+            try:
+                revisions.append(int(path.stem))
+            except ValueError:
+                continue
+        return sorted(revisions)
+
+    def write_revision_state(self, dataset_id: str, data_revision: int,
+                             state: dict[str, Any], codebook: dict[str, Any] | None = None,
+                             mask: dict[str, Any] | None = None) -> None:
+        """Backfill helper for revisions that predate the state sidecars."""
+        payloads: list[tuple[Path, bytes]] = [
+            (self._revision_state_path(dataset_id, data_revision),
+             json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8")),
+        ]
+        if codebook is not None:
+            payloads.append((self._revision_codebook_path(dataset_id, data_revision),
+                             json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
+        if mask is not None:
+            payloads.append((self._revision_mask_path(dataset_id, data_revision),
+                             json.dumps(mask, ensure_ascii=False, indent=2).encode("utf-8")))
+        with self.lock(dataset_id):
+            self._snapshot_dir(dataset_id).mkdir(parents=True, exist_ok=True)
+            self._publish_files(payloads)
 
     def load_provenance(self, dataset_id: str) -> dict[str, Any] | None:
         with self.lock(dataset_id):
@@ -295,6 +414,10 @@ class DatasetStore:
         mask_entries: list[dict[str, Any]] | None = None,
         replace_mask: bool = False,
         raw_df: pl.DataFrame | None = None,
+        history_mode: str = "append",
+        cursor_operation_id: str | None = None,
+        redo_stack: list[str] | None = None,
+        bump_mask_revision: bool = False,
     ) -> dict[str, Any]:
         """Atomically publish values + snapshot + provenance + mask.
 
@@ -302,8 +425,18 @@ class DatasetStore:
         is written to temp paths first, checksummed, then renamed together.
         On any failure the current values and history stay untouched and
         PROVENANCE_COMMIT_FAILED is raised.
+
+        ``history_mode`` controls the navigation cursor:
+        - ``append``: the new step becomes the current operation (a normal edit)
+        - ``navigate``: the step is recorded in the audit log but the cursor
+          moves to ``cursor_operation_id`` (undo/redo/revert). The audit trail
+          stays append-only while repeated undo can walk further back.
         """
         import io
+
+        if history_mode not in ("append", "navigate"):
+            raise BizError("PROVENANCE_HISTORY_MODE", f"未知のhistory_mode: {history_mode}",
+                           status_code=500)
 
         with self.lock(dataset_id):
             previous = self.get_meta(dataset_id) if self._meta_path(dataset_id).exists() else None
@@ -311,6 +444,24 @@ class DatasetStore:
             new_revision = previous_revision + 1 if previous else int(meta.get("dataRevision", 1))
             updated = {**meta, "dataRevision": new_revision,
                        "valuesFingerprint": values_fingerprint(df)}
+            # meta.schemaRevision and codebook.schemaRevision must agree: the
+            # fingerprint is derived from them, and a restored revision has to
+            # reproduce the very same fingerprint it had before it was undone.
+            effective_schema_revision = int(
+                (codebook or {}).get("schemaRevision")
+                or updated.get("schemaRevision")
+                or 1
+            )
+            updated["schemaRevision"] = effective_schema_revision
+            # The fingerprint is always recomputed here so that no write path
+            # (including revision restore) can leave a stale one behind.
+            updated["fingerprint"] = dataset_fingerprint(
+                updated.get("schema"),
+                effective_schema_revision,
+                df,
+                str(updated.get("format") or ""),
+                updated.get("importOptions") or {},
+            )
 
             provenance = self._read_provenance(dataset_id) or {
                 "datasetId": dataset_id,
@@ -325,7 +476,8 @@ class DatasetStore:
                 merged_entries: list[dict[str, Any]] = list(mask_entries or [])
             else:
                 merged_entries = list(existing_mask.get("entries", [])) + list(mask_entries or [])
-            new_mask_revision = int(existing_mask.get("maskRevision", 0)) + (1 if mask_entries else 0)
+            mask_changed = bool(mask_entries) or replace_mask or bump_mask_revision
+            new_mask_revision = int(existing_mask.get("maskRevision", 0)) + (1 if mask_changed else 0)
             mask_doc = {"datasetId": dataset_id, "dataRevision": new_revision,
                         "maskRevision": new_mask_revision, "entries": merged_entries}
 
@@ -333,9 +485,18 @@ class DatasetStore:
                         "outputDataRevision": new_revision,
                         "currentOperationId": step.get("operationId")}
             operations = list(provenance.get("operations", [])) + [step_doc]
+            cursor_before = provenance.get("cursorOperationId") or provenance.get("currentOperationId")
+            if history_mode == "navigate":
+                new_cursor = cursor_operation_id if cursor_operation_id is not None else cursor_before
+                new_redo_stack = list(redo_stack) if redo_stack is not None else list(provenance.get("redoStack") or [])
+            else:
+                new_cursor = step.get("operationId")
+                new_redo_stack = list(redo_stack) if redo_stack is not None else []
             provenance_doc = {**provenance, "datasetId": dataset_id,
                               "operations": operations,
-                              "currentOperationId": step.get("operationId")}
+                              "cursorOperationId": new_cursor,
+                              "redoStack": new_redo_stack,
+                              "currentOperationId": new_cursor}
             if provenance_doc.get("rawDataRevision") is None and previous is None:
                 provenance_doc["rawDataRevision"] = new_revision
 
@@ -350,6 +511,20 @@ class DatasetStore:
 
             snapshot_dir = self._snapshot_dir(dataset_id)
             snapshot_dir.mkdir(parents=True, exist_ok=True)
+            state_doc = {
+                "datasetId": dataset_id,
+                "dataRevision": new_revision,
+                "schema": updated.get("schema", []),
+                "schemaRevision": effective_schema_revision,
+                "rowCount": df.height,
+                "columnCount": df.width - 1,
+                "rowIdentity": updated.get("rowIdentity"),
+                "format": updated.get("format"),
+                "importOptions": updated.get("importOptions"),
+                "sourceDatasetId": updated.get("sourceDatasetId"),
+                "fingerprint": updated["fingerprint"],
+                "valuesFingerprint": updated["valuesFingerprint"],
+            }
             payloads: list[tuple[Path, bytes]] = [
                 (self._parquet_path(dataset_id), buffer.getvalue()),
                 (self._meta_path(dataset_id),
@@ -359,9 +534,16 @@ class DatasetStore:
                 (self._mask_path(dataset_id),
                  json.dumps(mask_doc, ensure_ascii=False, indent=2).encode("utf-8")),
                 (self._snapshot_path(dataset_id, new_revision), buffer.getvalue()),
+                (self._revision_state_path(dataset_id, new_revision),
+                 json.dumps(state_doc, ensure_ascii=False, indent=2).encode("utf-8")),
+                (self._revision_mask_path(dataset_id, new_revision),
+                 json.dumps({**mask_doc, "maskRevision": new_mask_revision},
+                            ensure_ascii=False, indent=2).encode("utf-8")),
             ]
             if codebook is not None:
                 payloads.append((self._codebook_path(dataset_id),
+                                 json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
+                payloads.append((self._revision_codebook_path(dataset_id, new_revision),
                                  json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8")))
             if raw_df is not None or previous is None:
                 raw_buffer = io.BytesIO()
@@ -397,7 +579,9 @@ class DatasetStore:
                                details={"files": failed_checksums})
             self._publish_files(payloads)
             meta.update(updated)
-            return {"provenance": provenance_doc, "mask": mask_doc}
+            return {"provenance": provenance_doc, "mask": mask_doc,
+                    "state": state_doc, "fingerprint": updated["fingerprint"],
+                    "dataRevision": new_revision}
 
     def save_codebook(self, dataset_id: str, codebook: dict[str, Any] | Any) -> None:
         if hasattr(codebook, "model_dump"):

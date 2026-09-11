@@ -50,30 +50,39 @@ def test_undo_redo_revert_keep_history_and_clear_mask_on_raw(revert_ds):
     assert [o["operation"] for o in store.load_provenance(ds)["operations"]][-1] == "revert"
 
 
-def test_redo_branch_conflict_returns_409(revert_ds):
+def test_new_edit_after_undo_discards_redo_stack(revert_ds):
+    """A new edit branches off the cursor and clears the redo stack.
+
+    The audit log keeps the undone step (append-only), but redo no longer has
+    an unambiguous target — the standard undo/redo contract.
+    """
     client, ds, store = revert_ds
     client.post(f"/api/v1/datasets/{ds}/impute",
                 json={"columns": ["a"], "strategy": "mean", "inPlace": True})
     undo_body = client.post(f"/api/v1/datasets/{ds}/undo", json={}).json()
     assert undo_body["currentDataRevision"] == 3
+    # The cursor is back on the import, so there is nothing further to undo.
+    assert undo_body["canUndo"] is False and undo_body["canRedo"] is True
+    assert undo_body["cursorOperationId"] == undo_body["targetOperationId"]
     prov = store.load_provenance(ds)
     undone_id = next(o["operationId"] for o in prov["operations"] if o["operation"] == "impute")
     anchor = next(o["parentOperationId"] for o in prov["operations"] if o["operation"] == "impute")
-    children = [o for o in prov["operations"]
-                if o.get("parentOperationId") == anchor and o["operation"] not in ("undo", "redo")]
-    assert len(children) == 1 and children[0]["operationId"] == undone_id
+    assert store.load_provenance(ds)["redoStack"] == [undone_id]
     calc = client.post(f"/api/v1/datasets/{ds}/calculate",
                        json={"expression": "a * 2", "columnName": "a2"})
     assert calc.status_code == 200, calc.text
     after = store.load_provenance(ds)
     assert [o["operation"] for o in after["operations"]] == ["import", "impute", "undo",
                                                              "calculate"], after
+    # The new edit hangs off the restored cursor (the import), not the impute.
+    assert after["redoStack"] == []
     calc_body = calc.json()
     assert calc_body.get("createdColumn", {}).get("column") == "a2", calc_body
     assert calc_body["dataRevision"] == 4, calc_body
     res = client.post(f"/api/v1/datasets/{ds}/redo", json={})
     assert res.status_code == 409
-    assert res.json()["error"]["code"] == "REDO_AMBIGUOUS"
+    assert res.json()["error"]["code"] == "PROVENANCE_NOTHING_TO_REDO"
+    assert anchor == next(o["operationId"] for o in after["operations"] if o["operation"] == "import")
 
 
 def test_mask_api_requires_revision_and_filters_scope(revert_ds):

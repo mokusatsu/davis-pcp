@@ -134,3 +134,76 @@ def weighted_status(has_weight: bool, positive_mass: float) -> str:
     if positive_mass <= 0:
         return "no_positive_weight"
     return "applied"
+
+
+def resolve_weight_config(
+    codebook: dict[str, Any] | None,
+    weight_column: str | None,
+) -> str | None:
+    """Return the declared ``weightType`` for ``weight_column`` (WEIGHT-04).
+
+    There is deliberately no default. A weight whose kind nobody declared used
+    to be treated as a frequency weight by accident, which is exactly how the
+    scale-dependent p-value survived; the caller must now say "survey" or
+    "frequency" once, and gets ``WEIGHT_TYPE_REQUIRED`` until it does.
+    """
+    if weight_column is None:
+        return None
+    config = (codebook or {}).get("weightConfig")
+    if not isinstance(config, dict):
+        raise BizError(
+            "WEIGHT_TYPE_REQUIRED",
+            "このウェイトの種類が未設定です。調査ウェイトか頻度ウェイトを指定してください。",
+            status_code=422,
+        )
+    configured = config.get("weightColumnId")
+    spec = find_weight_spec(codebook, weight_column)
+    configured_spec = find_weight_spec(codebook, configured) if configured else None
+    # The request may name the column by name or by id; compare on identity.
+    if spec is None or configured_spec is None or spec.get("columnId") != configured_spec.get("columnId"):
+        raise BizError(
+            "WEIGHT_TYPE_REQUIRED",
+            "指定されたウェイト列の種類が未設定です。調査ウェイトか頻度ウェイトを指定してください。",
+            status_code=422,
+        )
+    weight_type = config.get("weightType")
+    if weight_type not in ("survey", "frequency"):
+        raise BizError(
+            "WEIGHT_TYPE_REQUIRED",
+            "このウェイトの種類が未設定です。調査ウェイトか頻度ウェイトを指定してください。",
+            status_code=422,
+        )
+    return str(weight_type)
+
+
+FREQUENCY_TOLERANCE = 1e-9
+
+
+def validate_weight_semantics(weights: list[float | None], weight_type: str | None) -> None:
+    """Reject weights whose values contradict the declared type.
+
+    A frequency weight is a count of identical observations, so a fractional
+    one is a category error — usually a survey weight mislabelled, which would
+    quietly reintroduce the B04 bug under a different name.
+    """
+    if weight_type != "frequency":
+        return
+    for value in weights:
+        if value is None:
+            continue
+        if abs(value - round(value)) > FREQUENCY_TOLERANCE:
+            raise BizError(
+                "WEIGHT_FREQUENCY_NONINTEGER",
+                "頻度ウェイトには非負整数を指定してください。",
+                status_code=422,
+                details={"value": value},
+            )
+
+
+def declared_weight_column_id(codebook: dict[str, Any] | None) -> str | None:
+    """The dataset's configured weight column, if any."""
+    config = (codebook or {}).get("weightConfig")
+    if isinstance(config, dict):
+        value = config.get("weightColumnId")
+        return value if isinstance(value, str) and value else None
+    return None

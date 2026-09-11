@@ -17,7 +17,9 @@ from ..domain.analysis_columns import resolve_analysis_columns
 from ..domain.survey_weight import (
     WEIGHT_UNSUPPORTED_MESSAGE,
     check_weights_valid,
+    declared_weight_column_id,
     extract_weights,
+    find_weight_spec,
     resolve_weight_column,
     weighted_status,
 )
@@ -62,9 +64,14 @@ def _summaries(req: SummaryRequest) -> dict:
     weight_name = weight_spec["name"] if weight_spec is not None else None
     read_columns = ["__rowId__", *columns] if weight_name is None else ["__rowId__", *dict.fromkeys([*columns, weight_name])]
     row_ids_key = tuple(sorted(req.rowIds)) if req.rowIds is not None else None
+    # dataRevision / maskRevision are part of the key: an undone revision can
+    # reproduce an earlier fingerprint, so the fingerprint alone cannot tell
+    # "the summary of now" from "the summary of before the undo" (HIST-01).
+    weight_mask = store.load_mask(req.datasetId) or {}
     key = (req.datasetId, row_ids_key,
            tuple(sorted(columns)), req.correlation, meta["fingerprint"], schema_revision,
-           weight_spec["columnId"] if weight_spec is not None else None)
+           weight_spec["columnId"] if weight_spec is not None else None,
+           int(meta.get("dataRevision", 1)), int(weight_mask.get("maskRevision", 0)))
     cached = key in _cache
     df = None
     weights: list[float | None] | None = None
@@ -221,7 +228,9 @@ class CrosstabRequest(BaseModel):
     colVariableId: str
     includeRowIds: bool = True
     maxRowIdsPerCell: int = 10000
-    inference: str = "pearson"
+    # auto resolves on the weight's meaning: none for a survey weight, pearson
+    # otherwise. Naming a method explicitly is a claim the server checks.
+    inference: str = "auto"
 
 
 class CrosstabCellRequest(BaseModel):
@@ -235,6 +244,7 @@ class CrosstabCellRequest(BaseModel):
 @router.post("/summaries/crosstab")
 def crosstab_summary(req: CrosstabRequest) -> dict:
     from ..algorithms.summaries.crosstab import compute_crosstab
+    from ..algorithms.summaries.inference import REQUESTED_METHODS
     from ..domain.context import (
         build_meta,
         check_revisions,
@@ -243,8 +253,12 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
     )
     from ..domain.survey_weight import (
         check_weights_valid,
+        declared_weight_column_id,
         extract_weights,
+        find_weight_spec,
         resolve_weight_column,
+        resolve_weight_config,
+        validate_weight_semantics,
         weighted_status,
     )
 
@@ -260,11 +274,19 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         if context.missingPolicy not in ("exclude", "include_missing", "separate_not_applicable"):
             raise BizError("CROSSTAB_MISSING_POLICY", "missingPolicy が不正です。",
                            status_code=422)
-        if req.inference not in ("pearson", "fisher_exact"):
-            raise BizError("CROSSTAB_INFERENCE", "inferenceはpearson/fisher_exactです。",
+        if req.inference not in REQUESTED_METHODS:
+            raise BizError("CROSSTAB_INFERENCE",
+                           f"inferenceは{'/'.join(REQUESTED_METHODS)}のいずれかです。",
                            status_code=422)
-        weight_spec = resolve_weight_column(codebook, context.weightColumn)
+        # The dataset decides which weight its analyses use; the request may
+        # override it, but an override also has to carry a declared meaning.
+        weight_reference = context.weightColumn or declared_weight_column_id(codebook)
+        weight_spec = resolve_weight_column(codebook, weight_reference)
         weight_name = weight_spec["name"] if weight_spec is not None else None
+        weight_column_id = weight_spec["columnId"] if weight_spec is not None else None
+        # The weight's *meaning* has to be declared before it is used; there is
+        # no silent default (spec §26).
+        weight_type = resolve_weight_config(codebook, weight_reference)
         from ..domain.analysis_columns import resolve_analysis_columns
 
         if req.rowVariableId == req.colVariableId:
@@ -289,11 +311,19 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         if row_name == col_name:
             raise BizError("CROSSTAB_SAME_VARIABLE", "行変数と列変数に同じ列を指定できません。",
                            status_code=422)
+        # Sampling design columns only matter for a survey weight; a frequency
+        # weight is a count, not a design.
+        design_names: dict[str, str | None] = {}
+        if weight_type == "survey":
+            design = codebook.get("surveyDesign") if isinstance(codebook.get("surveyDesign"), dict) else {}
+            for key in ("strataColumnId", "psuColumnId", "fpcColumnId"):
+                spec = find_weight_spec(codebook, design.get(key)) if design.get(key) else None
+                design_names[key] = spec["name"] if spec else None
+        read_columns = ["__rowId__", row_name, col_name]
         if weight_name is not None:
-            read_columns = ["__rowId__", row_name, col_name, weight_name]
-        else:
-            read_columns = ["__rowId__", row_name, col_name]
-        df = store.get_dataframe(context.datasetId, columns=read_columns)
+            read_columns.append(weight_name)
+        read_columns.extend(name for name in design_names.values() if name)
+        df = store.get_dataframe(context.datasetId, columns=list(dict.fromkeys(read_columns)))
         scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
                                    __import__("app.domain.context", fromlist=["AnalysisContext"])
                                    .AnalysisContext(**context.model_dump()))
@@ -306,16 +336,24 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         if weight_spec is not None:
             weights, weight_missing, has_invalid = extract_weights(df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
+            validate_weight_semantics(weights, weight_type)
             positive_mass = round(sum(w for w in weights if w is not None and w > 0), 4)
             if positive_mass <= 0:
                 raise BizError("WEIGHT_NO_POSITIVE", "正のウェイトが存在しません。",
                                status_code=422)
             weight_status = weighted_status(True, positive_mass)
-        result = compute_crosstab(df, row_name, col_name, codebook=codebook,
-                                  missing_policy=context.missingPolicy, weights=weights,
-                                  include_row_ids=req.includeRowIds,
-                                  max_row_ids_per_cell=req.maxRowIdsPerCell,
-                                  inference=req.inference)
+        result = compute_crosstab(
+            df, row_name, col_name, codebook=codebook,
+            missing_policy=context.missingPolicy, weights=weights,
+            weight_type=weight_type, weight_column_id=weight_column_id,
+            strata=df[design_names["strataColumnId"]].to_list() if design_names.get("strataColumnId") else None,
+            psu=df[design_names["psuColumnId"]].to_list() if design_names.get("psuColumnId") else None,
+            fpc=df[design_names["fpcColumnId"]].to_list() if design_names.get("fpcColumnId") else None,
+            include_row_ids=req.includeRowIds,
+            max_row_ids_per_cell=req.maxRowIdsPerCell,
+            inference=req.inference,
+            schema_revision=revisions.get("schemaRevision"),
+        )
         mask_revision = store.mask_revision(context.datasetId)
         result_meta = build_meta(
             dataset_id=context.datasetId, revisions=revisions, scope=context.scope,
@@ -324,10 +362,11 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
             weight_applied=weight_status == "applied", weight_column=weight_name,
             mask_revision=mask_revision, algorithm_version=result["algorithmVersion"],
             is_explorative=False, warnings=result["warnings"])
-        payload = {**result, "meta": result_meta,
-                   "weightStatus": weight_status, "weightMissingCount": weight_missing,
-                   "weightedN": positive_mass if weight_status == "applied" else None}
-        return payload
+        # ``weightedN`` is deliberately gone: a weight *sum* means a population
+        # total, a normalized 1.0 or a rescaled sample size depending only on
+        # how the weights were scaled, so calling it N asserted something the
+        # number does not support (spec §8.2).
+        return {**result, "meta": result_meta, "weightStatus": weight_status}
 
 
 @router.post("/summaries/crosstab/cell-row-ids")

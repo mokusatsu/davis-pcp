@@ -47,7 +47,7 @@ def crosstab_ds(tmp_path, monkeypatch):
 
 def _body(context=None, **overrides):
     base = {"context": dict(context), "rowVariableId": "row", "colVariableId": "col",
-            "includeRowIds": True, "maxRowIdsPerCell": 10000, "inference": "pearson"}
+            "includeRowIds": True, "maxRowIdsPerCell": 10000, "inference": "auto"}
     return {**base, **overrides}
 
 
@@ -56,14 +56,17 @@ def test_crosstab_contract_and_meta(crosstab_ds):
     body = client.post("/api/v1/summaries/crosstab", json=_body(context)).json()
     assert body["grandTotal"] == {"unweightedCount": 200, "count": 200.0}
     assert body["meta"]["scopeCount"] == 200 and body["meta"]["effectiveN"] == 200
-    assert body["meta"]["algorithmVersion"] == "crosstab-1"
+    assert body["meta"]["algorithmVersion"] == "crosstab-survey-2"
     assert body["meta"]["scopeHash"].startswith("sha256:")
-    assert body["statistics"]["df"] == 2
+    assert body["descriptiveAssociation"]["df"] == 2
+    assert body["inference"]["method"] == "pearson"
     assert body["meta"]["isExplorative"] is False
+    assert "weightedN" not in body
     cell = next(c for c in body["cells"]
                 if c["rowCategoryId"] == "a" and c["colCategoryId"] == "z")
     assert cell["rowIds"] and cell["rowIdCount"] == 70 and cell["rowIdsTruncated"] is False
     assert cell["significance"] in ("*", "**", "***")
+    assert cell["residualType"] == "adjusted"
 
 
 def test_crosstab_rejects_same_and_noncategorical(crosstab_ds):

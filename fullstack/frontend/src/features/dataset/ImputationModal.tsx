@@ -1,5 +1,5 @@
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
@@ -18,6 +18,8 @@ import {
   message,
 } from 'antd'
 import { api } from '../../api/client'
+import SelectColumn from '../common/ColumnSelect'
+import { useCodebook } from './useCodebookColumn'
 
 export interface ColumnMissingInfo {
   name: string
@@ -53,13 +55,41 @@ interface PreviewHistogramItem {
   imputedAdded: number
 }
 
-interface ImputePreviewResponse {
+/** One target column of the plan. */
+interface PreviewColumn {
   column: string
-  strategy: string
   beforeStats: PreviewStats
   afterStats: PreviewStats
   histogram: PreviewHistogramItem[]
+  valuesHash: string
+}
+
+interface ExcludedColumn {
+  column: string
+  columnId: string | null
+  reason: string
+}
+
+/**
+ * The plan the preview was computed from. ``planHash`` is echoed back on apply
+ * so the server can refuse to run it against a dataset that has moved since.
+ */
+interface ImputePreviewResponse {
+  planHash: string
+  strategy: string
+  targetColumns: string[]
+  predictorColumns: string[]
+  excludedColumns: ExcludedColumn[]
+  perColumn: PreviewColumn[]
+  warnings?: { code: string; message: string }[]
   diagnostics?: any
+}
+
+const EXCLUDED_REASON_LABELS: Record<string, string> = {
+  PREDICTOR_CATEGORICAL_IGNORED: '非数値のため条件付けに使用しません',
+  PREDICTOR_MULTI_RESPONSE_EXCLUDED: 'MA設問のため除外',
+  PREDICTOR_WEIGHT_EXCLUDED: 'ウェイト列のため除外',
+  PREDICTOR_IS_TARGET: '補完対象のため除外',
 }
 
 export default function ImputationModal({
@@ -70,9 +100,13 @@ export default function ImputationModal({
   onClose,
   onSuccess,
 }: ImputationModalProps) {
+  const { columns } = useCodebook()
   const [selectedCols, setSelectedCols] = useState<string[]>([])
   const [strategy, setStrategy] = useState<string>('tabdiff')
   const [inPlace, setInPlace] = useState<boolean>(true)
+  // Predictors: "auto" leaves the choice to the server (every usable column).
+  const [predictorMode, setPredictorMode] = useState<'auto' | 'manual'>('auto')
+  const [predictorCols, setPredictorCols] = useState<string[]>([])
 
   // Parameters
   const [tabdiffSteps, setTabdiffSteps] = useState<number>(20)
@@ -85,9 +119,45 @@ export default function ImputationModal({
   const [previewLoading, setPreviewLoading] = useState<boolean>(false)
   const [previewData, setPreviewData] = useState<ImputePreviewResponse | null>(null)
   const [previewCol, setPreviewCol] = useState<string>('')
+  // Settings the current preview was computed from; a stale hash must never be
+  // sent with an apply built from different settings.
+  const [previewedSettings, setPreviewedSettings] = useState<string | null>(null)
 
   // Execution state
   const [executing, setExecuting] = useState<boolean>(false)
+
+  /** Only numeric, non-MA, non-weight columns can condition the imputation. */
+  const predictorOptions = useMemo(
+    () =>
+      columns
+        .filter((c) => !c.multiResponseGroup && c.role !== 'weight'
+          && ['interval', 'ratio'].includes(c.scaleType))
+        .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+    [columns],
+  )
+
+  const buildOptions = useCallback((): Record<string, any> => {
+    const options: Record<string, any> = { seed }
+    if (strategy === 'tabdiff') {
+      options.num_steps = tabdiffSteps
+      options.temperature = temperature
+    } else if (strategy === 'knn') {
+      options.knn_neighbors = knnNeighbors
+    } else if (strategy === 'constant') {
+      options.constant_value = constantVal
+    }
+    return options
+  }, [seed, strategy, tabdiffSteps, temperature, knnNeighbors, constantVal])
+
+  const buildBody = useCallback(() => ({
+    columns: selectedCols,
+    // "auto" means the server picks every usable column.
+    predictorColumns: predictorMode === 'manual' ? predictorCols : undefined,
+    strategy,
+    options: buildOptions(),
+  }), [selectedCols, predictorMode, predictorCols, strategy, buildOptions])
+
+  const settingsKey = useMemo(() => JSON.stringify(buildBody()), [buildBody])
 
   useEffect(() => {
     if (targetColumn) {
@@ -102,31 +172,24 @@ export default function ImputationModal({
       setPreviewCol('')
     }
     setPreviewData(null)
+    setPreviewedSettings(null)
+    setPredictorMode('auto')
+    setPredictorCols([])
   }, [targetColumn, columnsWithMissing, open])
 
-  const fetchPreview = async (colToPreview?: string) => {
-    const col = colToPreview || previewCol || selectedCols[0]
-    if (!col) return
+  const fetchPreview = async () => {
+    if (selectedCols.length === 0) return null
     setPreviewLoading(true)
     try {
-      const options: Record<string, any> = { seed }
-      if (strategy === 'tabdiff') {
-        options.num_steps = tabdiffSteps
-        options.temperature = temperature
-      } else if (strategy === 'knn') {
-        options.knn_neighbors = knnNeighbors
-      } else if (strategy === 'constant') {
-        options.constant_value = constantVal
-      }
-
-      const res = await api.post<ImputePreviewResponse>(`/datasets/${datasetId}/impute/preview`, {
-        column: col,
-        strategy,
-        options,
-      })
+      // Preview the *whole* target set — the same request the apply will send.
+      const res = await api.post<ImputePreviewResponse>(`/datasets/${datasetId}/impute/preview`, buildBody())
       setPreviewData(res)
+      setPreviewedSettings(JSON.stringify(buildBody()))
+      setPreviewCol((prev) => (res.perColumn.some((c) => c.column === prev) ? prev : (res.perColumn[0]?.column ?? '')))
+      return res
     } catch (err: any) {
-      message.error(`プレビュー取得エラー: ${err.message || err}`)
+      message.error(`プレビュー取得エラー: ${err.code ? `${err.code}: ` : ''}${err.message || err}`)
+      return null
     } finally {
       setPreviewLoading(false)
     }
@@ -139,34 +202,33 @@ export default function ImputationModal({
     }
     setExecuting(true)
     try {
-      const options: Record<string, any> = { seed }
-      if (strategy === 'tabdiff') {
-        options.num_steps = tabdiffSteps
-        options.temperature = temperature
-      } else if (strategy === 'knn') {
-        options.knn_neighbors = knnNeighbors
-      } else if (strategy === 'constant') {
-        options.constant_value = constantVal
-      }
-
+      // Apply exactly what was previewed; if the settings moved on since, the
+      // preview is not the thing being applied and no hash is asserted.
+      const planHash = previewData && previewedSettings === settingsKey ? previewData.planHash : undefined
       await api.post(`/datasets/${datasetId}/impute`, {
-        columns: selectedCols,
-        strategy,
-        options,
+        ...buildBody(),
         inPlace,
+        planHash,
       })
       message.success(`欠損値補完完了 (${strategy})`)
       onSuccess()
       onClose()
     } catch (err: any) {
-      message.error(`補完エラー: ${err.message || err}`)
+      if (err?.code === 'IMPUTATION_PLAN_STALE') {
+        message.warning('プレビュー後にデータが変わりました。再プレビューします。')
+        await fetchPreview()
+      } else {
+        message.error(`補完エラー: ${err.code ? `${err.code}: ` : ''}${err.message || err}`)
+      }
     } finally {
       setExecuting(false)
     }
   }
 
-  const maxHistCount = previewData?.histogram
-    ? Math.max(...previewData.histogram.map((h) => h.afterCount), 1)
+  const activePreview = previewData?.perColumn.find((c) => c.column === previewCol)
+    ?? previewData?.perColumn[0]
+  const maxHistCount = activePreview?.histogram
+    ? Math.max(...activePreview.histogram.map((h) => h.afterCount), 1)
     : 1
 
   return (
@@ -314,26 +376,71 @@ export default function ImputationModal({
           </Space>
         </Card>
 
-        {/* Section 3: Preview Comparison */}
+        {/* Section 3: Predictors */}
+        <Card size="small" title="3. 説明変数（条件付け）" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Segmented
+              data-testid="impute-predictor-mode"
+              options={[
+                { label: '自動（目的列以外の全列）', value: 'auto' },
+                { label: '個別に指定', value: 'manual' },
+              ]}
+              value={predictorMode}
+              onChange={(v) => {
+                setPredictorMode(String(v) as 'auto' | 'manual')
+                setPreviewData(null)
+              }}
+            />
+            {predictorMode === 'manual' && (
+              <SelectColumn
+                data-testid="impute-predictors"
+                mode="multiple"
+                style={{ width: '100%' }}
+                placeholder="説明変数を選択"
+                value={predictorCols}
+                onChange={(v) => {
+                  setPredictorCols((v as string[]) ?? [])
+                  setPreviewData(null)
+                }}
+                options={predictorOptions.filter((o) => !selectedCols.includes(o.value))}
+              />
+            )}
+            <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
+              説明変数は補完の条件付けにのみ使われ、値は書き換えられません。目的列を説明変数に指定することはできません。
+              非数値の列・MA設問・ウェイト列は自動選択から除外されます。
+            </Typography.Paragraph>
+            {previewData && previewData.excludedColumns.length > 0 && (
+              <Space wrap size={[4, 4]}>
+                {previewData.excludedColumns.map((e) => (
+                  <Tag key={`${e.column}-${e.reason}`} color="default" style={{ margin: 0 }}>
+                    {e.column}: {EXCLUDED_REASON_LABELS[e.reason] ?? e.reason}
+                  </Tag>
+                ))}
+              </Space>
+            )}
+            {(previewData?.warnings ?? []).map((w) => (
+              <Alert key={w.code} type="warning" message={`${w.code}: ${w.message}`} showIcon />
+            ))}
+          </Space>
+        </Card>
+
+        {/* Section 4: Preview Comparison */}
         <Card
           size="small"
           title={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>3. 補完プレビュー &amp; 分布比較</span>
-              {selectedCols.length > 1 && (
+              <span>4. 補完プレビュー &amp; 分布比較</span>
+              {previewData && previewData.perColumn.length > 1 && (
                 <Space>
                   <Typography.Text style={{ fontSize: 12 }}>対象列:</Typography.Text>
                   <Radio.Group
                     size="small"
-                    value={previewCol}
-                    onChange={(e) => {
-                      setPreviewCol(e.target.value)
-                      void fetchPreview(e.target.value)
-                    }}
+                    value={activePreview?.column}
+                    onChange={(e) => setPreviewCol(e.target.value)}
                   >
-                    {selectedCols.map((c) => (
-                      <Radio.Button key={c} value={c}>
-                        <ColumnQuestionTooltip nameOrId={c}>{c}</ColumnQuestionTooltip>
+                    {previewData.perColumn.map((c) => (
+                      <Radio.Button key={c.column} value={c.column}>
+                        <ColumnQuestionTooltip nameOrId={c.column}>{c.column}</ColumnQuestionTooltip>
                       </Radio.Button>
                     ))}
                   </Radio.Group>
@@ -347,7 +454,7 @@ export default function ImputationModal({
             <div style={{ textAlign: 'center', padding: 24 }}>
               <Spin tip="プレビュー計算中..." />
             </div>
-          ) : previewData ? (
+          ) : previewData && activePreview ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Comparison Stat Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -355,49 +462,49 @@ export default function ImputationModal({
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>欠損数 変化</Typography.Text>
                   <div>
                     <Typography.Text delete type="danger">
-                      {previewData.beforeStats.missingCount}
+                      {activePreview.beforeStats.missingCount}
                     </Typography.Text>
                     {' → '}
                     <Typography.Text strong type="success">
-                      {previewData.afterStats.missingCount} (0%)
+                      {activePreview.afterStats.missingCount} (0%)
                     </Typography.Text>
                   </div>
                 </div>
 
-                {previewData.beforeStats.mean !== undefined && (
+                {activePreview.beforeStats.mean !== undefined && (
                   <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>平均値 (Mean)</Typography.Text>
                     <div>
-                      <Typography.Text>{previewData.beforeStats.mean?.toFixed(2)}</Typography.Text>
+                      <Typography.Text>{activePreview.beforeStats.mean?.toFixed(2)}</Typography.Text>
                       {' → '}
                       <Typography.Text strong style={{ color: '#2563eb' }}>
-                        {previewData.afterStats.mean?.toFixed(2)}
+                        {activePreview.afterStats.mean?.toFixed(2)}
                       </Typography.Text>
                     </div>
                   </div>
                 )}
 
-                {previewData.beforeStats.std !== undefined && (
+                {activePreview.beforeStats.std !== undefined && (
                   <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>標準偏差 (Std)</Typography.Text>
                     <div>
-                      <Typography.Text>{previewData.beforeStats.std?.toFixed(2)}</Typography.Text>
+                      <Typography.Text>{activePreview.beforeStats.std?.toFixed(2)}</Typography.Text>
                       {' → '}
                       <Typography.Text strong style={{ color: '#2563eb' }}>
-                        {previewData.afterStats.std?.toFixed(2)}
+                        {activePreview.afterStats.std?.toFixed(2)}
                       </Typography.Text>
                     </div>
                   </div>
                 )}
 
-                {previewData.beforeStats.median !== undefined && (
+                {activePreview.beforeStats.median !== undefined && (
                   <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>中央値 (Median)</Typography.Text>
                     <div>
-                      <Typography.Text>{previewData.beforeStats.median?.toFixed(2)}</Typography.Text>
+                      <Typography.Text>{activePreview.beforeStats.median?.toFixed(2)}</Typography.Text>
                       {' → '}
                       <Typography.Text strong style={{ color: '#2563eb' }}>
-                        {previewData.afterStats.median?.toFixed(2)}
+                        {activePreview.afterStats.median?.toFixed(2)}
                       </Typography.Text>
                     </div>
                   </div>
@@ -405,7 +512,7 @@ export default function ImputationModal({
               </div>
 
               {/* Distribution Bar Chart */}
-              {previewData.histogram && previewData.histogram.length > 0 && (
+              {activePreview && activePreview.histogram.length > 0 && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Typography.Text strong style={{ fontSize: 12 }}>
@@ -417,7 +524,7 @@ export default function ImputationModal({
                     </Space>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {previewData.histogram.map((item, idx) => {
+                    {activePreview.histogram.map((item, idx) => {
                       const obsWidth = (item.beforeCount / maxHistCount) * 100
                       const impWidth = (item.imputedAdded / maxHistCount) * 100
                       return (

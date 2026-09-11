@@ -66,6 +66,40 @@ def test_counts_match_exact_population_and_predicates():
         match_group(df, g, [], 'bad-mode')
 
 
+def test_weights_scale_selections_and_keep_the_plain_counts():
+    """WEIGHT-03 / B05: counts stay integers, ratios become weighted."""
+    df = pl.DataFrame({'__rowId__': ['r1', 'r2', 'r3', 'r4'],
+                       'a': [1, 1, 0, 99], 'b': [0, 1, 0, 99]})
+    g = group()
+    unweighted = summarize_group(df, g)
+    scaled = summarize_group(df, g, weights=[1.0, 1.0, 1.0, 1.0])
+    assert scaled['items'] == unweighted['items']
+    assert scaled['weightedValidN'] == 3.0 and unweighted['weightedValidN'] is None
+
+    result = summarize_group(df, g, weights=[1.0, 3.0, 1.0, 1.0])
+    assert result['denominators']['valid'] == 3
+    assert result['weightedValidN'] == 5.0
+    # r1 (weight 1) selects one option, r2 (weight 3) selects two, r3 none.
+    assert result['weightedResponses'] == pytest.approx(1.0 + 2 * 3.0)
+    assert [i['selectedN'] for i in result['items']] == [2, 1]
+    assert [i['selectedWeighted'] for i in result['items']] == [4.0, 3.0]
+    assert [i['pctRespondent'] for i in result['items']] == [80.0, 60.0]
+    assert [i['pctRespondentUnweighted'] for i in result['items']] == [pytest.approx(200 / 3), pytest.approx(100 / 3)]
+
+    # A respondent with no usable weight leaves the weighted denominator only.
+    sparse = summarize_group(df, g, weights=[1.0, None, 1.0, 1.0])
+    assert sparse['denominators']['valid'] == 3
+    assert sparse['weightedValidN'] == 2.0
+    assert sparse['items'][0]['selectedWeighted'] == 1.0
+    assert sparse['items'][0]['pctRespondent'] == 50.0
+    assert sparse['items'][0]['pctRespondentUnweighted'] == pytest.approx(200 / 3)
+    # No positive weight at all → no weighted ratio, but the counts remain.
+    empty = summarize_group(df, g, weights=[0.0, 0.0, 0.0, 0.0])
+    assert empty['weightedValidN'] == 0.0
+    assert all(i['pctRespondent'] is None and i['pctResponse'] is None for i in empty['items'])
+    assert [i['selectedN'] for i in empty['items']] == [2, 1]
+
+
 @pytest.mark.parametrize('patch', [
     {'selectedCodes': []}, {'selectedCodes': ['1', 1.0]}, {'selectedCodes': ['0']},
     {'selectedCodes': ['98']}, {'selectedCodes': [None, '1']}, {'maxSelections': True},

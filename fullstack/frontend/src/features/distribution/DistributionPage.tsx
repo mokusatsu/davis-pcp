@@ -18,7 +18,7 @@ import { getSvgPoint } from '../../utils/svgCoordinates'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import QQPlotView from '../qqplot/QQPlotView'
 import EmptyStatePanel from '../common/EmptyStatePanel'
-import { api, type MultiResponseSummary, type MultiResponseSummaryResponse } from '../../api/client'
+import { api, type MultiResponseSummary, type MultiResponseSummaryResponse, type MultiResponseWeight } from '../../api/client'
 import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
 import QuestionCard from './QuestionCard'
 import MultiResponseCard from './MultiResponseCard'
@@ -77,6 +77,7 @@ export default function DistributionPage() {
   const [loadingSummaries, setLoadingSummaries] = useState<boolean>(false)
   const [cardPage, setCardPage] = useState(1)
   const [maSummaries, setMaSummaries] = useState<MultiResponseSummary[]>([])
+  const [maWeight, setMaWeight] = useState<MultiResponseWeight | null>(null)
   const [matching, setMatching] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
   const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds])
@@ -143,6 +144,7 @@ export default function DistributionPage() {
     if (summaryInput.current !== key) {
       setSummaryData(null)
       setMaSummaries([])
+      setMaWeight(null)
       setWeightMeta(null)
       summaryInput.current = key
     }
@@ -159,6 +161,7 @@ export default function DistributionPage() {
     ]).then(([sa, ma]) => {
       if (!cancelled) {
         setSummaryData(sa.columns); setSelectedCounts(sa.selectedCountByCode ?? {}); setMaSummaries(ma.groups)
+        setMaWeight(groupIds.length && 'weightStatus' in ma ? ma : null)
         const raw = sa as Record<string, any>
         setWeightMeta(raw.weightStatus ? {
           status: raw.weightStatus, columnName: raw.weightColumn,
@@ -718,7 +721,7 @@ export default function DistributionPage() {
                 if (entity.kind === 'ma') {
                   const summary = maSummaries.find(g => g.groupId === entity.id)
                   return summary ? <Col key={`ma:${entity.id}`} xs={24} lg={12}>
-                    <MultiResponseCard summary={summary} loading={matching}
+                    <MultiResponseCard summary={summary} loading={matching} weight={maWeight}
                       onSelect={(ids, predicate, status, goToPcp) => void selectMa(entity.id, ids, predicate, status, goToPcp)} />
                   </Col> : null
                 }

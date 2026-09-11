@@ -152,11 +152,35 @@ export interface MultiResponseGroup {
   optionOrder: string[]
 }
 
+/**
+ * What a weight column means (WEIGHT-04/B04).
+ *
+ * `survey` corrects representativeness, so its scale is arbitrary and it must
+ * not reach an ordinary Pearson test; `frequency` says each row stands for that
+ * many identical observations, so the weighted counts really are counts.
+ */
+export type WeightType = 'survey' | 'frequency'
+
+export interface WeightConfig {
+  weightColumnId: string
+  weightType: WeightType
+}
+
+export interface SurveyDesignSpec {
+  weightColumnId?: string | null
+  strataColumnId?: string | null
+  psuColumnId?: string | null
+  fpcColumnId?: string | null
+  replicateWeightColumnIds?: string[]
+}
+
 export interface CodebookResponse {
   datasetId: string
   schemaRevision: number
   columns: CodebookColumn[]
   multiResponseGroups?: MultiResponseGroup[]
+  weightConfig?: WeightConfig | null
+  surveyDesign?: SurveyDesignSpec | null
 }
 
 export async function getCodebook(datasetId: string): Promise<CodebookResponse> {
@@ -168,6 +192,9 @@ export async function updateCodebook(
   columns: Partial<CodebookColumn>[],
   options?: {
     multiResponseGroups?: MultiResponseGroup[]
+    /** Omit to leave the stored setting alone; pass null to clear it. */
+    weightConfig?: WeightConfig | null
+    surveyDesign?: SurveyDesignSpec | null
     expectedSchemaRevision?: number
   }
 ): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number }> {
@@ -200,6 +227,19 @@ export async function downloadCodebookExport(datasetId: string, format: 'csv' | 
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+export type MultiResponseWeightStatus = 'omitted' | 'applied' | 'unsupported' | 'no_positive_weight'
+
+/** Survey-weight block returned by every MA summary/comparison response (WEIGHT-03). */
+export interface MultiResponseWeight {
+  weightStatus: MultiResponseWeightStatus
+  weightColumn: string | null
+  weightColumnId: string | null
+  weightedN: number | null
+  weightMissingCount: number
+  weightZeroCount: number
+  warnings: { code: string; message: string }[]
+}
+
 export interface MultiResponseSummary {
   groupId: string
   label: string
@@ -214,18 +254,25 @@ export interface MultiResponseSummary {
   }
   allUnselectedN: number
   totalResponses: number
+  /** Weighted denominator of valid respondents; null when unweighted. */
+  weightedValidN?: number | null
+  weightedResponses?: number | null
   items: {
     columnId: string
     name: string
     label: string
     selectedN: number
+    selectedWeighted?: number
     selectedInSelection: number
+    /** Weighted ratio when the request carried a usable weight column. */
     pctRespondent: number | null
+    pctRespondentUnweighted?: number | null
     pctResponse: number | null
+    pctResponseUnweighted?: number | null
   }[]
 }
 
-export interface MultiResponseSummaryResponse {
+export interface MultiResponseSummaryResponse extends MultiResponseWeight {
   datasetId: string
   schemaRevision: number
   dataRevision: number

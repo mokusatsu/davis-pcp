@@ -1,15 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Card, Empty, Pagination, Progress, Radio, Select, Space, Spin, Typography } from 'antd'
+import { Alert, Button, Card, Empty, Pagination, Progress, Radio, Select, Space, Spin, Tooltip, Typography } from 'antd'
 import { useDispatch, useSelector } from 'react-redux'
-import { api, type MultiResponseSummary, type MultiResponseSummaryResponse } from '../../api/client'
+import { api, type MultiResponseSummary, type MultiResponseSummaryResponse, type MultiResponseWeight } from '../../api/client'
 import { selectEffectiveRowIds, selectVariableEntities, selectionApplied, type RootState } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 
-interface Comparison {
+interface Comparison extends MultiResponseWeight {
   attributeMissingExcluded: number
   strata: { code: string; label: string; summary: MultiResponseSummary }[]
+}
+
+const formatWeight = (value: number): string =>
+  Number.isInteger(value) ? String(value) : value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+
+const weightNote = (weight: Comparison | null, summary: MultiResponseSummary): string | null => {
+  if (weight?.weightStatus !== 'applied') return null
+  return [
+    `回答者重み ${weight.weightColumn ?? ''} で加重集計`,
+    `加重N ${formatWeight(weight.weightedN ?? 0)}`,
+    `有効回答者の重み合計 ${formatWeight(summary.weightedValidN ?? 0)}`,
+    '設計効果は考慮しません',
+  ].join(' / ')
 }
 
 export default function MultiResponseBarChart() {
@@ -19,6 +33,8 @@ export default function MultiResponseBarChart() {
   const entities = useSelector(selectVariableEntities)
   const rowIds = useSelector(selectEffectiveRowIds)
   const { columns, schemaRevision, isLoading } = useCodebook()
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const weightName = columns.find(column => column.columnId === weightColumnId)?.name
   const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
   const [groupKey, setGroupKey] = useState('')
   const group = groups.find(item => item.key === groupKey) ?? groups[0]
@@ -34,7 +50,7 @@ export default function MultiResponseBarChart() {
   const [loading, setLoading] = useState(false)
   const [matching, setMatching] = useState(false)
   const [error, setError] = useState('')
-  const key = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, groupId, attribute?.columnId])
+  const key = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, groupId, attribute?.columnId, weightName ?? null])
   const currentKey = useRef(key)
   currentKey.current = key
   const version = useRef(0)
@@ -45,11 +61,13 @@ export default function MultiResponseBarChart() {
     setLoading(true)
     setError('')
     const body = { datasetId: selection.datasetId, rowIds, selectedRowIds: selection.selectedRowIds,
+      ...(weightName ? { weightColumn: weightName } : {}),
       expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision }
     const request = attribute
       ? api.post<Comparison>('/summaries/multi-response/comparison', { ...body, groupId, attributeColumnId: attribute.columnId })
       : api.post<MultiResponseSummaryResponse>('/summaries/multi-response', { ...body, groupIds: [groupId] })
-        .then(value => ({ attributeMissingExcluded: 0, strata: value.groups.map(summary => ({ code: '', label: '全体', summary })) }))
+        .then(value => ({ ...value, attributeMissingExcluded: 0,
+          strata: value.groups.map(summary => ({ code: '', label: '全体', summary })) }))
     void request.then(value => { if (!cancelled) setResult({ key, value }) })
       .catch(error => { if (!cancelled) { setResult(null); setError(error.message || 'MA集計に失敗しました。') } })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -80,7 +98,13 @@ export default function MultiResponseBarChart() {
   const visible = options.slice((currentPage - 1) * 20, currentPage * 20)
   const currentStrataPage = Math.min(strataPage, Math.max(1, Math.ceil((value?.strata.length ?? 0) / 10)))
   const visibleStrata = value?.strata.slice((currentStrataPage - 1) * 10, currentStrataPage * 10) ?? []
-  const maxCount = value?.strata.reduce((maximum, stratum) => stratum.summary.items.reduce((maximum, item) => Math.max(maximum, item.selectedN), maximum), 1) ?? 1
+  // Bars follow the weighted totals once a survey weight applies, so the
+  // scale has to come from the same quantity the bars are drawn from.
+  const weighted = value?.weightStatus === 'applied'
+  const barValue = (item: MultiResponseSummary['items'][number]) =>
+    weighted ? item.selectedWeighted ?? 0 : item.selectedN
+  const maxValue = value?.strata.reduce((maximum, stratum) =>
+    stratum.summary.items.reduce((maximum, item) => Math.max(maximum, barValue(item)), maximum), 1) ?? 1
   return <FocusTarget id="ma-barchart" title="複数回答の棒グラフ"><Card size="small" title="複数回答の棒グラフ" data-testid="ma-barchart"
     extra={!focused && <FocusEnterButton targetId="ma-barchart" title="複数回答の棒グラフ" />}>
     <Space wrap style={{ marginBottom: 12 }}>
@@ -94,7 +118,12 @@ export default function MultiResponseBarChart() {
     </Space>
     {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => setRetry(value => value + 1)}>再試行</Button>} />}
     {loading && <Spin />}
-    {value && <Typography.Paragraph type="secondary">各群の有効回答者を分母に集計します。比較属性の欠損除外: {value.attributeMissingExcluded}人</Typography.Paragraph>}
+    <WeightUnsupportedAlert weightColumnName={value?.weightStatus === 'unsupported' ? value?.weightColumn : null} />
+    {value && <Typography.Paragraph type="secondary">
+      {weighted
+        ? `回答者重み ${value.weightColumn ?? ''} を適用し、各群の有効回答者の重み合計を分母に集計します（設計効果は考慮しません）。加重N ${formatWeight(value.weightedN ?? 0)}${(value.weightMissingCount ?? 0) > 0 ? `・重み欠損 ${value.weightMissingCount}人` : ''}${(value.weightZeroCount ?? 0) > 0 ? `・重み0 ${value.weightZeroCount}人` : ''}。`
+        : '各群の有効回答者を分母に集計します。'}比較属性の欠損除外: {value.attributeMissingExcluded}人
+    </Typography.Paragraph>}
     {value && !options.length && <Empty description="集計対象がありません" />}
     {value && value.strata.length > 10 && <Space style={{ marginBottom: 12 }}><span>比較カテゴリ</span>
       <Pagination size="small" current={currentStrataPage} pageSize={10} total={value.strata.length} showSizeChanger={false} onChange={setStrataPage} />
@@ -104,13 +133,17 @@ export default function MultiResponseBarChart() {
       {visibleStrata.map(stratum => {
         const item = stratum.summary.items.find(item => item.columnId === option.columnId)!
         return <div key={stratum.code} style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
-          <span style={{ width: 130, flexShrink: 0 }}>{stratum.label}（有効{stratum.summary.denominators.valid}人）</span>
+          <Tooltip mouseEnterDelay={0.2} title={weightNote(value, stratum.summary)}>
+            <span style={{ width: 130, flexShrink: 0 }}>
+              {stratum.label}（有効{stratum.summary.denominators.valid}人{weighted ? `／加重N ${formatWeight(stratum.summary.weightedValidN ?? 0)}` : ''}）
+            </span>
+          </Tooltip>
           <button type="button" disabled={matching || loading || !item.selectedN} aria-label={`${option.name} ${stratum.label}の回答者を選択`}
             onClick={() => void select(item.columnId, stratum.code)} style={{ flex: 1, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}>
-            <Progress percent={mode === 'percent' ? item.pctRespondent ?? 0 : item.selectedN / maxCount * 100} showInfo={false}
-              strokeColor="#cbd5e1" success={{ percent: mode === 'percent' ? item.selectedInSelection / Math.max(1, stratum.summary.denominators.valid) * 100 : item.selectedInSelection / maxCount * 100, strokeColor: '#1677ff' }} />
+            <Progress percent={mode === 'percent' ? item.pctRespondent ?? 0 : barValue(item) / maxValue * 100} showInfo={false}
+              strokeColor="#cbd5e1" success={{ percent: mode === 'percent' ? item.selectedInSelection / Math.max(1, stratum.summary.denominators.valid) * 100 : item.selectedInSelection / maxValue * 100, strokeColor: '#1677ff' }} />
           </button>
-          <span style={{ width: 205 }}>{item.selectedN}人 / {item.pctRespondent == null ? '—（分母0）' : `${item.pctRespondent.toFixed(1)}%`} ・ 選択中{item.selectedInSelection}人</span>
+          <span style={{ width: 265 }}>{weighted ? `加重${formatWeight(item.selectedWeighted ?? 0)} / ` : ''}{item.selectedN}人 / {item.pctRespondent == null ? '—（分母0）' : `${item.pctRespondent.toFixed(1)}%`}{weighted && item.pctRespondentUnweighted != null ? `（非加重 ${item.pctRespondentUnweighted.toFixed(1)}%）` : ''} ・ 選択中{item.selectedInSelection}人</span>
         </div>
       })}
     </div>)}

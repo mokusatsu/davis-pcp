@@ -1,9 +1,19 @@
 """Two-way crosstab with adjusted standardized residuals (Feature 26).
 
 Pure functions only: category/missing resolution, weighted/unweighted counts,
-per-denominator percentages, expected counts, ASR + significance markers,
-Pearson/Fisher inference, Cramér's V, row-id caps, warnings, ResultMeta.
-The ASR formula is shared with subgroup mining (single implementation).
+per-denominator percentages, expected counts, ASR + significance markers, row-id
+caps, warnings, ResultMeta. The ASR formula is shared with subgroup mining
+(single implementation).
+
+The three jobs this file used to do in one pass now live in separate layers
+(WEIGHT-04/B04, spec §7):
+
+    descriptive table  — here
+    descriptive association (Pearson X², Cramér's V) — ``association.py``
+    hypothesis test — ``inference.py``, dispatched on the weight's meaning
+
+So a weighted table keeps its descriptive numbers no matter which test runs,
+and a survey weight can never reach an ordinary Pearson χ² by accident.
 """
 from __future__ import annotations
 
@@ -12,9 +22,23 @@ from typing import Any
 
 import numpy as np
 import polars as pl
-from scipy import stats
 
-ALGORITHM_VERSION = "crosstab-1"
+from ..survey.design import build_design
+from ..survey.diagnostics import weight_diagnostics
+from .association import descriptive_association, positive_marginal_submatrix
+from .inference import (
+    REQUEST_AUTO,
+    REQUEST_FISHER,
+    REQUEST_NONE,
+    REQUEST_RAO_SCOTT,
+    frequency_inference,
+    not_requested_inference,
+    resolve_inference,
+    survey_inference,
+    unweighted_inference,
+)
+
+ALGORITHM_VERSION = "crosstab-survey-2"
 MAX_POSITIVE_ASR = 3.29
 CATEGORY_SCALES = ("nominal", "ordinal", "binary")
 
@@ -73,14 +97,24 @@ def _ordered_categories(values: list[str], spec: dict[str, Any]) -> list[str]:
 def _effective_inference_matrix(
     counts: np.ndarray,
 ) -> tuple[np.ndarray, list[int], list[int]]:
-    """Return the positive-marginal submatrix used for inference."""
-    row_totals = counts.sum(axis=1)
-    col_totals = counts.sum(axis=0)
-    keep_rows = [i for i in range(counts.shape[0]) if row_totals[i] > 0]
-    keep_cols = [j for j in range(counts.shape[1]) if col_totals[j] > 0]
-    if not keep_rows or not keep_cols:
-        return np.zeros((0, 0), dtype=float), keep_rows, keep_cols
-    return counts[np.ix_(keep_rows, keep_cols)], keep_rows, keep_cols
+    """Kept for callers that predate the association layer."""
+    return positive_marginal_submatrix(counts)
+
+
+def _numeric(values: list[Any] | None) -> list[float] | None:
+    """Coerce optional numeric design columns, dropping unusable entries."""
+    if values is None:
+        return None
+    out: list[float] = []
+    for raw in values:
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(number):
+            return None
+        out.append(number)
+    return out
 
 
 def _split_missing(values: list[Any], spec: dict[str, Any], missing_policy: str,
@@ -118,9 +152,15 @@ def compute_crosstab(
     codebook: dict[str, Any] | None = None,
     missing_policy: str = "exclude",
     weights: list[float | None] | None = None,
+    weight_type: str | None = None,
+    weight_column_id: str | None = None,
+    strata: list[Any] | None = None,
+    psu: list[Any] | None = None,
+    fpc: list[Any] | None = None,
     include_row_ids: bool = True,
     max_row_ids_per_cell: int = 10000,
-    inference: str = "pearson",
+    inference: str = REQUEST_AUTO,
+    schema_revision: int | None = None,
 ) -> dict[str, Any]:
     from ...domain.errors import BizError
 
@@ -181,18 +221,30 @@ def compute_crosstab(
             "rowCategories": [], "colCategories": [], "cells": [],
             "rowTotals": [], "colTotals": [],
             "grandTotal": {"unweightedCount": 0, "count": 0.0},
-            "statistics": {"chi2": None, "df": None, "pValue": None, "cramersV": None,
-                           "inferenceMethod": inference, "expectedLt5Count": 0,
-                           "expectedLt5Ratio": None, "smallMarginalWarnings": []},
+            "descriptiveAssociation": {"pearsonChi2": None, "df": 0,
+                                       "weightedCramersV": None, "weighted": weights is not None},
+            "inference": not_requested_inference().to_payload(),
+            "weightDiagnostics": None,
+            "diagnostics": {"expectedLt5Count": 0, "expectedLt5Ratio": None,
+                            "smallMarginalWarnings": []},
+            "analysisProvenance": None,
             "warnings": [{"code": "CROSSTAB_EMPTY", "message": "有効なセルがありません。"}],
             "scopeCount": scope_count, "effectiveN": 0, "missingCount": missing_count,
+            "weightZeroCount": 0,
             "algorithmVersion": ALGORITHM_VERSION,
         }
 
     use_weights = weights is not None
+    # A survey weight is a representativeness correction, so its scale carries
+    # no information and no cell may claim significance from it (spec §16).
+    survey_weight = use_weights and weight_type == "survey"
     if weights is not None and len(weights) != scope_count:
         raise BizError("CROSSTAB_WEIGHT_LENGTH", "ウェイト長がscopeと一致しません。",
                        status_code=422)
+    for name, values in (("strata", strata), ("psu", psu), ("fpc", fpc)):
+        if values is not None and len(values) != scope_count:
+            raise BizError("CROSSTAB_WEIGHT_LENGTH", f"{name} の長さがscopeと一致しません。",
+                           status_code=422)
     counts = np.zeros((n_rows, n_cols), dtype=float)
     unweighted = np.zeros((n_rows, n_cols), dtype=int)
     cell_rows: list[list[list[str]]] = [[[] for _ in range(n_cols)] for _ in range(n_rows)]
@@ -254,23 +306,63 @@ def compute_crosstab(
                 "colPct": pct(observed, float(col_totals[j])),
                 "totalPct": pct(observed, grand),
                 "expectedCount": round(exp, 4),
+                "residual": round(asr, 3) if asr is not None else None,
                 "asr": round(asr, 3) if asr is not None else None,
-                "significance": significance_marker(asr),
+                "residualType": "descriptive" if survey_weight else "adjusted",
+                # Survey weights cannot support a cell-level claim: the overall
+                # Rao–Scott p-value does not license an ordinary ASR star.
+                "significance": None if survey_weight else significance_marker(asr),
                 "rowIds": ids if include_row_ids else [],
                 "rowIdCount": full_count,
                 "rowIdsTruncated": full_count > len(ids) if include_row_ids else False,
             })
 
-    chi2_stat: float | None = None
-    p_value: float | None = None
-    inference_method = inference
+    # ---- Design-based inference needs the per-row cluster structure, which the
+    # display table has already collapsed away. Rebuild it from the analysed
+    # rows: a row with no usable weight carries no information to correct for,
+    # so it is not a primary sampling unit either.
+    survey_design = None
+    survey_counts = counts
+    row_of_kept = np.zeros(0, dtype=int)
+    col_of_kept = np.zeros(0, dtype=int)
+    if survey_weight:
+        # Codes must index the *positive-marginal* table, not the display table:
+        # a category the codebook defines but nobody chose has zero proportion,
+        # and an all-zero direction makes the design-effect matrix singular. R's
+        # svychisq never sees such a level either, so dropping them is also what
+        # makes the two comparable. The display table keeps the empty category.
+        survey_counts, survey_rows, survey_cols = positive_marginal_submatrix(counts)
+        row_compact = {original: compact for compact, original in enumerate(survey_rows)}
+        col_compact = {original: compact for compact, original in enumerate(survey_cols)}
+        analysed = [
+            k for k in kept
+            if weights[k] is not None and float(weights[k]) > 0
+            and row_index[row_vals[k]] in row_compact
+            and col_index[col_vals[k]] in col_compact
+        ]
+        row_of_kept = np.array([row_compact[row_index[row_vals[k]]] for k in analysed], dtype=int)
+        col_of_kept = np.array([col_compact[col_index[col_vals[k]]] for k in analysed], dtype=int)
+        survey_design = build_design(
+            np.array([float(weights[k]) for k in analysed], dtype=float),
+            strata=np.array([str(strata[k]) for k in analysed], dtype=object) if strata is not None else None,
+            psu=np.array([str(psu[k]) for k in analysed], dtype=object) if psu is not None else None,
+            fpc=_numeric([fpc[k] for k in analysed]) if fpc is not None else None,
+        )
+
     warnings: list[dict[str, Any]] = []
+    # Descriptive association, always shown and always from the analysed table.
+    # It is never derived from the test statistic, so choosing a design-based
+    # test cannot move it (spec §9).
+    descriptive = descriptive_association(counts, weighted=use_weights)
     expected_lt5 = int(np.sum(expected < 5))
     total_cells = n_rows * n_cols
     expected_ratio = round(expected_lt5 / total_cells, 4) if total_cells else None
-    if expected_ratio is not None and expected_ratio > 0.20:
-        warnings.append({"code": "EXPECTED_COUNT_LT5",
-                         "message": f"期待度数5未満のセルが{expected_ratio * 100:.1f}%あります。"})
+    # The <5 rule belongs to the ordinary Pearson χ². A survey weight does not
+    # make an expected count a sample size, so it must not raise this warning.
+    if not survey_weight:
+        if expected_ratio is not None and expected_ratio > 0.20:
+            warnings.append({"code": "EXPECTED_COUNT_LT5",
+                             "message": f"期待度数5未満のセルが{expected_ratio * 100:.1f}%あります。"})
     small_marginals: list[dict[str, Any]] = []
     for i, row_cat in enumerate(row_cats):
         if int(unweighted_row[i]) < 30:
@@ -280,46 +372,56 @@ def compute_crosstab(
         if int(unweighted_col[j]) < 30:
             small_marginals.append({"axis": "col", "categoryId": col_cat,
                                     "unweightedN": int(unweighted_col[j])})
+
     inference_matrix = np.where(use_weights, counts, unweighted.astype(float))
-    effective_matrix, keep_rows, keep_cols = _effective_inference_matrix(inference_matrix)
+    effective_matrix, keep_rows, keep_cols = positive_marginal_submatrix(inference_matrix)
     excluded_rows = [row_cats[i] for i in range(n_rows) if i not in set(keep_rows)]
     excluded_cols = [col_cats[j] for j in range(n_cols) if j not in set(keep_cols)]
-    if excluded_rows or excluded_cols:
+    if (excluded_rows or excluded_cols) and not survey_weight:
         warnings.append({"code": "CROSSTAB_ZERO_MARGINAL_EXCLUDED",
                          "message": "周辺度数0のカテゴリを検定から除外しました。",
                          "details": {"excludedRows": excluded_rows, "excludedCols": excluded_cols}})
-    eff_rows, eff_cols = effective_matrix.shape if effective_matrix.size else (0, 0)
-    df_value = (eff_rows - 1) * (eff_cols - 1) if eff_rows and eff_cols else 0
-    cramers_v: float | None = None
-    if inference == "fisher_exact":
-        if eff_rows != 2 or eff_cols != 2 or use_weights:
+
+    resolved = resolve_inference(inference, weight_type if use_weights else None, use_weights)
+    if resolved == REQUEST_NONE:
+        inference_result = not_requested_inference()
+    elif resolved == REQUEST_FISHER:
+        eff_rows, eff_cols = effective_matrix.shape if effective_matrix.size else (0, 0)
+        if eff_rows != 2 or eff_cols != 2:
             raise BizError("CROSSTAB_FISHER_UNSUPPORTED",
                            "Fisher正確検定は無ウェイトの2x2表で明示指定時のみ利用できます。",
                            status_code=422)
-        _, p_value = stats.fisher_exact(effective_matrix.astype(int))
-        chi2_stat = None
+        inference_result = unweighted_inference(effective_matrix, REQUEST_FISHER)
+    elif resolved == REQUEST_RAO_SCOTT:
+        inference_result = survey_inference(survey_counts, row_of_kept, col_of_kept, survey_design)
+    elif use_weights:
+        inference_result = frequency_inference(effective_matrix)
     else:
-        if use_weights:
-            warnings.append({"code": "WEIGHTED_INFERENCE_APPROXIMATION",
-                             "message": "ウェイト時は加重度数によるPearson近似です。設計効果は推定しません。"})
-            inference_method = "weighted_pearson_approximation"
-        else:
-            inference_method = "pearson"
-        try:
-            if eff_rows < 2 or eff_cols < 2:
-                raise ValueError("insufficient effective table")
-            chi2_stat, p_value, _, _ = stats.chi2_contingency(effective_matrix, correction=False)
-            chi2_stat = float(chi2_stat)
-            p_value = float(p_value)
-        except Exception:
-            chi2_stat, p_value = None, None
-    effective_grand = float(effective_matrix.sum()) if effective_matrix.size else 0.0
-    denom_v = effective_grand * min(max(eff_rows - 1, 0), max(eff_cols - 1, 0))
-    if chi2_stat is not None and denom_v and denom_v > 0:
-        cramers_v = round(math.sqrt(chi2_stat / denom_v), 4)
-        chi2_stat = round(chi2_stat, 4)
-    if p_value is not None:
-        p_value = float(p_value)
+        inference_result = unweighted_inference(effective_matrix)
+    warnings.extend(inference_result.warnings)
+
+    # Diagnostics describe how much information the weights cost. They are not
+    # a substitute for the design-based test, and every one of them is scale
+    # invariant, which is what makes them safe next to an arbitrary-scale
+    # survey weight (spec §18).
+    diagnostics: dict[str, Any] | None = None
+    if use_weights:
+        raw = weight_diagnostics([w for w in weights if w is not None])
+        diagnostics = {
+            "weightColumnId": weight_column_id,
+            "weightType": weight_type,
+            "unweightedN": len(kept),
+            "weightMissingCount": sum(1 for w in weights if w is None),
+            "weightZeroCount": weight_zero,
+            "weightSum": raw["weightSum"],
+            "kishEffectiveN": raw["kishEffectiveN"],
+            "weightCv": raw["weightCv"],
+            "weightingDeff": raw["weightingDeff"],
+            "positiveWeightN": raw["positiveWeightN"],
+            "numberOfPSUs": survey_design.number_of_psus if survey_design is not None else None,
+            "numberOfStrata": survey_design.number_of_strata if survey_design is not None else None,
+            "designDf": survey_design.design_df if survey_design is not None else None,
+        }
 
     row_totals_out = [{"categoryId": c, "label": label_of(row_spec, c),
                        "unweightedCount": int(unweighted_row[i]),
@@ -340,10 +442,21 @@ def compute_crosstab(
         "rowTotals": row_totals_out,
         "colTotals": col_totals_out,
         "grandTotal": {"unweightedCount": unweighted_grand, "count": round(grand, 4)},
-        "statistics": {"chi2": chi2_stat, "df": df_value, "pValue": p_value,
-                       "cramersV": cramers_v, "inferenceMethod": inference_method,
-                       "expectedLt5Count": expected_lt5, "expectedLt5Ratio": expected_ratio,
-                       "smallMarginalWarnings": small_marginals},
+        "descriptiveAssociation": descriptive,
+        "inference": inference_result.to_payload(),
+        "weightDiagnostics": diagnostics,
+        "diagnostics": {"expectedLt5Count": expected_lt5, "expectedLt5Ratio": expected_ratio,
+                        "smallMarginalWarnings": small_marginals},
+        "analysisProvenance": {
+            "weightColumnId": weight_column_id,
+            "weightType": weight_type if use_weights else None,
+            "weightSum": diagnostics["weightSum"] if diagnostics else None,
+            "kishEffectiveN": diagnostics["kishEffectiveN"] if diagnostics else None,
+            "schemaRevision": schema_revision,
+            "inferenceMethod": inference_result.method,
+            "designAssumption": inference_result.design_assumption,
+            "algorithmVersion": ALGORITHM_VERSION,
+        },
         "warnings": warnings,
         "scopeCount": scope_count, "effectiveN": len(kept), "missingCount": missing_count,
         "weightZeroCount": weight_zero if use_weights else 0,

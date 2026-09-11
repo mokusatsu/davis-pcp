@@ -4,9 +4,14 @@ import { api } from '../../api/client'
 export interface ProvenanceStepSummary {
   operationId: string
   operation: string
+  parentOperationId: string | null
   outputDataRevision: number
   timestamp: string
   algorithmVersion: string
+  /** Whether the operation is an ancestor of the cursor (2回目のUndoの目印). */
+  onCursorPath: boolean
+  /** Whether the operation still describes the current data. */
+  inEffect: boolean
 }
 
 export interface ProvenanceState {
@@ -14,6 +19,9 @@ export interface ProvenanceState {
   dataRevision: number | null
   schemaRevision: number | null
   currentOperationId: string | null
+  cursorOperationId: string | null
+  canUndo: boolean
+  canRedo: boolean
   rawDataRevision: number | null
   maskRevision: number
   steps: ProvenanceStepSummary[]
@@ -27,6 +35,9 @@ const initialState: ProvenanceState = {
   dataRevision: null,
   schemaRevision: null,
   currentOperationId: null,
+  cursorOperationId: null,
+  canUndo: false,
+  canRedo: false,
   rawDataRevision: null,
   maskRevision: 0,
   steps: [],
@@ -35,19 +46,23 @@ const initialState: ProvenanceState = {
   error: null,
 }
 
+export interface ProvenanceResponse {
+  datasetId: string
+  dataRevision: number
+  schemaRevision: number
+  currentOperationId: string | null
+  cursorOperationId: string | null
+  canUndo: boolean
+  canRedo: boolean
+  rawDataRevision: number | null
+  maskRevision: number
+  steps: ProvenanceStepSummary[]
+}
+
 export const fetchProvenanceThunk = createAsyncThunk(
   'provenance/fetch',
   async (datasetId: string) => {
-    const res = await api.get<{
-      datasetId: string
-      dataRevision: number
-      schemaRevision: number
-      currentOperationId: string | null
-      rawDataRevision: number | null
-      maskRevision: number
-      steps: ProvenanceStepSummary[]
-    }>(`/datasets/${datasetId}/provenance`)
-    return res
+    return await api.get<ProvenanceResponse>(`/datasets/${datasetId}/provenance`)
   },
 )
 
@@ -63,6 +78,9 @@ const provenanceSlice = createSlice({
       state.dataRevision = null
       state.schemaRevision = null
       state.currentOperationId = null
+      state.cursorOperationId = null
+      state.canUndo = false
+      state.canRedo = false
       state.rawDataRevision = null
       state.maskRevision = 0
       state.steps = []
@@ -83,6 +101,9 @@ const provenanceSlice = createSlice({
         state.dataRevision = action.payload.dataRevision
         state.schemaRevision = action.payload.schemaRevision
         state.currentOperationId = action.payload.currentOperationId
+        state.cursorOperationId = action.payload.cursorOperationId ?? action.payload.currentOperationId
+        state.canUndo = action.payload.canUndo ?? false
+        state.canRedo = action.payload.canRedo ?? false
         state.rawDataRevision = action.payload.rawDataRevision
         state.maskRevision = action.payload.maskRevision
         state.steps = action.payload.steps

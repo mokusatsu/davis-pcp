@@ -16,10 +16,15 @@ from pydantic import BaseModel, Field
 from ..domain.errors import BizError
 from ..domain.multi_response import prepare_classifier, match_group, resolve_groups, summarize_group, validate_group
 from ..domain.codebook_adapter import normalize_code
+from ..domain.survey_weight import extract_weights, resolve_weight_column
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
 store = DatasetStore()
+
+# Descriptive ratios: the point estimate is weighted, but no design effect is
+# estimated, so the warning says so rather than claiming a survey inference.
+MA_WEIGHT_APPLIED_MESSAGE = "回答者重みで加重集計しました（設計効果は考慮しません）。"
 _summary_cache: OrderedDict[tuple, tuple[dict, dict[str, int], tuple[str, ...], int]] = OrderedDict()
 _summary_cache_lock = RLock()
 _SUMMARY_CACHE_BYTES = 16 * 1024 * 1024
@@ -34,13 +39,18 @@ def _retained_size(value: Any) -> int:
     return size
 
 
-class MultiResponseSummaryRequest(BaseModel):
+class MultiResponseRequestBase(BaseModel):
     datasetId: str
     rowIds: list[str] | None = None
-    groupIds: list[str]
     selectedRowIds: list[str] | None = None
+    """Survey weight column (name or columnId). ``None`` = unweighted."""
+    weightColumn: str | None = None
     expectedSchemaRevision: int | None = Field(default=None, gt=0)
     expectedDataRevision: int | None = Field(default=None, gt=0)
+
+
+class MultiResponseSummaryRequest(MultiResponseRequestBase):
+    groupIds: list[str]
 
 
 class AttributeFilter(BaseModel):
@@ -59,14 +69,9 @@ class MultiResponseMatchRequest(BaseModel):
     expectedDataRevision: int | None = Field(default=None, gt=0)
 
 
-class MultiResponseComparisonRequest(BaseModel):
-    datasetId: str
+class MultiResponseComparisonRequest(MultiResponseRequestBase):
     groupId: str
     attributeColumnId: str
-    rowIds: list[str] | None = None
-    selectedRowIds: list[str] | None = None
-    expectedSchemaRevision: int | None = Field(default=None, gt=0)
-    expectedDataRevision: int | None = Field(default=None, gt=0)
 
 
 def _load_meta_and_codebook(dataset_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -170,6 +175,85 @@ def _apply_scope_filter(df: pl.DataFrame, row_ids: list[str] | None) -> pl.DataF
     return df.filter(pl.col("__rowId__").is_in(row_ids))
 
 
+def _weights_hash(row_ids: list[str], weights_by_row: dict[str, float | None]) -> str:
+    """Hash of the resolved weights over the scope (same name, different values = different key)."""
+    payload = json.dumps([[str(row_id), weights_by_row.get(str(row_id))] for row_id in row_ids],
+                         ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _unsupported_weight(weight_column: str | None, column_id: str | None, message: str) -> dict[str, Any]:
+    return {
+        "weightStatus": "unsupported",
+        "weightColumn": weight_column,
+        "weightColumnId": column_id,
+        "weightedN": None,
+        "weightMissingCount": 0,
+        "weightZeroCount": 0,
+        "warnings": [{"code": "WEIGHT_UNSUPPORTED", "message": message}],
+    }
+
+
+def _weight_context(
+    dataset_id: str,
+    codebook: dict[str, Any],
+    weight_column: str | None,
+    effective_row_ids: list[str],
+) -> tuple[dict[str, float | None] | None, str, dict[str, Any]]:
+    """Resolve ``weightColumn`` for an MA aggregation (WEIGHT-03 / B05).
+
+    Returns ``(weights_by_row | None, weights_hash, response block)``.  A
+    reference that cannot be used (unknown column, wrong role, MA member,
+    non-numeric scale, negative/non-finite values, no positive mass) degrades
+    to unweighted aggregation with ``weightStatus: "unsupported"`` and a
+    warning — the summary stays descriptive and the page keeps working.
+    """
+    if weight_column is None:
+        return None, "", {"weightStatus": "omitted", "weightColumn": None, "weightColumnId": None,
+                          "weightedN": None, "weightMissingCount": 0, "weightZeroCount": 0,
+                          "warnings": []}
+    try:
+        spec = resolve_weight_column(codebook, weight_column)
+    except BizError as error:
+        return None, "", _unsupported_weight(weight_column, None, error.message)
+    assert spec is not None
+    frame = store.get_dataframe(dataset_id, columns=["__rowId__", spec["name"]])
+    values, _missing, has_invalid = extract_weights(frame, spec["name"], spec)
+    by_row = {str(row_id): weight for row_id, weight in zip(frame["__rowId__"].to_list(), values)}
+    scoped = [by_row.get(str(row_id)) for row_id in effective_row_ids]
+    if has_invalid:
+        return None, "", _unsupported_weight(
+            spec["name"], spec["columnId"],
+            "ウェイト列に負値・非有限値・変換不能値が含まれているため、無加重で集計しました。")
+    missing_count = sum(1 for weight in scoped if weight is None)
+    zero_count = sum(1 for weight in scoped if weight == 0)
+    positive_mass = round(sum(weight for weight in scoped if weight is not None and weight > 0), 4)
+    if positive_mass <= 0:
+        block = _unsupported_weight(spec["name"], spec["columnId"],
+                                    "正のウェイトがないため、無加重で集計しました。")
+        block["weightStatus"] = "no_positive_weight"
+        block["weightMissingCount"] = missing_count
+        block["weightZeroCount"] = zero_count
+        return None, "", block
+    return by_row, _weights_hash(effective_row_ids, by_row), {
+        "weightStatus": "applied",
+        "weightColumn": spec["name"],
+        "weightColumnId": spec["columnId"],
+        "weightedN": positive_mass,
+        "weightMissingCount": missing_count,
+        "weightZeroCount": zero_count,
+        "warnings": [{"code": "MA_WEIGHT_APPLIED", "message": MA_WEIGHT_APPLIED_MESSAGE}],
+    }
+
+
+def _scope_weights(
+    weights_by_row: dict[str, float | None] | None, df: pl.DataFrame
+) -> list[float | None] | None:
+    if weights_by_row is None:
+        return None
+    return [weights_by_row.get(str(row_id)) for row_id in df["__rowId__"].to_list()]
+
+
 def _comparison_attribute(codebook: dict[str, Any], column_id: str) -> dict[str, Any]:
     attribute = next((column for column in codebook.get("columns", []) if column["columnId"] == column_id), None)
     if not attribute or attribute.get("role") != "attribute" or attribute.get("multiResponseGroup") or attribute.get("scaleType") in {"id", "text"}:
@@ -193,20 +277,24 @@ def compare_multi_response(req: MultiResponseComparisonRequest) -> dict[str, Any
         attribute = _comparison_attribute(codebook, req.attributeColumnId)
         names = list(dict.fromkeys(["__rowId__", *_member_names(group), attribute["name"]]))
         frame = _apply_scope_filter(store.get_dataframe(req.datasetId, columns=names), req.rowIds)
-        scope = _scope_hash(frame["__rowId__"].to_list())
+        scope_ids = [str(row_id) for row_id in frame["__rowId__"].to_list()]
+        scope = _scope_hash(scope_ids)
+        weights_by_row, _weights_hash_value, weight_block = _weight_context(
+            req.datasetId, codebook, req.weightColumn, scope_ids)
         codes = _attribute_codes(frame, attribute)
         missing_count = sum(code is None for code in codes)
         frame = frame.with_columns(pl.Series(attribute["name"], codes, dtype=pl.String))
         strata = []
         for (code,), subset in frame.filter(pl.col(attribute["name"]).is_not_null()).partition_by(attribute["name"], as_dict=True, maintain_order=True).items():
-            summary = summarize_group(subset, group, selected_row_ids=req.selectedRowIds)
+            summary = summarize_group(subset, group, selected_row_ids=req.selectedRowIds,
+                                      weights=_scope_weights(weights_by_row, subset))
             strata.append({"code": code, "label": attribute.get("valueLabels", {}).get(code, code), "summary": summary})
         order = {code: index for index, code in enumerate(attribute.get("categoryOrder", []))}
         strata.sort(key=lambda item: (order.get(item["code"], len(order)), item["code"]))
         return {"datasetId": req.datasetId, **revisions, "scopeHash": scope, "scopeCount": len(codes),
                 "attributeColumnId": req.attributeColumnId, "attributeMissingExcluded": missing_count,
                 "groupId": req.groupId, "strata": strata, "usedColumns": names[1:],
-                "method": "multiple-response-disjoint-attribute-strata"}
+                "method": "multiple-response-disjoint-attribute-strata", **weight_block}
 
 
 @router.post("/summaries/multi-response")
@@ -222,6 +310,8 @@ def _summarize_multi_response(req: MultiResponseSummaryRequest) -> dict[str, Any
 
     effective_row_ids = _scope_row_ids(req.datasetId, req.rowIds)
     scope = _scope_hash(effective_row_ids)
+    weights_by_row, weights_hash, weight_block = _weight_context(
+        req.datasetId, codebook, req.weightColumn, effective_row_ids)
 
     groups = _load_group_definitions(codebook)
     if not req.groupIds:
@@ -234,6 +324,7 @@ def _summarize_multi_response(req: MultiResponseSummaryRequest) -> dict[str, Any
             "usedColumns": [],
             "excludedCounts": {},
             "method": "multiple-response-complete-case",
+            **weight_block,
         }
 
     selected_groups = _select_groups(groups, req.groupIds)
@@ -244,11 +335,16 @@ def _summarize_multi_response(req: MultiResponseSummaryRequest) -> dict[str, Any
     summaries: list[dict[str, Any]] = []
     excluded_counts: dict[str, dict[str, int]] = {}
     filter_ids = effective_row_ids if req.rowIds is not None else None
+    # Imputed cells change what "complete case" means, so the mask revision
+    # belongs in the cache key alongside the data revision.
+    _mask_doc = store.load_mask(req.datasetId) or {}
 
     for group in selected_groups:
         group_columns = ["__rowId__", *_member_names(group)]
         key = (str(store.root.resolve()), req.datasetId, revisions["dataRevision"], revisions["schemaRevision"],
-               meta.get("fingerprint"), scope, json.dumps(group, sort_keys=True, ensure_ascii=False))
+               meta.get("fingerprint"), scope, int((_mask_doc or {}).get("maskRevision", 0)),
+               weight_block["weightColumnId"], weights_hash,
+               json.dumps(group, sort_keys=True, ensure_ascii=False))
         with _summary_cache_lock:
             cached = _summary_cache.get(key)
             if cached is not None:
@@ -259,7 +355,8 @@ def _summarize_multi_response(req: MultiResponseSummaryRequest) -> dict[str, Any
                 df = _apply_scope_filter(df, filter_ids)
             masks: dict[str, int] = {}
             try:
-                base = summarize_group(df, group, selection_masks=masks)
+                base = summarize_group(df, group, selection_masks=masks,
+                                       weights=_scope_weights(weights_by_row, df))
             except ValueError as exc:
                 raise BizError("MA_DEFINITION_INVALID", str(exc), status_code=422) from exc
             row_ids = tuple(str(value) for value in df["__rowId__"].to_list())
@@ -298,6 +395,7 @@ def _summarize_multi_response(req: MultiResponseSummaryRequest) -> dict[str, Any
         "usedColumns": used_columns,
         "excludedCounts": excluded_counts,
         "method": "multiple-response-complete-case",
+        **weight_block,
     }
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, List, Popconfirm, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, List, Popconfirm, Space, Tag, Tooltip, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated } from '../../app/store'
 import { api } from '../../api/client'
@@ -8,11 +8,25 @@ import { fetchCodebookThunk } from './codebookSlice'
 import { fetchProvenanceThunk, provenanceReset } from './provenanceSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 
+interface RestoreResponse {
+  currentDataRevision: number
+  maskRevision: number
+  restoreWarnings?: string[]
+}
+
+const RESTORE_WARNING_LABELS: Record<string, string> = {
+  REVISION_STATE_BACKFILLED: 'この時点の状態スナップショットが無いため、値・スキーマから復元しました。',
+  REVISION_CODEBOOK_BACKFILLED: 'この時点のコードブックが無いため、現在の定義から作り直しました。',
+  MASK_RESTORE_APPROXIMATED: '補完マスクは近似復元です（列と時点から推定）。',
+  REVISION_FINGERPRINT_DIVERGED: '復元後の指紋が記録と一致しません。内容を確認してください。',
+}
+
 export default function ProvenanceHistoryPanel() {
   const dispatch = useDispatch<AppDispatch>()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const provenance = useSelector((s: RootState) => s.provenance)
   const [busy, setBusy] = useState<string | null>(null)
+  const [restoreWarnings, setRestoreWarnings] = useState<string[]>([])
 
   useEffect(() => {
     if (datasetId) {
@@ -30,12 +44,13 @@ export default function ProvenanceHistoryPanel() {
     await dispatch(fetchProvenanceThunk(targetDatasetId))
   }
 
-  const runGuarded = async (key: string, action: () => Promise<void>) => {
+  const runGuarded = async (key: string, action: () => Promise<RestoreResponse | void>) => {
     if (!datasetId || busy) return
     const frozenDatasetId = datasetId
     setBusy(key)
     try {
-      await action()
+      const res = await action()
+      setRestoreWarnings(res?.restoreWarnings ?? [])
       await refreshAfterChange(frozenDatasetId)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '操作に失敗しました。')
@@ -108,7 +123,7 @@ export default function ProvenanceHistoryPanel() {
         <Popconfirm
           title="原データへ戻しますか？"
           onConfirm={() => void runGuarded('revert-raw', async () => {
-            await api.post(`/datasets/${datasetId}/revert`, {
+            return await api.post<RestoreResponse>(`/datasets/${datasetId}/revert`, {
               targetDataRevision: provenance.rawDataRevision,
               expectedDataRevision: provenance.dataRevision,
               expectedSchemaRevision: provenance.schemaRevision,
@@ -117,34 +132,54 @@ export default function ProvenanceHistoryPanel() {
         >
           <Button size="small" danger loading={busy === 'revert-raw'}>Revert to Raw</Button>
         </Popconfirm>
-        <Button
-          size="small"
-          loading={busy === 'undo'}
-          onClick={() => void runGuarded('undo', async () => {
-            await api.post(`/datasets/${datasetId}/undo`, {
-              expectedDataRevision: provenance.dataRevision,
-              expectedSchemaRevision: provenance.schemaRevision,
-            })
-          })}
-        >
-          Undo
-        </Button>
-        <Button
-          size="small"
-          loading={busy === 'redo'}
-          onClick={() => void runGuarded('redo', async () => {
-            await api.post(`/datasets/${datasetId}/redo`, {
-              expectedDataRevision: provenance.dataRevision,
-              expectedSchemaRevision: provenance.schemaRevision,
-            })
-          })}
-        >
-          Redo
-        </Button>
+        <Tooltip title={provenance.canUndo ? undefined : '取り消せる操作がありません'}>
+          <Button
+            size="small"
+            disabled={!provenance.canUndo}
+            loading={busy === 'undo'}
+            onClick={() => void runGuarded('undo', async () => {
+              return await api.post<RestoreResponse>(`/datasets/${datasetId}/undo`, {
+                expectedDataRevision: provenance.dataRevision,
+                expectedSchemaRevision: provenance.schemaRevision,
+              })
+            })}
+          >
+            Undo
+          </Button>
+        </Tooltip>
+        <Tooltip title={provenance.canRedo ? undefined : 'やり直せる操作がありません'}>
+          <Button
+            size="small"
+            disabled={!provenance.canRedo}
+            loading={busy === 'redo'}
+            onClick={() => void runGuarded('redo', async () => {
+              return await api.post<RestoreResponse>(`/datasets/${datasetId}/redo`, {
+                expectedDataRevision: provenance.dataRevision,
+                expectedSchemaRevision: provenance.schemaRevision,
+              })
+            })}
+          >
+            Redo
+          </Button>
+        </Tooltip>
         <Tag>rev {provenance.dataRevision ?? '-'} / schema {provenance.schemaRevision ?? '-'}</Tag>
         <Tag>mask rev {provenance.maskRevision}</Tag>
       </Space>
       {provenance.error && <Alert type="error" message={provenance.error} style={{ marginBottom: 8 }} />}
+      {restoreWarnings.length > 0 && (
+        <Alert
+          type="warning"
+          style={{ marginBottom: 8 }}
+          message="復元時の注意"
+          description={
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {restoreWarnings.map((code) => (
+                <li key={code}>{RESTORE_WARNING_LABELS[code] ?? code}</li>
+              ))}
+            </ul>
+          }
+        />
+      )}
       <List
         size="small"
         dataSource={provenance.steps}
@@ -155,18 +190,24 @@ export default function ProvenanceHistoryPanel() {
                 key="revert"
                 title={`この操作 (rev ${step.outputDataRevision}) へ戻しますか？`}
                 onConfirm={() => void runGuarded(`revert-${step.operationId}`, async () => {
-                  await api.post(`/datasets/${datasetId}/revert`, {
+                  return await api.post<RestoreResponse>(`/datasets/${datasetId}/revert`, {
                     targetOperationId: step.operationId,
                     expectedDataRevision: provenance.dataRevision,
                     expectedSchemaRevision: provenance.schemaRevision,
                   })
                 })}
               >
-                <Button size="small" type="link">この履歴へ戻す</Button>
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={step.operationId === provenance.cursorOperationId}
+                >
+                  {step.operationId === provenance.cursorOperationId ? '現在の位置' : 'この履歴へ戻す'}
+                </Button>
               </Popconfirm>,
             ]}
           >
-            <Typography.Text>
+            <Typography.Text delete={step.inEffect === false}>
               {index + 1}. {step.operation} (rev {step.outputDataRevision})
             </Typography.Text>
             <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 11 }}>

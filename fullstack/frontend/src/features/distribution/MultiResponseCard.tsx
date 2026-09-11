@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Button, Card, Select, Segmented, Space, Tag, Tooltip, Typography, theme, Progress } from 'antd'
-import type { MultiResponseSummary } from '../../api/client'
+import type { MultiResponseSummary, MultiResponseWeight } from '../../api/client'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 
 const { Text } = Typography
 
@@ -8,13 +9,18 @@ interface MultiResponseCardProps {
   summary: MultiResponseSummary
   onSelect: (optionIds: string[], predicate: 'any' | 'all' | 'unselected' | 'status', status?: string, goToPcp?: boolean) => void
   loading?: boolean
+  /** Survey-weight block of the response this summary came from (WEIGHT-03). */
+  weight?: MultiResponseWeight | null
 }
 
 const PAGE_SIZE = 20
 
 const toNumberText = (value: number): string => value.toLocaleString()
 
-const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect, loading = false }) => {
+const formatWeight = (value: number): string =>
+  Number.isInteger(value) ? toNumberText(value) : value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+
+const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect, loading = false, weight = null }) => {
   const { token } = theme.useToken()
   const [base, setBase] = useState<'respondent' | 'response'>('respondent')
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([])
@@ -23,6 +29,16 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
   const optionRows = summary.items
   const denomForBase = base === 'respondent' ? summary.denominators.valid : summary.totalResponses
   const isRateUnavailable = denomForBase <= 0
+  const weighted = weight?.weightStatus === 'applied'
+  const weightNotes = weighted
+    ? [
+        `回答者重み ${weight?.weightColumn ?? ''} で加重集計しています。`,
+        `加重N ${formatWeight(weight?.weightedN ?? 0)}（有効回答者の重み合計 ${formatWeight(summary.weightedValidN ?? 0)}）`,
+        (weight?.weightMissingCount ?? 0) > 0 ? `重み欠損 ${toNumberText(weight?.weightMissingCount ?? 0)}人` : '',
+        (weight?.weightZeroCount ?? 0) > 0 ? `重み0 ${toNumberText(weight?.weightZeroCount ?? 0)}人` : '',
+        '設計効果は考慮しません。',
+      ].filter(Boolean).join(' / ')
+    : ''
 
   const optionChoices = useMemo(
     () =>
@@ -72,6 +88,11 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
           </Tooltip>
           <Tag color="blue">MA</Tag>
           <Tag color="default">選択肢 {toNumberText(optionRows.length)}</Tag>
+          {weighted ? (
+            <Tooltip mouseEnterDelay={0.2} title={weightNotes}>
+              <Tag color="green" data-testid={`ma-weighted-${summary.groupId}`}>加重</Tag>
+            </Tooltip>
+          ) : null}
           {summary.groupId !== summary.label ? <Text type="secondary">({summary.groupId})</Text> : null}
         </Space>
       }
@@ -92,6 +113,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
       }
       style={{ marginBottom: 16, borderRadius: 6, border: `1px solid ${token.colorSplit}` }}
     >
+      <WeightUnsupportedAlert weightColumnName={weight?.weightStatus === 'unsupported' ? weight?.weightColumn : null} />
       <div
         style={{
           background: token.colorFillAlter,
@@ -160,6 +182,17 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
         <span>|</span>
         <Text type="secondary">延べ:</Text>
         <Text strong>{toNumberText(summary.totalResponses)}</Text>
+        {weighted ? (
+          <>
+            <span>|</span>
+            <Tooltip mouseEnterDelay={0.2} title={weightNotes}>
+              <Text type="secondary">加重N:</Text>
+            </Tooltip>
+            <Text strong data-testid={`ma-weighted-denominator-${summary.groupId}`}>
+              {formatWeight(summary.weightedValidN ?? 0)}
+            </Text>
+          </>
+        ) : null}
         {isRateUnavailable ? <Text type="secondary">分母0のため割合は—</Text> : null}
       </div>
 
@@ -211,6 +244,9 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {pagedItems.map((item) => {
           const pct = base === 'respondent' ? item.pctRespondent : item.pctResponse
+          const pctUnweighted = base === 'respondent'
+            ? item.pctRespondentUnweighted ?? null
+            : item.pctResponseUnweighted ?? null
           const isSelected = item.selectedInSelection > 0
           const showLabel = item.label ? `${item.name} ${item.label}` : item.name
 
@@ -269,9 +305,18 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
                 </Button>
 
                 <Space size={8} align="center" wrap style={{ minWidth: 220, justifyContent: 'flex-end' }}>
-                  <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                    {getRateText(pct)} ({toNumberText(item.selectedN)})
-                  </Text>
+                  <Tooltip mouseEnterDelay={0.2} title={weighted ? weightNotes : undefined}>
+                    <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                      {getRateText(pct)} ({toNumberText(item.selectedN)})
+                    </Text>
+                  </Tooltip>
+                  {weighted ? (
+                    <Text type="secondary" style={{ fontSize: 11 }}
+                      data-testid={`ma-item-unweighted-${summary.groupId}-${item.columnId}`}>
+                      非加重 {getRateText(pctUnweighted)}
+                      （加重計 {formatWeight(item.selectedWeighted ?? 0)}）
+                    </Text>
+                  ) : null}
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     選択中人数 {toNumberText(item.selectedInSelection)}
                   </Text>

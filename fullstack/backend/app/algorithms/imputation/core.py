@@ -1,12 +1,26 @@
 """Baseline and advanced imputation engine (Mean, Median, Mode, Constant, KNN, TabDiff)."""
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 import numpy as np
 import polars as pl
 
 from ...domain.errors import BizError
+from .plan import ImputationPlan, build_imputation_plan, plan_warnings
 from .tabdiff import tabdiff_impute
+
+
+def column_values_hash(series: pl.Series) -> str:
+    """SHA-256 over every value of a column, in row order.
+
+    Preview and apply both report this, so "the preview showed what actually
+    got applied" is checked on the values themselves and not on summary stats.
+    """
+    payload = json.dumps([None if v is None else str(v) for v in series.to_list()],
+                         ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _knn_impute_series(target_arr: np.ndarray, feature_mat: np.ndarray, k: int = 5) -> np.ndarray:
@@ -47,8 +61,15 @@ def impute_dataframe(
     columns: list[str] | None = None,
     strategy: str = "tabdiff",
     options: dict[str, Any] | None = None,
+    predictors: list[str] | None = None,
+    plan_hash: str = "",
 ) -> tuple[pl.DataFrame, dict[str, Any]]:
-    """Impute missing values across specified columns in a dataframe."""
+    """Impute missing values across specified columns in a dataframe.
+
+    ``predictors`` are conditioning columns: they inform the imputation of
+    ``columns`` but never receive values themselves.  ``None`` keeps the
+    historical behaviour (the engine picks its own feature set).
+    """
     opts = options or {}
     if columns is not None:
         target_cols = list(columns)
@@ -65,7 +86,8 @@ def impute_dataframe(
         num_steps = int(opts.get("num_steps", 20))
         temperature = float(opts.get("temperature", 1.0))
         seed = int(opts.get("seed", 42))
-        return tabdiff_impute(df, columns=valid_cols, num_steps=num_steps, temperature=temperature, seed=seed)
+        return tabdiff_impute(df, columns=valid_cols, num_steps=num_steps, temperature=temperature,
+                              seed=seed, predictors=predictors, plan_hash=plan_hash)
 
     imputed_counts: dict[str, int] = {}
     col_diagnostics: dict[str, Any] = {}
@@ -75,11 +97,19 @@ def impute_dataframe(
         pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64
     )]
 
-    # If KNN is chosen, extract numeric feature matrix
+    # If KNN is chosen, extract numeric feature matrix.  With explicit
+    # predictors the target is never one of its own neighbours in feature
+    # space; without them the historical "all numeric columns" set is kept.
     feature_mat = None
     if strategy == "knn" and numeric_cols:
-        raw_cols = [df[c].to_numpy().astype(np.float64) for c in numeric_cols]
-        feature_mat = np.column_stack(raw_cols)
+        if predictors is None:
+            feature_names = list(numeric_cols)
+        else:
+            wanted = set(predictors) | {c for c in valid_cols if c in numeric_cols}
+            feature_names = [c for c in df.columns if c in wanted and c != "__rowId__"]
+        if feature_names:
+            raw_cols = [df[c].to_numpy().astype(np.float64) for c in feature_names]
+            feature_mat = np.column_stack(raw_cols)
 
     for c in valid_cols:
         s = df[c]
@@ -178,6 +208,10 @@ def impute_dataframe(
         "method": strategy,
         "algorithmVersion": "2.0.0",
         "evidenceClass": "STATISTICAL_IMPUTATION",
+        "planHash": plan_hash,
+        "predictorColumns": [c for c in (predictors or []) if c in df.columns and c != "__rowId__"],
+        "conditioningColumns": list(feature_names) if strategy == "knn" and feature_mat is not None else [],
+        "outputColumns": list(valid_cols),
         "imputedCounts": imputed_counts,
         "columns": col_diagnostics,
     }
@@ -190,10 +224,67 @@ def preview_imputation(
     strategy: str = "tabdiff",
     options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Generate before-and-after comparison stats and distribution bins for a single column."""
+    """Single-column preview. Kept as the algorithm-level entry point; the API
+    goes through ``preview_imputation_plan`` so that what is previewed is
+    exactly what gets applied."""
     if column not in df.columns:
         raise BizError("COLUMN_NOT_FOUND", f"列 '{column}' が見つかりません。")
 
+    plan = build_imputation_plan(df, None, [column], [], strategy, options)
+    result = preview_imputation_plan(df, plan)
+    per_column = result["perColumn"][0]
+    return {
+        "column": per_column["column"],
+        "strategy": strategy,
+        "beforeStats": per_column["beforeStats"],
+        "afterStats": per_column["afterStats"],
+        "histogram": per_column["histogram"],
+        "diagnostics": result["diagnostics"],
+    }
+
+
+def preview_imputation_plan(df: pl.DataFrame, plan: ImputationPlan) -> dict[str, Any]:
+    """Before/after comparison for every target of ``plan``.
+
+    The whole target set is imputed in a single pass, exactly as the apply
+    endpoint will, so the previewed values *are* the applied values.
+    """
+    imputed_df, diag = impute_dataframe(
+        df,
+        columns=plan.targetColumns,
+        strategy=plan.strategy,
+        options=plan.options,
+        predictors=plan.predictorColumns,
+        plan_hash=plan.planHash,
+    )
+
+    per_column = [_column_preview(df, imputed_df, column) for column in plan.targetColumns]
+    payload: dict[str, Any] = {
+        "planHash": plan.planHash,
+        "datasetId": plan.datasetId,
+        "dataRevision": plan.dataRevision,
+        "strategy": plan.strategy,
+        "targetColumns": plan.targetColumns,
+        "predictorColumns": plan.predictorColumns,
+        "excludedColumns": [e.model_dump() for e in plan.excludedColumns],
+        "perColumn": per_column,
+        "diagnostics": diag,
+        "warnings": plan_warnings(plan, df),
+    }
+    if per_column:
+        # Legacy single-column shape, so an older client keeps working.
+        first = per_column[0]
+        payload.update({
+            "column": first["column"],
+            "beforeStats": first["beforeStats"],
+            "afterStats": first["afterStats"],
+            "histogram": first["histogram"],
+        })
+    return payload
+
+
+def _column_preview(df: pl.DataFrame, imputed_df: pl.DataFrame, column: str) -> dict[str, Any]:
+    """Before-and-after comparison stats and distribution bins for one column."""
     s = df[column]
     total_count = s.len()
     null_count = s.null_count()
@@ -201,7 +292,6 @@ def preview_imputation(
         pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64
     )
 
-    imputed_df, diag = impute_dataframe(df, columns=[column], strategy=strategy, options=options)
     imp_s = imputed_df[column]
 
     orig_non_null = s.drop_nulls()
@@ -271,9 +361,8 @@ def preview_imputation(
 
     return {
         "column": column,
-        "strategy": strategy,
         "beforeStats": before_stats,
         "afterStats": after_stats,
         "histogram": histogram_comparison,
-        "diagnostics": diag,
+        "valuesHash": column_values_hash(imp_s),
     }

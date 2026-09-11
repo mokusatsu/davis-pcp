@@ -1,5 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import { CodebookColumn, MultiResponseGroup, getCodebook, updateCodebook } from '../../api/client'
+import {
+  CodebookColumn, MultiResponseGroup, SurveyDesignSpec, WeightConfig,
+  getCodebook, updateCodebook,
+} from '../../api/client'
 import type { RootState } from '../../app/store'
 import { CodebookPreset } from './codebookPresets'
 import { ParsedOption } from './codebookParsers'
@@ -12,6 +15,9 @@ export interface CodebookState {
   draftColumns: CodebookColumn[]
   multiResponseGroups: MultiResponseGroup[]
   draftMultiResponseGroups: MultiResponseGroup[]
+  /** Which weight column this dataset's analyses use, and what it means. */
+  weightConfig: WeightConfig | null
+  surveyDesign: SurveyDesignSpec | null
   selectedColumnIds: string[]
   activeColumnId: string | null
   viewMode: 'detail' | 'grid'
@@ -36,6 +42,8 @@ const initialState: CodebookState = {
   draftColumns: [],
   multiResponseGroups: [],
   draftMultiResponseGroups: [],
+  weightConfig: null,
+  surveyDesign: null,
   selectedColumnIds: [],
   activeColumnId: null,
   viewMode: 'detail',
@@ -91,6 +99,35 @@ export const saveCodebookThunk = createAsyncThunk(
       datasetId: state.datasetId,
       columns: snapshotColumns,
       multiResponseGroups: snapshotGroups,
+    }
+  }
+)
+
+/**
+ * Save only the weight declaration, without touching any column.
+ *
+ * The type is dataset-level on purpose: "what this weight means" is a property
+ * of the data, not of one crosstab. Declaring it bumps the schema revision, so
+ * a cached result computed under the old meaning can never be reused.
+ */
+export const saveWeightConfigThunk = createAsyncThunk(
+  'codebook/saveWeightConfig',
+  async (
+    payload: { weightConfig: WeightConfig | null; surveyDesign?: SurveyDesignSpec | null },
+    { getState }
+  ) => {
+    const state = (getState() as RootState).codebook
+    if (!state.datasetId) throw new Error('No dataset loaded')
+    const res = await updateCodebook(state.datasetId, [], {
+      weightConfig: payload.weightConfig,
+      ...(payload.surveyDesign !== undefined ? { surveyDesign: payload.surveyDesign } : {}),
+      expectedSchemaRevision: state.schemaRevision,
+    })
+    return {
+      ...res,
+      datasetId: state.datasetId,
+      weightConfig: payload.weightConfig,
+      surveyDesign: payload.surveyDesign ?? null,
     }
   }
 )
@@ -249,6 +286,8 @@ export const codebookSlice = createSlice({
           state.draftColumns = []
           state.multiResponseGroups = []
           state.draftMultiResponseGroups = []
+          state.weightConfig = null
+          state.surveyDesign = null
           state.selectedColumnIds = []
           state.activeColumnId = null
           state.hasChanges = false
@@ -262,6 +301,8 @@ export const codebookSlice = createSlice({
         state.schemaRevision = action.payload.schemaRevision
         state.columns = action.payload.columns
         state.multiResponseGroups = action.payload.multiResponseGroups ?? []
+        state.weightConfig = action.payload.weightConfig ?? null
+        state.surveyDesign = action.payload.surveyDesign ?? null
 
         if (!state.hasChanges) {
           state.draftColumns = JSON.parse(JSON.stringify(action.payload.columns))
@@ -291,6 +332,12 @@ export const codebookSlice = createSlice({
       })
       .addCase(saveCodebookThunk.rejected, (state) => {
         state.isSaving = false
+      })
+      .addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
+        if (action.payload.datasetId !== state.datasetId) return
+        state.schemaRevision = action.payload.schemaRevision
+        state.weightConfig = action.payload.weightConfig
+        state.surveyDesign = action.payload.surveyDesign
       })
   },
 })

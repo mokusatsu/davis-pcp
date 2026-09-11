@@ -13,12 +13,14 @@ export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }
   const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
   const entities = useSelector(selectVariableEntities)
-  const { schemaRevision, isLoading } = useCodebook()
+  const { columns, schemaRevision, isLoading } = useCodebook()
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const weightName = columns.find(column => column.columnId === weightColumnId)?.name
   const groups = entities.items.flatMap(item => item.entity.kind === 'ma' && entities.selected.has(item.key) ? [item.entity.groupId] : [])
   const [page, setPage] = useState(1)
   const currentPage = Math.min(page, Math.max(1, Math.ceil(groups.length / 12)))
   const groupIds = groups.slice((currentPage - 1) * 12, currentPage * 12)
-  const key = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, groupIds])
+  const key = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, groupIds, weightName ?? null])
   const currentKey = useRef(key)
   currentKey.current = key
   const [result, setResult] = useState<{ key: string; value: MultiResponseSummaryResponse } | null>(null)
@@ -38,6 +40,7 @@ export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }
     setError(null)
     void api.post<MultiResponseSummaryResponse>('/summaries/multi-response', {
       datasetId: selection.datasetId, groupIds, rowIds, selectedRowIds: selection.selectedRowIds,
+      ...(weightName ? { weightColumn: weightName } : {}),
       expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
     }).then(value => { if (!cancelled) setResult({ key, value }) })
       .catch(error => { if (!cancelled) setError(error.message || 'MA集計に失敗しました。') })
@@ -67,7 +70,7 @@ export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }
     {error && <Alert type="error" showIcon message={error} />}
     {loading && <Spin />}
     <Row gutter={[16, 16]}>{result?.key === key && result.value.groups.map(summary => <Col key={summary.groupId} xs={24} lg={12}>
-      <MultiResponseCard summary={summary} loading={matching}
+      <MultiResponseCard summary={summary} loading={matching} weight={result.value}
         onSelect={(ids, predicate, status, goToPcp) => void select(summary.groupId, ids, predicate, status, goToPcp)} />
     </Col>)}</Row>
     {groups.length > 12 && <Pagination current={currentPage} pageSize={12} total={groups.length} showSizeChanger={false} onChange={setPage} />}

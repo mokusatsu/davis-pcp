@@ -271,7 +271,18 @@ def summarize_group(
     group: dict[str, Any],
     selected_row_ids: list[str] | None = None,
     selection_masks: dict[str, int] | None = None,
+    weights: list[float | None] | None = None,
 ) -> dict[str, Any]:
+    """Counts and (optionally) weighted sums for one multi-response group.
+
+    ``weights`` holds one survey weight per row of ``df`` (``None`` = the
+    respondent carries no usable weight).  Unweighted counts are always
+    reported; when weights are given, the ratios become weighted and the
+    unweighted ratio is kept alongside them (``pctRespondentUnweighted``,
+    ``pctResponseUnweighted``).  A respondent with a missing or zero weight is
+    dropped from the weighted denominators but keeps contributing to the
+    unweighted ones.
+    """
     validate_group(group)
 
     group_id = group.get("groupId")
@@ -289,7 +300,12 @@ def summarize_group(
 
     selected_counts: dict[str, int] = {cid: 0 for cid in option_ids}
     selected_in_selection: dict[str, int] = {cid: 0 for cid in option_ids}
+    selected_weights: dict[str, float] = {cid: 0.0 for cid in option_ids}
     mask_buffers = {cid: bytearray((df.height + 7) // 8) for cid in option_ids} if selection_masks is not None else {}
+    # Weighted denominators mirror the unweighted ones: ``valid`` counts
+    # respondents, the response denominator counts selections.
+    den_valid_weight = 0.0
+    weighted = weights is not None
 
     denominators = {
         "total": 0,
@@ -329,10 +345,17 @@ def summarize_group(
         if not selected:
             all_unselected_n += 1
 
+        row_weight = (weights[idx] if idx < len(weights) else None) if weighted else 1.0
+        carries_weight = row_weight is not None and row_weight > 0
+        if carries_weight:
+            den_valid_weight += row_weight
+
         row_id = row_ids[idx]
         for cid in selected:
             if cid in selected_counts:
                 selected_counts[cid] += 1
+                if carries_weight:
+                    selected_weights[cid] += row_weight
                 if selection_masks is not None:
                     mask_buffers[cid][idx // 8] |= 1 << (idx % 8)
                 if row_id in selected_ids_set:
@@ -348,18 +371,35 @@ def summarize_group(
     total_responses = sum(selected_counts.values())
     den_valid = denominators["valid"]
     den_total_responses = total_responses
+    # Σ w_r × (その回答者の選択数) — every accumulation above is one selection,
+    # so summing the weighted selections gives the weighted response total.
+    den_total_weight = sum(selected_weights.values())
 
     items: list[dict[str, Any]] = []
     for cid in option_ids:
         selected_n = selected_counts.get(cid, 0)
+        selected_weighted = selected_weights.get(cid, 0.0)
+        pct_respondent_unweighted = (selected_n / den_valid * 100.0) if den_valid > 0 else None
+        pct_response_unweighted = (selected_n / den_total_responses * 100.0) if den_total_responses > 0 else None
+        if weighted:
+            pct_respondent = (selected_weighted / den_valid_weight * 100.0) if den_valid_weight > 0 else None
+            pct_response = (selected_weighted / den_total_weight * 100.0) if den_total_weight > 0 else None
+        else:
+            pct_respondent = pct_respondent_unweighted
+            pct_response = pct_response_unweighted
         items.append({
             "columnId": cid,
             "name": next((c.get("name") for c in option_cols if c.get("columnId") == cid), ""),
             "label": member_labels.get(cid, ""),
             "selectedN": selected_n,
+            "selectedWeighted": selected_weighted,
             "selectedInSelection": selected_in_selection.get(cid, 0),
-            "pctRespondent": (selected_n / den_valid * 100.0) if den_valid > 0 else None,
-            "pctResponse": (selected_n / den_total_responses * 100.0) if den_total_responses > 0 else None,
+            # With no weights the two coincide; with weights the plain ratio
+            # stays available so the UI can show both.
+            "pctRespondent": pct_respondent,
+            "pctRespondentUnweighted": pct_respondent_unweighted,
+            "pctResponse": pct_response,
+            "pctResponseUnweighted": pct_response_unweighted,
         })
 
     return {
@@ -368,6 +408,8 @@ def summarize_group(
         "denominators": denominators,
         "allUnselectedN": all_unselected_n,
         "totalResponses": total_responses,
+        "weightedValidN": den_valid_weight if weighted else None,
+        "weightedResponses": den_total_weight if weighted else None,
         "items": items,
     }
 

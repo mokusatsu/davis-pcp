@@ -5,7 +5,7 @@ import csv
 import hashlib
 import io
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import pyarrow as pa
@@ -26,8 +26,16 @@ from ..services.import_service import (
     probe_table,
     sqlite_tables,
 )
-from ..storage.dataset_store import DatasetStore, assign_row_identity, values_fingerprint
+from ..storage.dataset_store import (
+    DatasetStore,
+    assign_row_identity,
+    dataset_fingerprint,
+    values_fingerprint,
+)
 from ..domain.provenance import new_operation_id
+
+if TYPE_CHECKING:
+    from ..algorithms.imputation.plan import ImputationPlan
 
 router = APIRouter()
 
@@ -67,10 +75,15 @@ def _provenance_step(operation: str, params: dict[str, Any], meta: dict[str, Any
     }
 
 
-def _mask_entries_for_impute(df_before: pl.DataFrame, df_after: pl.DataFrame,
-                              columns: list[str], strategy: str, operation_id: str,
-                              input_revision: int, mask_revision: int) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
+def _imputed_cells(df_before: pl.DataFrame, df_after: pl.DataFrame,
+                   columns: list[str]) -> list[dict[str, Any]]:
+    """Cells that were missing before the imputation and carry a value after it.
+
+    Deliberately operation-independent: the in-place path turns these into mask
+    entries attached to its own provenance step, while the derived-dataset path
+    attaches the same cells to the new dataset's seed step (E05).
+    """
+    cells: list[dict[str, Any]] = []
     row_ids = df_before["__rowId__"].to_list() if "__rowId__" in df_before.columns else []
     for column in columns:
         if column not in df_before.columns or column not in df_after.columns:
@@ -86,17 +99,34 @@ def _mask_entries_for_impute(df_before: pl.DataFrame, df_after: pl.DataFrame,
             new_missing = new is None or (is_float and isinstance(new, float) and new != new)
             if new_missing:
                 continue
-            entries.append({
-                "rowId": str(row_id),
-                "columnId": column,
-                "methodId": strategy,
-                "methodLabel": IMPUTE_METHOD_LABELS.get(strategy, strategy),
-                "originalMissingReason": "user_missing",
-                "createdByOperationId": operation_id,
-                "inputDataRevision": input_revision,
-                "maskRevision": mask_revision,
-            })
+            cells.append({"rowId": str(row_id), "columnId": column})
+    return cells
+
+
+def _mask_entries(cells: list[dict[str, Any]], strategy: str, operation_id: str,
+                  input_revision: int, mask_revision: int) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        entries.append({
+            "rowId": str(cell.get("rowId")),
+            "columnId": str(cell.get("columnId")),
+            "methodId": strategy,
+            "methodLabel": IMPUTE_METHOD_LABELS.get(strategy, strategy),
+            "originalMissingReason": "user_missing",
+            "createdByOperationId": operation_id,
+            "inputDataRevision": input_revision,
+            "maskRevision": mask_revision,
+        })
     return entries
+
+
+def _mask_entries_for_impute(df_before: pl.DataFrame, df_after: pl.DataFrame,
+                              columns: list[str], strategy: str, operation_id: str,
+                              input_revision: int, mask_revision: int) -> list[dict[str, Any]]:
+    return _mask_entries(_imputed_cells(df_before, df_after, columns), strategy,
+                         operation_id, input_revision, mask_revision)
 
 
 def _serialize_schema(df: pl.DataFrame) -> list[dict[str, Any]]:
@@ -273,6 +303,45 @@ def _sync_multi_response_groups(
     return normalized
 
 
+def _sync_weight_config(
+    existing_cb: dict[str, Any] | None,
+    merged_cols: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Carry the weight configuration across a re-sync, dropping vanished columns.
+
+    A column that was renamed or removed takes its weight role with it; silently
+    keeping a dangling ``columnId`` would let analyses pick up a weight whose
+    meaning nobody re-confirmed. The caller decides whether the change is worth
+    a schema-revision bump.
+    """
+    existing_cb = existing_cb or {}
+    known = {c.get("columnId") for c in merged_cols}
+
+    def _survives(column_id: Any) -> bool:
+        return isinstance(column_id, str) and column_id in known
+
+    raw_config = existing_cb.get("weightConfig")
+    weight_config: dict[str, Any] | None = None
+    if isinstance(raw_config, dict) and _survives(raw_config.get("weightColumnId")):
+        weight_config = dict(raw_config)
+
+    raw_design = existing_cb.get("surveyDesign")
+    survey_design: dict[str, Any] | None = None
+    if isinstance(raw_design, dict):
+        cleaned = dict(raw_design)
+        for key in ("weightColumnId", "strataColumnId", "psuColumnId", "fpcColumnId"):
+            if key in cleaned and not _survives(cleaned.get(key)):
+                cleaned.pop(key, None)
+        replicates = [cid for cid in (cleaned.get("replicateWeightColumnIds") or []) if _survives(cid)]
+        if replicates:
+            cleaned["replicateWeightColumnIds"] = replicates
+        else:
+            cleaned.pop("replicateWeightColumnIds", None)
+        survey_design = cleaned or None
+
+    return weight_config, survey_design
+
+
 def _sync_codebook(
     dataset_id: str,
     df: pl.DataFrame,
@@ -321,6 +390,20 @@ def _sync_codebook(
         True,
     ) if existing_cb else cb_payload.get("multiResponseGroups", [])
 
+    raw_weight = (existing_cb or {}).get("weightConfig")
+    raw_design = (existing_cb or {}).get("surveyDesign")
+    weight_config, survey_design = _sync_weight_config(existing_cb, cb_payload.get("columns", []))
+    if weight_config is not None:
+        cb_payload["weightConfig"] = weight_config
+    if survey_design is not None:
+        cb_payload["surveyDesign"] = survey_design
+    # Dropping a weight or design column changes what the codebook means, so the
+    # revision must move even when no column itself was added or renamed.
+    if cb_payload.get("weightConfig") != raw_weight or cb_payload.get("surveyDesign") != raw_design:
+        current = cb_payload.get("schemaRevision", 1)
+        if current == (existing_cb or {}).get("schemaRevision", 1):
+            cb_payload["schemaRevision"] = current + 1
+
     return cb_payload
 
 
@@ -332,6 +415,7 @@ def _finalize_dataset(
     options: ImportOptions | None,
     source_schema: list[dict] | None = None,
     source_dataset_id: str | None = None,
+    derivation: dict[str, Any] | None = None,
 ) -> dict:
     schemas = probe_table(df, df.height)
     id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
@@ -343,16 +427,11 @@ def _finalize_dataset(
     cb = _sync_codebook(dataset_id, df, source_schema=source_schema, source_dataset_id=source_dataset_id)
     schema_revision = cb.get("schemaRevision", 1)
 
-    fingerprint_material = {
-        "schema": schema_payload,
-        "options": options.model_dump(mode="json") if options else {},
-        "format": fmt,
-        "schemaRevision": schema_revision,
-    }
-    fingerprint_seed = values_fingerprint(df)
-    fingerprint = hashlib.sha256(
-        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
+    # Single source of truth; commit_data_change recomputes it the same way.
+    fingerprint = dataset_fingerprint(
+        schema_payload, schema_revision, df, fmt,
+        options.model_dump(mode="json") if options else {},
+    )
     meta = {
         "datasetId": dataset_id,
         "name": name,
@@ -367,19 +446,48 @@ def _finalize_dataset(
         "createdAt": now_iso(),
         "importOptions": options.model_dump(mode="json") if options else ImportOptions().model_dump(mode="json"),
     }
-    seed_step = _provenance_step("import", {"name": name, "format": fmt,
-                                            "source_dataset_id": source_dataset_id}, meta, cb,
-                                 "import-1")
     if source_dataset_id:
-        source_provenance = store.load_provenance(source_dataset_id) or {}
-        source_mask = store.load_mask(source_dataset_id) or {"entries": []}
-        seed_step["parentOperationId"] = source_provenance.get("currentOperationId")
-        seed_step["params"] = {**seed_step["params"],
-                               "copiedMaskEntries": len(source_mask.get("entries", []))}
+        # A derived dataset must say where it came from, and what its "raw" means.
+        meta["sourceDatasetId"] = source_dataset_id
+    if derivation:
+        meta["derivation"] = derivation.get("operation", "import")
+
+    if derivation:
+        # E05: the new dataset carries its *own* imputation step and mask
+        # entries, plus whatever mask it inherited from the source.
+        step_params = dict(derivation.get("params") or {})
+        seed_step = _provenance_step(derivation.get("operation", "import"), step_params, meta, cb,
+                                     f"{derivation.get('operation', 'import')}-1")
+        source_provenance = store.load_provenance(source_dataset_id) if source_dataset_id else None
+        seed_step["parentOperationId"] = (source_provenance or {}).get("currentOperationId")
+        # Inherited entries keep their original attribution and gain the marker
+        # that says where they came from; the cells this derivation filled are
+        # new entries attributed to the seed step itself.
+        inherited = [{**e, "inheritedFromDatasetId": source_dataset_id}
+                     for e in (derivation.get("inheritedMaskEntries") or [])
+                     if isinstance(e, dict)]
+        step_params["inheritedMaskEntries"] = len(inherited)
+        seed_step["params"] = step_params
+        cells = [c for c in (derivation.get("imputedCells") or []) if isinstance(c, dict)]
+        mask_entries = inherited + _mask_entries(
+            cells, str(step_params.get("strategy", "")), seed_step["operationId"],
+            int(meta.get("dataRevision", 1)), 1)
         commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step,
-                                           mask_entries=list(source_mask.get("entries", [])))
+                                          mask_entries=mask_entries, replace_mask=True)
     else:
-        commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step)
+        seed_step = _provenance_step("import", {"name": name, "format": fmt,
+                                                "source_dataset_id": source_dataset_id}, meta, cb,
+                                     "import-1")
+        if source_dataset_id:
+            source_provenance = store.load_provenance(source_dataset_id) or {}
+            source_mask = store.load_mask(source_dataset_id) or {"entries": []}
+            seed_step["parentOperationId"] = source_provenance.get("currentOperationId")
+            seed_step["params"] = {**seed_step["params"],
+                                   "copiedMaskEntries": len(source_mask.get("entries", []))}
+            commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step,
+                                               mask_entries=list(source_mask.get("entries", [])))
+        else:
+            commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=seed_step)
     meta.pop("rowIds", None)
     provenance = commit["provenance"]
     return {**meta, "provenance": {"currentOperationId": provenance["currentOperationId"],
@@ -639,23 +747,89 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
             seen_projected_ids.add(group_id)
 
     cb["multiResponseGroups"] = _sync_multi_response_groups(projected_groups, cb["columns"], False)
+
+    def _resolve_column_ref(value: Any, *, field: str) -> str | None:
+        """Accept either a columnId or a unique column name; reject anything unknown."""
+        if value in (None, ""):
+            return None
+        if not isinstance(value, str):
+            raise BizError("CODEBOOK_INVALID", f"{field} must be a string", status_code=422)
+        if value in by_id:
+            return value
+        matches = [c["columnId"] for c in cb["columns"] if c.get("name") == value]
+        if len(matches) == 1:
+            return matches[0]
+        raise BizError("CODEBOOK_INVALID", f"{field} が列を特定できません: {value}", status_code=422)
+
+    if update_req.explicitly_set("weightConfig"):
+        if update_req.weightConfig is None:
+            # Clearing the weight is a real choice: analyses fall back to the
+            # unweighted path instead of silently keeping the old weight type.
+            cb.pop("weightConfig", None)
+        else:
+            resolved = _resolve_column_ref(
+                update_req.weightConfig.weightColumnId, field="weightConfig.weightColumnId")
+            if resolved is None:
+                raise BizError("CODEBOOK_INVALID", "weightConfig.weightColumnId は必須です。", status_code=422)
+            cb["weightConfig"] = {
+                "weightColumnId": resolved,
+                "weightType": update_req.weightConfig.weightType.value,
+            }
+
+    if update_req.explicitly_set("surveyDesign"):
+        if update_req.surveyDesign is None:
+            cb.pop("surveyDesign", None)
+        else:
+            design = update_req.surveyDesign
+            payload: dict[str, Any] = {
+                "weightColumnId": _resolve_column_ref(design.weightColumnId, field="surveyDesign.weightColumnId"),
+                "strataColumnId": _resolve_column_ref(design.strataColumnId, field="surveyDesign.strataColumnId"),
+                "psuColumnId": _resolve_column_ref(design.psuColumnId, field="surveyDesign.psuColumnId"),
+                "fpcColumnId": _resolve_column_ref(design.fpcColumnId, field="surveyDesign.fpcColumnId"),
+            }
+            replicate_ids: list[str] = []
+            for raw in design.replicateWeightColumnIds:
+                resolved = _resolve_column_ref(raw, field="surveyDesign.replicateWeightColumnIds")
+                if resolved is not None:
+                    replicate_ids.append(resolved)
+            if design.weightColumnId is None:
+                # The weight is implied by weightConfig; keeping both in step is
+                # what stops the design from pointing at a different column.
+                payload["weightColumnId"] = (cb.get("weightConfig") or {}).get("weightColumnId")
+            if payload["weightColumnId"] is None:
+                raise BizError("CODEBOOK_INVALID", "surveyDesign には weightColumnId が必要です。", status_code=422)
+            config = cb.get("weightConfig")
+            if config and config.get("weightColumnId") != payload["weightColumnId"]:
+                raise BizError(
+                    "CODEBOOK_INVALID",
+                    "surveyDesign.weightColumnId が weightConfig と一致しません。",
+                    status_code=422,
+                )
+            if len(set(replicate_ids)) != len(replicate_ids):
+                raise BizError("CODEBOOK_INVALID", "replicateWeightColumnIds が重複しています。", status_code=422)
+            if replicate_ids:
+                payload["replicateWeightColumnIds"] = replicate_ids
+            same_as_weight = {
+                key: payload[key] for key in ("strataColumnId", "psuColumnId", "fpcColumnId") if payload.get(key)
+            }
+            if payload["weightColumnId"] in same_as_weight.values():
+                raise BizError(
+                    "CODEBOOK_INVALID",
+                    "ウェイト列を strata / PSU / fpc に同時指定できません。",
+                    status_code=422,
+                )
+            cb["surveyDesign"] = payload
+
     new_rev = int(cb.get("schemaRevision", 1)) + 1
     cb["schemaRevision"] = new_rev
     # Sync schemaRevision to meta & update fingerprint
     meta["schemaRevision"] = new_rev
-    fingerprint_material = {
-        "schema": meta.get("schema", []),
-        "options": meta.get("importOptions", {}),
-        "format": meta.get("format", "csv"),
-        "schemaRevision": new_rev,
-    }
-    fingerprint_seed = meta.get("valuesFingerprint")
-    if not fingerprint_seed:
-        fingerprint_seed = values_fingerprint(store.get_dataframe(dataset_id))
-        meta["valuesFingerprint"] = fingerprint_seed
-    meta["fingerprint"] = hashlib.sha256(
-        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
+    # The codebook update path does not commit values, so the fingerprint is
+    # recomputed here — with the same helper every other write path uses.
+    meta["fingerprint"] = dataset_fingerprint(
+        meta.get("schema", []), new_rev, store.get_dataframe(dataset_id),
+        meta.get("format", "csv"), meta.get("importOptions", {}),
+    )
     store.save_metadata(dataset_id, meta, cb)
 
     return {
@@ -880,16 +1054,7 @@ def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
             if override.get("newName"):
                 column["name"] = override["newName"]
         cb["schemaRevision"] = meta["schemaRevision"]
-    fingerprint_material = {
-        "schema": updated,
-        "options": meta.get("importOptions", {}),
-        "format": meta.get("format", "csv"),
-        "schemaRevision": meta["schemaRevision"],
-    }
-    fingerprint_seed = values_fingerprint(df)
-    meta["fingerprint"] = hashlib.sha256(
-        json.dumps(fingerprint_material, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
+    # commit_data_change recomputes the fingerprint from the same inputs.
     step = _provenance_step("schema_update", {"columns": sorted(by_name.keys())}, meta, cb,
                             "schema-patch-1", parent_operation_id=parent_op)
     commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
@@ -970,11 +1135,11 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
     schema_revision = cb.get("schemaRevision", 1)
 
-    # Invalidate cached fingerprint
-    fingerprint_seed = values_fingerprint(df)
-    meta["fingerprint"] = hashlib.sha256(
-        json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
+    # Invalidate cached fingerprint (commit_data_change recomputes it too)
+    meta["fingerprint"] = dataset_fingerprint(
+        schema_payload, schema_revision, df, meta.get("format", "csv"),
+        meta.get("importOptions", {}),
+    )
     meta["schema"] = schema_payload
     meta["schemaRevision"] = schema_revision
     meta["columnCount"] = df.width - 1
@@ -1042,29 +1207,81 @@ def _delete_column(dataset_id: str, column_name: str) -> dict:
                                    "operationCount": len(provenance.get("operations", []))}}
 
 
-class ImputePreviewRequest(BaseModel):
-    column: str
-    strategy: str = "tabdiff"
-    options: dict[str, Any] | None = None
+def _impute_step_params(plan: ImputationPlan, in_place: bool) -> dict[str, Any]:
+    """What the provenance step records about an imputation.
+
+    The plan is the record: targets, predictors, the columns the plan refused,
+    and the hash that ties the applied result to the previewed one.
+    """
+    return {
+        "columns": plan.targetColumns,
+        "predictorColumns": plan.predictorColumns,
+        "excludedColumns": [e.model_dump() for e in plan.excludedColumns],
+        "strategy": plan.strategy,
+        "options": plan.options,
+        "inPlace": in_place,
+        "planHash": plan.planHash,
+    }
 
 
-class ImputeRequest(BaseModel):
+def _plan_response(plan: ImputationPlan) -> dict[str, Any]:
+    return {
+        "planHash": plan.planHash,
+        "targetColumns": plan.targetColumns,
+        "predictorColumns": plan.predictorColumns,
+        "excludedColumns": [e.model_dump() for e in plan.excludedColumns],
+    }
+
+
+class ImputationPlanRequest(BaseModel):
     columns: list[str] | None = None
+    predictorColumns: list[str] | None = None
     strategy: str = "tabdiff"
     options: dict[str, Any] | None = None
+
+
+class ImputePreviewRequest(ImputationPlanRequest):
+    # Legacy single-column clients (and the unit tests) still send ``column``.
+    column: str | None = None
+
+
+class ImputeRequest(ImputationPlanRequest):
     inPlace: bool = True
+    # Set by the preview; when present the apply refuses to run against
+    # anything other than the exact state that was previewed.
+    planHash: str | None = None
+
+
+def _build_impute_plan(dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
+                       request: ImputationPlanRequest) -> ImputationPlan:
+    from ..algorithms.imputation.plan import build_imputation_plan
+
+    columns = request.columns
+    if columns is None and getattr(request, "column", None):
+        columns = [request.column]
+    if columns is None:
+        columns = [c for c in df.columns if c != "__rowId__"]
+    return build_imputation_plan(
+        df,
+        store.load_codebook(dataset_id),
+        target_columns=columns,
+        predictor_columns=request.predictorColumns,
+        strategy=request.strategy,
+        options=request.options,
+        dataset_id=dataset_id,
+        data_revision=int(meta.get("dataRevision", 1)),
+    )
 
 
 @router.post("/datasets/{dataset_id}/impute/preview")
 def preview_dataset_imputation(dataset_id: str, request: ImputePreviewRequest) -> dict:
-    from ..algorithms.imputation.core import preview_imputation
-    df = store.get_dataframe(dataset_id)
-    return preview_imputation(
-        df,
-        column=request.column,
-        strategy=request.strategy,
-        options=request.options,
-    )
+    from ..algorithms.imputation.core import preview_imputation_plan
+
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        df = store.get_dataframe(dataset_id)
+        plan = _build_impute_plan(dataset_id, meta, df, request)
+        return preview_imputation_plan(df, plan)
 
 
 @router.post("/datasets/{dataset_id}/impute")
@@ -1074,26 +1291,42 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
 
 
 def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
-    from ..algorithms.imputation.core import impute_dataframe
+    from ..algorithms.imputation.core import column_values_hash, impute_dataframe
 
     meta = store.get_meta(dataset_id)
     df = store.get_dataframe(dataset_id)
 
+    # Same plan the preview built — same targets, same predictors, same seed —
+    # so the applied values match the previewed ones.
+    plan = _build_impute_plan(dataset_id, meta, df, request)
+    if request.planHash is not None and request.planHash != plan.planHash:
+        raise BizError(
+            "IMPUTATION_PLAN_STALE",
+            "プレビュー後にデータまたは設定が変わりました。もう一度プレビューしてください。",
+            status_code=422,
+            details={"expected": request.planHash, "actual": plan.planHash},
+        )
+
     imputed_df, diagnostics = impute_dataframe(
         df,
-        columns=request.columns,
-        strategy=request.strategy,
-        options=request.options,
+        columns=plan.targetColumns,
+        strategy=plan.strategy,
+        options=plan.options,
+        predictors=plan.predictorColumns,
+        plan_hash=plan.planHash,
     )
+    # Lets a client confirm the applied values are the previewed ones.
+    output_hashes = {c: column_values_hash(imputed_df[c])
+                     for c in plan.targetColumns if c in imputed_df.columns}
 
     if request.inPlace:
         schema_payload = _derive_dataset_schema(imputed_df, meta.get("schema", []))
         cb = _sync_codebook(dataset_id, imputed_df, source_schema=meta.get("schema", []))
         schema_revision = cb.get("schemaRevision", 1)
-        fingerprint_seed = values_fingerprint(imputed_df)
-        meta["fingerprint"] = hashlib.sha256(
-            json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-        ).hexdigest()
+        meta["fingerprint"] = dataset_fingerprint(
+            schema_payload, schema_revision, imputed_df, meta.get("format", "csv"),
+            meta.get("importOptions", {}),
+        )
         meta["schema"] = schema_payload
         meta["columnCount"] = imputed_df.width - 1
         meta["revision"] = meta.get("revision", 1) + 1
@@ -1102,16 +1335,12 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         input_revision = int(store.get_meta(dataset_id).get("dataRevision", 1))
         provenance_before = store.load_provenance(dataset_id)
         mask_before = store.load_mask(dataset_id) or {"maskRevision": 0}
-        step = _provenance_step("impute", {"columns": request.columns, "strategy": request.strategy,
-                                           "options": request.options, "inPlace": True}, meta, cb,
-                                f"impute-{request.strategy}-1",
+        step = _provenance_step("impute", _impute_step_params(plan, in_place=True), meta, cb,
+                                f"impute-{plan.strategy}-1",
                                 parent_operation_id=(provenance_before or {}).get("currentOperationId"))
-        imputed_targets = [c for c in (request.columns or []) if c in df.columns]
-        if not imputed_targets:
-            imputed_targets = [c for c in df.columns if c != "__rowId__"]
         mask_entries = _mask_entries_for_impute(
-            df, imputed_df, imputed_targets,
-            request.strategy, step["operationId"], input_revision,
+            df, imputed_df, plan.targetColumns,
+            plan.strategy, step["operationId"], input_revision,
             int(mask_before.get("maskRevision", 0)) + 1)
         commit = store.commit_data_change(dataset_id, meta, imputed_df, codebook=cb, step=step,
                                            mask_entries=mask_entries)
@@ -1119,6 +1348,8 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         provenance = commit["provenance"]
         return {
             **meta,
+            **_plan_response(plan),
+            "outputHashes": output_hashes,
             "diagnostics": diagnostics,
             "provenance": {"currentOperationId": provenance["currentOperationId"],
                            "rawDataRevision": provenance.get("rawDataRevision"),
@@ -1128,6 +1359,8 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
     else:
         new_dataset_id = new_id("ds")
         new_name = f"{meta['name']}_imputed"
+        source_provenance = store.load_provenance(dataset_id) or {}
+        source_mask = store.load_mask(dataset_id) or {"entries": []}
         new_meta = _finalize_dataset(
             new_dataset_id,
             new_name,
@@ -1136,9 +1369,25 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
             None,
             source_schema=meta.get("schema", []),
             source_dataset_id=dataset_id,
+            derivation={
+                "operation": "impute",
+                "params": {
+                    **_impute_step_params(plan, in_place=False),
+                    "sourceDatasetId": dataset_id,
+                    "sourceOperationId": source_provenance.get("currentOperationId"),
+                    "sourceDataRevision": int(meta.get("dataRevision", 1)),
+                    # The derived dataset's raw.parquet is the already-imputed
+                    # frame; the source dataset is the way back to the original.
+                    "rawSemantics": "derived_creation",
+                },
+                "imputedCells": _imputed_cells(df, imputed_df, plan.targetColumns),
+                "inheritedMaskEntries": list(source_mask.get("entries", [])),
+            },
         )
         return {
             **new_meta,
+            **_plan_response(plan),
+            "outputHashes": output_hashes,
             "diagnostics": diagnostics,
         }
 
@@ -1187,10 +1436,10 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
     cb = _sync_codebook(dataset_id, updated_df, source_schema=meta.get("schema", []))
     schema_revision = cb.get("schemaRevision", 1)
 
-    fingerprint_seed = values_fingerprint(updated_df)
-    meta["fingerprint"] = hashlib.sha256(
-        json.dumps({"schema": schema_payload, "schemaRevision": schema_revision}, sort_keys=True).encode("utf-8") + fingerprint_seed.encode()
-    ).hexdigest()
+    meta["fingerprint"] = dataset_fingerprint(
+        schema_payload, schema_revision, updated_df, meta.get("format", "csv"),
+        meta.get("importOptions", {}),
+    )
     meta["schema"] = schema_payload
     meta["schemaRevision"] = schema_revision
     meta["columnCount"] = updated_df.width - 1
@@ -1286,10 +1535,17 @@ def get_provenance(dataset_id: str) -> dict:
             "rawDataRevision": None,
         }
         mask = store.load_mask(dataset_id) or {"maskRevision": 0, "entries": []}
+        history = _history_flags(provenance)
+        head_revision = int(meta.get("dataRevision", 1))
         summary = [
             {"operationId": o.get("operationId"), "operation": o.get("operation"),
+             "parentOperationId": o.get("parentOperationId"),
              "outputDataRevision": o.get("outputDataRevision"),
-             "timestamp": o.get("timestamp"), "algorithmVersion": o.get("algorithmVersion")}
+             "timestamp": o.get("timestamp"), "algorithmVersion": o.get("algorithmVersion"),
+             "onCursorPath": _is_on_cursor_path(provenance, o.get("operationId")),
+             # Undone steps stay in the log but no longer describe the data.
+             "inEffect": _is_on_cursor_path(provenance, o.get("operationId"))
+                         or int(o.get("outputDataRevision", -1)) == head_revision}
             for o in provenance.get("operations", [])
         ]
         return {
@@ -1301,12 +1557,84 @@ def get_provenance(dataset_id: str) -> dict:
             "maskRevision": int(mask.get("maskRevision", 0)),
             "operations": provenance.get("operations", []),
             "steps": summary,
+            **history,
         }
+
+
+def _find_operation(provenance: dict[str, Any], operation_id: str | None
+                    ) -> dict[str, Any] | None:
+    if not operation_id:
+        return None
+    return next((o for o in provenance.get("operations", [])
+                 if o.get("operationId") == operation_id), None)
+
+
+def _cursor_of(provenance: dict[str, Any]) -> str | None:
+    """Current position in the history.
+
+    Pre-cursor provenance documents only have ``currentOperationId``; treat it
+    as the cursor so old datasets keep working without a migration step.
+    """
+    return provenance.get("cursorOperationId") or provenance.get("currentOperationId")
+
+
+def _redo_stack_of(provenance: dict[str, Any]) -> list[str]:
+    operations = provenance.get("operations", [])
+    known = {o.get("operationId") for o in operations}
+    return [op_id for op_id in (provenance.get("redoStack") or []) if op_id in known]
+
+
+def _is_on_cursor_path(provenance: dict[str, Any], operation_id: str | None) -> bool:
+    """Whether an operation is an ancestor of (or equal to) the cursor.
+
+    Used by the history panel to grey out operations that were undone. The
+    cursor chain follows ``parentOperationId``; restore steps are appended to
+    the log but never sit on the chain.
+    """
+    if not operation_id:
+        return False
+    operations = provenance.get("operations", [])
+    by_id = {o.get("operationId"): o for o in operations}
+    node = by_id.get(_cursor_of(provenance))
+    seen: set[str] = set()
+    while node is not None:
+        current_id = node.get("operationId")
+        if current_id in seen:
+            return False
+        if current_id == operation_id:
+            return True
+        seen.add(current_id)
+        node = by_id.get(node.get("parentOperationId"))
+    return False
+
+
+def _history_flags(provenance: dict[str, Any]) -> dict[str, Any]:
+    cursor = _cursor_of(provenance)
+    current = _find_operation(provenance, cursor)
+    can_undo = bool(current is not None and _find_operation(
+        provenance, current.get("parentOperationId")) is not None)
+    stack = _redo_stack_of(provenance)
+    return {
+        "cursorOperationId": cursor,
+        "previousOperationId": (current or {}).get("parentOperationId"),
+        "canUndo": can_undo,
+        "canRedo": bool(stack),
+        "redoStack": stack,
+    }
 
 
 def _restore_revision(dataset_id: str, target_revision: int, operation: str,
                       params: dict[str, Any], expected_data: int | None,
-                      expected_schema: int | None) -> dict:
+                      expected_schema: int | None,
+                      target_operation_id: str | None = None,
+                      redo_stack: list[str] | None = None) -> dict:
+    """Restore values **and** the state that belongs to a revision.
+
+    Values alone are not a revision: the schema, codebook and imputation mask
+    of that moment are restored together, the fingerprint is recomputed and
+    the navigation cursor is left on the target operation — so a second undo
+    keeps walking back instead of re-applying the same step.
+    """
     from ..domain.context import check_revisions, collect_revisions
 
     meta = store.get_meta(dataset_id)
@@ -1314,34 +1642,89 @@ def _restore_revision(dataset_id: str, target_revision: int, operation: str,
     revisions = collect_revisions(meta, codebook)
     check_revisions(revisions, expected_schema, expected_data)
     provenance = store.load_provenance(dataset_id) or {"operations": []}
-    if not any(int(o.get("outputDataRevision", -1)) == int(target_revision)
-               for o in provenance.get("operations", [])):
+    operations = provenance.get("operations", [])
+    if not any(int(o.get("outputDataRevision", -1)) == int(target_revision) for o in operations):
         raise BizError("PROVENANCE_TARGET_MISSING",
                        f"revision {int(target_revision)} の履歴が存在しません。",
                        status_code=422)
+    target_op = _find_operation(provenance, target_operation_id)
+    if target_operation_id and target_op is None:
+        raise BizError("PROVENANCE_TARGET_MISSING", "指定された操作が履歴に存在しません。",
+                       status_code=422)
+    if target_op is None:
+        target_op = next((o for o in reversed(operations)
+                          if int(o.get("outputDataRevision", -1)) == int(target_revision)), None)
+    cursor_after = (target_op or {}).get("operationId") or _cursor_of(provenance)
+    cursor_before = _cursor_of(provenance)
+
     snapshot = store.read_snapshot(dataset_id, int(target_revision))
-    mask_now = store.load_mask(dataset_id) or {"entries": []}
-    if operation == "revert" and int(target_revision) == int(provenance.get("rawDataRevision") or -1):
+    state = store.read_revision_state(dataset_id, int(target_revision))
+    restored_codebook = store.read_revision_codebook(dataset_id, int(target_revision))
+    restored_mask_doc = store.read_revision_mask(dataset_id, int(target_revision))
+    warnings: list[str] = []
+
+    raw_revision = provenance.get("rawDataRevision")
+    if operation == "revert" and raw_revision is not None and int(target_revision) == int(raw_revision):
         restored_mask: list[dict[str, Any]] = []
+    elif state is None or restored_mask_doc is None:
+        # Revision written before state sidecars existed: approximate the mask
+        # by keeping the entries that existed then and still fit the columns.
+        warnings.append("REVISION_STATE_BACKFILLED")
+        restored_mask = [e for e in (store.load_mask(dataset_id) or {}).get("entries", [])
+                         if e.get("columnId") in snapshot.columns
+                         and int(e.get("inputDataRevision") or 0) < int(target_revision)]
+        warnings.append("MASK_RESTORE_APPROXIMATED")
     else:
-        restored_mask = [e for e in mask_now.get("entries", [])
-                         if e.get("columnId") in snapshot.columns]
-    parent_op = provenance.get("currentOperationId")
-    step = _provenance_step(operation, params, meta, codebook, f"{operation}-1",
-                            parent_operation_id=parent_op)
-    target_cb = _sync_codebook(dataset_id, snapshot, source_schema=meta.get("schema", []))
-    commit = store.commit_data_change(dataset_id, dict(meta), snapshot, codebook=target_cb,
-                                       step=step, mask_entries=restored_mask, replace_mask=True)
+        restored_mask = list(restored_mask_doc.get("entries", []))
+
+    if state is None:
+        schema_payload = _derive_dataset_schema(snapshot, meta.get("schema", []))
+        if restored_codebook is None:
+            restored_codebook = _sync_codebook(dataset_id, snapshot,
+                                               source_schema=meta.get("schema", []))
+        restored_schema_revision = int((restored_codebook or {}).get(
+            "schemaRevision", meta.get("schemaRevision", 1)))
+    else:
+        schema_payload = state.get("schema") or _derive_dataset_schema(snapshot,
+                                                                       meta.get("schema", []))
+        restored_schema_revision = int(state.get("schemaRevision",
+                                                 meta.get("schemaRevision", 1)))
+        if restored_codebook is None:
+            warnings.append("REVISION_CODEBOOK_BACKFILLED")
+            restored_codebook = _sync_codebook(dataset_id, snapshot,
+                                               source_schema=meta.get("schema", []))
+
+    restored_meta = {**meta,
+                     "schema": schema_payload,
+                     "schemaRevision": restored_schema_revision,
+                     "rowCount": snapshot.height,
+                     "columnCount": max(snapshot.width - 1, 0)}
+    step = _provenance_step(operation, params, restored_meta, restored_codebook,
+                            f"{operation}-1", parent_operation_id=cursor_before)
+    commit = store.commit_data_change(
+        dataset_id, restored_meta, snapshot, codebook=restored_codebook, step=step,
+        mask_entries=restored_mask, replace_mask=True,
+        history_mode="navigate", cursor_operation_id=cursor_after,
+        redo_stack=redo_stack, bump_mask_revision=True)
     fresh_meta = store.get_meta(dataset_id)
     fresh_codebook = store.load_codebook(dataset_id) or {}
+    expected_fingerprint = (state or {}).get("fingerprint")
+    if expected_fingerprint and expected_fingerprint != commit["fingerprint"]:
+        warnings.append("REVISION_FINGERPRINT_DIVERGED")
     return {
         "datasetId": dataset_id,
         "currentDataRevision": int(fresh_meta.get("dataRevision", 1)),
         "currentOperationId": commit["provenance"]["currentOperationId"],
+        "cursorOperationId": commit["provenance"].get("cursorOperationId"),
         "maskRevision": int(commit["mask"]["maskRevision"]),
         "schemaRevision": int(fresh_codebook.get("schemaRevision",
                                                  fresh_meta.get("schemaRevision", 1))),
+        "restoredSchemaRevision": restored_schema_revision,
         "targetDataRevision": int(target_revision),
+        "targetOperationId": cursor_after,
+        "restoreWarnings": warnings,
+        "maskEntryCount": len(restored_mask),
+        **_history_flags(commit["provenance"]),
     }
 
 
@@ -1352,106 +1735,83 @@ def _child_operations(provenance: dict[str, Any], operation_id: str | None) -> l
 
 @router.post("/datasets/{dataset_id}/revert")
 def revert_dataset(dataset_id: str, request: RevertRequest) -> dict:
+    """Jump to any recorded operation. The redo stack is cleared by design."""
     with store.lock(dataset_id):
         meta = store.get_meta(dataset_id)
         provenance = store.load_provenance(dataset_id) or {"operations": []}
+        operations = provenance.get("operations", [])
         target_revision: int | None = request.targetDataRevision
+        target_op: dict[str, Any] | None = None
         if request.targetOperationId:
-            match = next((o for o in provenance.get("operations", [])
-                          if o.get("operationId") == request.targetOperationId), None)
-            if match is None:
+            target_op = _find_operation(provenance, request.targetOperationId)
+            if target_op is None:
                 raise BizError("PROVENANCE_TARGET_MISSING", "指定された操作が履歴に存在しません。",
                                status_code=422)
-            target_revision = int(match["outputDataRevision"])
+            target_revision = int(target_op["outputDataRevision"])
         if target_revision is None:
             raise BizError("PROVENANCE_TARGET_MISSING",
                            "targetOperationId か targetDataRevision のいずれかを指定してください。",
                            status_code=422)
+        if target_op is None:
+            target_op = next((o for o in reversed(operations)
+                              if int(o.get("outputDataRevision", -1)) == int(target_revision)), None)
         return _restore_revision(
             dataset_id, int(target_revision), "revert",
             {"targetOperationId": request.targetOperationId,
              "targetDataRevision": int(target_revision)},
-            request.expectedDataRevision, request.expectedSchemaRevision)
+            request.expectedDataRevision, request.expectedSchemaRevision,
+            target_operation_id=(target_op or {}).get("operationId"),
+            redo_stack=[])
 
 
 @router.post("/datasets/{dataset_id}/undo")
 def undo_dataset(dataset_id: str, request: UndoRedoRequest) -> dict:
+    """Step the cursor back to the parent of the current operation.
+
+    The undo itself is appended to the audit log, but the cursor moves to the
+    parent — so calling undo again keeps walking back instead of landing on the
+    operation that was just undone.
+    """
     with store.lock(dataset_id):
         provenance = store.load_provenance(dataset_id) or {"operations": []}
-        current_id = provenance.get("currentOperationId")
-        current = next((o for o in provenance.get("operations", [])
-                        if o.get("operationId") == current_id), None)
+        cursor_id = _cursor_of(provenance)
+        current = _find_operation(provenance, cursor_id)
         if current is None or current.get("parentOperationId") is None:
             raise BizError("PROVENANCE_NOTHING_TO_UNDO", "取り消せる操作がありません。",
                            status_code=409)
-        parent = next((o for o in provenance.get("operations", [])
-                       if o.get("operationId") == current["parentOperationId"]), None)
+        parent = _find_operation(provenance, current["parentOperationId"])
         if parent is None:
             raise BizError("PROVENANCE_TARGET_MISSING", "親操作の履歴が存在しません。",
                            status_code=422)
+        redo_stack = ([cursor_id] if cursor_id else []) + _redo_stack_of(provenance)
         return _restore_revision(
             dataset_id, int(parent["outputDataRevision"]), "undo",
-            {"undoneOperationId": current_id},
-            request.expectedDataRevision, request.expectedSchemaRevision)
+            {"undoneOperationId": cursor_id},
+            request.expectedDataRevision, request.expectedSchemaRevision,
+            target_operation_id=parent.get("operationId"),
+            redo_stack=redo_stack)
 
 
 @router.post("/datasets/{dataset_id}/redo")
 def redo_dataset(dataset_id: str, request: UndoRedoRequest) -> dict:
+    """Re-apply the most recently undone operation (redoStack is newest-first)."""
     with store.lock(dataset_id):
         provenance = store.load_provenance(dataset_id) or {"operations": []}
-        current_id = provenance.get("currentOperationId")
-        current = next((o for o in provenance.get("operations", [])
-                        if o.get("operationId") == current_id), None)
-        if current is not None:
-            undone_ids = {(o.get("params") or {}).get("undoneOperationId")
-                          for o in provenance.get("operations", [])
-                          if o.get("operation") == "undo"}
-            undone_ids.discard(None)
-            undo_ids = {o.get("operationId") for o in provenance.get("operations", [])
-                        if o.get("operation") == "undo"}
-            undone_parents = {o.get("parentOperationId")
-                              for o in provenance.get("operations", [])
-                              if o.get("operationId") in undone_ids}
-            branched_anchors = set(undone_parents) | set(undone_ids) | set(undo_ids)
-            branched = [o for o in provenance.get("operations", [])
-                        if o.get("operation") not in ("undo", "redo")
-                        and (o.get("parentOperationId") in branched_anchors
-                             or o.get("operationId") in undone_ids)]
-            anchor_groups: dict[str, list[dict[str, Any]]] = {}
-            for item in branched:
-                key = str(item.get("parentOperationId"))
-                anchor_groups.setdefault(key, []).append(item)
-            conflict = [item for group in anchor_groups.values() if len(group) >= 2 for item in group]
-            if not conflict and len(branched) >= 2 and current.get("operation") != "undo":
-                conflict = branched
-            if conflict:
-                raise BizError("REDO_AMBIGUOUS", "やり直し先が複数あるため対象を特定できません。",
-                               status_code=409,
-                               details={"childOperationIds":
-                                        [c.get("operationId") for c in conflict]})
-            undone_id = ((current.get("params") or {}).get("undoneOperationId")
-                         if current.get("operation") == "undo" else None)
-            if undone_id:
-                target = next((o for o in provenance.get("operations", [])
-                               if o.get("operationId") == undone_id), None)
-                if target is not None:
-                    return _restore_revision(
-                        dataset_id, int(target["outputDataRevision"]), "redo",
-                        {"redoneOperationId": undone_id},
-                        request.expectedDataRevision, request.expectedSchemaRevision)
-        children = _child_operations(provenance, provenance.get("currentOperationId"))
-        if not children:
+        stack = _redo_stack_of(provenance)
+        if not stack:
             raise BizError("PROVENANCE_NOTHING_TO_REDO", "やり直せる操作がありません。",
                            status_code=409)
-        if len(children) > 1:
-            raise BizError("REDO_AMBIGUOUS", "やり直し先が複数あるため対象を特定できません。",
-                           status_code=409,
-                           details={"childOperationIds": [c.get("operationId") for c in children]})
-        child = children[0]
+        target_id = stack[0]
+        target = _find_operation(provenance, target_id)
+        if target is None:
+            raise BizError("PROVENANCE_TARGET_MISSING", "やり直し先の操作が履歴に存在しません。",
+                           status_code=422)
         return _restore_revision(
-            dataset_id, int(child["outputDataRevision"]), "redo",
-            {"redoneOperationId": child.get("operationId")},
-            request.expectedDataRevision, request.expectedSchemaRevision)
+            dataset_id, int(target["outputDataRevision"]), "redo",
+            {"redoneOperationId": target_id},
+            request.expectedDataRevision, request.expectedSchemaRevision,
+            target_operation_id=target_id,
+            redo_stack=stack[1:])
 
 
 @router.get("/datasets/{dataset_id}/imputation-mask")

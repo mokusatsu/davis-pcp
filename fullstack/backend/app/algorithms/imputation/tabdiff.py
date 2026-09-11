@@ -35,6 +35,8 @@ def tabdiff_impute(
     num_steps: int = 20,
     temperature: float = 1.0,
     seed: int = 42,
+    predictors: list[str] | None = None,
+    plan_hash: str = "",
 ) -> tuple[pl.DataFrame, dict[str, Any]]:
     """Perform conditional tabular diffusion imputation on the dataframe.
 
@@ -50,6 +52,10 @@ def tabdiff_impute(
         Sampling temperature (default 1.0; < 1.0 = more conservative, > 1.0 = more diverse).
     seed : int
         Random seed for reproducibility.
+    predictors : list[str] | None
+        Columns that *condition* the imputation without being written back.
+        ``None`` means "no conditioning beyond the numeric targets themselves"
+        (the historical behaviour).
 
     Returns
     -------
@@ -59,13 +65,13 @@ def tabdiff_impute(
     rng = np.random.default_rng(seed)
     n_rows = df.height
     if n_rows == 0:
-        return df, {"diagnostics": "empty_dataframe", "imputedCounts": {}}
+        return df, {"diagnostics": "empty_dataframe", "imputedCounts": {}, "planHash": plan_hash}
 
     target_cols = columns or [c for c in df.columns if c != "__rowId__"]
     valid_cols = [c for c in target_cols if c in df.columns and c != "__rowId__"]
 
     if not valid_cols:
-        return df, {"diagnostics": "no_valid_columns", "imputedCounts": {}}
+        return df, {"diagnostics": "no_valid_columns", "imputedCounts": {}, "planHash": plan_hash}
 
     numeric_cols: list[str] = []
     cat_cols: list[str] = []
@@ -77,24 +83,38 @@ def tabdiff_impute(
         else:
             cat_cols.append(c)
 
+    # Conditioning columns: the requested predictors plus the numeric targets,
+    # in dataset column order so the covariance matrix is order-independent.
+    conditioning_wanted = set(numeric_cols)
+    if predictors is not None:
+        conditioning_wanted |= {c for c in predictors if c in df.columns and c != "__rowId__"}
+    feature_cols = [c for c in df.columns if c in conditioning_wanted and c != "__rowId__"]
+    # Numeric feature columns drive the diffusion; non-numeric predictors are
+    # dropped here (the plan layer reports them as excluded).
+    feature_cols = [c for c in feature_cols if df[c].dtype in (
+        pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64)]
+    # Only targets receive generated values.
+    write_back = set(numeric_cols)
+
     imputed_counts: dict[str, int] = {}
     col_diagnostics: dict[str, Any] = {}
 
     # --- 1. Process Numeric Columns via Score-guided Conditional Diffusion ---
     num_imputed_series: dict[str, pl.Series] = {}
-    if numeric_cols:
+    if feature_cols:
         # Extract numeric array
-        num_raw = np.zeros((n_rows, len(numeric_cols)), dtype=np.float64)
-        num_mask = np.zeros((n_rows, len(numeric_cols)), dtype=bool)  # True = missing
+        num_raw = np.zeros((n_rows, len(feature_cols)), dtype=np.float64)
+        num_mask = np.zeros((n_rows, len(feature_cols)), dtype=bool)  # True = missing
 
         means = []
         stds = []
-        for j, c in enumerate(numeric_cols):
+        for j, c in enumerate(feature_cols):
             s = df[c]
             arr = s.to_numpy().astype(np.float64)
             is_nan = np.isnan(arr) | s.is_null().to_numpy()
             null_count = int(np.sum(is_nan))
-            imputed_counts[c] = null_count
+            if c in write_back:
+                imputed_counts[c] = null_count
             num_mask[:, j] = is_nan
             valid_vals = arr[~is_nan]
             mean_val = float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0
@@ -111,7 +131,7 @@ def tabdiff_impute(
         stds_arr = np.array(stds)
 
         # Estimate correlation / covariance matrix using pairwise available values
-        p = len(numeric_cols)
+        p = len(feature_cols)
         cov = np.eye(p, dtype=np.float64)
         for i in range(p):
             for j in range(i, p):
@@ -209,8 +229,11 @@ def tabdiff_impute(
         # Denormalize x_0 to original scales
         imputed_num = x_t * stds_arr + means_arr
 
-        # Reconstruct Series
-        for j, c in enumerate(numeric_cols):
+        # Reconstruct Series — predictors were only ever conditioning, so they
+        # keep their original values.
+        for j, c in enumerate(feature_cols):
+            if c not in write_back:
+                continue
             orig_s = df[c]
             orig_arr = orig_s.to_numpy().astype(np.float64)
             missing_locs = num_mask[:, j]
@@ -307,6 +330,10 @@ def tabdiff_impute(
         "numSteps": num_steps,
         "temperature": temperature,
         "seed": seed,
+        "planHash": plan_hash,
+        "predictorColumns": [c for c in feature_cols if c not in write_back],
+        "conditioningColumns": list(feature_cols),
+        "outputColumns": [c for c in valid_cols],
         "imputedCounts": imputed_counts,
         "columns": col_diagnostics,
         "finalStepDelta": deltas[-1] if 'deltas' in locals() and deltas else 0.0,

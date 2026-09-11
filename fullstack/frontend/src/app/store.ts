@@ -306,6 +306,12 @@ export const globalVariablesSlice = createSlice({
         if (state.weightColumnId && !ids.has(state.weightColumnId)) state.weightColumnId = null
       })
     }
+    // Declaring a weight's meaning changes no column, so there is nothing to reconcile.
+    builder.addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
+      if (state.datasetId && state.datasetId !== action.payload.datasetId) return
+      const declared = action.payload.weightConfig?.weightColumnId
+      if (state.weightColumnId && declared && state.weightColumnId !== declared) state.weightColumnId = declared
+    })
   },
 })
 
@@ -505,7 +511,9 @@ export function selectEffectiveRowIds(state: RootState): string[] {
   return obs.activeRowIds
 }
 
-import { codebookSlice, fetchCodebookThunk, saveCodebookThunk } from '../features/dataset/codebookSlice'
+import {
+  codebookSlice, fetchCodebookThunk, saveCodebookThunk, saveWeightConfigThunk,
+} from '../features/dataset/codebookSlice'
 import { provenanceReducer } from '../features/dataset/provenanceSlice'
 
 export const store = configureStore({
