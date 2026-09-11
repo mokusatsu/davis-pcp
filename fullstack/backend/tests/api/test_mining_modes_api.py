@@ -250,3 +250,34 @@ def test_modern_keeps_algorithm_mode_and_reports_inference(mining_ds):
                       json={"datasetId": ds, "attributeCols": ["seg"],
                             "targetQuestions": ["score"], "inferenceMode": "verification"})
     assert bad.status_code == 422
+
+
+def test_modern_candidates_are_verified_through_the_pinned_set(mining_ds):
+    """The UI verifies modern candidates on the classic verification endpoint.
+
+    The pinned set records which algorithm produced each candidate, so the
+    endpoint re-tests a modern rule without re-running the rule search — and
+    the request needs nothing but the hash to identify the set.
+    """
+    client, ds = mining_ds
+    first = client.post("/api/v1/mining/modern-subgroup",
+                        json={"datasetId": ds, "attributeCols": ["seg"],
+                              "targetQuestions": ["score"], "mode": "standard"}).json()
+    assert first["inferenceMode"] == "exploration"
+    assert first["candidates"], "fixture must pin at least one modern candidate"
+    pinned_ids = {candidate["candidateId"] for candidate in first["candidates"]}
+    assert pinned_ids <= {insight["id"] for insight in first["insights"]}
+
+    res = client.post("/api/v1/mining/subgroups", json={
+        "datasetId": ds, "attributeCols": ["seg"], "questionCols": ["score"],
+        "analysisMode": "verification",
+        "verificationConfig": {"method": "holdout", "test_size": 0.3, "seed": 42},
+        "candidateSetHash": first["candidateSetHash"]})
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["analysisMode"] == "verification" and payload["isExploratory"] is False
+    assert payload["candidateSetHash"] == first["candidateSetHash"]
+    assert {item["candidateId"] for item in payload["results"]} == pinned_ids
+    assert all(item["estimand"]["type"] in ("mean_difference", "kendall_tau_difference")
+               for item in payload["results"])
+    assert payload["verification"]["pinnedCandidateCount"] == len(pinned_ids)

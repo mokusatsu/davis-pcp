@@ -2,7 +2,7 @@ import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import VerificationConfigModal, { type VerificationConfig } from './VerificationConfigModal'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -21,6 +21,10 @@ import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import ModernSubgroupMiningView from './ModernSubgroupMiningView'
+import {
+  METHOD_LABEL, REPLICATION_COLOR, REPLICATION_LABEL, untestableReason, verificationFor,
+  type PinnedCandidateSummary, type VerificationInfo, type VerificationResultItem,
+} from './verification'
 
 export interface InsightItem {
   id: string
@@ -86,26 +90,10 @@ export interface MiningResult {
   isExploratory?: boolean
   candidateSetHash?: string
   explorationNote?: string
-  verification?: {
-    method: string
-    testUsed: string
-    correction: string
-    mHypotheses: number
-    seed: number
-    nSelection: number
-    nEvaluation: number
-    selectionScopeHash: string
-    evaluationScopeHash: string
-  }
-  results?: {
-    candidateId: string
-    effectSize: number
-    confidenceInterval: [number, number] | null
-    pValue: number
-    pAdjusted: number
-    isExploratory: boolean
-    nEvaluation: number
-  }[]
+  /** The candidates exploration pinned, in the order the server holds them. */
+  candidates?: PinnedCandidateSummary[]
+  verification?: VerificationInfo
+  results?: VerificationResultItem[]
 }
 
 export default function SubgroupMiningPage() {
@@ -127,9 +115,11 @@ export default function SubgroupMiningPage() {
   const [activeTab, setActiveTab] = useState<'modern' | 'classic'>('modern')
   const [inferenceMode, setInferenceMode] = useState<'exploration' | 'verification'>('exploration')
   const [verificationModalOpen, setVerificationModalOpen] = useState(false)
-  const [verificationResult, setVerificationResult] = useState<MiningResult['results'] | null>(null)
-  const [verificationInfo, setVerificationInfo] = useState<MiningResult['verification'] | null>(null)
+  const [verificationResult, setVerificationResult] = useState<VerificationResultItem[] | null>(null)
+  const [verificationInfo, setVerificationInfo] = useState<VerificationInfo | null>(null)
   const [verifying, setVerifying] = useState(false)
+  /** Only used to offer independent-verification targets; never the analysis subject. */
+  const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
   const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, targets.attributes, targets.questions, alpha, minGroupSize]),
     [datasetId, dataRevision, schemaRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|'), alpha, minGroupSize])
   const latestContext = useRef(context)
@@ -142,12 +132,30 @@ export default function SubgroupMiningPage() {
     setVerificationResult(null); setVerificationInfo(null); setInferenceMode('exploration')
   }, [context])
 
+  // The picker has to be filled before it is opened, or 独立データ指定 looks
+  // like a dead option; the current dataset is filtered out by the modal.
+  const openVerificationModal = useCallback(() => {
+    setVerificationModalOpen(true)
+    void api.get<{ datasets: { datasetId: string; name: string; rowCount: number }[] }>('/datasets')
+      .then((res) => setDatasets((res.datasets ?? []).map((d) => ({
+        value: d.datasetId, label: `${d.name}（${d.rowCount}行）`,
+      }))))
+      .catch(() => setDatasets([]))
+  }, [])
+
   const runVerification = async (config: VerificationConfig) => {
     if (!datasetId || !miningResult) return
+    if (!miningResult.candidateSetHash) {
+      setError({ message: '候補集合が発行されていません。もう一度探索してください。' })
+      return
+    }
     const version = ++requestVersion.current, startedContext = latestContext.current
     setVerifying(true)
     setError(null)
     try {
+      // Only the hash is sent: the server re-tests the pinned set. Naming
+      // individual candidates would fail whenever an insight produced no
+      // pinned contrast, and re-listing them invites re-discovery.
       const res = await api.post<MiningResult>('/mining/subgroups', {
         datasetId,
         attributeCols: targets.attributes,
@@ -157,7 +165,6 @@ export default function SubgroupMiningPage() {
         minGroupSize,
         analysisMode: 'verification',
         verificationConfig: config,
-        candidateIds: miningResult.insights.map((ins) => ins.id),
         candidateSetHash: miningResult.candidateSetHash,
       })
       if (version !== requestVersion.current || startedContext !== latestContext.current) return
@@ -178,6 +185,11 @@ export default function SubgroupMiningPage() {
     const version = ++requestVersion.current, startedContext = latestContext.current
     setLoading(true)
     setError(null)
+    // A new exploration pins a new candidate set, so a previous verification of
+    // the old set would otherwise stay on screen labelled as this run's result.
+    setVerificationResult(null)
+    setVerificationInfo(null)
+    setInferenceMode('exploration')
     try {
       const res = await api.post<MiningResult>('/mining/subgroups', {
         datasetId,
@@ -210,6 +222,11 @@ export default function SubgroupMiningPage() {
     if (!miningResult || !selectedInsightId) return null
     return miningResult.insights.find((ins) => ins.id === selectedInsightId) ?? miningResult.insights[0] ?? null
   }, [miningResult, selectedInsightId])
+
+  const currentVerification = useMemo(
+    () => (currentInsight ? verificationFor(verificationResult, currentInsight.id) : null),
+    [verificationResult, currentInsight],
+  )
 
   const handleSelectRowsInPcp = (insight: InsightItem) => {
     const rids = insight.row_ids?.highest_group || insight.row_ids?.top_group || []
@@ -317,10 +334,12 @@ export default function SubgroupMiningPage() {
           <Col xs={24} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
             <Button
               icon={<CheckCircleOutlined />}
-              onClick={() => setVerificationModalOpen(true)}
+              onClick={openVerificationModal}
               loading={verifying}
               data-testid="mining-to-verification-btn"
-              disabled={!miningResult || miningResult.insights.length === 0}
+              // Verification re-tests the pinned set, so without a hash there
+              // is nothing to verify — the run would only be refused.
+              disabled={!miningResult || !miningResult.candidateSetHash}
               style={{ width: '100%', marginTop: 22 }}
             >
               検証モードへ移行
@@ -392,7 +411,7 @@ export default function SubgroupMiningPage() {
                     type="success"
                     showIcon
                     message="検証済み候補"
-                    description={`手法: ${verificationInfo.method}／検定: ${verificationInfo.testUsed}／補正: ${verificationInfo.correction}／family=${verificationInfo.mHypotheses}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}`}
+                    description={`手法: ${METHOD_LABEL[verificationInfo.method] ?? verificationInfo.method}／検定: ${verificationInfo.testUsed.join(', ') || 'なし'}／補正: ${verificationInfo.correction}（α=${verificationInfo.alpha}）／family=${verificationInfo.mHypotheses}／対象外=${verificationInfo.mExcluded}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}${verificationInfo.note ? `／${verificationInfo.note}` : ''}`}
                     style={{ marginBottom: 12, flexShrink: 0 }}
                     data-testid="verification-badge"
                   />
@@ -491,8 +510,9 @@ export default function SubgroupMiningPage() {
                                   {ins.test.method} | {ins.effect.measure}: {ins.effect.value.toFixed(2)}
                                   {inferenceMode === 'verification' && verificationResult && (
                                     <span> | {(() => {
-                                      const v = verificationResult.find((r) => r.candidateId === ins.id)
-                                      return v ? `p=${v.pValue} adj=${v.pAdjusted}` : '評価対象外'
+                                      const v = verificationFor(verificationResult, ins.id)
+                                      if (!v || !v.testable || !v.test) return '評価対象外'
+                                      return `p=${v.test.pValue} adj=${v.test.pAdjusted}（${REPLICATION_LABEL[v.replicationStatus]}）`
                                     })()}</span>
                                   )}
                                 </div>
@@ -736,33 +756,123 @@ export default function SubgroupMiningPage() {
                 {/* Test & Score details: never mount p/q/CI in exploration */}
                 <Divider style={{ margin: '12px 0' }} />
                 <Row gutter={[12, 12]}>
-                  <Col span={inferenceMode === 'exploration' ? 12 : 6}>
+                  <Col span={8}>
                     <Statistic title="検定統計量" value={currentInsight.test.statistic ?? '-'} precision={3} />
                   </Col>
-                  {inferenceMode === 'verification' && (() => {
-                    const v = verificationResult?.find((r) => r.candidateId === currentInsight.id)
-                    return (
-                      <>
-                        <Col span={6}>
-                          <Statistic title="p値" value={v?.pValue ?? '-'} />
-                        </Col>
-                        <Col span={6}>
-                          <Statistic title="補正後p値 (BH-FDR)" value={v?.pAdjusted ?? '-'} valueStyle={{ color: '#1677ff' }} />
-                        </Col>
-                        <Col span={6}>
-                          <Statistic title="95% CI" value={v?.confidenceInterval ? `[${v.confidenceInterval[0]}, ${v.confidenceInterval[1]}]` : '-'} valueStyle={{ fontSize: 14 }} />
-                        </Col>
-                      </>
-                    )
-                  })()}
-                  <Col span={inferenceMode === 'exploration' ? 12 : 6}>
+                  <Col span={8}>
                     <Statistic
                       title={`効果量 (${currentInsight.effect.measure})`}
                       value={currentInsight.effect.value}
                       precision={3}
                     />
                   </Col>
+                  {inferenceMode === 'verification' && currentVerification && currentVerification.testable && (
+                    <Col span={8}>
+                      <div data-testid="verification-replication">
+                        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                          探索結果との一致
+                        </Typography.Text>
+                        <Space size={4} style={{ marginTop: 4 }}>
+                          <Tag color={REPLICATION_COLOR[currentVerification.replicationStatus]}>
+                            {REPLICATION_LABEL[currentVerification.replicationStatus]}
+                          </Tag>
+                          {currentVerification.test?.significant
+                            ? <Tag color="green">補正後も有意</Tag>
+                            : <Tag>補正後は非有意</Tag>}
+                          {currentVerification.effect?.weighted ? <Tag color="blue">加重</Tag> : null}
+                        </Space>
+                      </div>
+                    </Col>
+                  )}
                 </Row>
+                {inferenceMode === 'verification' && (
+                  <Row gutter={[12, 12]} style={{ marginTop: 12 }} data-testid="verification-findings">
+                    {!currentVerification ? (
+                      <Col span={24}>
+                        <Typography.Text type="secondary" data-testid="verification-not-pinned">
+                          この候補は探索時の固定候補に含まれていないため、検証の対象外です。
+                        </Typography.Text>
+                      </Col>
+                    ) : !currentVerification.testable || !currentVerification.test ? (
+                      // An untestable candidate has no estimate at all; showing
+                      // a blank statistic would read as "no difference found".
+                      <Col span={24} data-testid="verification-untestable">
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={`検定できません（${currentVerification.reason ?? 'UNKNOWN'}）`}
+                          description={untestableReason(currentVerification)}
+                        />
+                      </Col>
+                    ) : (
+                      <>
+                        <Col span={6}>
+                          <Statistic
+                            title={`p値 (${currentVerification.test.name ?? '—'})`}
+                            value={currentVerification.test.pValue ?? '-'}
+                            data-testid="verification-p-value"
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title={`補正後p値 (${verificationInfo?.correction ?? 'bh-fdr'})`}
+                            value={currentVerification.test.pAdjusted ?? '-'}
+                            valueStyle={{ color: '#1677ff' }}
+                            data-testid="verification-p-adjusted"
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="差の95% CI"
+                            value={currentVerification.effect?.ci95
+                              ? `[${currentVerification.effect.ci95[0].toFixed(4)}, ${currentVerification.effect.ci95[1].toFixed(4)}]`
+                              : '-'}
+                            valueStyle={{ fontSize: 14 }}
+                            data-testid="verification-ci"
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="点推定（評価に使った行数）"
+                            value={currentVerification.effect?.estimate !== null && currentVerification.effect?.estimate !== undefined
+                              ? `${currentVerification.effect.estimate.toFixed(4)}（${currentVerification.n.used}行）`
+                              : '-'}
+                            valueStyle={{ fontSize: 14 }}
+                            data-testid="verification-estimate"
+                          />
+                        </Col>
+                        {currentVerification.effect?.groupStats && currentVerification.effect.groupStats.length > 0 && (
+                          <Col span={24}>
+                            <Table
+                              size="small"
+                              pagination={false}
+                              dataSource={currentVerification.effect.groupStats.map((g, i) => ({ ...g, key: i }))}
+                              data-testid="verification-group-stats"
+                              columns={[
+                                { title: '群', dataIndex: 'label', key: 'label' },
+                                { title: 'n', dataIndex: 'n', key: 'n' },
+                                {
+                                  title: '平均 / 比率',
+                                  key: 'location',
+                                  render: (_: unknown, record: { mean?: number | null; pct?: number | null }) =>
+                                    record.mean !== undefined && record.mean !== null ? record.mean.toFixed(3)
+                                      : (record.pct !== undefined && record.pct !== null ? record.pct.toFixed(3) : '-'),
+                                },
+                                {
+                                  title: 'SD',
+                                  dataIndex: 'sd',
+                                  key: 'sd',
+                                  render: (value: number | null | undefined) =>
+                                    value !== undefined && value !== null ? value.toFixed(3) : '-',
+                                },
+                              ]}
+                            />
+                          </Col>
+                        )}
+                      </>
+                    )}
+                  </Row>
+                )}
               </Card>
               </FocusTarget>
             ) : (
@@ -780,10 +890,11 @@ export default function SubgroupMiningPage() {
       />
       <VerificationConfigModal
         open={verificationModalOpen}
-        candidateCount={miningResult?.insights.length ?? 0}
+        candidateCount={miningResult?.candidates?.length ?? 0}
         candidateSetHash={miningResult?.candidateSetHash ?? null}
-        datasets={[]}
+        datasets={datasets}
         currentDatasetId={datasetId}
+        alpha={alpha}
         onCancel={() => setVerificationModalOpen(false)}
         onRun={(config) => void runVerification(config)}
       />

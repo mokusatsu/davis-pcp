@@ -1,7 +1,7 @@
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -17,8 +17,15 @@ import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
 import { useMiningTargets } from './useMiningTargets'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
-import VerificationConfigModal from './VerificationConfigModal'
+import VerificationConfigModal, { type VerificationConfig } from './VerificationConfigModal'
 import { useCodebook } from '../dataset/useCodebookColumn'
+import {
+  METHOD_LABEL, REPLICATION_COLOR, REPLICATION_LABEL, untestableReason, verificationFor,
+  type PinnedCandidateSummary, type VerificationInfo, type VerificationResultItem,
+} from './verification'
+
+/** Modern exploration exposes no FDR control, so verification runs at the default. */
+const VERIFICATION_ALPHA = 0.05
 
 export interface ModernCondition {
   column: string
@@ -81,6 +88,8 @@ export interface ModernMiningResult {
   algorithmMode?: string
   candidateSetHash?: string
   explorationNote?: string
+  /** The candidates exploration pinned; some insights pin none and cannot be verified. */
+  candidates?: PinnedCandidateSummary[]
   summary: {
     total_candidates_explored: number
     non_redundant_insights_count: number
@@ -122,6 +131,19 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const [error, setError] = useState<{ message: string; details?: string; suggestedActions?: string[] } | null>(null)
   const [result, setResult] = useState<ModernMiningResult | null>(null)
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null)
+  const [verificationResult, setVerificationResult] = useState<VerificationResultItem[] | null>(null)
+  const [verificationInfo, setVerificationInfo] = useState<VerificationInfo | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  /** Only used to offer independent-verification targets; never the analysis subject. */
+  const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
+
+  // Verification is refused unless the scope hash matches exploration, so it has
+  // to be fed exactly the rows the modern run scoped, filter included.
+  const scopeRowIds = useMemo(() => {
+    if (!filterBySelection) return rowIds
+    const selected = new Set(selectedRowIds)
+    return rowIds.filter((id) => selected.has(id))
+  }, [rowIds, selectedRowIds, filterBySelection])
   const inputContext = useMemo(() => JSON.stringify([context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null]),
     [context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null])
   resultContext.current = inputContext
@@ -132,7 +154,60 @@ export const ModernSubgroupMiningView: React.FC = () => {
     setSelectedInsightId(null)
     setLoading(false)
     setError(null)
+    setVerificationResult(null)
+    setVerificationInfo(null)
   }, [inputContext])
+
+  // The picker has to be filled before it opens, or 独立データ指定 looks dead;
+  // the current dataset is filtered out by the modal itself.
+  const openVerificationModal = useCallback(() => {
+    setVerificationModalOpen(true)
+    void api.get<{ datasets: { datasetId: string; name: string; rowCount: number }[] }>('/datasets')
+      .then((res) => setDatasets((res.datasets ?? []).map((d) => ({
+        value: d.datasetId, label: `${d.name}（${d.rowCount}行）`,
+      }))))
+      .catch(() => setDatasets([]))
+  }, [])
+
+  /**
+   * Modern candidates are verified through the classic verification endpoint:
+   * it loads the pinned set by hash and re-tests each candidate's own contrast,
+   * whichever algorithm pinned it. Only the hash is sent, never candidate ids.
+   */
+  const runVerification = async (config: VerificationConfig) => {
+    if (!datasetId || !result?.candidateSetHash) return
+    const version = ++requestVersion.current, startedContext = resultContext.current
+    setVerifying(true)
+    setError(null)
+    try {
+      const res = await api.post<{ verification?: VerificationInfo; results?: VerificationResultItem[] }>(
+        '/mining/subgroups', {
+          datasetId,
+          attributeCols: targets.attributes,
+          questionCols: targets.questions,
+          rowIds: scopeRowIds,
+          expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
+          minGroupSize,
+          analysisMode: 'verification',
+          verificationConfig: config,
+          candidateSetHash: result.candidateSetHash,
+        })
+      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      setVerificationResult(res.results ?? null)
+      setVerificationInfo(res.verification ?? null)
+      setVerificationModalOpen(false)
+    } catch (e: any) {
+      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      const details = typeof e?.details === 'object' ? JSON.stringify(e.details, null, 2) : (e?.details ? String(e.details) : undefined)
+      setError({
+        message: e?.message || '検証の実行に失敗しました。',
+        details,
+        suggestedActions: Array.isArray(e?.suggestedActions) ? e.suggestedActions : undefined,
+      })
+    } finally {
+      if (version === requestVersion.current && startedContext === resultContext.current) setVerifying(false)
+    }
+  }
 
   // Omnipresent Auto-mining runner
   const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall', overrideFilterSelection?: boolean) => {
@@ -141,6 +216,10 @@ export const ModernSubgroupMiningView: React.FC = () => {
     const startedContext = resultContext.current
     setLoading(true)
     setError(null)
+    // A new exploration pins a new candidate set, so any previous verification
+    // of the old set no longer describes the candidates on screen.
+    setVerificationResult(null)
+    setVerificationInfo(null)
     try {
       const shouldUseFilter = overrideFilterSelection !== undefined ? overrideFilterSelection : filterBySelection
       const payload: any = {
@@ -215,6 +294,11 @@ export const ModernSubgroupMiningView: React.FC = () => {
     if (!result || !selectedInsightId) return null
     return result.insights.find((ins) => ins.id === selectedInsightId) || null
   }, [result, selectedInsightId])
+
+  const selectedVerification = useMemo(
+    () => (selectedInsight ? verificationFor(verificationResult, selectedInsight.id) : null),
+    [verificationResult, selectedInsight],
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -435,6 +519,15 @@ export const ModernSubgroupMiningView: React.FC = () => {
           data-testid="modern-exploration-badge"
         />
       )}
+      {verificationInfo && !loading && (
+        <Alert
+          type="success"
+          showIcon
+          message="検証済み候補"
+          description={`手法: ${METHOD_LABEL[verificationInfo.method] ?? verificationInfo.method}／検定: ${verificationInfo.testUsed.join(', ') || 'なし'}／補正: ${verificationInfo.correction}（α=${verificationInfo.alpha}）／family=${verificationInfo.mHypotheses}／対象外=${verificationInfo.mExcluded}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}${verificationInfo.note ? `／${verificationInfo.note}` : ''}`}
+          data-testid="modern-verification-badge"
+        />
+      )}
       {result && !loading && (
         <Row gutter={[16, 16]}>
           {/* Left: Insight Cards List */}
@@ -637,6 +730,70 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   ・対象行数: <b>{selectedInsight.coverage.n} 行</b>（全体の {(selectedInsight.coverage.ratio * 100).toFixed(1)}%）
                 </div>
 
+                {verificationResult && (
+                  <>
+                    <Divider style={{ margin: '12px 0' }} />
+                    <div data-testid="modern-verification-findings">
+                      <Typography.Text strong>検証結果（固定候補・評価側のみ）:</Typography.Text>
+                      {!selectedVerification ? (
+                        <Typography.Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0, fontSize: 12 }}>
+                          この候補は探索時の固定候補に含まれていないため、検証の対象外です。
+                        </Typography.Paragraph>
+                      ) : !selectedVerification.testable || !selectedVerification.test ? (
+                        // No estimate exists for an untestable candidate, so a
+                        // blank row would read as "no difference found".
+                        <Alert
+                          type="warning"
+                          showIcon
+                          style={{ marginTop: 8 }}
+                          message={`検定できません（${selectedVerification.reason ?? 'UNKNOWN'}）`}
+                          description={untestableReason(selectedVerification)}
+                        />
+                      ) : (
+                        <>
+                          <Row gutter={[8, 8]} style={{ marginTop: 8 }}>
+                            <Col span={8}>
+                              <Statistic
+                                title={`p値 (${selectedVerification.test.name ?? '—'})`}
+                                value={selectedVerification.test.pValue ?? '-'}
+                                data-testid="modern-verification-p-value"
+                              />
+                            </Col>
+                            <Col span={8}>
+                              <Statistic
+                                title={`補正後p値 (${verificationInfo?.correction ?? 'bh-fdr'})`}
+                                value={selectedVerification.test.pAdjusted ?? '-'}
+                                valueStyle={{ color: '#1677ff' }}
+                                data-testid="modern-verification-p-adjusted"
+                              />
+                            </Col>
+                            <Col span={8}>
+                              <Statistic
+                                title="差の95% CI"
+                                value={selectedVerification.effect?.ci95
+                                  ? `[${selectedVerification.effect.ci95[0].toFixed(3)}, ${selectedVerification.effect.ci95[1].toFixed(3)}]`
+                                  : '-'}
+                                valueStyle={{ fontSize: 13 }}
+                                data-testid="modern-verification-ci"
+                              />
+                            </Col>
+                          </Row>
+                          <Space size={4} style={{ marginTop: 8 }} data-testid="modern-verification-replication">
+                            <Tag color={REPLICATION_COLOR[selectedVerification.replicationStatus]}>
+                              {REPLICATION_LABEL[selectedVerification.replicationStatus]}
+                            </Tag>
+                            {selectedVerification.test.significant
+                              ? <Tag color="green">補正後も有意</Tag>
+                              : <Tag>補正後は非有意</Tag>}
+                            <Tag>点推定 {selectedVerification.effect?.estimate?.toFixed(4) ?? '-'}</Tag>
+                            <Tag>評価 {selectedVerification.n.used} 行</Tag>
+                          </Space>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <Divider style={{ margin: '12px 0' }} />
 
                 <Space direction="vertical" style={{ width: '100%' }}>
@@ -650,7 +807,11 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   </Button>
                   <Button
                     block
-                    onClick={() => setVerificationModalOpen(true)}
+                    onClick={openVerificationModal}
+                    loading={verifying}
+                    // Verification re-tests the pinned set, so without a hash
+                    // there is nothing to evaluate.
+                    disabled={!result?.candidateSetHash}
                     data-testid="modern-to-verification-btn"
                   >
                     検証モードへ移行（候補を固定して評価）
@@ -690,12 +851,13 @@ export const ModernSubgroupMiningView: React.FC = () => {
       )}
       <VerificationConfigModal
         open={verificationModalOpen}
-        candidateCount={result?.insights.length ?? 0}
+        candidateCount={result?.candidates?.length ?? 0}
         candidateSetHash={result?.candidateSetHash ?? null}
-        datasets={[]}
+        datasets={datasets}
         currentDatasetId={datasetId}
+        alpha={VERIFICATION_ALPHA}
         onCancel={() => setVerificationModalOpen(false)}
-        onRun={() => setVerificationModalOpen(false)}
+        onRun={(config) => void runVerification(config)}
       />
     </div>
   )
