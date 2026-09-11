@@ -13,7 +13,7 @@ import {
   ReloadOutlined, ArrowRightOutlined, CheckCircleOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged } from '../../app/store'
+import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
@@ -176,6 +176,23 @@ export default function RobustnessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId])
 
+  const globalVars = useSelector(selectOrdinaryVariables)
+  // A conclusion about a variable excluded from the global active variables
+  // is out of scope — show the remaining ones instead of stale content.
+  // selectOrdinaryVariables derives from the codebook; when the codebook has
+  // no columns (e.g. unit tests) there is no global signal, so keep everything.
+  const hasGlobalSignal = globalVars.allVariables.length > 0
+  const visibleConclusions = useMemo(() => {
+    if (!data || !hasGlobalSignal) return data?.conclusions ?? []
+    const active = new Set(globalVars.activeVariableIds)
+    return data.conclusions.filter((c) => (!c.target_col || active.has(c.target_col))
+      && (!c.group_col || active.has(c.group_col)))
+  }, [data, globalVars.activeVariableIds, hasGlobalSignal])
+  useEffect(() => {
+    if (data && selectedConclusionId && !visibleConclusions.some((c) => c.id === selectedConclusionId)) {
+      setSelectedConclusionId(visibleConclusions[0]?.id ?? null)
+    }
+  }, [data, selectedConclusionId, visibleConclusions])
   const currentConclusion = useMemo(() => {
     if (!data || !selectedConclusionId) return null
     return data.conclusions.find((c) => c.id === selectedConclusionId) ?? data.conclusions[0] ?? null
@@ -277,7 +294,7 @@ export default function RobustnessPage() {
                   style={{ minWidth: 320 }}
                   value={selectedConclusionId ?? undefined}
                   onChange={setSelectedConclusionId}
-                  options={data?.conclusions.map((c) => ({
+                  options={(visibleConclusions.length ? visibleConclusions : data?.conclusions ?? []).map((c) => ({
                     label: `${c.label} [${c.robustness.grade_label}]`,
                     questionName: [c.target_col, c.group_col].filter(Boolean).join(' / '),
                     questionText: conclusionQuestions(c),

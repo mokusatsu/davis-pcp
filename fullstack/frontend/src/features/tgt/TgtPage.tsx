@@ -27,21 +27,22 @@ export default function TgtPage() {
       .map((c) => c.name)
   }, [data, activeVarIds])
 
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const [chosen, setChosen] = useState<{ datasetId: string | null; names: string[] } | null>(null)
+  const current = chosen?.datasetId === selection.datasetId ? chosen : null
+  const selectedColumns = (current?.names ?? numericColumns.slice(0, Math.min(Math.max(numericColumns.length, 0), 6)))
+    .filter((name) => numericColumns.includes(name))
+  const setSelectedColumns = (names: string[]) => setChosen({ datasetId: selection.datasetId, names })
   const [isPlaying, setIsPlaying] = useState(true)
   const [isTracking, setIsTracking] = useState(true)
   const [trailLength, setTrailLength] = useState(12)
   const [speed, setSpeed] = useState(1.0)
   const [basis, setBasis] = useState<{ alpha: number[]; beta: number[] }>({ alpha: [], beta: [] })
 
-  // Adopt numeric columns (min 3)
+  // Reset the manual override when the dataset changes so a stale column
+  // list from another dataset never leaks in.
   useEffect(() => {
-    if (numericColumns.length >= 3) {
-      setSelectedColumns(numericColumns.slice(0, Math.min(numericColumns.length, 6)))
-    } else {
-      setSelectedColumns([])
-    }
-  }, [numericColumns])
+    setChosen(null)
+  }, [selection.datasetId])
 
   // Active row IDs based on global observation scope
   const effectiveRowIds = useSelector(selectEffectiveRowIds)

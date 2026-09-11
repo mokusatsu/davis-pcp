@@ -5,7 +5,7 @@ import {
   Alert, Button, Card, Col, Radio, Row, Segmented, Select, Space, Statistic, Tag, Typography, message,
 } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { selectionApplied } from '../../app/store'
+import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import type { WeightType } from '../../api/client'
 import SelectColumn from '../common/ColumnSelect'
@@ -171,11 +171,17 @@ export default function CrosstabPage() {
   const contextRef = useRef('')
   const datasetId = selection.datasetId
 
+  const globalVars = useSelector(selectOrdinaryVariables)
+  // selectOrdinaryVariables derives its lists from the codebook, which the
+  // crosstab tests mock without the dataset's columns — in that case there is
+  // no global signal, so fall back to the unfiltered column list.
+  const hasGlobalSignal = globalVars.allVariables.length > 0
   const categoricalOptions = useMemo(
     () => columns
-      .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup)
+      .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
+        && (!hasGlobalSignal || globalVars.activeVariableIds.includes(c.name)))
       .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
-    [columns],
+    [columns, globalVars.activeVariableIds, hasGlobalSignal],
   )
   const weightOptions = useMemo(
     () => columns
@@ -303,14 +309,16 @@ export default function CrosstabPage() {
     setError(null)
   }, [datasetId])
 
-  // An undo/revert can remove columns; drop selections that no longer exist
-  // instead of letting the request fail with a stale column id.
+  // An undo/revert can remove columns, and the global active variables can
+  // exclude them; drop selections that no longer exist instead of letting
+  // the request fail with a stale column id.
   useEffect(() => {
+    const valid = new Set(categoricalOptions.map((c) => c.value))
+    if (rowVariable && !valid.has(rowVariable)) setRowVariable(null)
+    if (colVariable && !valid.has(colVariable)) setColVariable(null)
     const names = new Set(columns.map((c) => c.name))
-    if (rowVariable && !names.has(rowVariable)) setRowVariable(null)
-    if (colVariable && !names.has(colVariable)) setColVariable(null)
     if (weightColumn && !names.has(weightColumn)) setWeightColumn(null)
-  }, [columns, rowVariable, colVariable, weightColumn])
+  }, [categoricalOptions, columns, rowVariable, colVariable, weightColumn])
 
   const diagnostics = result?.weightDiagnostics ?? null
   const isSurveyWeight = diagnostics?.weightType === 'survey'

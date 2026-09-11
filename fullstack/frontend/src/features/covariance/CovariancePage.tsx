@@ -63,10 +63,11 @@ export default function CovariancePage() {
 
   useEffect(() => {
     setSelectedColumns(previous => {
-      const valid = previous.filter(name => numericColumns.includes(name))
+      const activeSet = new Set(activeNumericColumns)
+      const valid = previous.filter(name => activeSet.has(name))
       return valid.length === previous.length ? previous : valid
     })
-  }, [numericColumns])
+  }, [activeNumericColumns])
 
   useEffect(() => {
     if (activeNumericColumns.length >= 2 && selectedColumns.length === 0) {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Card, Empty, Radio, Segmented, Space, Spin, Tooltip, Typography } from 'antd'
 import type { RootState } from '../../app/store'
-import { selectionApplied, selectEffectiveRowIds } from '../../app/store'
+import { selectionApplied, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
 import SelectionMenu from '../selection/SelectionMenu'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
@@ -34,9 +34,11 @@ export default function LikertComparisonPage() {
   const [error, setError] = useState<string | null>(null)
   const [matchError, setMatchError] = useState<string | null>(null)
 
+  const globalVars = useSelector(selectOrdinaryVariables)
   const ordinalColumns = useMemo(
-    () => definitions.filter((c) => c.role === 'question' && c.scaleType === 'ordinal' && !c.multiResponseGroup),
-    [definitions],
+    () => definitions.filter((c) => c.role === 'question' && c.scaleType === 'ordinal' && !c.multiResponseGroup
+      && globalVars.activeVariableIds.includes(c.name)),
+    [definitions, globalVars.activeVariableIds],
   )
   const weightName = definitions.find((c) => c.columnId === weightColumnId)?.name
   const columnNames = useMemo(() => ordinalColumns.map((c) => c.name), [ordinalColumns])

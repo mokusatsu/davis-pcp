@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Button, Dropdown, Radio, Slider, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { DotChartOutlined, FilterOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
+import { selectOrdinaryVariables } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
 import { useBrushOp } from '../selection/SelectionMenu'
@@ -69,10 +70,16 @@ export default function LoessPlotPage() {
   const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  const globalVars = useSelector(selectOrdinaryVariables)
   const numericColumns = useMemo(
-    () => (data ? data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) : []),
-    [data],
+    () => (data ? data.schema.filter((c) => c.semanticType === 'numeric' && globalVars.activeVariableIds.includes(c.name)).map((c) => c.name) : []),
+    [data, globalVars.activeVariableIds],
   )
+
+  useEffect(() => {
+    if (xCol && !numericColumns.includes(xCol)) setXCol('')
+    if (yCol && !numericColumns.includes(yCol)) setYCol('')
+  }, [numericColumns, xCol, yCol])
 
   useEffect(() => {
     if (numericColumns.length >= 2 && (!xCol || !yCol)) {

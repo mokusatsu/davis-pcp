@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Radio, Space, Spin, Typography } from 'antd'
 import { LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
+import { selectOrdinaryVariables } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
 import { useBrushOp } from '../selection/SelectionMenu'
@@ -69,11 +70,20 @@ export default function FedfPage() {
   const [dragRange, setDragRange] = useState<{ y1: number; y2: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
-  // Numeric column list
-  const numericColumns = useMemo(
+  const globalVars = useSelector(selectOrdinaryVariables)
+  // Numeric column list (follows the global active variables)
+  const allNumericColumns = useMemo(
     () => (data ? data.schema.filter((c) => c.semanticType === 'numeric').map((c) => c.name) : []),
     [data],
   )
+  const numericColumns = useMemo(
+    () => allNumericColumns.filter((name) => globalVars.activeVariableIds.includes(name)),
+    [allNumericColumns, globalVars.activeVariableIds],
+  )
+
+  useEffect(() => {
+    setSelectedColumns((prev) => prev.filter((name) => numericColumns.includes(name)))
+  }, [numericColumns])
 
   useEffect(() => {
     if (numericColumns.length > 0 && selectedColumns.length === 0) {

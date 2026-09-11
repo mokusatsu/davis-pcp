@@ -12,7 +12,7 @@ import {
   AimOutlined, ArrowRightOutlined, ThunderboltOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged } from '../../app/store'
+import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import { truncateText } from '../../utils/textUtils'
@@ -46,7 +46,12 @@ export default function PenaltyRewardPage() {
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
-  const [columns, setColumns] = useState<string[]>([])
+  const globalVars = useSelector(selectOrdinaryVariables)
+  const [allColumns, setAllColumns] = useState<string[]>([])
+  const columns = useMemo(
+    () => allColumns.filter((name) => globalVars.activeVariableIds.includes(name)),
+    [allColumns, globalVars.activeVariableIds],
+  )
   const [outcome, setOutcome] = useState<string>('')
   const [attributes, setAttributes] = useState<string[]>([])
   const [loading, setLoading] = useState<boolean>(false)
@@ -62,7 +67,7 @@ export default function PenaltyRewardPage() {
         const numCols = meta.schema
           .filter((c) => c.semanticType === 'numeric' || c.physicalType === 'float' || c.physicalType === 'int')
           .map((c) => c.name)
-        setColumns(numCols)
+        setAllColumns(numCols)
         if (numCols.length >= 2) {
           setOutcome(numCols[numCols.length - 1])
           setAttributes(numCols.slice(0, numCols.length - 1))
@@ -93,6 +98,15 @@ export default function PenaltyRewardPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    setAttributes((prev) => {
+      const next = prev.filter((name) => columns.includes(name))
+      return next.length === prev.length ? prev : next
+    })
+    if (outcome && !columns.includes(outcome)) setOutcome('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns])
 
   useEffect(() => {
     if (datasetId && outcome && attributes.length > 0 && !result && !loading) {
