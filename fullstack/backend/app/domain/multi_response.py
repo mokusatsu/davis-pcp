@@ -306,6 +306,10 @@ def summarize_group(
     # respondents, the response denominator counts selections.
     den_valid_weight = 0.0
     weighted = weights is not None
+    if weighted and len(weights or []) != df.height:
+        from .errors import BizError
+        raise BizError("CROSSTAB_WEIGHT_LENGTH", "ウェイト長が対象行数と一致しません。",
+                       status_code=422)
 
     denominators = {
         "total": 0,
@@ -345,7 +349,7 @@ def summarize_group(
         if not selected:
             all_unselected_n += 1
 
-        row_weight = (weights[idx] if idx < len(weights) else None) if weighted else 1.0
+        row_weight = weights[idx] if weighted else 1.0
         carries_weight = row_weight is not None and row_weight > 0
         if carries_weight:
             den_valid_weight += row_weight

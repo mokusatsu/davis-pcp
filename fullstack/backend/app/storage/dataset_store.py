@@ -638,8 +638,27 @@ class DatasetStore:
         return json.loads(path.read_text(encoding="utf-8"))
 
 
-def assign_row_identity(df: pl.DataFrame, id_column: str | None = None, schemas: list[Any] | None = None) -> tuple[pl.DataFrame, str]:
+RESERVED_COLUMNS = ("__rowId__",)
+
+def _check_reserved_input(df: pl.DataFrame) -> None:
+    from ..domain.errors import BizError
+
+    collisions = [c for c in df.columns if c in RESERVED_COLUMNS]
+    if collisions:
+        raise BizError("RESERVED_COLUMN_CONFLICT",
+                       f"予約列名と衝突しています: {collisions}。通常取込では使用できません。",
+                       status_code=422)
+
+def assign_row_identity(df: pl.DataFrame, id_column: str | None = None, schemas: list[Any] | None = None,
+                          _internal_canonical: bool = False) -> tuple[pl.DataFrame, str]:
     """Return dataframe with a `__rowId__` first column and the identity source."""
+    # PK01: ordinary imports must not silently overwrite reserved internals.
+    # A user-supplied __rowId__ column (duplicates/empty/invalid ids) is 422
+    # with no write; only verified package restore may carry internal ids.
+    # Internal callers that already hold a canonical frame (unique __rowId__,
+    # no id_column request) bypass the gate via _internal_canonical=True.
+    if not _internal_canonical and "__rowId__" in df.columns and not (id_column and id_column in df.columns):
+        _check_reserved_input(df)
     if id_column and id_column in df.columns and df[id_column].null_count() == 0:
         unique_count = df[id_column].n_unique()
         if unique_count != df.height:

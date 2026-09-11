@@ -385,6 +385,9 @@ def compute_crosstab(
     resolved = resolve_inference(inference, weight_type if use_weights else None, use_weights)
     if resolved == REQUEST_NONE:
         inference_result = not_requested_inference()
+        for cell in cells:
+            cell["significance"] = None
+            cell["residualType"] = "descriptive"
     elif resolved == REQUEST_FISHER:
         eff_rows, eff_cols = effective_matrix.shape if effective_matrix.size else (0, 0)
         if eff_rows != 2 or eff_cols != 2:
@@ -406,7 +409,9 @@ def compute_crosstab(
     # survey weight (spec §18).
     diagnostics: dict[str, Any] | None = None
     if use_weights:
-        raw = weight_diagnostics([w for w in weights if w is not None])
+        analysed_weights = [weights[k] for k in kept
+                            if weights[k] is not None and float(weights[k]) > 0]
+        raw = weight_diagnostics(analysed_weights)
         diagnostics = {
             "weightColumnId": weight_column_id,
             "weightType": weight_type,

@@ -193,8 +193,16 @@ def probe_table(
             physical = "string"
             values = [str(v) for v in non_null.head(200).to_list()]
             numeric_like = sum(1 for v in values if _try_float(v) is not None)
+            leading_zero_codes = [v for v in values
+                                  if len(v) > 1 and v[0] == "0" and v[1:].isdigit()
+                                  and not v.startswith("0.") and "," not in v]
             if not values:
                 semantic = "ignored"
+            elif leading_zero_codes:
+                # Leading-zero numeric strings ("001") are codes, not
+                # quantities: keep them categorical so they default to
+                # nominal instead of ratio (AV05).
+                semantic = "categorical"
             elif numeric_like / max(1, len(values)) > 0.95:
                 semantic = "numeric"
             else:

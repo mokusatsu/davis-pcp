@@ -47,11 +47,12 @@ def sample_observations(dataset_id: str, req: SamplingRequest) -> dict[str, Any]
                             status_code=422,
                             details={"unknownRowIds": unknown[:20], "unknownCount": len(unknown)})
         candidates = [v for v in candidates if v in known]
-    if len(candidates) > MAX_ROW_COUNT:
+
+    if req.method == "with_replacement":
         raise BizError(
-            "PAYLOAD_TOO_LARGE",
-            f"対象行数（{len(candidates)}件）が上限（{MAX_ROW_COUNT:,}件）を超過しています。サンプリング機能を利用してください。",
-            status_code=413,
+            "SAMPLING_REPLACEMENT_UNSUPPORTED",
+            "復元抽出は未対応です。非復元抽出を使用してください。",
+            status_code=422,
         )
 
     n_candidates = len(candidates)
@@ -107,6 +108,13 @@ def select_range_observations(dataset_id: str, req: RangeSelectionRequest) -> di
     all_row_ids: list[str] = [str(x) for x in df["__rowId__"].to_list()]
 
     candidates = req.activeRowIds if req.activeRowIds is not None else all_row_ids
+    if req.activeRowIds is not None:
+        unknown = sorted({str(v) for v in req.activeRowIds} - set(all_row_ids))
+        if unknown:
+            raise BizError("RANGE_UNKNOWN_ROW", "存在しないrowIdが指定されています。",
+                           status_code=422,
+                           details={"unknownRowIds": unknown[:20], "unknownCount": len(unknown)})
+
     if len(candidates) > MAX_ROW_COUNT:
         raise BizError(
             "PAYLOAD_TOO_LARGE",

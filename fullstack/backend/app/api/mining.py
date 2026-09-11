@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import polars as pl
 
 from ..algorithms.mining.subgroup import run_subgroup_mining
@@ -74,6 +74,43 @@ class VerificationConfig(BaseModel):
     alpha: float = 0.05
     seed: int = 42
     independent_dataset_id: str | None = None
+
+    @field_validator("correction")
+    @classmethod
+    def _check_correction(cls, value: str) -> str:
+        from pydantic_core import PydanticCustomError
+
+        allowed = {"bh", "bh-fdr"}
+        if str(value).lower() not in allowed:
+            raise PydanticCustomError(
+                "verification_config_invalid",
+                "correctionはbh/bh-fdrのいずれかです。",
+            )
+        return value
+
+    @field_validator("alpha")
+    @classmethod
+    def _check_alpha(cls, value: float) -> float:
+        from pydantic_core import PydanticCustomError
+
+        if not (0.0 < float(value) < 1.0):
+            raise PydanticCustomError(
+                "verification_config_invalid",
+                "alphaは0より大きく1より小さくしてください。",
+            )
+        return value
+
+    @field_validator("k")
+    @classmethod
+    def _check_k(cls, value: int) -> int:
+        from pydantic_core import PydanticCustomError
+
+        if int(value) < 2:
+            raise PydanticCustomError(
+                "verification_config_invalid",
+                "kは2以上にしてください。",
+            )
+        return value
 
 
 class SubgroupMiningRequest(BaseModel):
@@ -206,6 +243,22 @@ def _load_candidate_set(dataset_id: str, req, info: dict[str, Any]) -> dict[str,
                        status_code=409,
                        details={"explorationScopeHash": stored.get("scopeHash"),
                                 "currentScopeHash": info.get("scopeHash")})
+    if int(stored.get("schemaRevision", -1)) != int(info.get("schemaRevision", -1)):
+        raise BizError("VERIFICATION_CANDIDATE_SET_EXPIRED",
+                       "探索後にコードブックが変更されたため候補集合が失効しました。もう一度探索してください。",
+                       status_code=409,
+                       details={"explorationSchemaRevision": stored.get("schemaRevision"),
+                                "currentSchemaRevision": info.get("schemaRevision")})
+    if "maskRevision" in stored and "maskRevision" in info:
+        if str(stored.get("maskRevision")) != str(info.get("maskRevision")):
+            raise BizError("VERIFICATION_CANDIDATE_SET_EXPIRED",
+                           "探索後にマスクが変更されたため候補集合が失効しました。もう一度探索してください。",
+                           status_code=409)
+    if stored.get("scoreSpecHash") is not None or info.get("scoreSpecHash") is not None:
+        if str(stored.get("scoreSpecHash")) != str(info.get("scoreSpecHash")):
+            raise BizError("VERIFICATION_CANDIDATE_SET_EXPIRED",
+                           "探索後に得点仕様が変更されたため候補集合が失効しました。もう一度探索してください。",
+                           status_code=409)
     if not stored.get("candidates"):
         raise BizError("VERIFICATION_INSUFFICIENT_DATA",
                        "候補集合に検証できる候補がありません。", status_code=422)
@@ -239,10 +292,30 @@ def _independent_frame(eval_dataset_id: str, needed_columns: list[str]):
     return frame
 
 
+def _collect_condition_columns(node: object, columns: list[str]) -> None:
+    if isinstance(node, dict):
+        column = node.get("column")
+        if isinstance(column, str) and column:
+            columns.append(column)
+        for key in ("conditions", "and", "or", "args", "operands", "children"):
+            children = node.get(key)
+            if isinstance(children, list):
+                for child in children:
+                    _collect_condition_columns(child, columns)
+        for key in ("not", "operand", "condition", "left", "right"):
+            child = node.get(key)
+            if isinstance(child, (dict, list)):
+                _collect_condition_columns(child, columns)
+    elif isinstance(node, list):
+        for child in node:
+            _collect_condition_columns(child, columns)
+
+
 def _needed_columns(selected) -> list[str]:
     columns: list[str] = []
     for candidate in selected:
         rule = candidate.rule or {}
+        estimand = candidate.estimand or {}
         for key in ("attribute", "question"):
             column = (rule.get(key) or {}).get("column")
             if column:
@@ -251,14 +324,40 @@ def _needed_columns(selected) -> list[str]:
             columns.append(str(rule["targetQuestion"]))
         for column in (rule.get("targetPair") or []):
             columns.append(str(column))
+        _collect_condition_columns(rule.get("conditions"), columns)
+        _collect_condition_columns(rule, columns)
+        cell = estimand.get("cell") or {}
+        for key in ("attributeColumn", "questionColumn"):
+            if cell.get(key):
+                columns.append(str(cell[key]))
     return sorted(set(columns))
+
+
+def _eval_frame(df, codebook: dict, mean_difference_targets: set[str]):
+    """Return the evaluation frame with analysis scores applied to target columns."""
+    if not mean_difference_targets:
+        return df
+    from ..domain.codebook_adapter import CodebookAdapter
+
+    adapter = CodebookAdapter(df, codebook)
+    replacements = []
+    for name in sorted(mean_difference_targets):
+        if name not in df.columns:
+            continue
+        try:
+            replacements.append(adapter.analysis_series(name))
+        except Exception:
+            continue
+    if not replacements:
+        return df
+    return df.with_columns(replacements)
 
 
 def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info, weight):
     import polars as pl
 
     from ..algorithms.mining.verification_test import DEFAULT_MIN_GROUP_SIZE, compute_estimand
-    from ..domain.mining_candidate import PinnedCandidate
+    from ..domain.mining_candidate import ESTIMAND_MEAN_DIFFERENCE, PinnedCandidate
 
     config = req.verificationConfig or VerificationConfig()
     method = (config.method or "holdout").lower()
@@ -295,6 +394,13 @@ def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info
     min_group = int(min_group_raw) if min_group_raw is not None else DEFAULT_MIN_GROUP_SIZE
     if min_group < 2:
         min_group = 2
+    codebook = store.load_codebook(dataset_id) or {}
+    mean_targets = {str((candidate.rule.get("targetQuestion")
+                         or ((candidate.rule.get("question") or {}).get("column")) or ""))
+                    for candidate in selected
+                    if str((candidate.estimand or {}).get("type") or "")
+                    == ESTIMAND_MEAN_DIFFERENCE}
+    mean_targets.discard("")
     evaluation_dataset_id = dataset_id
     folds: list[dict[str, Any]] = []
     if method == "holdout":
@@ -302,27 +408,40 @@ def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info
         check_row_disjoint(selection_ids, evaluation_ids)
         if not selection_ids or not evaluation_ids:
             raise BizError("VERIFICATION_INSUFFICIENT_DATA", "検証分割が成立しません。", status_code=422)
-        evaluation_frame = df.filter(pl.col("__rowId__").is_in(evaluation_ids))
+        evaluation_frame = _eval_frame(df.filter(pl.col("__rowId__").is_in(evaluation_ids)),
+                                       codebook, mean_targets)
     elif method == "cross_validation":
         fold_rows = split_folds(all_ids, config.k or 5, seed)
         for fold_index, fold in enumerate(fold_rows):
-            fold_frame = df.filter(pl.col("__rowId__").is_in(fold))
+            fold_frame = _eval_frame(df.filter(pl.col("__rowId__").is_in(fold)),
+                                     codebook, mean_targets)
             fold_weights = _weights_for(fold_frame, req.weights)
             fold_outcomes = [compute_estimand(fold_frame, candidate, fold_weights, min_group, seed, alpha)
                              for candidate in selected]
+            fold_effects = []
+            for outcome in fold_outcomes:
+                effect_obj = outcome.get("effect") or {}
+                detail = {key: value for key, value in effect_obj.items()
+                          if key not in ("effect",)}
+                fold_effects.append({
+                    "candidateId": outcome["candidateId"],
+                    "effect": effect_obj.get("estimate"),
+                    "testable": outcome["testable"],
+                    "n": outcome.get("n"),
+                    "reason": outcome.get("reason"),
+                    **({"detail": detail} if detail else {}),
+                })
             folds.append({
                 "fold": fold_index,
                 "nEvaluation": len(fold),
                 "testableCount": sum(1 for outcome in fold_outcomes if outcome["testable"]),
-                "effects": [{"candidateId": outcome["candidateId"],
-                             "effect": (outcome.get("effect") or {}).get("effect")}
-                            for outcome in fold_outcomes],
+                "effects": fold_effects,
             })
         # Candidates are already pinned, so nothing is re-discovered per fold.
         # The headline result evaluates every row exactly once (its held-out fold).
         selection_ids = list(all_ids)
         evaluation_ids = list(all_ids)
-        evaluation_frame = df
+        evaluation_frame = _eval_frame(df, codebook, mean_targets)
     else:
         evaluation_dataset_id = str(config.independent_dataset_id)
         try:
@@ -338,21 +457,41 @@ def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info
         if not evaluation_ids:
             raise BizError("VERIFICATION_INSUFFICIENT_DATA", "独立データの行がありません。",
                            status_code=422)
+        eval_codebook = store.load_codebook(evaluation_dataset_id) or {}
+        evaluation_frame = _eval_frame(evaluation_frame, eval_codebook, mean_targets)
 
     # --- 3. estimand-preserving tests -------------------------------------
     eval_weights = _weights_for(evaluation_frame, req.weights)
     results = [compute_estimand(evaluation_frame, candidate, eval_weights, min_group, seed, alpha)
                for candidate in selected]
-    testable = [item for item in results
-                if item["testable"] and (item.get("test") or {}).get("pValue") is not None]
-    raw_ps = [float(item["test"]["pValue"]) for item in testable]
-    q_values, _, m = benjamini_hochberg_adjust(raw_ps) if raw_ps else ([], [], 0)
+    posthoc_stability = method in ("holdout", "cross_validation")
+    if posthoc_stability:
+        for item in results:
+            if isinstance(item.get("test"), dict):
+                item["test"]["pAdjusted"] = None
+                item["test"]["significant"] = None
+            else:
+                item["test"] = {"name": None, "statistic": None, "pValue": None,
+                                "df": None, "permutations": None,
+                                "pAdjusted": None, "significant": None}
+            item["replicationStatus"] = None
+        testable = []
+        raw_ps: list[float] = []
+        q_values: list[float] = []
+        m = 0
+    else:
+        testable = [item for item in results
+                    if item["testable"] and isinstance(item.get("test"), dict)
+                    and (item.get("test") or {}).get("pValue") is not None]
+        raw_ps = [float(item["test"]["pValue"]) for item in testable]
+        q_values, _, m = benjamini_hochberg_adjust(raw_ps) if raw_ps else ([], [], 0)
     testable_ids = {item["candidateId"] for item in testable}
     for item, q_value in zip(testable, q_values):
         item["test"]["pAdjusted"] = round(q_value, 6)
         item["test"]["significant"] = bool(q_value <= alpha)
     for item in results:
-        if item["candidateId"] not in testable_ids and isinstance(item.get("test"), dict):
+        if (not posthoc_stability and item["candidateId"] not in testable_ids
+                and isinstance(item.get("test"), dict)):
             item["test"]["pAdjusted"] = None
             item["test"]["significant"] = False
     excluded = [item["candidateId"] for item in results if not item["testable"]]
@@ -392,6 +531,17 @@ def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info
         verification_block["note"] = "候補は探索時のスコープで固定し、評価は分割した評価側のみで行いました。"
     else:
         verification_block["note"] = "候補は探索時のスコープで固定し、評価は独立データセットで行いました。"
+    if posthoc_stability:
+        verification_block["stabilityMode"] = "posthoc_stability"
+        verification_block["note"] = ("探索に使った全行からの後付け分割のため、独立検証ではなく"
+                                      "posthoc stabilityとして記述効果とfold安定性を参考表示します。")
+        return {**info, **weight, "analysisMode": "posthoc_stability", "isExploratory": True,
+                "candidateSetHash": stored.get("candidateSetHash"),
+                "candidates": [{"candidateId": candidate.candidateId,
+                                "displayLabel": candidate.displayLabel,
+                                "estimand": candidate.estimand} for candidate in selected],
+                "verification": verification_block,
+                "results": results}
     return {**info, **weight, "analysisMode": "verification", "isExploratory": False,
             "candidateSetHash": stored.get("candidateSetHash"),
             "candidates": [{"candidateId": candidate.candidateId,

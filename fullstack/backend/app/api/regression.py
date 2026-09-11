@@ -46,8 +46,8 @@ def get_loess(req: LoessRequest) -> dict[str, Any]:
     if x_col in df.columns and y_col in df.columns:
         adapter = CodebookAdapter(df, codebook)
         df = df.with_columns([
-            adapter.mask_missing_values(x_col),
-            adapter.mask_missing_values(y_col),
+            adapter.analysis_series(x_col).alias(x_col),
+            adapter.analysis_series(y_col).alias(y_col),
         ])
 
     return compute_loess(

@@ -94,7 +94,7 @@ def test_stale_plan_hash_is_rejected(plan_ds):
 
     apply = client.post(f"/api/v1/datasets/{ds}/impute",
                         json={**body, "inPlace": True, "planHash": preview["planHash"]})
-    assert apply.status_code == 422, apply.text
+    assert apply.status_code == 409, apply.text
     assert apply.json()["error"]["code"] == "IMPUTATION_PLAN_STALE"
 
 

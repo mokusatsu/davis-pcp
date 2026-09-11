@@ -18,8 +18,11 @@ def compute_qqplot(
     if column not in df.columns:
         raise BizError("QQPLOT_COLUMN_NOT_FOUND", f"列 '{column}' が存在しません。")
 
+    # The row id is display metadata: synthesize positional ids when the
+    # caller passes a bare frame (pure-function contract), instead of
+    # refusing the computation.
     if "__rowId__" not in df.columns:
-        raise BizError("QQPLOT_NO_ROW_ID", "ID列 '__rowId__' が存在しません。")
+        df = df.with_columns(pl.int_range(0, df.height).cast(pl.String).alias("__rowId__"))
 
     # Select rowId and column, drop nulls
     subset = df.select(["__rowId__", column]).drop_nulls()
@@ -28,7 +31,35 @@ def compute_qqplot(
 
     row_ids = subset["__rowId__"].to_list()
     raw_vals = subset[column].to_numpy().astype(float)
+    raw_vals = raw_vals[np.isfinite(raw_vals)]
     n = len(raw_vals)
+    if n >= 1:
+        finite_sorted = np.sort(raw_vals)
+        if not np.isfinite(finite_sorted).all() or np.ptp(finite_sorted) <= 1e-12:
+            return {
+                "column": column,
+                "count": n,
+                "normalityTest": {
+                    "shapiroWilkW": None,
+                    "pValue": None,
+                    "isNormalAlpha05": None,
+                    "skewness": None,
+                    "kurtosis": None,
+                },
+                "referenceLine": {
+                    "slope": None,
+                    "intercept": None,
+                    "q1Sample": None,
+                    "q3Sample": None,
+                    "q1Theoretical": float(stats.norm.ppf(0.25)),
+                    "q3Theoretical": float(stats.norm.ppf(0.75)),
+                },
+                "points": [],
+                "minZ": None,
+                "maxZ": None,
+                "minVal": float(finite_sorted[0]),
+                "maxVal": float(finite_sorted[-1]),
+            }
 
     # Sort indices
     sort_idx = np.argsort(raw_vals)

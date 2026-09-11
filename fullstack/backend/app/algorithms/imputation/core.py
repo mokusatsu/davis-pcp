@@ -25,11 +25,14 @@ def column_values_hash(series: pl.Series) -> str:
 
 def _knn_impute_series(target_arr: np.ndarray, feature_mat: np.ndarray, k: int = 5) -> np.ndarray:
     """Impute missing numeric values using K-Nearest Neighbors on observed rows."""
+    from ...domain.errors import BizError
+
     is_nan = np.isnan(target_arr)
-    if not np.any(is_nan) or np.all(is_nan):
-        # Nothing to impute or everything is missing
-        fill_val = 0.0 if np.all(is_nan) else float(np.nanmean(target_arr))
-        return np.where(is_nan, fill_val, target_arr)
+    if np.all(is_nan):
+        raise BizError("IMPUTATION_NO_DONOR", "観測値がなく近傍補完ができません。",
+                       status_code=422)
+    if not np.any(is_nan):
+        return target_arr.copy()
 
     obs_indices = np.where(~is_nan)[0]
     mis_indices = np.where(is_nan)[0]
@@ -93,7 +96,11 @@ def impute_dataframe(
     col_diagnostics: dict[str, Any] = {}
     new_series_map: dict[str, pl.Series] = {}
 
-    numeric_cols = [c for c in df.columns if c != "__rowId__" and df[c].dtype in (
+    # The API masks ordinary-missing codes before calling the engine (IM01),
+    # so df already carries masked cells here. No second masking pass.
+    effective_df = df
+
+    numeric_cols = [c for c in effective_df.columns if c != "__rowId__" and effective_df[c].dtype in (
         pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64
     )]
 
@@ -129,7 +136,10 @@ def impute_dataframe(
             clean_s = s.drop_nulls()
             if is_float:
                 clean_s = clean_s.filter(~clean_s.is_nan())
-            mean_val = float(clean_s.mean()) if clean_s.len() > 0 else 0.0
+            if clean_s.len() == 0:
+                raise BizError("IMPUTATION_NO_DONOR", f"列 '{c}' に観測値がなく平均を計算できません。",
+                               status_code=422)
+            mean_val = float(clean_s.mean())
             new_s = s.fill_nan(mean_val).fill_null(mean_val) if is_float else s.fill_null(mean_val)
             new_series_map[c] = new_s
             col_diagnostics[c] = {"imputedCount": null_count, "fillValue": mean_val}
@@ -140,7 +150,10 @@ def impute_dataframe(
             clean_s = s.drop_nulls()
             if is_float:
                 clean_s = clean_s.filter(~clean_s.is_nan())
-            med_val = float(clean_s.median()) if clean_s.len() > 0 else 0.0
+            if clean_s.len() == 0:
+                raise BizError("IMPUTATION_NO_DONOR", f"列 '{c}' に観測値がなく中央値を計算できません。",
+                               status_code=422)
+            med_val = float(clean_s.median())
             new_s = s.fill_nan(med_val).fill_null(med_val) if is_float else s.fill_null(med_val)
             new_series_map[c] = new_s
             col_diagnostics[c] = {"imputedCount": null_count, "fillValue": med_val}

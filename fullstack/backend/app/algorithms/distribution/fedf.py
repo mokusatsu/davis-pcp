@@ -75,17 +75,30 @@ def compute_fedf(
         sorted_vals = sub_df[col_name].to_numpy()
         sorted_rids = [str(x) for x in sub_df["__rowId__"].to_list()]
 
-        # Empirical probabilities: (i + 0.5) / n_valid (Hazen's plotting position)
-        p_vals = (np.arange(n_valid) + 0.5) / n_valid
+        # Tied values share the average rank, so identical answers always
+        # share one FEDF coordinate: p=(averageRank-0.5)/n.
+        sorted_arr = np.asarray(sorted_vals, dtype=float)
+        order = np.argsort(sorted_arr, kind="mergesort")
+        rank_of_pos = np.empty(n_valid, dtype=float)
+        cursor = 0
+        while cursor < n_valid:
+            end = cursor + 1
+            while end < n_valid and sorted_arr[order[end]] == sorted_arr[order[cursor]]:
+                end += 1
+            avg_rank = (cursor + 1 + end) / 2.0
+            for k in range(cursor, end):
+                rank_of_pos[order[k]] = avg_rank
+            cursor = end
+        p_sorted = (rank_of_pos - 0.5) / n_valid
         # Folded / Mountain plot: 1.0 - 2.0 * abs(p - 0.5) -> peak = 1.0 at median
-        m_vals = 1.0 - 2.0 * np.abs(p_vals - 0.5)
+        m_sorted = 1.0 - 2.0 * np.abs(p_sorted - 0.5)
 
         # Store row coordinates
         for i in range(n_valid):
             rid = sorted_rids[i]
             val = float(sorted_vals[i])
-            p = float(p_vals[i])
-            m = float(m_vals[i])
+            p = float(p_sorted[i])
+            m = float(m_sorted[i])
             row_coords[rid][col_name] = {
                 "val": val,
                 "quantile": round(p, 5),

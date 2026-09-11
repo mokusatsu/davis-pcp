@@ -90,6 +90,12 @@ def run_sensitivity(req: SensitivityRequest) -> dict[str, Any]:
     if candidate.type not in ("kpi", "subgroup_diff"):
         raise BizError("SENSITIVITY_CONFIG_INVALID", "candidate.typeはkpi/subgroup_diffです。",
                        status_code=422)
+    if candidate.type == "subgroup_diff" and (
+            not candidate.groupColumn or not candidate.compareGroups
+            or len(candidate.compareGroups) < 2) and not candidate.rowIds:
+        raise BizError("SENSITIVITY_CONFIG_INVALID",
+                       "subgroup_diffにはgroupColumnと比較群(compareGroups 2件以上)が必要です。",
+                       status_code=422)
     if (req.outlierMethod or "standardized_deviation") != "standardized_deviation":
         raise BizError("SENSITIVITY_CONFIG_INVALID", "outlierMethodはstandardized_deviationです。",
                        status_code=422)
@@ -100,7 +106,17 @@ def run_sensitivity(req: SensitivityRequest) -> dict[str, Any]:
         revisions = _collect_revisions(meta, codebook)
         _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
         weight = weight_unsupported_block(codebook, req.weightColumn)
+        from ..domain.codebook_adapter import CodebookAdapter
+
         df = store.get_dataframe(dataset_id)
+        try:
+            adapter = CodebookAdapter(df, codebook)
+            analysis = adapter.analysis_series(target)
+            # analysis_series yields scores with missing/invalid as null; keep only
+            # valid rows so baseline/sensitivity work on the analysis population.
+            df = df.with_columns(analysis).filter(pl.col(target).is_not_null())
+        except Exception:
+            pass
         scope_ids = req.scopeRowIds
         if scope_ids is not None:
             df = df.filter(pl.col("__rowId__").is_in(scope_ids))

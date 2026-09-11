@@ -153,12 +153,13 @@ def run_kda(
                     phi_j += w_s * marginal
             shapley_values[j] = max(0.0, phi_j)
     else:
-        # Sampling permutation approximation
-        np.random.seed(42)
+        # Sampling permutation approximation on a local RNG: never reseed or
+        # advance the caller's global np.random state (contract).
+        _rng = np.random.default_rng(42)
         n_samples = min(n_sample_permutations, 500)
         phi_sum = np.zeros(k, dtype=float)
         for _ in range(n_samples):
-            perm = np.random.permutation(k)
+            perm = _rng.permutation(k)
             prev_r2 = 0.0
             curr_subset: list[int] = []
             for item in perm:

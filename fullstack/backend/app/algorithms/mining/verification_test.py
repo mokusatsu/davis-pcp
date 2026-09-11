@@ -130,8 +130,11 @@ def _welch(a: np.ndarray, b: np.ndarray,
                 "varA": var_a, "varB": var_b}
     se = math.sqrt(se_sq)
     statistic = effect / se
+    # Fractional effective n stays fractional: no max(n_eff-1, 1) clamp on the
+    # denominator (F04). The reliability-weight/ESS approximation is kept;
+    # only its internal consistency is fixed, not a general survey t claim.
     df_value = se_sq ** 2 / (
-        ((var_a / n_a) ** 2) / max(n_a - 1, 1) + ((var_b / n_b) ** 2) / max(n_b - 1, 1)
+        ((var_a / n_a) ** 2) / (n_a - 1) + ((var_b / n_b) ** 2) / (n_b - 1)
     ) if se_sq > 0 else 0.0
     p_value = float(2 * stats.t.sf(abs(statistic), max(df_value, 1e-9)))
     t_crit = float(stats.t.ppf(1 - alpha / 2, max(df_value, 1e-9)))
@@ -145,15 +148,19 @@ def _welch(a: np.ndarray, b: np.ndarray,
 def _cohens_d(a: np.ndarray, b: np.ndarray,
               weights_a: np.ndarray | None = None,
               weights_b: np.ndarray | None = None) -> float | None:
-    _, var_a, n_a = _summary(a, weights_a)
-    _, var_b, n_b = _summary(b, weights_b)
+    # Pooled-n definition, consistent with exploration (_test_numeric) and
+    # the audit contract (F03): pooled = ((n1-1)v1 + (n2-1)v2) / (n1+n2-2).
+    # Never the plain mean of the two variances under the same name.
+    mean_a, var_a, n_a = _summary(a, weights_a)
+    mean_b, var_b, n_b = _summary(b, weights_b)
     if n_a <= 0 or n_b <= 0:
         return None
-    pooled = math.sqrt((var_a + var_b) / 2.0)
+    denom = n_a + n_b - 2
+    if denom <= 0 or not (math.isfinite(var_a) and math.isfinite(var_b)):
+        return None
+    pooled = math.sqrt(max(((n_a - 1) * var_a + (n_b - 1) * var_b) / denom, 0.0))
     if pooled <= 0:
         return None
-    mean_a, _, _ = _summary(a, weights_a)
-    mean_b, _, _ = _summary(b, weights_b)
     return float((mean_a - mean_b) / pooled)
 
 
@@ -421,10 +428,24 @@ def _compute_tau(frame: pl.DataFrame, candidate: PinnedCandidate,
     return _finish(candidate, result, used, frame.height)
 
 
+def _modern_rule_mask(frame: pl.DataFrame, rule: dict[str, Any]) -> np.ndarray | None:
+    from .modern_subgroup import evaluate_condition_dict
+
+    mask = np.ones(frame.height, dtype=bool)
+    for condition in (rule.get("conditions") or []):
+        try:
+            mask &= evaluate_condition_dict(condition, frame)
+        except Exception:
+            return None
+    return mask
+
+
 def _compute_proportion(frame: pl.DataFrame, candidate: PinnedCandidate,
                         weights: np.ndarray | None, min_group_size: int,
                         alpha: float) -> dict[str, Any]:
     rule = candidate.rule or {}
+    if candidate.algorithm == "modern" or str(rule.get("kind") or "") == "modern":
+        return _compute_modern_proportion(frame, candidate, weights, min_group_size, alpha)
     attribute = str(((rule.get("attribute") or {}).get("column")) or "")
     question = str(((rule.get("question") or {}).get("column")) or "")
     if attribute not in frame.columns or question not in frame.columns:
@@ -468,6 +489,60 @@ def _compute_proportion(frame: pl.DataFrame, candidate: PinnedCandidate,
     result["groupStats"] = [
         {"label": str(level), "n": n_level,
          "pct": result.get("pRow")}, {"label": "その他", "n": n_other, "pct": result.get("pOther")},
+    ]
+    result["weighted"] = weights is not None
+    used = n_level + n_other
+    return _finish(candidate, result, used, frame.height)
+
+
+def _compute_modern_proportion(frame: pl.DataFrame, candidate: PinnedCandidate,
+                               weights: np.ndarray | None, min_group_size: int,
+                               alpha: float) -> dict[str, Any]:
+    rule = candidate.rule or {}
+    target = str(rule.get("targetQuestion") or "")
+    cell = (candidate.estimand or {}).get("cell") or {}
+    category = cell.get("questionCategory") or rule.get("targetCategory")
+    if target not in frame.columns or category is None:
+        return _not_testable(candidate, "COLUMN_NOT_FOUND",
+                             {"target": target, "category": category}, frame.height)
+    mask = _modern_rule_mask(frame, rule)
+    if mask is None:
+        return _not_testable(candidate, "COLUMN_NOT_FOUND",
+                             {"conditions": rule.get("conditions")}, frame.height)
+    categories = _object_array(frame[target])
+    category_rows = level_mask(categories, category)
+    valid = _finite_mask(categories)
+    level_rows = mask & valid
+    other_rows = (~mask) & valid
+    n_level = int(level_rows.sum())
+    n_other = int(other_rows.sum())
+    if n_level < min_group_size or n_other < min_group_size:
+        return _not_testable(candidate, "INSUFFICIENT_GROUP_SIZE",
+                             {"numeratorN": n_level, "denominatorN": n_other,
+                              "minGroupSize": int(min_group_size)}, frame.height)
+    if weights is not None:
+        w_level = float(weights[level_rows].sum())
+        w_other = float(weights[other_rows].sum())
+        if w_level <= 0 or w_other <= 0:
+            return _not_testable(candidate, "EMPTY_REFERENCE", {}, frame.height)
+        w_cell = float(weights[level_rows & category_rows].sum())
+        w_cell_other = float(weights[other_rows & category_rows].sum())
+        table = np.array([[w_cell, w_level - w_cell],
+                          [w_cell_other, w_other - w_cell_other]], dtype=float)
+    else:
+        table = np.array([
+            [int((level_rows & category_rows).sum()),
+             n_level - int((level_rows & category_rows).sum())],
+            [int((other_rows & category_rows).sum()),
+             n_other - int((other_rows & category_rows).sum())],
+        ], dtype=float)
+    if (table < 0).any() or table.sum() <= 0:
+        return _not_testable(candidate, "NO_VALID_VALUES", {}, frame.height)
+    result = _two_by_two(table, alpha)
+    result["contingency"] = table.tolist()
+    result["groupStats"] = [
+        {"label": "条件一致", "n": n_level, "pct": result.get("pRow")},
+        {"label": "補集合", "n": n_other, "pct": result.get("pOther")},
     ]
     result["weighted"] = weights is not None
     used = n_level + n_other

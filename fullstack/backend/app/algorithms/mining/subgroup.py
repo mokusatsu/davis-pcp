@@ -17,6 +17,33 @@ from scipy import stats
 from ..summaries.crosstab import adjusted_residual as shared_adjusted_residual
 
 
+def _welch_anova(groups: list[list[float]]) -> tuple[float, float, float, float]:
+    """Welch (1951) one-way ANOVA with the finite-sample F correction.
+
+    Returns (F, df1, df2, p). Independent of scipy.stats.f_oneway, which
+    assumes equal variances and must never back a 'welch_anova' label.
+    """
+    from scipy import stats as _stats
+
+    k = len(groups)
+    ns = [len(g) for g in groups]
+    means = [float(np.mean(g)) for g in groups]
+    variances = [float(np.var(g, ddof=1)) if len(g) > 1 else 0.0 for g in groups]
+    weights = [n / v if v > 0 else 0.0 for n, v in zip(ns, variances)]
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        return 0.0, float(k - 1), 1.0, 1.0
+    grand = sum(w * m for w, m in zip(weights, means)) / total_weight
+    between = sum(w * (m - grand) ** 2 for w, m in zip(weights, means)) / (k - 1)
+    lambda_prime = sum((1 - w / total_weight) ** 2 / max(n - 1, 1) for w, n in zip(weights, ns))
+    denom = 1 + (2 * (k - 2) / max(k * k - 1, 1)) * lambda_prime
+    f_stat = between / denom if denom > 0 else 0.0
+    df1 = float(k - 1)
+    df2 = float((k * k - 1) / (3 * lambda_prime)) if lambda_prime > 0 else 1.0
+    p_value = float(_stats.f.sf(f_stat, df1, max(df2, 1e-9))) if math.isfinite(f_stat) else 1.0
+    return float(f_stat), df1, float(df2), float(p_value)
+
+
 def benjamini_hochberg(p_values: list[float], alpha: float = 0.05) -> tuple[list[float], list[bool]]:
     """Compute Benjamini-Hochberg FDR adjusted p-values (q-values) and rejection flags."""
     m = len(p_values)
@@ -527,12 +554,12 @@ def _test_numeric(
         method = "welch_ttest"
         posthoc.append({"pair": [lvl1, lvl2], "p_adj": pval, "significant": pval < 0.05})
     else:
-        # One-way ANOVA / Welch
+        # Welch ANOVA (unequal variances): Welch (1951) F with the
+        # finite-sample correction and Satterthwaite-Welch denominator df.
+        # Never the equal-variance f_oneway under a Welch label (F01).
         arrays = [val_by_lvl[lvl] for lvl in valid_levels]
         try:
-            res = stats.f_oneway(*arrays)
-            stat = float(res.statistic) if not math.isnan(res.statistic) else 0.0
-            pval = float(res.pvalue) if not math.isnan(res.pvalue) else 1.0
+            stat, _df1, _df2, pval = _welch_anova(arrays)
         except Exception:
             stat, pval = 0.0, 1.0
 

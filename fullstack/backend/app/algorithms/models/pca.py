@@ -79,6 +79,9 @@ def compute_pca(
     max_k = min(n_samples - 1, p)
     k = max_k if n_components is None or n_components <= 0 else min(n_components, max_k)
 
+    full = PCA(n_components=max_k)
+    full.fit(X_scaled)
+    full_eigenvalues = full.explained_variance_
     pca = PCA(n_components=k)
     scores = pca.fit_transform(X_scaled)
     eigenvalues = pca.explained_variance_
@@ -86,8 +89,9 @@ def compute_pca(
     cumulative_variance_ratio = np.cumsum(explained_variance_ratio)
     eigenvectors = pca.components_  # shape: (k, p)
 
-    # Kaiser threshold: eigenvalue >= 1.0 for correlation matrix, or mean eigenvalue for covariance
-    kaiser_val = 1.0 if use_correlation else float(np.mean(eigenvalues))
+    # Kaiser threshold: eigenvalue >= 1.0 for correlation matrix, or mean eigenvalue for covariance.
+    # Always from the full spectrum, never from a truncated request (contract).
+    kaiser_val = 1.0 if use_correlation else float(np.mean(full_eigenvalues))
     kaiser_count = int(np.sum(eigenvalues >= kaiser_val))
     if kaiser_count == 0:
         kaiser_count = 1

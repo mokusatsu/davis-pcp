@@ -39,6 +39,8 @@ class SummaryRequest(BaseModel):
     expectedSchemaRevision: int | None = None
     expectedDataRevision: int | None = None
     weightColumn: str | None = None
+    weightMode: str | None = None
+    weightType: str | None = None
 
 
 @router.post("/summaries")
@@ -60,8 +62,29 @@ def _summaries(req: SummaryRequest) -> dict:
     codebook_dict = codebook
     for spec in (codebook or {}).get("columns", []):
         column_types[spec["name"]] = "numeric" if spec.get("scaleType") in ("ordinal", "interval", "ratio") else "categorical"
-    weight_spec = resolve_weight_column(codebook, req.weightColumn)
+    from ..domain.weight_mode import resolve_weight_request
+    from ..domain.survey_weight import resolve_weight_config
+    weight_mode, weight_reference = resolve_weight_request(
+        codebook, weight_mode=req.weightMode, weight_column=req.weightColumn,
+        weight_type=req.weightType)
+    weight_spec = resolve_weight_column(codebook, weight_reference)
     weight_name = weight_spec["name"] if weight_spec is not None else None
+    try:
+        weight_type = resolve_weight_config(codebook, weight_reference) if weight_spec is not None else None
+    except BizError:
+        # Legacy callers name a role=weight column without a declared
+        # weightConfig; treat it as unweighted-compatible frequency-style
+        # aggregation on the summary path (the crosstab path keeps the
+        # declared-type gate). The audit weightMode contract still applies:
+        # only explicit none disables a declared dataset default.
+        weight_type = None
+        if weight_reference is not None and (codebook or {}).get("weightConfig") is not None:
+            raise
+    if req.weightType is not None and weight_type is not None and req.weightType != weight_type:
+        raise BizError("WEIGHT_TYPE_MISMATCH", "weightType が保存済み設定と一致しません。",
+                       status_code=422)
+    if req.weightType is not None and weight_type is None and weight_spec is not None:
+        weight_type = req.weightType
     read_columns = ["__rowId__", *columns] if weight_name is None else ["__rowId__", *dict.fromkeys([*columns, weight_name])]
     row_ids_key = tuple(sorted(req.rowIds)) if req.rowIds is not None else None
     # dataRevision / maskRevision are part of the key: an undone revision can
@@ -83,8 +106,10 @@ def _summaries(req: SummaryRequest) -> dict:
             df = df.filter(pl.col("__rowId__").is_in(req.rowIds))
         subset = df.select(columns)
         if weight_spec is not None:
+            from ..domain.survey_weight import validate_weight_semantics
             weights, weight_missing, has_invalid = extract_weights(df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
+            validate_weight_semantics(weights, weight_type)
         payload = {
         "datasetId": req.datasetId,
         "schemaRevision": schema_revision,
@@ -96,7 +121,7 @@ def _summaries(req: SummaryRequest) -> dict:
         if req.correlation:
             numeric_cols = [c for c in columns if column_types.get(c) == "numeric"]
             normalized = CodebookAdapter(subset, codebook).analysis_frame()
-            payload["correlation"] = {"columns": numeric_cols, "matrix": correlation_matrix_df(normalized, numeric_cols)}
+            payload["correlation"] = {"columns": numeric_cols, "matrix": correlation_matrix_df(normalized, numeric_cols, weights=weights)}
         _cache[key] = payload
         if len(_cache) > 200:
             _cache.pop(next(iter(_cache)))
@@ -122,21 +147,23 @@ def _summaries(req: SummaryRequest) -> dict:
                                     "weightMissingCount": 0,
                                     "scopeHash": _scope_hash([str(v) for v in scope_ids])}
     if weight_spec is not None:
+        from ..domain.survey_weight import validate_weight_semantics as _validate_semantics
         if df is None or weights is None:
             weight_df = store.get_dataframe(req.datasetId, columns=["__rowId__", weight_name or ""])
             if req.rowIds is not None:
                 weight_df = weight_df.filter(pl.col("__rowId__").is_in(req.rowIds))
             weights, weight_missing, has_invalid = extract_weights(weight_df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
+            _validate_semantics(weights, weight_type)
         else:
             weight_df = df
-        positive_mass = round(sum(w for w in weights if w is not None and w > 0), 4)
+        positive_mass = sum(w for w in weights if w is not None and w > 0)
         weight_missing = sum(1 for w in weights if w is None)
         weight_status = weighted_status(True, positive_mass)
         weight_block = {"weightStatus": weight_status, "weightApplied": weight_status == "applied",
                         "weightColumn": weight_name, "weightColumnId": weight_spec["columnId"],
                         "unweightedN": len(scope_ids),
-                        "weightedN": positive_mass if weight_status == "applied" else None,
+                        "weightedN": round(positive_mass, 4) if weight_status == "applied" else None,
                         "weightMissingCount": weight_missing,
                         "scopeHash": _scope_hash([str(v) for v in scope_ids])}
         if weight_status == "no_positive_weight":
@@ -202,10 +229,17 @@ class QQPlotRequest(BaseModel):
 @router.post("/summaries/qqplot")
 def qqplot_summary(req: QQPlotRequest) -> dict:
     from ..algorithms.summaries.qqplot import compute_qqplot
+    from ..domain.codebook_adapter import CodebookAdapter
+    codebook = store.load_codebook(req.datasetId) or {}
     df = store.get_dataframe(req.datasetId)
     if req.rowIds is not None:
         wanted = set(req.rowIds)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
+    if req.column in df.columns:
+        adapter = CodebookAdapter(df, codebook)
+        masked = adapter.mask_missing_values(req.column)
+        analysis = adapter.analysis_series(req.column) if (adapter.get_column_spec_optional(req.column) or {}).get("scaleType") in ("ordinal", "interval", "ratio", "numeric") else masked
+        df = df.with_columns(analysis.alias(req.column))
     return compute_qqplot(df, column=req.column, plotting_position=req.plottingPosition)
 
 
@@ -219,6 +253,8 @@ class CrosstabContext(BaseModel):
     selectedRowIds: list[str] | None = None
     sampledRowIds: list[str] | None = None
     weightColumn: str | None = None
+    weightMode: str | None = None
+    weightType: str | None = None
     missingPolicy: str = "exclude"
 
 
@@ -278,15 +314,21 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
             raise BizError("CROSSTAB_INFERENCE",
                            f"inferenceは{'/'.join(REQUESTED_METHODS)}のいずれかです。",
                            status_code=422)
-        # The dataset decides which weight its analyses use; the request may
-        # override it, but an override also has to carry a declared meaning.
-        weight_reference = context.weightColumn or declared_weight_column_id(codebook)
+        # FIX_SPEC §4.1: dataset (default) uses the saved weightConfig; only
+        # explicit none disables it. Legacy omitted/null migrates to dataset.
+        from ..domain.weight_mode import resolve_weight_request
+        _weight_mode, weight_reference = resolve_weight_request(
+            codebook, weight_mode=context.weightMode,
+            weight_column=context.weightColumn, weight_type=context.weightType)
         weight_spec = resolve_weight_column(codebook, weight_reference)
         weight_name = weight_spec["name"] if weight_spec is not None else None
         weight_column_id = weight_spec["columnId"] if weight_spec is not None else None
         # The weight's *meaning* has to be declared before it is used; there is
         # no silent default (spec §26).
         weight_type = resolve_weight_config(codebook, weight_reference)
+        if context.weightType is not None and weight_type is not None and context.weightType != weight_type:
+            raise BizError("WEIGHT_TYPE_MISMATCH", "weightType が保存済み設定と一致しません。",
+                           status_code=422)
         from ..domain.analysis_columns import resolve_analysis_columns
 
         if req.rowVariableId == req.colVariableId:
@@ -337,7 +379,7 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
             weights, weight_missing, has_invalid = extract_weights(df, weight_name or "", weight_spec)
             check_weights_valid(weights, has_invalid)
             validate_weight_semantics(weights, weight_type)
-            positive_mass = round(sum(w for w in weights if w is not None and w > 0), 4)
+            positive_mass = sum(w for w in weights if w is not None and w > 0)
             if positive_mass <= 0:
                 raise BizError("WEIGHT_NO_POSITIVE", "正のウェイトが存在しません。",
                                status_code=422)

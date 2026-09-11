@@ -103,10 +103,17 @@ if _frontend_dist.exists():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:
         """SPA history fallback: serve index.html for client-side routes."""
-        candidate = _frontend_dist / full_path
-        if full_path and candidate.is_file():
+        from fastapi import HTTPException
+
+        root = _frontend_dist.resolve()
+        candidate = (root / (full_path or "")).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if full_path and candidate != root and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(_frontend_dist / "index.html")
+        return FileResponse(root / "index.html")
 
 
 @app.on_event("startup")

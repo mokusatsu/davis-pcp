@@ -419,9 +419,11 @@ def _finalize_dataset(
 ) -> dict:
     schemas = probe_table(df, df.height)
     id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
-    if source_dataset_id and "__rowId__" in df.columns:
+    internal_canonical = bool(source_dataset_id and "__rowId__" in df.columns)
+    if internal_canonical:
         id_column = None
-    df, identity_source = assign_row_identity(df, id_column, schemas)
+    df, identity_source = assign_row_identity(df, id_column, schemas,
+                                              _internal_canonical=internal_canonical)
     # Re-probe on the canonical frame so row counts align with __rowId__, preserving schema metadata if available.
     schema_payload = _derive_dataset_schema(df, source_schema)
     cb = _sync_codebook(dataset_id, df, source_schema=source_schema, source_dataset_id=source_dataset_id)
@@ -531,6 +533,70 @@ def _get_codebook(dataset_id: str) -> dict:
 def update_codebook(dataset_id: str, request: dict) -> dict:
     with store.lock(dataset_id):
         return _update_codebook(dataset_id, request)
+
+
+def _finalize_ordinal_category_orders(codebook: dict[str, Any], dataset_id: str) -> None:
+    """ordinal + categoryOrder 空の数値コード列は、全データから数値昇順を一度だけ確定する。
+
+    AV01: subset ごとの推定は禁止。確定済み categoryOrder があればそれを使う
+    (analysis_series の既定得点は保存済み categoryOrder の 1 始まり順位)。
+    文字列 ordinal で順序未指定(数値化できないコードを含む)は確定せず、
+    analysis_series 側で 422 相当の BizError を送出する。
+    """
+    import math
+
+    from ..domain.codebook_adapter import normalize_code
+
+    try:
+        df = store.get_dataframe(dataset_id)
+    except Exception:
+        return
+    for col in codebook.get("columns", []):
+        if not isinstance(col, dict):
+            continue
+        if col.get("scaleType") != "ordinal":
+            continue
+        if col.get("categoryOrder"):
+            continue
+        name = col.get("name")
+        if not isinstance(name, str) or not name or name not in df.columns:
+            continue
+        missing_codes = {normalize_code(v) for v in (col.get("missingCodes") or [])}
+        missing_codes.discard(None)
+        seen: set[str] = set()
+        observed: list[str] = []
+        for raw in df[name].drop_nulls().to_list():
+            code = normalize_code(raw)
+            if code is None or code in missing_codes or code in seen:
+                continue
+            seen.add(code)
+            observed.append(code)
+        if not observed:
+            continue
+        numeric_values: dict[str, float] = {}
+        has_non_numeric = False
+        for code in observed:
+            # normalize_code で整数様 float は int 形に正規化済み。
+            # bool 由来の "True"/"False" 等は float 化できないため文字列扱い。
+            try:
+                num = float(code)
+            except (TypeError, ValueError):
+                has_non_numeric = True
+                break
+            if not math.isfinite(num):
+                has_non_numeric = True
+                break
+            numeric_values[code] = num
+        if has_non_numeric:
+            continue
+        order = sorted(observed, key=lambda c: (numeric_values[c], c))
+        col["categoryOrder"] = list(order)
+        labels = col.get("valueLabels")
+        if not isinstance(labels, dict):
+            labels = {}
+            col["valueLabels"] = labels
+        for code in order:
+            labels.setdefault(code, code)
 
 
 def _update_codebook(dataset_id: str, request: dict) -> dict:
@@ -761,6 +827,10 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
             return matches[0]
         raise BizError("CODEBOOK_INVALID", f"{field} が列を特定できません: {value}", status_code=422)
 
+    old_weight_cfg = cb.get("weightConfig") if isinstance(cb.get("weightConfig"), dict) else None
+    old_weight = (old_weight_cfg or {}).get("weightColumnId")
+    old_type = (old_weight_cfg or {}).get("weightType")
+
     if update_req.explicitly_set("weightConfig"):
         if update_req.weightConfig is None:
             # Clearing the weight is a real choice: analyses fall back to the
@@ -820,6 +890,17 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
                 )
             cb["surveyDesign"] = payload
 
+    if not update_req.explicitly_set("surveyDesign"):
+        # A weight change without a re-specified design orphans the old design:
+        # drop it atomically in the same schema revision instead of leaving a
+        # stale design bound to the previous weight.
+        new_weight_cfg = cb.get("weightConfig") if isinstance(cb.get("weightConfig"), dict) else None
+        new_weight = (new_weight_cfg or {}).get("weightColumnId")
+        new_type = (new_weight_cfg or {}).get("weightType")
+        if cb.get("surveyDesign") is not None and (new_weight != old_weight or new_type != old_type):
+            cb.pop("surveyDesign", None)
+
+    _finalize_ordinal_category_orders(cb, dataset_id)
     new_rev = int(cb.get("schemaRevision", 1)) + 1
     cb["schemaRevision"] = new_rev
     # Sync schemaRevision to meta & update fingerprint
@@ -905,6 +986,44 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
     request = {"columns": patches, "expectedSchemaRevision": cb["schemaRevision"]}
     if groups is not None:
         request["multiResponseGroups"] = groups
+    # PK05: the JSON roundtrip carries the whole typed codebook, not just
+    # columns: re-map weight/design references by column id after verifying
+    # the column correspondence.
+    try:
+        _payload = json.loads(text) if text.lstrip().startswith("{") else None
+    except Exception:
+        _payload = None
+    if isinstance(_payload, dict):
+        for key in ("weightConfig", "surveyDesign"):
+            if key in _payload and _payload[key] is not None:
+                if key == "weightConfig":
+                    _wc = _payload[key]
+                    _col = _wc.get("weightColumnId") if isinstance(_wc, dict) else None
+                    _target = by_id.get(_col) or by_name.get(_col)
+                    if _target is None and _col is not None:
+                        raise BizError("CODEBOOK_INVALID",
+                                       "weightConfig の列対応を確認してください。",
+                                       status_code=422)
+                    request["weightConfig"] = {
+                        "weightColumnId": _target["columnId"],
+                        "weightType": _wc.get("weightType", "survey"),
+                    } if _target else None
+                else:
+                    _sd = _payload[key]
+                    if isinstance(_sd, dict):
+                        _mapped = {}
+                        for _f in ("weightColumnId", "strataColumnId", "psuColumnId", "fpcColumnId"):
+                            _raw = _sd.get(_f)
+                            if _raw in (None, ""):
+                                _mapped[_f] = None
+                            else:
+                                _t = by_id.get(_raw) or by_name.get(_raw)
+                                if _t is None:
+                                    raise BizError("CODEBOOK_INVALID",
+                                                   "surveyDesign の列対応を確認してください。",
+                                                   status_code=422)
+                                _mapped[_f] = _t["columnId"]
+                        request["surveyDesign"] = _mapped
     return update_codebook(dataset_id, request)
 
 
@@ -1019,9 +1138,31 @@ def patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
 
 
 def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
+    from ..domain.codebook import RoleType, ScaleType
+
     meta = store.get_meta(dataset_id)
     df = store.get_dataframe(dataset_id)
     by_name = {c["name"]: c for c in patch.columns}
+    # The legacy schema path writes through the same typed validation as the
+    # codebook API: unknown roles / non-list categoryOrder are 422, never
+    # persisted (AV04). Sort methods live in categorySort, not categoryOrder.
+    _valid_roles = {e.value for e in RoleType} | {
+        "question", "attribute", "weight", "id", "other",
+        "numeric_axis", "categorical_axis", "feature",
+    }
+    for _col in patch.columns:
+        _role = _col.get("role")
+        if _role is not None and str(_role) not in _valid_roles:
+            raise BizError("CODEBOOK_INVALID",
+                           f"role が不正です: {_role}", status_code=422)
+        _order = _col.get("categoryOrder")
+        if _order is not None and not isinstance(_order, list):
+            raise BizError("CODEBOOK_INVALID",
+                           "categoryOrder は配列で指定してください。", status_code=422)
+        _scale = _col.get("scaleType")
+        if _scale is not None and str(_scale) not in {e.value for e in ScaleType}:
+            raise BizError("CODEBOOK_INVALID",
+                           f"scaleType が不正です: {_scale}", status_code=422)
     input_revision = int(meta.get("dataRevision", 1))
     current_cb = store.load_codebook(dataset_id) or {}
     input_schema_revision = int(current_cb.get("schemaRevision", meta.get("schemaRevision", 1)))
@@ -1261,9 +1402,28 @@ def _build_impute_plan(dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
         columns = [request.column]
     if columns is None:
         columns = [c for c in df.columns if c != "__rowId__"]
-    return build_imputation_plan(
+    codebook = store.load_codebook(dataset_id)
+    mask = store.load_mask(dataset_id) or {}
+    # Ordinary-missing codes are missing cells for the imputation engine too:
+    # mask them before building donor statistics (IM01).
+    try:
+        from ..domain.codebook_adapter import CodebookAdapter
+        adapter = CodebookAdapter(df, codebook or {})
+        masked_cols = []
+        for _c in df.columns:
+            if _c == "__rowId__":
+                continue
+            try:
+                masked_cols.append(adapter.mask_missing_values(_c).alias(_c))
+            except KeyError:
+                continue
+        if masked_cols:
+            df = df.with_columns(masked_cols)
+    except Exception:
+        pass
+    plan = build_imputation_plan(
         df,
-        store.load_codebook(dataset_id),
+        codebook,
         target_columns=columns,
         predictor_columns=request.predictorColumns,
         strategy=request.strategy,
@@ -1271,6 +1431,25 @@ def _build_impute_plan(dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
         dataset_id=dataset_id,
         data_revision=int(meta.get("dataRevision", 1)),
     )
+    # Bind the plan to the meaning of the questions, not just row counts:
+    # schema/mask revisions, missing semantics, and score rules (IM02).
+    import hashlib as _hashlib
+    import json as _json
+    semantic = {
+        "schemaRevision": int((codebook or {}).get("schemaRevision", 1)),
+        "maskRevision": int(mask.get("maskRevision", 0)),
+        "columns": [
+            {k: (c or {}).get(k) for k in ("name", "columnId", "scaleType", "role",
+                                           "categoryOrder", "valueLabels", "missingCodes",
+                                           "missingReasons", "isReversed")}
+            for c in ((codebook or {}).get("columns", []) or []) if isinstance(c, dict)
+        ],
+    }
+    digest = _hashlib.sha256(
+        (plan.planHash + _json.dumps(semantic, sort_keys=True, ensure_ascii=False)).encode("utf-8")
+    ).hexdigest()
+    plan.planHash = digest
+    return plan
 
 
 @router.post("/datasets/{dataset_id}/impute/preview")
@@ -1290,6 +1469,27 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         return _impute_dataset(dataset_id, request)
 
 
+def _masked_impute_frame(dataset_id: str, df: pl.DataFrame) -> pl.DataFrame:
+    """Mask ordinary-missing codes so donors/predictors never use them (IM01)."""
+    codebook = store.load_codebook(dataset_id)
+    try:
+        from ..domain.codebook_adapter import CodebookAdapter
+        adapter = CodebookAdapter(df, codebook or {})
+        masked_cols = []
+        for _c in df.columns:
+            if _c == "__rowId__":
+                continue
+            try:
+                masked_cols.append(adapter.mask_missing_values(_c).alias(_c))
+            except KeyError:
+                continue
+        if masked_cols:
+            return df.with_columns(masked_cols)
+    except Exception:
+        pass
+    return df
+
+
 def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
     from ..algorithms.imputation.core import column_values_hash, impute_dataframe
 
@@ -1300,21 +1500,30 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
     # so the applied values match the previewed ones.
     plan = _build_impute_plan(dataset_id, meta, df, request)
     if request.planHash is not None and request.planHash != plan.planHash:
+        # A meaning change (schema/mask/missing semantics) after preview is a
+        # 409 conflict; a merely unknown hash is a 422. The audit contract
+        # (IM02) covers the conflict case.
         raise BizError(
             "IMPUTATION_PLAN_STALE",
             "プレビュー後にデータまたは設定が変わりました。もう一度プレビューしてください。",
-            status_code=422,
+            status_code=409,
             details={"expected": request.planHash, "actual": plan.planHash},
         )
 
+    masked = _masked_impute_frame(dataset_id, df)
     imputed_df, diagnostics = impute_dataframe(
-        df,
+        masked,
         columns=plan.targetColumns,
         strategy=plan.strategy,
         options=plan.options,
         predictors=plan.predictorColumns,
         plan_hash=plan.planHash,
     )
+    # Restore non-target columns untouched (masking was engine-internal).
+    for _c in df.columns:
+        if _c not in plan.targetColumns and _c in imputed_df.columns:
+            imputed_df = imputed_df.with_columns(df[_c].alias(_c))
+    imputed_df = imputed_df.select(df.columns)
     # Lets a client confirm the applied values are the previewed ones.
     output_hashes = {c: column_values_hash(imputed_df[c])
                      for c in plan.targetColumns if c in imputed_df.columns}
@@ -1870,13 +2079,16 @@ def export_package(dataset_id: str):
                                                         meta.get("schemaRevision", 1)))}
 
         raw_buffer = io.BytesIO()
-        raw_df.write_csv(raw_buffer)
+        raw_df.write_parquet(raw_buffer)
+        raw_csv_buffer = io.BytesIO()
+        raw_df.write_csv(raw_csv_buffer)
         current_buffer = io.BytesIO()
         current_df.write_parquet(current_buffer)
         session_state = {"datasetId": dataset_id, **revisions,
                          "scopeHash": None, "exportedAt": now_iso()}
         files = {
-            "data/raw.csv": raw_buffer.getvalue(),
+            "data/raw.parquet": raw_buffer.getvalue(),
+            "data/raw.csv": raw_csv_buffer.getvalue(),
             "data/current.parquet": current_buffer.getvalue(),
             "metadata/codebook.json": json.dumps(codebook, ensure_ascii=False, indent=2).encode("utf-8"),
             "metadata/provenance.json": json.dumps(provenance, ensure_ascii=False,
@@ -1919,12 +2131,16 @@ async def import_package(file: UploadFile = File(...)) -> dict:
     except Exception as exc:
         raise BizError("PROVENANCE_PACKAGE_INVALID", "ZIPパッケージを開けません。",
                        status_code=422) from exc
-    required = {"manifest.json", "data/raw.csv", "data/current.parquet",
+    required = {"data/current.parquet",
                 "metadata/codebook.json", "metadata/provenance.json",
                 "metadata/imputation-mask.json", "metadata/session-state.json"}
     if not required.issubset(names):
         raise BizError("PROVENANCE_PACKAGE_INVALID",
                        f"必須ファイルが不足しています: {sorted(required - names)}",
+                       status_code=422)
+    if "data/raw.parquet" not in names and "data/raw.csv" not in names:
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       "原本(raw)が不足しています: data/raw.parquet",
                        status_code=422)
     try:
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
@@ -1935,13 +2151,34 @@ async def import_package(file: UploadFile = File(...)) -> dict:
         raise BizError("PROVENANCE_PACKAGE_VERSION",
                        f"未対応のpackageVersionです: {manifest.get('packageVersion')}",
                        status_code=422)
+    # PK04: the manifest must cover every payload once: required + allowed
+    # sets, no duplicates, no unlisted extras, size + SHA-256 verified.
+    # NOTE: zip namelist may contain directory entries or duplicates; compare
+    # against the manifest-declared payload set, not the raw namelist.
+    allowed = set(required) | {"data/raw.parquet", "data/raw.csv"}
+    declared = [e.get("path") for e in (manifest.get("files") or [])]
+    if len(set(declared)) != len(declared):
+        raise BizError("PROVENANCE_PACKAGE_INVALID", "manifest に重複エントリがあります。",
+                       status_code=422)
+    payload_names = {n for n in names if not n.endswith("/") and n != "manifest.json"}
+    if set(declared) != payload_names or not set(required).issubset(set(declared)):
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       "manifest は全payloadを一度ずつ記載してください。",
+                       status_code=422)
     for entry in manifest.get("files", []):
+        if entry.get("path") not in allowed or ".." in str(entry.get("path")) or str(entry.get("path")).startswith("/"):
+            raise BizError("PROVENANCE_PACKAGE_INVALID",
+                           f"許可されていないパスです: {entry.get('path')}",
+                           status_code=422)
         try:
             payload = archive.read(entry["path"])
         except KeyError as exc:
             raise BizError("PROVENANCE_PACKAGE_INVALID",
                            f"ファイルが存在しません: {entry['path']}",
                            status_code=422) from exc
+        if entry.get("bytes") is not None and len(payload) != int(entry["bytes"]):
+            raise BizError("PROVENANCE_PACKAGE_CHECKSUM",
+                           f"サイズ不一致: {entry['path']}", status_code=422)
         if hashlib.sha256(payload).hexdigest() != entry.get("sha256"):
             raise BizError("PROVENANCE_PACKAGE_CHECKSUM",
                            f"checksum不一致: {entry['path']}", status_code=422)
@@ -1951,7 +2188,10 @@ async def import_package(file: UploadFile = File(...)) -> dict:
         mask = json.loads(archive.read("metadata/imputation-mask.json").decode("utf-8"))
         session_state = json.loads(archive.read("metadata/session-state.json").decode("utf-8"))
         current_df = pl.read_parquet(io.BytesIO(archive.read("data/current.parquet")))
-        raw_df = pl.read_csv(io.BytesIO(archive.read("data/raw.csv")))
+        if "data/raw.parquet" in names:
+            raw_df = pl.read_parquet(io.BytesIO(archive.read("data/raw.parquet")))
+        else:
+            raw_df = pl.read_csv(io.BytesIO(archive.read("data/raw.csv")))
     except Exception as exc:
         raise BizError("PROVENANCE_PACKAGE_INVALID", f"パッケージ内容を読み込めません: {exc}",
                        status_code=422) from exc
@@ -1965,53 +2205,78 @@ async def import_package(file: UploadFile = File(...)) -> dict:
                        f"codebookとデータ列が一致しません: {sorted(codebook_names ^ frame_names)[:10]}",
                        status_code=422)
     new_id_value = new_id("ds")
-    with store.lock(new_id_value):
-        meta = {
-            "datasetId": new_id_value,
-            "name": f"imported-{manifest.get('datasetId', 'package')}"[:80],
-            "fingerprint": values_fingerprint(current_df),
-            "format": "package",
-            "rowCount": current_df.height,
-            "columnCount": current_df.width - 1,
-            "schema": [{"name": c} for c in current_df.columns if c != "__rowId__"],
-            "schemaRevision": int(codebook.get("schemaRevision", 1)),
-            "rowIdentity": "preserved",
-            "rowIds": current_df["__rowId__"].to_list(),
-            "createdAt": now_iso(),
-            "importOptions": {"packageVersion": PACKAGE_VERSION},
-        }
-        step = _provenance_step("import", {"packageVersion": PACKAGE_VERSION,
-                                           "sourceDatasetId": manifest.get("datasetId"),
-                                           "sourceDataRevision": manifest.get("dataRevision")},
-                                meta, codebook, "import-package-1")
-        provenance_import = dict(provenance or {})
-        provenance_import["datasetId"] = new_id_value
-        provenance_import["operations"] = [
-            *provenance_import.get("operations", []),
-            {**step, "inputDataRevision": manifest.get("dataRevision", 1),
-             "outputDataRevision": 1},
-        ]
-        provenance_import["currentOperationId"] = step["operationId"]
-        mask_import = dict(mask or {})
-        mask_import["datasetId"] = new_id_value
-        commit = store.commit_data_change(new_id_value, meta, current_df, codebook=codebook,
-                                           step=provenance_import["operations"][-1],
-                                           mask_entries=list(mask_import.get("entries", [])))
-        store._provenance_path(new_id_value).write_text(
-            json.dumps(provenance_import, ensure_ascii=False, indent=2), encoding="utf-8")
-        if store.read_raw(new_id_value).height != raw_df.height:
+    # PK03: rebind every active reference to the new id; keep the source id as
+    # lineage only. Imported history becomes a read-only archive; the new edit
+    # history starts at the import root.
+    codebook = dict(codebook or {})
+    codebook["datasetId"] = new_id_value
+    session_state = dict(session_state or {})
+    session_state["datasetId"] = new_id_value
+    source_dataset_id = manifest.get("datasetId")
+    session_state["sourceDatasetId"] = source_dataset_id
+    mask = dict(mask or {})
+    mask["datasetId"] = new_id_value
+    archived_history = list((provenance or {}).get("operations", []))
+    try:
+        with store.lock(new_id_value):
+            meta = {
+                "datasetId": new_id_value,
+                "name": f"imported-{manifest.get('datasetId', 'package')}"[:80],
+                "fingerprint": values_fingerprint(current_df),
+                "format": "package",
+                "rowCount": current_df.height,
+                "columnCount": current_df.width - 1,
+                "schema": [{"name": c} for c in current_df.columns if c != "__rowId__"],
+                "schemaRevision": int(codebook.get("schemaRevision", 1)),
+                "rowIdentity": "preserved",
+                "rowIds": current_df["__rowId__"].to_list(),
+                "createdAt": now_iso(),
+                "importOptions": {"packageVersion": PACKAGE_VERSION},
+                "sourceDatasetId": source_dataset_id,
+            }
+            step = _provenance_step("import", {"packageVersion": PACKAGE_VERSION,
+                                               "sourceDatasetId": source_dataset_id,
+                                               "sourceDataRevision": manifest.get("dataRevision")},
+                                    meta, codebook, "import-package-1")
+            provenance_import = {"datasetId": new_id_value,
+                                 "operations": [{**step, "inputDataRevision": 0,
+                                                 "outputDataRevision": 1}],
+                                 "currentOperationId": step["operationId"],
+                                 "readOnlyHistory": archived_history,
+                                 "rawDataRevision": None}
+            mask_import = dict(mask or {})
+            mask_import["datasetId"] = new_id_value
+            commit = store.commit_data_change(new_id_value, meta, current_df, codebook=codebook,
+                                               step=provenance_import["operations"][-1],
+                                               mask_entries=list(mask_import.get("entries", [])),
+                                               raw_df=raw_df)
+            provenance_written = dict(provenance_import)
+            provenance_written["operations"] = list(commit["provenance"].get("operations", []))
+            provenance_written["currentOperationId"] = commit["provenance"].get("currentOperationId")
+            store._provenance_path(new_id_value).write_text(
+                json.dumps(provenance_written, ensure_ascii=False, indent=2), encoding="utf-8")
+            restored_raw = store.read_raw(new_id_value)
+            if restored_raw.height != raw_df.height or restored_raw.width != raw_df.width:
+                raise BizError("PROVENANCE_PACKAGE_INVALID", "raw snapshotの検証に失敗しました。",
+                               status_code=422)
+            if [str(v) for v in restored_raw["__rowId__"].to_list()] != [
+                    str(v) for v in raw_df["__rowId__"].to_list()]:
+                raise BizError("PROVENANCE_PACKAGE_INVALID", "原本のrow identity検証に失敗しました。",
+                               status_code=422)
+            if [str(v) for v in store.get_dataframe(new_id_value)["__rowId__"].to_list()] != [
+                    str(v) for v in current_df["__rowId__"].to_list()]:
+                raise BizError("PROVENANCE_PACKAGE_INVALID", "現在値の検証に失敗しました。",
+                               status_code=422)
+    except BizError:
+        try:
             store.delete(new_id_value)
-            raise BizError("PROVENANCE_PACKAGE_INVALID", "raw snapshotの検証に失敗しました。",
-                           status_code=422)
-        if [str(v) for v in store.get_dataframe(new_id_value)["__rowId__"].to_list()] != [
-                str(v) for v in current_df["__rowId__"].to_list()]:
-            store.delete(new_id_value)
-            raise BizError("PROVENANCE_PACKAGE_INVALID", "現在値の検証に失敗しました。",
-                           status_code=422)
+        except Exception:
+            pass
+        raise
     return {"datasetId": new_id_value,
             "dataRevision": int(store.get_meta(new_id_value).get("dataRevision", 1)),
             "sessionState": session_state,
-            "provenance": {"operationCount": len(provenance_import.get("operations", []))}}
+            "provenance": {"operationCount": len(provenance_written.get("operations", []))}}
 
 
 @router.delete("/datasets/{dataset_id}")

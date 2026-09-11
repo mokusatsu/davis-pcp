@@ -198,12 +198,22 @@ class CodebookAdapter:
 
     def analysis_series(self, col_name: str) -> pl.Series:
         """Normalize ordinal scores and exclude missing codes before analysis."""
+        from .errors import BizError
+
         spec = self.get_column_spec_optional(col_name) or {}
         series = self.mask_missing_values(col_name)
         if spec.get("scaleType") == "ordinal":
             categories = self.get_ordered_categories(col_name)
             if not categories:
-                raise KeyError(f"Column '{col_name}' has no fixed ordinal categories.")
+                # 順序未確定の ordinal は subset ごとに推定せず 422。
+                # 数値コードのみの列は update_codebook 時に全データから
+                # 数値昇順で categoryOrder に確定されるため、ここに来るのは
+                # 文字列 ordinal(順序未指定)または確定を経ていない列である。
+                raise BizError(
+                    "ORDINAL_ORDER_REQUIRED",
+                    f"順序尺度 '{col_name}' には順序の確定(categoryOrder)が必要です。",
+                    status_code=422,
+                )
             if spec.get("isReversed"):
                 categories = list(reversed(categories))
             scores = {code: float(i + 1) for i, code in enumerate(categories)}
@@ -239,6 +249,20 @@ class CodebookAdapter:
         category_order = spec.get("categoryOrder") or []
         missing_codes = {normalize_code(v) for v in (spec.get("missingCodes") or [])}
         missing_codes.discard(None)
+        # A declared discrete domain (non-empty categoryOrder) is authoritative:
+        # values outside it are invalid, never donors for an expanded reverse
+        # bound, and never analysis values (AV02).
+        declared_domain = {normalize_code(v) for v in category_order}
+        declared_domain.discard(None)
+        declared_domain -= missing_codes
+        if declared_domain:
+            domain_list = list(declared_domain)
+            series = series.map_elements(
+                lambda v: v if (normalize_code(v) is None or normalize_code(v) in declared_domain) else None,
+                return_dtype=series.dtype,
+                skip_nulls=False,
+            )
+            numeric_series = series.map_elements(_to_float_if_possible, return_dtype=pl.Float64, skip_nulls=False)
         category_order_values = [v for v in [_to_float_if_possible(v) for v in category_order]
                                  if v is not None and normalize_code(v) not in missing_codes]
 

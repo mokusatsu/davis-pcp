@@ -25,14 +25,26 @@ def _finite_values(frame: pl.DataFrame, column: str) -> np.ndarray:
 
 
 def _mean_ci(values: np.ndarray) -> tuple[float | None, list[float] | None]:
-    n = int(len(values))
+    from scipy import stats as _stats
+
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    n = int(len(finite))
     if n == 0:
         return None, None
-    mean = float(np.mean(values))
+    mean = float(np.mean(finite))
     if n < 2:
         return mean, None
-    se = float(np.std(values, ddof=1) / math.sqrt(n))
-    return mean, [round(mean - 1.96 * se, 4), round(mean + 1.96 * se, 4)]
+    sd = float(np.std(finite, ddof=1))
+    if not math.isfinite(sd):
+        return mean, None
+    se = sd / math.sqrt(n)
+    if se <= 0:
+        return mean, [round(mean, 4), round(mean, 4)]
+    critical = float(_stats.t.ppf(0.975, n - 1))
+    if not math.isfinite(critical):
+        return mean, None
+    return mean, [round(mean - critical * se, 4), round(mean + critical * se, 4)]
 
 
 def _direction(value: float | None, tolerance: float = 1e-12) -> str:
@@ -150,10 +162,13 @@ def run_sensitivity_analysis(
     reason = ("direction_and_ci_status_preserved" if is_robust
               else "direction_or_ci_status_changed" if not direction_ok or base_crosses != sens_crosses
               else "relative_change_exceeded")
+    confidence_method = ("welch_t_difference" if (group_column and compare_groups
+                                                 and len(compare_groups) >= 2)
+                         else "student_t_mean")
     return {
         "runId": str(uuid.uuid4()),
         "method": "standardized_deviation",
-        "confidenceMethod": "welch_t_interval",
+        "confidenceMethod": confidence_method,
         "threshold": threshold,
         "bootstrapB": None,
         "seed": None,

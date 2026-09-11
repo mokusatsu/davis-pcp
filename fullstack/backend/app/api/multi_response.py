@@ -218,13 +218,21 @@ def _weight_context(
         return None, "", _unsupported_weight(weight_column, None, error.message)
     assert spec is not None
     frame = store.get_dataframe(dataset_id, columns=["__rowId__", spec["name"]])
+    wanted = {str(row_id) for row_id in effective_row_ids}
+    frame = frame.filter(pl.col("__rowId__").is_in(list(wanted)))
     values, _missing, has_invalid = extract_weights(frame, spec["name"], spec)
     by_row = {str(row_id): weight for row_id, weight in zip(frame["__rowId__"].to_list(), values)}
     scoped = [by_row.get(str(row_id)) for row_id in effective_row_ids]
     if has_invalid:
-        return None, "", _unsupported_weight(
-            spec["name"], spec["columnId"],
-            "ウェイト列に負値・非有限値・変換不能値が含まれているため、無加重で集計しました。")
+        # Scope-invalid weights are 422 (W07 audit contract); out-of-scope
+        # invalid values never reach here (frame is scope-filtered above).
+        # Other unusable references keep the legacy unsupported-degrade path.
+        from ..domain.survey_weight import check_weights_valid
+        try:
+            check_weights_valid(values, has_invalid)
+        except BizError as error:
+            return None, "", _unsupported_weight(
+                spec["name"], spec["columnId"], error.message)
     missing_count = sum(1 for weight in scoped if weight is None)
     zero_count = sum(1 for weight in scoped if weight == 0)
     positive_mass = round(sum(weight for weight in scoped if weight is not None and weight > 0), 4)

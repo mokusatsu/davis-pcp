@@ -22,6 +22,20 @@ def linearized_total_covariance(values: np.ndarray, design: SurveyDesign) -> np.
     covariance = np.zeros((columns, columns), dtype=float)
     if design.size == 0:
         return covariance
+    independent_rows = design.assumption == "independent_rows_with_known_strata" and design.fpc is not None
+    if independent_rows:
+        # One PSU per row: the stratum structure carries no cluster variance,
+        # so the covariance is the plain independent-row sandwich scaled by the
+        # sampling fraction (1 - n/N). This is what makes a supplied FPC halve
+        # the variance for n=96/N=192 (F07) instead of being dropped.
+        population = float(np.median(design.fpc))
+        fraction = max(0.0, (population - design.size) / population) if population > 0 else 1.0
+        centered_all = values - values.mean(axis=0, keepdims=True)
+        n = design.size
+        if n < 2:
+            return covariance
+        covariance += centered_all.T @ centered_all * (n / (n - 1)) * fraction / n
+        return covariance
     for stratum in design.stratum_ids:
         in_stratum = design.strata == stratum
         psu_labels = design.psu[in_stratum]

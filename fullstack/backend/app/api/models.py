@@ -386,6 +386,11 @@ class KdaRequest(BaseModel):
     outcome: str
     drivers: list[str] | None = None
     method: str = "shapley_lmg"
+    rowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
+
+    model_config = {"extra": "forbid"}
 
 
 @router.post("/models/kda")
@@ -394,10 +399,21 @@ def calculate_kda(req: KdaRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
+    from .multi_response import _check_revisions, _collect_revisions
     meta = store.get_meta(dataset_id)
+    cb = store.load_codebook(dataset_id) or {}
+    revisions = _collect_revisions(meta, cb)
+    _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+    df = store.get_dataframe(dataset_id)
+    if req.rowIds is not None:
+        known = {str(v) for v in df["__rowId__"].to_list()}
+        unknown = sorted({str(v) for v in req.rowIds} - known)
+        if unknown:
+            raise BizError("ANALYSIS_SCOPE_UNKNOWN_ROW", "存在しないrowIdが指定されています。",
+                           status_code=422,
+                           details={"unknownRowIds": unknown[:20], "unknownCount": len(unknown)})
+        df = df.filter(pl.col("__rowId__").is_in([str(v) for v in req.rowIds]))
     schema = meta.get("schema", [])
-    cb = store.load_codebook(dataset_id)
     adapter = CodebookAdapter(df, cb)
     df = adapter.analysis_frame()
     if cb:

@@ -38,7 +38,7 @@ class AnalysisContext(BaseModel):
 
     @model_validator(mode="after")
     def _check_scope(self) -> "AnalysisContext":
-        if self.scope == "explicit" and not self.rowIds:
+        if self.scope == "explicit" and self.rowIds is None:
             raise ValueError("scope=explicit requires rowIds")
         if self.missingPolicy not in MISSING_POLICIES:
             raise ValueError(f"missingPolicy must be one of {MISSING_POLICIES}")

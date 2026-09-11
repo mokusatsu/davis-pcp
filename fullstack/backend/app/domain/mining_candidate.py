@@ -166,11 +166,23 @@ def modern_candidate(item: dict[str, Any]) -> PinnedCandidate | None:
     target_pair = item.get("target_pair")
     target_pair = [str(v) for v in target_pair] if isinstance(target_pair, (list, tuple)) else None
     pair_mode = bool(target_pair) and bool(item.get("emm_stats"))
+    chosen_category = (item.get("chosen_category") if item.get("chosen_category") is not None
+                       else item.get("chosenCategory") if item.get("chosenCategory") is not None
+                       else item.get("target_category") if item.get("target_category") is not None
+                       else item.get("targetCategory") if item.get("targetCategory") is not None
+                       else item.get("target_binary_category") if item.get("target_binary_category") is not None
+                       else item.get("targetBinaryCategory"))
+    target_type = str(item.get("target_type") or item.get("targetType")
+                      or item.get("targetKind") or item.get("target_kind") or "").lower()
+    categorical_mode = (not pair_mode and
+                        (chosen_category is not None
+                         or target_type in ("binary", "categorical", "nominal", "proportion", "category")))
     rule = {
         "kind": "modern",
         "conditions": conditions,
         "targetQuestion": str(target_question),
         "targetPair": target_pair,
+        "targetCategory": None if chosen_category is None else str(chosen_category),
         "ruleText": str(rule_in.get("text") or ""),
     }
     if pair_mode:
@@ -179,6 +191,13 @@ def modern_candidate(item: dict[str, Any]) -> PinnedCandidate | None:
             "numerator": "rule_matched_rows",
             "denominator": "complement_within_scope",
             "pair": target_pair,
+        }
+    elif categorical_mode:
+        estimand = {
+            "type": ESTIMAND_PROPORTION_DIFFERENCE,
+            "cell": {"attributeLevel": "rule_matched_rows",
+                     "questionCategory": str(chosen_category)},
+            "reference": "complement_within_scope",
         }
     else:
         estimand = {
@@ -189,7 +208,12 @@ def modern_candidate(item: dict[str, Any]) -> PinnedCandidate | None:
         }
     label = f"{rule['ruleText'] or '条件'} → {target_question}"
     target_stats = item.get("target_stats") if isinstance(item.get("target_stats"), dict) else {}
-    exploration_effect = _as_float((target_stats or {}).get("delta_mean"))
+    exploration_effect = _as_float((target_stats or {}).get("delta_proportion"))
+    if exploration_effect is None:
+        exploration_effect = _as_float((target_stats or {}).get("delta_mean"))
+    if exploration_effect is None:
+        exploration_effect = _as_float(item.get("effect_size") if item.get("effect_size") is not None
+                                       else item.get("effectSize"))
     return PinnedCandidate(candidateId=candidate_id, algorithm=ALGORITHM_MODERN,
                            rule=rule, estimand=estimand, displayLabel=label,
                            explorationEffect=exploration_effect)

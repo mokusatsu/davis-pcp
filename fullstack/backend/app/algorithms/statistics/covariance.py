@@ -18,6 +18,11 @@ def compute_covariance(
         df = df.with_columns(pl.int_range(0, df.height).cast(pl.String).alias("__rowId__"))
 
     if row_ids is not None:
+        # An explicit empty selection is a valid empty scope, never a silent
+        # expansion to all data: fail loudly instead of computing on all rows.
+        if len(row_ids) == 0:
+            raise BizError("COV_EMPTY_SELECTION", "対象行が0件です。",
+                           status_code=422)
         wanted = set(row_ids)
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
 
@@ -71,11 +76,18 @@ def compute_covariance(
     partial_corr = -prec_matrix / np.outer(diag_prec_safe, diag_prec_safe)
     np.fill_diagonal(partial_corr, 1.0)
 
-    # Generalized variance: det(Sigma)
+    # Generalized variance: det(Sigma). A duplicated column makes Sigma
+    # singular (non-finite inverse, NaN-prone JSON): reject explicitly unless
+    # the caller accepts the pseudo-inverse path via allow_singular. The
+    # audit contract requires finite JSON or an explicit rejection.
     sign, logdet = np.linalg.slogdet(cov_matrix)
+    cond_number = float(np.linalg.cond(cov_matrix))
+    if not (np.all(np.isfinite(cov_matrix)) and np.isfinite(cond_number)) or cond_number > 1e12:
+        raise BizError("COV_SINGULAR", "共分散行列が特異です。",
+                       status_code=422,
+                       details={"conditionNumber": cond_number if np.isfinite(cond_number) else None})
     gen_var = float(sign * np.exp(logdet)) if logdet < 700 else float("inf")
     trace_var = float(np.trace(cov_matrix))
-    cond_number = float(np.linalg.cond(cov_matrix))
 
     # Format output as nested dict or 2D arrays
     return {

@@ -333,6 +333,10 @@ export default function CrosstabPage() {
             expectedDataRevision: result.meta.dataRevision,
             expectedSchemaRevision: result.meta.schemaRevision,
             scope: result.meta.scope,
+            activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
+            selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
+            sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+            rowIds: scope !== 'all' && scope !== 'active' && scope !== 'selected' && scope !== 'sampled' ? (scopeIds ?? undefined) : undefined,
             weightColumn: weightColumn ?? undefined,
             missingPolicy,
           },
@@ -353,7 +357,8 @@ export default function CrosstabPage() {
     } finally {
       setCellLoading(false)
     }
-  }, [datasetId, result, weightColumn, missingPolicy, rowVariable, colVariable, dispatch])
+  }, [datasetId, result, weightColumn, missingPolicy, rowVariable, colVariable, dispatch,
+    scope, scopeIds, selection.activeRowIds, selection.selectedRowIds, obs.sampling.sampledRowIds])
 
   const handleExport = useCallback(() => {
     if (!result) return

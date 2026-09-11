@@ -175,11 +175,19 @@ def survey_inference(
         })
     else:
         if design.lonely_psu_strata:
-            warnings.append({
-                "code": "SURVEY_SINGLE_PSU_STRATUM",
-                "message": f"一次抽出単位が1つだけの層が{len(design.lonely_psu_strata)}件あり、分散に寄与しません。",
-                "details": {"strata": list(design.lonely_psu_strata)},
-            })
+            # Lonely-PSU strata cannot yield a design variance without an extra
+            # assumption (certainty/merge/adjust); this release fails instead of
+            # reporting a zero-variance success.
+            return InferenceResult(
+                requested=True, status=STATUS_UNAVAILABLE, method=METHOD_RAO_SCOTT,
+                design_assumption=design.assumption,
+                approximate=design.approximate,
+                warnings=[{
+                    "code": "SURVEY_LONELY_PSU",
+                    "message": "一次抽出単位が1つだけの層があるため、調査設計に基づく推測はできません。",
+                    "details": {"strata": list(design.lonely_psu_strata)},
+                }],
+            )
 
     result = rao_scott_test(counts, row_codes, col_codes, design)
     if result is None:

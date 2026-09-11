@@ -10,13 +10,15 @@ from ...domain.codebook_adapter import CodebookAdapter, is_not_applicable_reason
 
 
 def numeric_summary(values: np.ndarray) -> dict:
-    clean = values[~np.isnan(values)]
+    arr = np.asarray(values, dtype=float)
+    finite = np.isfinite(arr)
+    clean = arr[finite]
     if clean.size == 0:
-        return {"count": 0, "missing": int(values.size)}
+        return {"count": 0, "missing": int(arr.size)}
     q1, med, q3 = np.percentile(clean, [25, 50, 75])
     return {
         "count": int(clean.size),
-        "missing": int(values.size - clean.size),
+        "missing": int(arr.size - clean.size),
         "min": float(clean.min()),
         "max": float(clean.max()),
         "mean": float(clean.mean()),
@@ -58,14 +60,42 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
         adapter = CodebookAdapter(series.to_frame(), {"columns": [{**spec, "name": series.name}]})
     ordered_valid_codes = adapter.get_ordered_categories(series.name)
 
+    # A declared discrete domain (non-empty categoryOrder) is authoritative:
+    # values outside it are invalid, excluded from the analysis and counted
+    # as invalid (AV02). Undeclared columns keep the observed-category fallback.
+    # Ratio/interval/numeric columns additionally treat non-parseable codes as
+    # invalid rather than rescuing them as nominal ranks (AV03).
+    declared_order = [normalize_code(v) for v in (spec.get("categoryOrder") or [])]
+    declared_domain = {c for c in declared_order if c is not None} - missing_code_set
+    ordered_valid_codes = [c for c in ordered_valid_codes if c in declared_domain] if declared_domain else list(ordered_valid_codes)
+
+    def _is_invalid_code(code: str) -> bool:
+        if code in missing_code_set:
+            return False
+        if declared_domain and code not in declared_domain:
+            return True
+        if scale_type in ("ratio", "interval", "numeric"):
+            try:
+                number = float(code)
+            except (TypeError, ValueError):
+                return True
+            import math as _math
+            if not _math.isfinite(number):
+                return True
+        return False
+
     raw_counts: dict[str, int] = {}
+    invalid_counts: dict[str, int] = {}
     null_count = 0
     for value in series.to_list():
         code = normalize_code(value)
         if code is None:
             null_count += 1
+        elif _is_invalid_code(code):
+            invalid_counts[code] = invalid_counts.get(code, 0) + 1
         else:
             raw_counts[code] = raw_counts.get(code, 0) + 1
+    invalid = sum(invalid_counts.values())
 
     if not ordered_valid_codes:
         for v in raw_counts.keys():
@@ -102,7 +132,7 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             missing += cnt
 
     target = max(0, total - not_applicable)
-    valid = max(0, target - missing)
+    valid = max(0, target - missing - invalid)
 
     denominators = {
         "total": total,
@@ -111,6 +141,8 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
         "target": target,
         "valid": valid,
     }
+    if invalid:
+        denominators["invalid"] = invalid
 
     # Build distribution items
     distribution: list[dict] = []
@@ -150,6 +182,19 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
             "percentageTotal": round(null_count / total * 100, 1) if total > 0 else 0.0,
             "isMissing": True,
             "missingReason": "無回答",
+        })
+
+    for code in sorted(invalid_counts):
+        cnt = invalid_counts[code]
+        distribution.append({
+            "code": code,
+            "label": value_labels.get(code, code),
+            "count": cnt,
+            "percentageValid": 0.0,
+            "percentageTotal": round(cnt / total * 100, 1) if total > 0 else 0.0,
+            "isMissing": False,
+            "isInvalid": True,
+            "missingReason": "invalid_value",
         })
 
     # Auxiliary stats (mean, median, iqr, top2Box, bottom2Box).
@@ -227,6 +272,13 @@ def summarize(
     codebook: dict | None = None,
     weights: list[float | None] | None = None,
 ) -> dict:
+    from ...domain.errors import BizError
+
+    # A weight vector that does not cover every row must fail loudly: zip
+    # truncation would silently drop or misalign rows (contract).
+    if weights is not None and len(weights) != df.height:
+        raise BizError("CROSSTAB_WEIGHT_LENGTH", "ウェイト長が対象行数と一致しません。",
+                       status_code=422)
     result: dict[str, dict] = {}
     adapter = CodebookAdapter(df, codebook) if codebook else None
     for name in df.columns:
@@ -243,6 +295,16 @@ def summarize(
         # Always enrich with denominators, distribution, and auxiliaryStats
         q_summary = question_summary(df[name], spec, adapter=adapter)
         col_summary.update(q_summary)
+        # The headline numeric stats share the declared-domain rule: values
+        # outside a declared categoryOrder are invalid, not analysis values.
+        if column_types.get(name) == "numeric" and adapter is not None and spec is not None:
+            analysis_vals = [v for v in (adapter.analysis_series(name).to_list()) if v is not None]
+            col_summary["count"] = len(analysis_vals)
+            if analysis_vals:
+                arr = np.array(analysis_vals, dtype=float)
+                col_summary["mean"] = float(arr.mean())
+                col_summary["min"] = float(arr.min())
+                col_summary["max"] = float(arr.max())
         if weights is not None:
             col_summary["weighted"] = _weighted_column_summary(df[name], spec, weights, adapter=adapter)
         result[name] = col_summary
@@ -269,7 +331,26 @@ def _weighted_column_summary(
     is_reversed = bool(spec.get("isReversed", False))
     if adapter is None:
         adapter = CodebookAdapter(series.to_frame(), {"columns": [{**spec, "name": series.name}]})
+    import math as _wmath
+    declared_order_w = [normalize_code(v) for v in (spec.get("categoryOrder") or [])]
+    declared_domain_w = {c for c in declared_order_w if c is not None} - missing_codes
     ordered = [c for c in adapter.get_ordered_categories(series.name) if c not in missing_codes]
+    if declared_domain_w:
+        ordered = [c for c in ordered if c in declared_domain_w]
+
+    def _w_invalid(code: str) -> bool:
+        if code in missing_codes:
+            return False
+        if declared_domain_w and code not in declared_domain_w:
+            return True
+        if scale_type in ("ratio", "interval", "numeric"):
+            try:
+                number = float(code)
+            except (TypeError, ValueError):
+                return True
+            if not _wmath.isfinite(number):
+                return True
+        return False
     if is_reversed:
         if scale_type == "ordinal":
             ordered = list(reversed(ordered))
@@ -294,6 +375,8 @@ def _weighted_column_summary(
     for value, weight in zip(raw, weights):
         code = normalize_code(value)
         if code is None:
+            continue
+        if _w_invalid(code):
             continue
         if code in missing_codes:
             reason = missing_reasons.get(code, "")
@@ -341,7 +424,11 @@ def _weighted_column_summary(
     return weighted
 
 
-def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[float | None]]:
+def correlation_matrix_df(
+    df: pl.DataFrame,
+    columns: list[str],
+    weights: list[float | None] | None = None,
+) -> list[list[float | None]]:
     p = len(columns)
     if p == 0:
         return []
@@ -352,11 +439,31 @@ def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[flo
     col_arrays = []
     for c in columns:
         col_arrays.append(np.array([np.nan if v is None else float(v) for v in df[c].to_list()], dtype=np.float64))
+    weight_arr = None
+    if weights is not None:
+        weight_arr = np.array([np.nan if w is None else float(w) for w in weights], dtype=np.float64)
+
+    def _weighted_corr(xi: np.ndarray, xj: np.ndarray, w: np.ndarray) -> float | None:
+        total = float(np.sum(w))
+        if total <= 0 or not np.isfinite(total):
+            return None
+        mx = float(np.sum(w * xi) / total)
+        my = float(np.sum(w * xj) / total)
+        dx = xi - mx
+        dy = xj - my
+        cov = float(np.sum(w * dx * dy))
+        vxx = float(np.sum(w * dx * dx))
+        vyy = float(np.sum(w * dy * dy))
+        if vxx <= 0 or vyy <= 0 or not np.isfinite(cov):
+            return None
+        return float(cov / np.sqrt(vxx * vyy))
 
     mat: list[list[float | None]] = [[None] * p for _ in range(p)]
 
     for i in range(p):
         valid_i = ~np.isnan(col_arrays[i])
+        if weight_arr is not None:
+            valid_i = valid_i & np.isfinite(weight_arr) & (weight_arr > 0)
         if np.sum(valid_i) >= 2 and np.std(col_arrays[i][valid_i]) > 1e-12:
             mat[i][i] = 1.0
         else:
@@ -365,14 +472,22 @@ def correlation_matrix_df(df: pl.DataFrame, columns: list[str]) -> list[list[flo
     for i in range(p):
         for j in range(i + 1, p):
             valid = ~np.isnan(col_arrays[i]) & ~np.isnan(col_arrays[j])
+            if weight_arr is not None:
+                valid = valid & np.isfinite(weight_arr) & (weight_arr > 0)
             if np.sum(valid) >= 2:
                 xi = col_arrays[i][valid]
                 xj = col_arrays[j][valid]
-                std_i = float(np.std(xi, ddof=1))
-                std_j = float(np.std(xj, ddof=1))
-                if std_i > 1e-12 and std_j > 1e-12:
-                    r = float(np.corrcoef(xi, xj)[0, 1])
-                    if not np.isnan(r):
-                        mat[i][j] = round(r, 4)
-                        mat[j][i] = round(r, 4)
+                if weight_arr is not None:
+                    r = _weighted_corr(xi, xj, weight_arr[valid])
+                else:
+                    std_i = float(np.std(xi, ddof=1))
+                    std_j = float(np.std(xj, ddof=1))
+                    if std_i > 1e-12 and std_j > 1e-12:
+                        r = float(np.corrcoef(xi, xj)[0, 1])
+                        r = None if np.isnan(r) else r
+                    else:
+                        r = None
+                if r is not None and np.isfinite(r):
+                    mat[i][j] = round(r, 4)
+                    mat[j][i] = round(r, 4)
     return mat
