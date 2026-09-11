@@ -41,9 +41,13 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 describe('saved codebook display', () => {
   it.each([undefined, 'multiple'] as const)('shows name and question with one information control (%s)', async mode => {
     const onChange = vi.fn()
-    const { container } = render(<Provider store={setup()}><ColumnSelect mode={mode} value={mode ? ['Q'] : 'Q'} options={[{ value: 'Q', label: 'Q' }]} onChange={onChange} /></Provider>)
+    // 単一選択の選択値面はプレーンテキストのみ（ⓘはドロップダウンの選択肢側）。open で選択肢を開いて検証する。
+    const { container } = render(<Provider store={setup()}><ColumnSelect mode={mode} value={mode ? ['Q'] : 'Q'} options={[{ value: 'Q', label: 'Q' }]} onChange={onChange} open={mode ? undefined : true} /></Provider>)
     expect(container.textContent).toContain(`Q — ${spec.label}`)
-    const buttons = within(container).getAllByRole('button', { name: 'Qの設問文を表示' })
+    if (!mode) {
+      expect(within(container).queryByRole('button', { name: 'Qの設問文を表示' })).toBeNull()
+    }
+    const buttons = screen.getAllByRole('button', { name: 'Qの設問文を表示' })
     expect(buttons).toHaveLength(1)
     fireEvent.click(buttons[0])
     expect(await screen.findByRole('tooltip')).toHaveTextContent(spec.label)

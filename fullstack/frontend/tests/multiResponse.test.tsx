@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { store } from '../src/app/store'
 import MultiResponseCard from '../src/features/distribution/MultiResponseCard'
 import { codebookSlice, draftMultiResponseGroupUpdated, draftMultiResponseGroupRemoved, draftReverted, fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
 import type { CodebookColumn, MultiResponseGroup, MultiResponseSummary } from '../src/api/client'
@@ -27,7 +30,10 @@ describe('MA editor and card', () => {
     const onSelect = vi.fn()
     const summary: MultiResponseSummary = { groupId: 'q', label: '利用サービス', denominators: { total: 5, target: 4, valid: 3, missing: 0, partial: 1, invalid: 0, notApplicable: 1 }, allUnselectedN: 0, totalResponses: 4,
       items: [{ columnId: 'a', name: 'A', label: 'サービスA', selectedN: 2, selectedInSelection: 1, pctRespondent: 200/3, pctResponse: 50 }] }
-    render(<MultiResponseCard summary={summary} onSelect={onSelect} />)
+    // MultiResponseCard 内の ColumnSelect は useCodebook (redux) を使うため Provider が必要
+    const initial = store.getState()
+    const testStore = configureStore({ reducer: (s = initial) => s, middleware: g => g({ serializableCheck: false }) })
+    render(<Provider store={testStore}><MultiResponseCard summary={summary} onSelect={onSelect} /></Provider>)
     expect(screen.getByText('66.7% (2)')).toBeInTheDocument()
     fireEvent.click(screen.getByText('延べ回答ベース'))
     expect(screen.getByText('50.0% (2)')).toBeInTheDocument()
