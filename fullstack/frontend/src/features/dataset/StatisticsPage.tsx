@@ -6,7 +6,7 @@ import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Col, Dropdown, Empty, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { Card, Col, Dropdown, Empty, Pagination, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, statsScopeSet, selectEffectiveRowIds } from '../../app/store'
@@ -191,6 +191,32 @@ export default function StatisticsPage() {
     () => targetSchema.filter((c) => columnValues[c.name].numeric).map((c) => c.name),
     [targetSchema, columnValues],
   )
+  const categoricalColumns = useMemo(
+    () => targetSchema.filter((c) => {
+      const spec = getColumn(c.name)
+      return spec ? ['nominal', 'ordinal'].includes(spec.scaleType) : !columnValues[c.name].numeric
+    }).map((c) => c.name),
+    [targetSchema, columnValues, getColumn],
+  )
+  // Column-group pagination: render one slice of cards + histograms at a
+  // time so hundreds of columns never mount simultaneously (max-depth guard).
+  const PAGE_SIZE = 12
+  const [columnPage, setColumnPage] = useState(1)
+  useEffect(() => { setColumnPage(1) }, [selection.datasetId, statsScope])
+  const pageCount = Math.max(1, Math.ceil(targetSchema.length / PAGE_SIZE))
+  const currentColumnPage = Math.min(columnPage, pageCount)
+  const visibleColumnNames = useMemo(
+    () => new Set(targetSchema.slice((currentColumnPage - 1) * PAGE_SIZE, currentColumnPage * PAGE_SIZE).map((c) => c.name)),
+    [targetSchema, currentColumnPage],
+  )
+  const visibleCategoricalColumns = useMemo(
+    () => categoricalColumns.filter((name) => visibleColumnNames.has(name)),
+    [categoricalColumns, visibleColumnNames],
+  )
+  const visibleNumericColumns = useMemo(
+    () => numericColumns.filter((name) => visibleColumnNames.has(name)),
+    [numericColumns, visibleColumnNames],
+  )
 
   const selectedSet = new Set(selection.selectedRowIds)
   const domains = useL1ColorDomains(data)
@@ -301,6 +327,16 @@ export default function StatisticsPage() {
         />
       ) : (
         <>
+          {targetSchema.length > PAGE_SIZE && (
+            <Card size="small" style={{ background: '#fafafa' }}>
+              <Space wrap align="center">
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  表示列 {targetSchema.length}列中 {(currentColumnPage - 1) * PAGE_SIZE + 1}–{Math.min(currentColumnPage * PAGE_SIZE, targetSchema.length)}列目
+                </Typography.Text>
+                <Pagination data-testid="stats-column-page" size="small" current={currentColumnPage} pageSize={PAGE_SIZE} total={targetSchema.length} showSizeChanger={false} onChange={setColumnPage} />
+              </Space>
+            </Card>
+          )}
           {!focused && (
             <Card
               size="small"
@@ -333,10 +369,7 @@ export default function StatisticsPage() {
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {targetSchema.filter(c => {
-              const spec = getColumn(c.name)
-              return spec ? ['nominal', 'ordinal'].includes(spec.scaleType) : !columnValues[c.name].numeric
-            }).map(column => {
+            {visibleCategoricalColumns.map((name) => targetSchema.find((c) => c.name === name)!).filter(Boolean).map(column => {
               const values = columnValues[column.name].values
               const counts = new Map<string, number>()
               const selectedCounts: Record<string, number> = Object.create(null)
@@ -581,7 +614,7 @@ export default function StatisticsPage() {
                 }}
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-                  {numericColumns.map((col) => renderHistCard(col, false))}
+                  {visibleNumericColumns.map((col) => renderHistCard(col, false))}
                 </div>
               </Card>
             )

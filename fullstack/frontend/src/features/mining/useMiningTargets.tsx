@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import { useSelector } from 'react-redux'
-import { Select, Space, Typography } from 'antd'
+import { useDispatch, useSelector } from 'react-redux'
+import { Space, Typography } from 'antd'
+import Select from '../common/ColumnSelect'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { selectOrdinaryVariables, selectVariableEntities, type RootState } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 
 export function useMiningTargets() {
+  const dispatch = useDispatch()
   const datasetId = useSelector((state: RootState) => state.selection.datasetId)
   const global = useSelector(selectOrdinaryVariables)
   const entities = useSelector(selectVariableEntities)
@@ -26,6 +29,7 @@ export function useMiningTargets() {
         style={{ minWidth: 260 }} maxTagCount={2} allowClear optionFilterProp="label"
         value={role === 'attribute' ? attributes : questions} placeholder="対象を選択"
         options={candidates.filter(column => column.role === role).map(column => ({ value: column.name, label: `${column.name}: ${column.multiResponseOptionLabel || column.label || column.name}` }))}
+        emptyHint={{ roleLabel: role === 'attribute' ? '属性' : '質問', onOpenCodebook: () => dispatch(editorModalOpened()) }}
         onChange={values => setState({ datasetId: datasetId!, attributes, questions, children: current?.children ?? [], [role === 'attribute' ? 'attributes' : 'questions']: values })} />
     </Space>)}
     <MaAxisPicker allowCount={false} groups={groups} columns={columns} onAdd={axes => {

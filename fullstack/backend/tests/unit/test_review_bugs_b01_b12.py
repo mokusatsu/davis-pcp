@@ -377,15 +377,19 @@ class TestA06AllNumericQuestionnaireMining:
 
 
 class TestA12SchemaAndRowIdPreservation:
-    def test_assign_row_identity_preserves_existing_unique_row_id(self):
+    def test_assign_row_identity_rejects_reserved_id_on_normal_import(self):
         from app.storage.dataset_store import assign_row_identity
         df = pl.DataFrame({
             "__rowId__": ["row_custom_A", "row_custom_B", "row_custom_C"],
             "val": [10, 20, 30],
         })
-        res_df, source = assign_row_identity(df, id_column=None)
-        assert source == "preserved"
-        assert res_df["__rowId__"].to_list() == ["row_custom_A", "row_custom_B", "row_custom_C"]
+        before = df.to_dict(as_series=False)
+        # PK01: even unique internal-looking ids are untrusted on normal
+        # import. Verified internal/package frames use a separate bypass.
+        with pytest.raises(BizError) as exc_info:
+            assign_row_identity(df, id_column=None)
+        assert exc_info.value.status_code == 422
+        assert df.to_dict(as_series=False) == before, "rejection must not rewrite input"
 
     def test_derive_dataset_schema_preserves_metadata(self):
         from app.api.datasets import _derive_dataset_schema

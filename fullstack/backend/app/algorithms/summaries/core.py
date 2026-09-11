@@ -298,7 +298,18 @@ def summarize(
         # The headline numeric stats share the declared-domain rule: values
         # outside a declared categoryOrder are invalid, not analysis values.
         if column_types.get(name) == "numeric" and adapter is not None and spec is not None:
+            declared = {normalize_code(v) for v in (spec.get("categoryOrder") or [])}
+            declared.discard(None)
+            missing_set = {normalize_code(v) for v in (spec.get("missingCodes") or [])}
+            missing_set.discard(None)
+            declared = declared - missing_set
+            raw_vals = df[name].to_list()
             analysis_vals = [v for v in (adapter.analysis_series(name).to_list()) if v is not None]
+            if declared:
+                analysis_vals = [
+                    v for v, raw in zip(adapter.analysis_series(name).to_list(), raw_vals)
+                    if v is not None and normalize_code(raw) in declared
+                ]
             col_summary["count"] = len(analysis_vals)
             if analysis_vals:
                 arr = np.array(analysis_vals, dtype=float)

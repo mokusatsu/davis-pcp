@@ -162,7 +162,12 @@ def test_attribute_comparison_uses_disjoint_valid_populations(api):
     assert reads == [['__rowId__', 'a', 'b', 'area']]
     empty = client.post('/api/v1/summaries/multi-response/comparison', json={**req, 'rowIds': []}).json()
     assert empty['strata'] == [] and empty['scopeCount'] == 0
-    assert client.post('/api/v1/summaries/multi-response/comparison', json={**req, 'attributeColumnId': 'a'}).status_code == 422
+    invalid = client.post('/api/v1/summaries/multi-response/comparison', json={**req, 'attributeColumnId': 'a'})
+    assert invalid.status_code == 422
+    assert invalid.json()['error']['code'] == 'MA_ATTRIBUTE_INVALID'
+    missing = client.post('/api/v1/summaries/multi-response/comparison', json={**req, 'attributeColumnId': 'unknown'})
+    assert missing.status_code == 422
+    assert missing.json()['error']['code'] == 'MA_ATTRIBUTE_NOT_FOUND'
     assert client.post('/api/v1/summaries/multi-response/comparison', json={**req, 'expectedDataRevision': 1}).status_code == 409
 
     match_req = {'groupId': 'q', 'optionColumnIds': ['a'], 'attributeFilter': {'columnId': 'area', 'code': 'M'}}

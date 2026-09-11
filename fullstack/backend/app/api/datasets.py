@@ -599,6 +599,46 @@ def _finalize_ordinal_category_orders(codebook: dict[str, Any], dataset_id: str)
             labels.setdefault(code, code)
 
 
+def _validate_reversed_numeric_ranges(codebook: dict[str, Any]) -> None:
+    """数値系で逆転ONの列は数値化可能な categoryOrder を必須とする。
+
+    get_reversed_numeric_series は categoryOrder から反転範囲(min/max)を
+    決めるため、空のまま保存すると要約・相関・LOESS 等の全系統が
+    CODEBOOK_REVERSE_RANGE_MISSING(422)で失敗する。保存時に拒否する。
+    """
+    import math
+
+    from ..domain.codebook_adapter import normalize_code
+
+    for col in codebook.get("columns", []):
+        if not isinstance(col, dict):
+            continue
+        if not col.get("isReversed"):
+            continue
+        if col.get("scaleType") not in ("ratio", "interval", "numeric"):
+            continue
+        missing = {normalize_code(v) for v in (col.get("missingCodes") or [])}
+        missing.discard(None)
+        numeric_count = 0
+        for raw in col.get("categoryOrder") or []:
+            code = normalize_code(raw)
+            if code is None or code in missing:
+                continue
+            try:
+                num = float(code)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(num):
+                continue
+            numeric_count += 1
+        if numeric_count == 0:
+            raise BizError(
+                "CODEBOOK_REVERSE_RANGE_MISSING",
+                f"逆転項目 '{col.get('name')}' には固定の尺度範囲(categoryOrder)が必要です。",
+                status_code=422,
+            )
+
+
 def _update_codebook(dataset_id: str, request: dict) -> dict:
     from ..domain.codebook import CodebookUpdateRequest
 
@@ -900,6 +940,7 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
         if cb.get("surveyDesign") is not None and (new_weight != old_weight or new_type != old_type):
             cb.pop("surveyDesign", None)
 
+    _validate_reversed_numeric_ranges(cb)
     _finalize_ordinal_category_orders(cb, dataset_id)
     new_rev = int(cb.get("schemaRevision", 1)) + 1
     cb["schemaRevision"] = new_rev

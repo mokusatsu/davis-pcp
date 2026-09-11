@@ -224,13 +224,21 @@ export default function CodebookDetailForm({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-          <Checkbox
-            checked={column.isReversed}
-            onChange={(e) => onUpdate({ isReversed: e.target.checked })}
-          >
-            <span style={{ fontSize: 12 }}>逆転項目 (値が大きいほどネガティブ)</span>
-          </Checkbox>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <Checkbox
+              checked={column.isReversed}
+              onChange={(e) => onUpdate({ isReversed: e.target.checked })}
+            >
+              <span style={{ fontSize: 12 }}>逆転項目 (値が大きいほどネガティブ)</span>
+            </Checkbox>
+            {column.isReversed && ['ratio', 'interval', 'numeric'].includes(column.scaleType)
+              && !(column.categoryOrder || []).some((c) => Number.isFinite(Number(c))) && (
+              <Typography.Text type="warning" style={{ fontSize: 11, display: 'block' }}>
+                数値系の逆転には尺度範囲（選択肢順序の数値）が必要です。このまま保存すると422エラーになります。
+              </Typography.Text>
+            )}
+          </div>
 
           <Space size="small">
             <Typography.Text style={{ fontSize: 12 }}>MAグループ:</Typography.Text>

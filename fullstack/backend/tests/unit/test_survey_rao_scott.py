@@ -191,19 +191,25 @@ def test_single_psu_stratum_is_flagged():
     assert design.lonely_psu_strata == ("s2",)
 
 
-def test_design_df_is_the_global_psu_minus_strata_difference():
-    """R counts a PSU id once per design, so an id in two strata counts twice.
+def test_design_df_counts_psus_nested_within_strata():
+    """SD02 / nest=TRUE: a PSU is identified by (stratum, local PSU id).
 
-    The per-stratum ``sum(n_h - 1)`` reading would give 4 here; R's
-    ``length(unique(cluster)) - length(unique(strata))`` gives 2.
+    There are three PSUs in s1 and two in s2: 5 PSUs and 3 design df.
+    Relabeling those same PSUs with globally unique ids must change neither.
     """
     weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
     strata = np.array(["s1", "s1", "s1", "s2", "s2"])
     psu = np.array(["a", "b", "c", "a", "b"])
     design = build_design(weights, strata=strata, psu=psu)
-    assert len(set(psu.tolist())) == 3
-    assert design.number_of_psus == 3
-    assert design.design_df == 1.0  # 3 unique PSU ids - 2 strata
+    assert len(set(psu.tolist())) == 3  # Local labels alone are not identities.
+    assert len(set(zip(strata.tolist(), psu.tolist()))) == 5
+    assert design.number_of_psus == 5
+    assert design.design_df == 3.0  # (3 - 1) + (2 - 1) = 5 - 2.
+
+    global_ids = np.array([f"{stratum}:{psu_id}" for stratum, psu_id in zip(strata, psu)])
+    relabeled = build_design(weights, strata=strata, psu=global_ids)
+    assert relabeled.number_of_psus == design.number_of_psus
+    assert relabeled.design_df == design.design_df
 
 
 def test_zero_weight_rows_are_excluded_from_the_design_df():

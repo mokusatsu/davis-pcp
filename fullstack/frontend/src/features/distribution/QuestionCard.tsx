@@ -230,7 +230,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               }}
             >
               <Col xs={24} sm={8} style={{ minWidth: 0 }}>
-                <Text ellipsis={{ tooltip: `${rowCodeText}. ${displayLabel}` }} style={{ fontSize: 13 }}>
+                <Text ellipsis={{ tooltip: false }} title={`${rowCodeText}. ${displayLabel}`} style={{ fontSize: 13 }}>
                   {item.code !== null && <Text type="secondary">{rowCodeText}.</Text>} {displayLabel}
                 </Text>
               </Col>
@@ -244,7 +244,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
               </Col>
               <Col xs={24} sm={9} style={{ textAlign: 'right', minWidth: 0 }}>
                 <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
-                  <Text ellipsis style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                  <Text ellipsis={{ tooltip: false }} style={{ fontSize: 12, fontFamily: 'monospace' }}>
                     {displayPct} ({item.count.toLocaleString()})
                     {weight?.status === 'applied' && (() => {
                       const w = weightedByCode.get(key)

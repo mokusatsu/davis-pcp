@@ -1,7 +1,7 @@
 """API endpoints for Distribution suite (FEDF, etc.)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -17,7 +17,7 @@ class FedfRequest(BaseModel):
     datasetId: str | None = None
     dataset_id: str | None = None
     columns: list[str] | None = None
-    mode: str = "standard"
+    mode: Literal["standard", "folded", "both"] = "standard"
     gridSize: int = 100
     rowIds: list[str] | None = None
     row_ids: list[str] | None = None

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, Modal, Select, Space, Typography } from 'antd'
+import { Button, Modal, Space, Typography } from 'antd'
+import Select from '../common/ColumnSelect'
 import type { CodebookColumn, MaDisplayAxis } from '../../api/client'
 
 export default function MaAxisPicker({ groups, columns, onAdd, allowCount = true }: {

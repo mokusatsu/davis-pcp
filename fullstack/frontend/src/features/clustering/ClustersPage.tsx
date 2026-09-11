@@ -87,11 +87,23 @@ export default function ClustersPage() {
     && column.multiResponseGroup && groups.some(group => group.groupId === column.multiResponseGroup)
     && added.datasetId === selection.datasetId && added.names.includes(column.name)).map(column => column.name)
   const mixed = method === 'cobweb' || method === 'disc'
+  const numericCandidates = candidates.filter(column => ['ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name)
+  const nominalCandidates = candidates.filter(column => column.scaleType === 'nominal').map(column => column.name)
+  const [chosenNumeric, setChosenNumeric] = useState<string[] | null>(null)
+  const [chosenNominal, setChosenNominal] = useState<string[] | null>(null)
+  const numericKey = numericCandidates.join(',')
+  const nominalKey = nominalCandidates.join(',')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const numericBase = useMemo(() => method === 'class_variable' ? [] as string[] : numericCandidates, [method, numericKey])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nominalBase = useMemo(() => method === 'class_variable' ? [] as string[] : nominalCandidates, [method, nominalKey])
+  const selectedNumeric = useMemo(() => (chosenNumeric ?? numericBase).filter(name => numericBase.includes(name)), [chosenNumeric, numericBase])
+  const selectedNominal = useMemo(() => mixed ? (chosenNominal ?? nominalBase).filter(name => nominalBase.includes(name)) : [], [mixed, chosenNominal, nominalBase])
   const numericColumns = method === 'class_variable' ? [] : [
-    ...candidates.filter(column => ['ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name),
+    ...selectedNumeric,
     ...(mixed ? [] : maColumns)]
-  const classCandidates = [...candidates.filter(column => column.scaleType === 'nominal').map(column => column.name), ...maColumns]
-  const categoricalColumns = mixed ? classCandidates : []
+  const classCandidates = [...nominalCandidates, ...maColumns]
+  const categoricalColumns = mixed ? [...selectedNominal, ...maColumns] : []
   const [requestedClass, setClassColumn] = useState<string | null>(null)
   const classColumn = classCandidates.includes(requestedClass ?? '') ? requestedClass : null
   const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, activeRowIds,
@@ -206,14 +218,32 @@ export default function ClustersPage() {
               value={method}
               onChange={(v) => setMethod(String(v))}
             />
-            <Space wrap>
-              <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
-                const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
-                setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
-              }} />
-              <Select data-testid="cluster-ma-columns" mode="multiple" size="small" placeholder="追加したMA選択肢" value={maColumns}
-                style={{ minWidth: 220 }} options={maColumns.map(name => ({ value: name, label: definitions.find(column => column.name === name)?.multiResponseOptionLabel || name }))}
-                onChange={names => setAdded({ datasetId: selection.datasetId, names })} />
+            <Space wrap direction="vertical" size={4} style={{ width: '100%' }}>
+              <Space wrap align="center">
+                <Typography.Text style={{ fontSize: 12 }}>数値列:</Typography.Text>
+                <Select data-testid="cluster-numeric-columns" mode="multiple" size="small" placeholder="投入する数値列を選択"
+                  style={{ minWidth: 260 }} value={selectedNumeric}
+                  options={numericCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
+                  onChange={names => setChosenNumeric(names)} />
+              </Space>
+              {mixed && (
+                <Space wrap align="center">
+                  <Typography.Text style={{ fontSize: 12 }}>カテゴリ列:</Typography.Text>
+                  <Select data-testid="cluster-categorical-columns" mode="multiple" size="small" placeholder="投入するカテゴリ列を選択"
+                    style={{ minWidth: 260 }} value={selectedNominal}
+                    options={nominalCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
+                    onChange={names => setChosenNominal(names)} />
+                </Space>
+              )}
+              <Space wrap>
+                <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+                  const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+                  setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+                }} />
+                <Select data-testid="cluster-ma-columns" mode="multiple" size="small" placeholder="追加したMA選択肢" value={maColumns}
+                  style={{ minWidth: 220 }} options={maColumns.map(name => ({ value: name, label: definitions.find(column => column.name === name)?.multiResponseOptionLabel || name }))}
+                  onChange={names => setAdded({ datasetId: selection.datasetId, names })} />
+              </Space>
             </Space>
             {method !== 'class_variable' ? (
               <Row gutter={[16, 8]} align="middle">

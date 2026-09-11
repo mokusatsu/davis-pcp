@@ -886,7 +886,7 @@ export default function PcpPage() {
     return <Alert type="info" showIcon message="データセットを読み込んでください。" description="上部のImportからCSV等を取り込むか、Irisサンプルを選択してください。" />
   }
 
-  const axisChooser = <Space wrap><AntSelect mode="multiple" aria-label="PCPの表示軸" placeholder="表示軸を選択"
+  const axisChooser = <Space wrap><Select mode="multiple" aria-label="PCPの表示軸" placeholder="表示軸を選択"
     style={{ minWidth: 240, maxWidth: 480 }} maxTagCount={2} allowClear optionFilterProp="label"
     value={pcp.visibleColumns.filter(name => eligibleAxisKeys.includes(name))}
     options={[...ordinaryNames.filter(name => globalVars.activeVariableIds.includes(name)).map(name => ({ value: name, label: `${name}: ${codebookColumns.find(column => column.name === name)?.label || name}` })),

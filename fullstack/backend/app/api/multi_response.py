@@ -262,9 +262,14 @@ def _scope_weights(
     return [weights_by_row.get(str(row_id)) for row_id in df["__rowId__"].to_list()]
 
 
-def _comparison_attribute(codebook: dict[str, Any], column_id: str) -> dict[str, Any]:
-    attribute = next((column for column in codebook.get("columns", []) if column["columnId"] == column_id), None)
-    if not attribute or attribute.get("role") != "attribute" or attribute.get("multiResponseGroup") or attribute.get("scaleType") in {"id", "text"}:
+def _comparison_attribute(codebook: dict[str, Any], column_ref: str) -> dict[str, Any]:
+    # weightColumn / crosstab と同じく名前・columnId の両対応。
+    columns = codebook.get("columns", []) or []
+    attribute = next((column for column in columns
+                      if column.get("columnId") == column_ref or column.get("name") == column_ref), None)
+    if attribute is None:
+        raise BizError("MA_ATTRIBUTE_NOT_FOUND", "比較属性が存在しません。columnId または列名で指定してください。", status_code=422)
+    if attribute.get("role") != "attribute" or attribute.get("multiResponseGroup") or attribute.get("scaleType") in {"id", "text"}:
         raise BizError("MA_ATTRIBUTE_INVALID", "比較には通常の属性列を指定してください。", status_code=422)
     return attribute
 
@@ -300,7 +305,7 @@ def compare_multi_response(req: MultiResponseComparisonRequest) -> dict[str, Any
         order = {code: index for index, code in enumerate(attribute.get("categoryOrder", []))}
         strata.sort(key=lambda item: (order.get(item["code"], len(order)), item["code"]))
         return {"datasetId": req.datasetId, **revisions, "scopeHash": scope, "scopeCount": len(codes),
-                "attributeColumnId": req.attributeColumnId, "attributeMissingExcluded": missing_count,
+                "attributeColumnId": attribute["columnId"], "attributeMissingExcluded": missing_count,
                 "groupId": req.groupId, "strata": strata, "usedColumns": names[1:],
                 "method": "multiple-response-disjoint-attribute-strata", **weight_block}
 

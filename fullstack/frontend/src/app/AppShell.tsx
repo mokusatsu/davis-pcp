@@ -68,7 +68,13 @@ export default function AppShell() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const location = useLocation()
-  useEffect(() => { window.dispatchEvent(new Event('davis:close-column-questions')) }, [location.pathname])
+  // KeepAlive keeps inactive tabs mounted with display:none, so a body-level
+  // dropdown left open would linger above the next tab. Column tooltips close
+  // via event; antd Select/Popover close when their trigger loses focus.
+  useEffect(() => {
+    window.dispatchEvent(new Event('davis:close-column-questions'))
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  }, [location.pathname])
   const selection = useSelector((s: RootState) => s.selection)
   const focused = useFocusMode().focused
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
@@ -317,6 +323,7 @@ export default function AppShell() {
             value={selection.datasetId ?? undefined}
             options={datasets.map((d) => ({ value: d.datasetId, label: `${d.name} (${d.rowCount}行)` }))}
             onChange={(value) => void onDatasetSelected(value)}
+            onOpenChange={(visible) => { if (visible) void refreshDatasets() }}
             getPopupContainer={() => document.body}
           />
           <Upload

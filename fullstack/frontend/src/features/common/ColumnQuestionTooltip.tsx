@@ -20,7 +20,7 @@ export function useColumnQuestion(nameOrId: string) {
 
 export function ColumnQuestionText({ nameOrId }: { nameOrId: string }) {
   const column = useColumnQuestion(nameOrId)
-  return <span>{nameOrId}{column?.label.trim() ? ` — ${column.label}` : ''}</span>
+  return <span>{nameOrId}{column?.label?.trim() ? ` — ${column.label}` : ''}</span>
 }
 
 interface ColumnQuestionProps {

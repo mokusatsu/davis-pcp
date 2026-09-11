@@ -474,6 +474,9 @@ export default function CrosstabPage() {
           {declaredType === 'survey' ? (
             <Space wrap align="center" style={{ marginTop: 8 }}>
               <Tag color="blue">調査ウェイト</Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                検定は Rao–Scott 第2次補正のみ利用可（Pearson χ² は不可）
+              </Typography.Text>
               <span>層（strata）</span>
               <Select
                 data-testid="crosstab-strata"
@@ -597,13 +600,15 @@ export default function CrosstabPage() {
                     <Space direction="vertical">
                       <Typography.Text type="secondary">
                         EDA では記述量を優先します。母集団についての検定が必要なときだけ実行してください。
+                        通常の Pearson χ² 検定は調査ウェイトでは使用できません（ウェイトの倍率だけでp値が変わるため）。
+                        検定を行う場合は下のボタンで Rao–Scott 第2次補正を指定してください。
                       </Typography.Text>
                       <Button
                         data-testid="crosstab-rao-scott"
                         size="small"
                         onClick={() => setInference('rao_scott')}
                       >
-                        調査設計を考慮した検定を表示
+                        調査設計を考慮した検定を表示（Rao–Scott）
                       </Button>
                     </Space>
                   }

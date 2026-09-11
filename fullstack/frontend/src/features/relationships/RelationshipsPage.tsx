@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Col, Dropdown, Row, Select, Space, Spin, Typography } from 'antd'
+import { Alert, Button, Card, Col, Dropdown, Row, Space, Spin, Typography } from 'antd'
+import { Select as AntSelect } from 'antd'
+import Select from '../common/ColumnSelect'
 import { api } from '../../api/client'
 import { deleteSelected, focusSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables,
   selectVariableEntities, selectionCleared, type RootState } from '../../app/store'
@@ -115,7 +117,7 @@ export default function RelationshipsPage() {
       </FocusTarget></Col>
       <Col xs={24} xl={12}><FocusTarget id="relationships-facet" title="焦点ペア">
         <Card size="small" title="焦点ペア" extra={<FocusEnterButton targetId="relationships-facet" title="焦点ペア" />}>
-          {pair && <Space wrap>{[0, 1].map(index => <Select key={index} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
+          {pair && <Space wrap>{[0, 1].map(index => <AntSelect key={index} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
             style={{ minWidth: 150 }} options={names.filter(name => name !== pair[1 - index]).map(name => ({ value: name, label: title(name) }))}
             onChange={value => setFocusPair(index === 0 ? [value, pair[1]] : [pair[0], value])} />)}</Space>}
           <Spin spinning={points.loading}><Dropdown menu={{ items }} trigger={['contextMenu']}>

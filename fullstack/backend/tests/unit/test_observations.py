@@ -49,22 +49,34 @@ def test_sampling_without_replacement(sample_dataset):
     assert all(w == 1 for w in data["sampledRowWeights"].values())
 
 
-def test_sampling_with_replacement_reproducibility(sample_dataset):
-    # Test with replacement and seed reproducibility
-    resp1 = client.post(f"/api/v1/datasets/{sample_dataset}/observations/sample", json={
-        "method": "with_replacement",
-        "size": 50,
-        "seed": 123,
-    })
-    resp2 = client.post(f"/api/v1/datasets/{sample_dataset}/observations/sample", json={
-        "method": "with_replacement",
-        "size": 50,
-        "seed": 123,
-    })
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert resp1.json()["sampledRowIds"] == resp2.json()["sampledRowIds"]
-    assert resp1.json()["sampledRowWeights"] == resp2.json()["sampledRowWeights"]
+def test_sampling_with_replacement_is_rejected(sample_dataset):
+    # CTX04: the shared scope is a set, not a multiset. Never silently discard
+    # draw multiplicities or fall back to sampling without replacement.
+    for _ in range(2):
+        response = client.post(f"/api/v1/datasets/{sample_dataset}/observations/sample", json={
+            "method": "with_replacement",
+            "size": 50,
+            "seed": 123,
+        })
+        assert response.status_code == 422, response.text
+        assert "sampledRowIds" not in response.json()
+        assert "sampledRowWeights" not in response.json()
+
+
+def test_sampling_without_replacement_reproducibility(sample_dataset):
+    # Preserve seeded-repeatability coverage for the supported method.
+    request = {"method": "without_replacement", "size": 50, "seed": 123}
+    url = f"/api/v1/datasets/{sample_dataset}/observations/sample"
+    first = client.post(url, json=request)
+    second = client.post(url, json=request)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    a, b = first.json(), second.json()
+    assert a["sampleSize"] == b["sampleSize"] == 50
+    assert a["sampledRowIds"] == b["sampledRowIds"]
+    assert len(set(a["sampledRowIds"])) == 50
+    assert a["sampledRowWeights"] == b["sampledRowWeights"]
+    assert all(weight == 1 for weight in a["sampledRowWeights"].values())
 
 
 def test_sampling_ratio(sample_dataset):

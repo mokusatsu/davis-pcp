@@ -5,8 +5,9 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Slider, Tag,
-  Segmented, Statistic, Empty, Spin, Select, Alert, Tooltip,
+  Segmented, Statistic, Empty, Spin, Alert, Tooltip,
 } from 'antd'
+import Select from '../common/ColumnSelect'
 import {
   FireOutlined, AimOutlined, AppstoreOutlined,
   DotChartOutlined, ArrowRightOutlined,

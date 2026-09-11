@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd'
+import { Alert, Button, Form, Input, InputNumber, Modal, Space, Typography } from 'antd'
+import { Select as AntSelect } from 'antd'
+import Select from '../common/ColumnSelect'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
 import type { MultiResponseGroup } from '../../api/client'
@@ -80,7 +82,7 @@ export default function MultiResponseGroupDialog({ open, onClose }: { open: bool
           <Form.Item name="unselectedCodes" label="非選択コード（カンマ区切り）" rules={[{ required: true }]}><Input /></Form.Item>
         </Space>
         <Form.Item name="allUnselectedMeaning" label="すべて非選択だった回答の扱い">
-          <Select options={[{ value: 'valid', label: '有効回答（選択なし）' }, { value: 'missing', label: '無回答' }, { value: 'notApplicable', label: '非該当' }]} />
+          <AntSelect options={[{ value: 'valid', label: '有効回答（選択なし）' }, { value: 'missing', label: '無回答' }, { value: 'notApplicable', label: '非該当' }]} />
         </Form.Item>
         <Form.Item name="maxSelections" label="選択数の上限（未指定は制限なし）"><InputNumber min={1} precision={0} /></Form.Item>
         <Typography.Text type="secondary">欠損・非該当コードは各列の設定を使用します。設定を適用後、コードブックの「保存」で確定します。</Typography.Text>

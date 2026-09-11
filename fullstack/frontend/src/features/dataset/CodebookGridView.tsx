@@ -284,12 +284,20 @@ export default function CodebookGridView({
               key: 'isReversed',
               width: 60,
               align: 'center',
-              render: (isReversed: boolean, r) => (
-                <Checkbox
-                  checked={isReversed}
-                  onChange={(e) => onUpdateColumn(r.columnId, { isReversed: e.target.checked })}
-                />
-              ),
+              render: (isReversed: boolean, r) => {
+                const needsRange = Boolean(isReversed)
+                  && ['ratio', 'interval', 'numeric'].includes(r.scaleType)
+                  && !(r.categoryOrder || []).some((c: string) => Number.isFinite(Number(c)))
+                return (
+                  <span title={needsRange ? '数値系の逆転には尺度範囲が必要です（保存時に422）' : undefined}>
+                    <Checkbox
+                      checked={isReversed}
+                      onChange={(e) => onUpdateColumn(r.columnId, { isReversed: e.target.checked })}
+                    />
+                    {needsRange && <span style={{ color: '#faad14', fontSize: 12 }}> ⚠</span>}
+                  </span>
+                )
+              },
             },
             {
               title: 'MA群',

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
-import { Button, Card, Select, Segmented, Space, Tag, Tooltip, Typography, theme, Progress } from 'antd'
+import { Button, Card, Segmented, Space, Tag, Tooltip, Typography, theme, Progress } from 'antd'
+import Select from '../common/ColumnSelect'
 import type { MultiResponseSummary, MultiResponseWeight } from '../../api/client'
 import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 

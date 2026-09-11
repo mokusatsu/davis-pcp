@@ -37,24 +37,33 @@ def weighted():
 def test_weighted_mean_counts_pct_match_hand_values(weighted):
     client, ds = weighted
     body = {"datasetId": ds, "columns": ["Q1"], "weightColumn": "wt"}
-    res = client.post("/api/v1/summaries", json=body).json()
+    response = client.post("/api/v1/summaries", json=body)
+    assert response.status_code == 200, response.text
+    res = response.json()
     assert res["weightStatus"] == "applied" and res["weightApplied"] is True, res
     assert res["weightColumn"] == "wt" and res["unweightedN"] == 6
-    # valid rows: 6 (code 9 is a valid third category here); weights 1,2,3,0,5,null
-    # -> weightedN 11, missing 1
+    # Scope-level legacy weightedN still describes all six respondents:
+    # weights 1,2,3,0,5,null sum to 11; this is NOT Q1's valid denominator.
+    # AV02: code 9 is invalid outside the declared ["1", "2"] domain.
     assert res["weightedN"] == 11.0 and res["weightMissingCount"] == 1
     col = res["columns"]["Q1"]["weighted"]
     by_code = {d["code"]: d for d in col["distribution"]}
+    assert set(by_code) == {"1", "2"}, "invalid code 9 must not become rank 3"
+    assert col["weightedN"] == 6.0
     assert by_code["1"]["weightedCount"] == 3.0
     assert by_code["2"]["weightedCount"] == 3.0
-    assert by_code["1"]["weightedPct"] == round(3 / 11 * 100, 4)
-    assert by_code["2"]["weightedPct"] == round(3 / 11 * 100, 4)
-    # categoryOrder is ["1","2"], so observed code 9 appends as rank 3:
-    # (1*1 + 1*2 + 2*3 + 3*5) / 11
-    assert col["weightedMean"] == round((1 + 2 + 6 + 15) / 11, 4)
+    assert by_code["1"]["weightedPct"] == 50.0
+    assert by_code["2"]["weightedPct"] == 50.0
+    assert sum(d["weightedCount"] for d in by_code.values()) == col["weightedN"]
+    # The invalid response's weight 5 contributes neither to the numerator
+    # nor to Q1's denominator: (1*1 + 1*2 + 2*3) / (1+2+3) = 1.5.
+    assert col["weightedMean"] == 1.5
     assert col["meanNote"] == "等間隔得点として計算"
-    # unweighted side untouched
-    assert res["columns"]["Q1"]["denominators"]["valid"] == 6
+    # Zero/missing weights do not invalidate the corresponding raw answers.
+    # The five valid unweighted answers are [1,1,2,2,2].
+    assert res["columns"]["Q1"]["denominators"]["valid"] == 5
+    assert res["columns"]["Q1"]["count"] == 5
+    assert res["columns"]["Q1"]["mean"] == pytest.approx(1.6)
 
 
 def test_weight_null_omitted_and_zero_weight_excluded(weighted):

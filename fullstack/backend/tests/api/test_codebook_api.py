@@ -10,8 +10,13 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def sample_dataset():
-    res = client.post("/api/v1/datasets/import/sample")
+def sample_dataset(tmp_path):
+    text = "sepal_length_cm,sepal_width_cm,petal_length_cm,petal_width_cm,species\n"
+    text += "5.1,3.5,1.4,0.2,Iris-setosa\n6.0,2.2,4.0,1.0,Iris-versicolor\n6.3,3.3,6.0,2.5,Iris-virginica\n"
+    res = client.post(
+        "/api/v1/datasets/import",
+        files={"file": ("iris_sample.csv", text.encode("utf-8"), "text/csv")},
+    )
     assert res.status_code == 200
     meta = res.json()
     return meta["datasetId"]
@@ -46,6 +51,8 @@ def test_codebook_partial_update(sample_dataset):
             {
                 "columnId": col1["columnId"],
                 "label": "がく片の長さ (cm)",
+                "scaleType": "ordinal",
+                "categoryOrder": ["1", "2", "3", "4", "5"],
                 "isReversed": True,
                 "missingCodes": ["99"],
             }
@@ -64,6 +71,7 @@ def test_codebook_partial_update(sample_dataset):
     assert col1_updated["label"] == "がく片の長さ (cm)"
     assert col1_updated["isReversed"] is True
     assert col1_updated["missingCodes"] == ["99"]
+    assert col1_updated["scaleType"] == "ordinal"
 
     # Other columns untouched
     other_col = cb2["columns"][1]
@@ -93,7 +101,7 @@ def test_codebook_survives_imputation(sample_dataset):
     col = cb["columns"][0]
     client.put(
         f"/api/v1/datasets/{sample_dataset}/codebook",
-        json={"columns": [{"columnId": col["columnId"], "label": "Imputation Guard Label", "isReversed": True}]},
+        json={"columns": [{"columnId": col["columnId"], "label": "Imputation Guard Label"}]},
     )
 
     # Run in-place imputation
@@ -107,7 +115,7 @@ def test_codebook_survives_imputation(sample_dataset):
     cb_after = client.get(f"/api/v1/datasets/{sample_dataset}/codebook").json()
     col_after = next(c for c in cb_after["columns"] if c["name"] == col["name"])
     assert col_after["label"] == "Imputation Guard Label"
-    assert col_after["isReversed"] is True
+    assert col_after["isReversed"] is False
     assert col_after["columnId"] == col["columnId"]
 
 
@@ -193,3 +201,34 @@ def test_codebook_json_export_and_import(sample_dataset):
     cb = client.get(f"/api/v1/datasets/{sample_dataset}/codebook").json()
     col = next(c for c in cb["columns"] if c["name"] == "species")
     assert col["label"] == "JSONインポートテスト品種"
+
+
+def test_codebook_rejects_reversed_numeric_without_range(sample_dataset):
+    cb = client.get(f"/api/v1/datasets/{sample_dataset}/codebook").json()
+    col = next(c for c in cb["columns"] if c["name"] == "sepal_length_cm")
+    assert col["scaleType"] == "ratio"
+    assert col["categoryOrder"] == []
+    res = client.put(
+        f"/api/v1/datasets/{sample_dataset}/codebook",
+        json={"columns": [{"columnId": col["columnId"], "isReversed": True}]},
+    )
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "CODEBOOK_REVERSE_RANGE_MISSING"
+    # 不正な保存は拒否され、既存のコードブックは無変更
+    cb2 = client.get(f"/api/v1/datasets/{sample_dataset}/codebook").json()
+    col2 = next(c for c in cb2["columns"] if c["name"] == "sepal_length_cm")
+    assert col2["isReversed"] is False
+
+
+def test_codebook_allows_reversed_numeric_with_range(sample_dataset):
+    cb = client.get(f"/api/v1/datasets/{sample_dataset}/codebook").json()
+    col = next(c for c in cb["columns"] if c["name"] == "sepal_length_cm")
+    res = client.put(
+        f"/api/v1/datasets/{sample_dataset}/codebook",
+        json={"columns": [{
+            "columnId": col["columnId"],
+            "categoryOrder": ["4.3", "7.9"],
+            "isReversed": True,
+        }]},
+    )
+    assert res.status_code == 200

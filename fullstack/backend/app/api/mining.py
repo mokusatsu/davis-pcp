@@ -468,6 +468,7 @@ def _verify_subgroups(dataset_id, req, df, columns_meta, attr_cols, q_cols, info
     if posthoc_stability:
         for item in results:
             if isinstance(item.get("test"), dict):
+                item["test"]["pValue"] = None
                 item["test"]["pAdjusted"] = None
                 item["test"]["significant"] = None
             else:
