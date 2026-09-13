@@ -31,6 +31,9 @@ import CrosstabPage from './features/crosstab/CrosstabPage'
 import LogisticRegressionPage from './features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from './features/models/DiscriminantAnalysisPage'
 import CorrespondenceAnalysisPage from './features/models/CorrespondenceAnalysisPage'
+import MultipleCorrespondencePage from './features/models/MultipleCorrespondencePage'
+import FamdPage from './features/models/FamdPage'
+import LinearRegressionPage from './features/models/LinearRegressionPage'
 import { store } from './app/store'
 import { FocusModeProvider } from './features/common/FocusMode'
 import { IS_STATIC_BUILD } from './api/client'
@@ -65,6 +68,9 @@ const routeChildren = [
   { path: 'logistic', element: <LogisticRegressionPage /> },
   { path: 'discriminant', element: <DiscriminantAnalysisPage /> },
   { path: 'models/ca', element: <CorrespondenceAnalysisPage /> },
+  { path: 'models/mca', element: <MultipleCorrespondencePage /> },
+  { path: 'models/famd', element: <FamdPage /> },
+  { path: 'models/linear-regression', element: <LinearRegressionPage /> },
   { path: 'crosstab', element: <CrosstabPage /> },
 ]
 

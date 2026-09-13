@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "request_models": 12,
+  "validated_examples": 12,
+  "json_schemas": 12,
+  "markdown_links_checked": 118,
+  "reference_tests": 42,
+  "production_application_tests_run": false,
+  "html_self_contained": true,
+  "validation_scope": "Document link/syntax checks, request examples, and independent mathematical reference tests only."
+}

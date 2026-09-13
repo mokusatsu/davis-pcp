@@ -1,0 +1,28 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "selected",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": [
+      "r1"
+    ],
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "columns": {
+    "respondentId": "respondent_id",
+    "taskId": "task_id",
+    "alternativeId": "alternative_id",
+    "response": "chosen",
+    "availability": null,
+    "optOutIndicator": null
+  }
+}

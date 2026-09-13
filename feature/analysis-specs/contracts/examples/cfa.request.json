@@ -1,0 +1,85 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "variables": [
+    {
+      "columnId": "q1",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q2",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q3",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q4",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q5",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q6",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    }
+  ],
+  "estimator": "wlsmv",
+  "factors": [
+    {
+      "factorId": "f1",
+      "indicatorIds": ["q1", "q2", "q3"],
+      "markerColumnId": "q1"
+    },
+    {
+      "factorId": "f2",
+      "indicatorIds": ["q4", "q5", "q6"],
+      "markerColumnId": "q4"
+    }
+  ],
+  "factorCovariance": "free",
+  "confidenceLevel": 0.95,
+  "sourceEfaResultId": null,
+  "validationIntent": "unknown"
+}

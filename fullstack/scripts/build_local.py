@@ -16,7 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+# このファイルは fullstack/scripts/ 配下にあるため、リポジトリルートは2階層上
+ROOT_DIR = Path(__file__).resolve().parents[2]
 FULLSTACK_DIR = ROOT_DIR / "fullstack"
 FRONTEND_DIR = FULLSTACK_DIR / "frontend"
 BACKEND_DIR = FULLSTACK_DIR / "backend"

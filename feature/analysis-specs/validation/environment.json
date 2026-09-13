@@ -1,0 +1,13 @@
+{
+  "python": "3.13.5",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "packages": {
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "statsmodels": "0.14.6",
+    "pydantic": "2.13.4",
+    "pytest": "9.0.2"
+  },
+  "Rscript": null,
+  "production_application_tested": false
+}

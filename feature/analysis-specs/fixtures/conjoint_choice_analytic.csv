@@ -1,0 +1,9 @@
+__rowId__,respondent_id,task_id,alternative_id,brand,chosen
+cj1_1,P1,T1,A1,A,1
+cj1_2,P1,T1,A2,B,0
+cj2_1,P2,T1,A1,A,1
+cj2_2,P2,T1,A2,B,0
+cj3_1,P3,T1,A1,A,1
+cj3_2,P3,T1,A2,B,0
+cj4_1,P4,T1,A1,A,0
+cj4_2,P4,T1,A2,B,1

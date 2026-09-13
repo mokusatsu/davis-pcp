@@ -6,9 +6,7 @@ Bundles all runtime files and Python wheels locally for full offline support.
 """
 from __future__ import annotations
 
-import io
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -16,7 +14,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+# このファイルは fullstack/scripts/ 配下にあるため、リポジトリルートは2階層上
+ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = ROOT / "fullstack" / "frontend"
 BACKEND_DIR = ROOT / "fullstack" / "backend"
 DIST_STATIC = ROOT / "dist" / "static"
@@ -172,12 +171,14 @@ def package_backend_app() -> Path:
 def build_frontend() -> None:
     """Run Vite static build."""
     print("[4/5] Building frontend (Vite static mode) ...")
-    # Clean previous assets if any to prevent stale hashed files from accumulating
-    assets_dir = DIST_STATIC / "assets"
-    if assets_dir.exists():
-        shutil.rmtree(assets_dir)
+    # Vite は outDir を初期化しない設定 (emptyOutDir: false) のため、
+    # 以前の index.html や古いハッシュ付き資産が残る。出力先全体を消す。
+    if DIST_STATIC.exists():
+        shutil.rmtree(DIST_STATIC)
+    DIST_STATIC.mkdir(parents=True, exist_ok=True)
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
-    subprocess.run([npm_cmd, "run", "build:static"], cwd=FRONTEND_DIR, check=True, shell=(sys.platform == "win32"))
+    subprocess.run([npm_cmd, "run", "build:static"], cwd=FRONTEND_DIR, check=True,
+                   shell=False)
 
 
 def assemble_dist_static(pyodide_files: list[Path], pure_wheels: list[Path], app_zip: Path) -> None:
@@ -272,6 +273,15 @@ def main() -> int:
     if not check_script.exists():
         check_script = ROOT / "fullstack" / "scripts" / "check_licenses.py"
     subprocess.run([sys.executable, str(check_script)], check=True)
+
+    for probe, label in [
+        (FRONTEND_DIR / "package.json", "frontend"),
+        (BACKEND_DIR / "app", "backend/app"),
+    ]:
+        if not probe.exists():
+            print(f"[ERROR] {label} が見つかりません: {probe}", file=sys.stderr)
+            print(f"[ERROR] ROOT の解決を確認してください: {ROOT}", file=sys.stderr)
+            return 1
 
     # 1-3. Download & cache Pyodide & wheels
     pyodide_files, pure_wheels = prepare_pyodide_assets()

@@ -31,6 +31,9 @@ from .api import logistic as logistic_api
 from .api import discriminant as discriminant_api
 from .api import multi_response as multi_response_api
 from .api import correspondence as correspondence_api
+from .api import mca as mca_api
+from .api import famd as famd_api
+from .api import linear_regression as linear_regression_api
 from .api import analysis_results as analysis_results_api
 from .config import settings
 from .domain.errors import BizError, biz_error_handler
@@ -88,6 +91,9 @@ app.include_router(logistic_api.router, prefix="/api/v1")
 app.include_router(discriminant_api.router, prefix="/api/v1")
 app.include_router(multi_response_api.router, prefix="/api/v1")
 app.include_router(correspondence_api.router, prefix="/api/v1")
+app.include_router(mca_api.router, prefix="/api/v1")
+app.include_router(famd_api.router, prefix="/api/v1")
+app.include_router(linear_regression_api.router, prefix="/api/v1")
 app.include_router(analysis_results_api.router, prefix="/api/v1")
 
 _frontend_env = os.environ.get("DAVIS_PCP_FRONTEND_DIST")

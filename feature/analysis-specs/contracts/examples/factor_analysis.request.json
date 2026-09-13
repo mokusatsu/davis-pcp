@@ -1,0 +1,58 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "variables": [
+    {
+      "columnId": "q1",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    },
+    {
+      "columnId": "q2",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    },
+    {
+      "columnId": "q3",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    },
+    {
+      "columnId": "q4",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    },
+    {
+      "columnId": "q5",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    },
+    {
+      "columnId": "q6",
+      "ordinalAsNumericAcknowledged": false,
+      "score": null
+    }
+  ],
+  "nFactors": 2,
+  "method": "ml",
+  "rotation": "promax",
+  "scoreMethod": "regression",
+  "uniquenessLower": 0.005,
+  "nStarts": 5,
+  "maxIterations": 2000,
+  "seed": 42
+}

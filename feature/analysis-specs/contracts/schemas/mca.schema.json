@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "variables": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Variables",
+      "type": "array"
+    },
+    "maMode": {
+      "default": "ordinary_only",
+      "enum": [
+        "ordinary_only",
+        "explicit_binary_options"
+      ],
+      "title": "Mamode",
+      "type": "string"
+    },
+    "inertiaAdjustment": {
+      "default": "raw",
+      "enum": [
+        "raw",
+        "benzecri"
+      ],
+      "title": "Inertiaadjustment",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context",
+    "variables"
+  ],
+  "title": "MCARequest",
+  "type": "object"
+}

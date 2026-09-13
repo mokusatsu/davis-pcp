@@ -1,0 +1,232 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "MaterializedColumn": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceField": {
+          "minLength": 1,
+          "title": "Sourcefield",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceField",
+        "name"
+      ],
+      "title": "MaterializedColumn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "source": {
+      "default": "fit",
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/MaterializedColumn"
+      },
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array"
+    },
+    "idempotencyKey": {
+      "minLength": 1,
+      "title": "Idempotencykey",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context",
+    "columns",
+    "idempotencyKey"
+  ],
+  "title": "MaterializeRequest",
+  "type": "object"
+}

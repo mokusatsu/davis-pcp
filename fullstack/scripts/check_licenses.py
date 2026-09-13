@@ -11,9 +11,11 @@ import re
 import sys
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-FRONTEND_DIR = ROOT_DIR / "frontend"
-BACKEND_DIR = ROOT_DIR / "backend"
+# このファイルは fullstack/scripts/ 配下にあるため、fullstack ルートは1階層上
+FULLSTACK_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = FULLSTACK_DIR.parents[0]
+FRONTEND_DIR = FULLSTACK_DIR / "frontend"
+BACKEND_DIR = FULLSTACK_DIR / "backend"
 LICENSES_JSON = FRONTEND_DIR / "src" / "data" / "licenses.json"
 PACKAGE_JSON = FRONTEND_DIR / "package.json"
 REQUIREMENTS_TXT = BACKEND_DIR / "requirements.txt"

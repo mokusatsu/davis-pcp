@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "enum": [
+        "json",
+        "csv"
+      ],
+      "title": "Format",
+      "type": "string"
+    },
+    "table": {
+      "enum": [
+        "manifest",
+        "eigenvalues",
+        "categories",
+        "variables",
+        "coefficients",
+        "diagnostics",
+        "rows",
+        "utilities"
+      ],
+      "title": "Table",
+      "type": "string"
+    },
+    "offset": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "limit": {
+      "default": 5000,
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "format",
+    "table"
+  ],
+  "title": "ExportRequest",
+  "type": "object"
+}

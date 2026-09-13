@@ -1,0 +1,346 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "FactorModel": {
+      "additionalProperties": false,
+      "properties": {
+        "factorId": {
+          "minLength": 1,
+          "title": "Factorid",
+          "type": "string"
+        },
+        "indicatorIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 3,
+          "title": "Indicatorids",
+          "type": "array"
+        },
+        "markerColumnId": {
+          "minLength": 1,
+          "title": "Markercolumnid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "factorId",
+        "indicatorIds",
+        "markerColumnId"
+      ],
+      "title": "FactorModel",
+      "type": "object"
+    },
+    "FactorVariable": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "measurement": {
+          "enum": [
+            "ordinal",
+            "continuous"
+          ],
+          "title": "Measurement",
+          "type": "string"
+        },
+        "treatment": {
+          "enum": [
+            "ordinal",
+            "continuous",
+            "continuous_approximation"
+          ],
+          "title": "Treatment",
+          "type": "string"
+        },
+        "categoryOrder": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Categoryorder"
+        },
+        "reverse": {
+          "default": false,
+          "title": "Reverse",
+          "type": "boolean"
+        },
+        "approximationAcknowledged": {
+          "default": false,
+          "title": "Approximationacknowledged",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "columnId",
+        "measurement",
+        "treatment"
+      ],
+      "title": "FactorVariable",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/FactorVariable"
+      },
+      "minItems": 3,
+      "title": "Variables",
+      "type": "array"
+    },
+    "estimator": {
+      "enum": [
+        "wlsmv",
+        "ulsmv",
+        "mlr",
+        "ml"
+      ],
+      "title": "Estimator",
+      "type": "string"
+    },
+    "factors": {
+      "items": {
+        "$ref": "#/$defs/FactorModel"
+      },
+      "minItems": 1,
+      "title": "Factors",
+      "type": "array"
+    },
+    "factorCovariance": {
+      "default": "free",
+      "enum": [
+        "free",
+        "orthogonal"
+      ],
+      "title": "Factorcovariance",
+      "type": "string"
+    },
+    "confidenceLevel": {
+      "default": 0.95,
+      "exclusiveMaximum": 1,
+      "exclusiveMinimum": 0,
+      "title": "Confidencelevel",
+      "type": "number"
+    },
+    "sourceEfaResultId": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sourceefaresultid"
+    },
+    "validationIntent": {
+      "default": "unknown",
+      "enum": [
+        "exploratory",
+        "same_data",
+        "holdout",
+        "external",
+        "unknown"
+      ],
+      "title": "Validationintent",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context",
+    "variables",
+    "estimator",
+    "factors"
+  ],
+  "title": "CFARequest",
+  "type": "object"
+}

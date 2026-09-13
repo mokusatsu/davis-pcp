@@ -1,0 +1,35 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "selector": {
+    "kind": "rectangle",
+    "axes": [
+      1,
+      2
+    ],
+    "bounds": [
+      [
+        -1.0,
+        1.0
+      ],
+      [
+        -2.0,
+        2.0
+      ]
+    ]
+  }
+}

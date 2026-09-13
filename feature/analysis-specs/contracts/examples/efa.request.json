@@ -1,0 +1,95 @@
+{
+  "sensitivityAnalysis": {
+    "enabled": true,
+    "approximationAcknowledged": true,
+    "alignment": "signed_permutation",
+    "comparisonExtraction": "minres",
+    "loadingDifferenceThreshold": 0.1,
+    "communalityDifferenceThreshold": 0.1,
+    "factorCorrelationDifferenceThreshold": 0.1,
+    "assignmentThreshold": 0.4,
+    "assignmentMargin": 0.1
+  },
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "variables": [
+    {
+      "columnId": "q1",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q2",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q3",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q4",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q5",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    },
+    {
+      "columnId": "q6",
+      "measurement": "ordinal",
+      "treatment": "ordinal",
+      "categoryOrder": ["1", "2", "3", "4", "5"],
+      "reverse": false,
+      "approximationAcknowledged": false
+    }
+  ],
+  "correlation": "polychoric",
+  "extraction": "minres",
+  "nFactors": 2,
+  "compareFactors": [1],
+  "rotation": "promax",
+  "scoreMethod": "none",
+  "parallelAnalysis": {
+    "enabled": true,
+    "iterations": 500,
+    "quantile": 0.95,
+    "seed": 42
+  },
+  "uniquenessLower": 0.005,
+  "nStarts": 5,
+  "maxIterations": 2000,
+  "seed": 42
+}

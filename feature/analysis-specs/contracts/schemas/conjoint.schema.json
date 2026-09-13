@@ -1,0 +1,386 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "CategoricalAttribute": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "kind": {
+          "const": "categorical",
+          "title": "Kind",
+          "type": "string"
+        },
+        "referenceLevel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referencelevel"
+        }
+      },
+      "required": [
+        "columnId",
+        "kind"
+      ],
+      "title": "CategoricalAttribute",
+      "type": "object"
+    },
+    "ConjointColumns": {
+      "additionalProperties": false,
+      "properties": {
+        "respondentId": {
+          "minLength": 1,
+          "title": "Respondentid",
+          "type": "string"
+        },
+        "taskId": {
+          "minLength": 1,
+          "title": "Taskid",
+          "type": "string"
+        },
+        "alternativeId": {
+          "minLength": 1,
+          "title": "Alternativeid",
+          "type": "string"
+        },
+        "response": {
+          "minLength": 1,
+          "title": "Response",
+          "type": "string"
+        },
+        "availability": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Availability"
+        },
+        "optOutIndicator": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Optoutindicator"
+        }
+      },
+      "required": [
+        "respondentId",
+        "taskId",
+        "alternativeId",
+        "response"
+      ],
+      "title": "ConjointColumns",
+      "type": "object"
+    },
+    "LinearAttribute": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "kind": {
+          "const": "linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "utilityRange": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Utilityrange"
+        }
+      },
+      "required": [
+        "columnId",
+        "kind"
+      ],
+      "title": "LinearAttribute",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "mode": {
+      "enum": [
+        "ratings",
+        "choice",
+        "ranking"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "columns": {
+      "$ref": "#/$defs/ConjointColumns"
+    },
+    "attributes": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "categorical": "#/$defs/CategoricalAttribute",
+            "linear": "#/$defs/LinearAttribute"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/CategoricalAttribute"
+          },
+          {
+            "$ref": "#/$defs/LinearAttribute"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Attributes",
+      "type": "array"
+    },
+    "ratingEffects": {
+      "default": "pooled",
+      "enum": [
+        "pooled",
+        "respondent_fixed"
+      ],
+      "title": "Ratingeffects",
+      "type": "string"
+    },
+    "priceAttribute": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Priceattribute"
+    },
+    "confidenceLevel": {
+      "default": 0.95,
+      "exclusiveMaximum": 1,
+      "exclusiveMinimum": 0,
+      "title": "Confidencelevel",
+      "type": "number"
+    },
+    "maxIterations": {
+      "default": 1000,
+      "maximum": 20000,
+      "minimum": 100,
+      "title": "Maxiterations",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "context",
+    "mode",
+    "columns",
+    "attributes"
+  ],
+  "title": "ConjointRequest",
+  "type": "object"
+}

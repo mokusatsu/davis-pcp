@@ -1,0 +1,253 @@
+[
+  {
+    "path": "fullstack/backend/app/main.py",
+    "sha256": "673eb645310ca00cee3ff925ef86776b4247bc6e5a9b17ca0913857b482aafc8",
+    "lines": 143,
+    "landmarks": [
+      "`include_router`: 67,68,69,70,71,72等",
+      "`/api/v1`: 67,68,69,70,71,72等"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/context.py",
+    "sha256": "085184d91fca816013fec70a80a99bf2a562f8331ad366923cdedbf0a0ab25be",
+    "lines": 184,
+    "landmarks": [
+      "`class AnalysisContext`: 25",
+      "`def collect_revisions`: 48",
+      "`def check_revisions`: 56",
+      "`def scope_hash`: 89",
+      "`def resolve_scope`: 95"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/analysis_columns.py",
+    "sha256": "a1b7b39ea535811cf549f8131772fe88e6ee38134a469bda2a8d1dc9f3a6dc61",
+    "lines": 88,
+    "landmarks": [
+      "`class AnalysisColumns`: 14",
+      "`def prepare`: 19",
+      "`def resolve_analysis_columns`: 43"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/codebook_adapter.py",
+    "sha256": "dcf1c65e9328e2d1ef0606b283f3bed83b9a76e69cbcfaf49fbd2b51e99a6e97",
+    "lines": 277,
+    "landmarks": [
+      "`def normalize_code`: 17",
+      "`def analysis_series`: 199",
+      "`categoryOrder`: 133,142,210,214,249,252等",
+      "`CODEBOOK_REVERSE_RANGE_MISSING`: 273"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/algorithms/summaries/core.py",
+    "sha256": "c8b02abb7a9412827a4af1a6d3df385e60c016fa471ab0c640581c5054a765dd",
+    "lines": 504,
+    "landmarks": [
+      "`categoryOrder`: 63,68,201,299,301,346等",
+      "`invalid`: 64,65,67,72,88,94等"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/algorithms/summaries/crosstab.py",
+    "sha256": "532846887dc340652635f052328eff8103787d4f26fdcf9f3c65939eed77c74f",
+    "lines": 469,
+    "landmarks": [
+      "`def _split_missing`: 120",
+      "`include_missing`: 133,168",
+      "`separate_not_applicable`: 135,137,168"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/weight_mode.py",
+    "sha256": "18df567f718eacbdf511da3324e71c543c9ffd004eafea119ec10be67061f77f",
+    "lines": 53,
+    "landmarks": [
+      "`def `: 16",
+      "`weightMode`: 1,29,36,43"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/survey_weight.py",
+    "sha256": "5ac0e371b1d477b0fc015ec35a6b0c85f6a600132e1ee39fbf3e318766c0f98e",
+    "lines": 209,
+    "landmarks": [
+      "`def `: 21,34,50,66,122,131等",
+      "`frequency`: 146,148,170,185,189",
+      "`survey`: 3,51,147,170,186"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/algorithms/survey/design.py",
+    "sha256": "d30212f4dc199eed44661fe9cf0bb4b73ab59db1818e14b6a72227384f562e94",
+    "lines": 177,
+    "landmarks": [
+      "`def `: 21,56,60,64,68,74等",
+      "`fpc`: 51,97,102,103,106,109等"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/algorithms/survey/covariance.py",
+    "sha256": "82f0cb6e691da416e48fb870f9c707678850c63448f91ae5bcad0dbbd09cd50d",
+    "lines": 68,
+    "landmarks": [
+      "`def `: 16,58"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/storage/dataset_store.py",
+    "sha256": "9ff320d18e19245c2cc9bccaa3aa8fc1b34fa06d578cb3f8dd1e09d05a2b89c5",
+    "lines": 679,
+    "landmarks": [
+      "`def lock`: 109",
+      "`def get_dataframe`: 229",
+      "`def load_codebook`: 599",
+      "`def mask_revision`: 370",
+      "`def commit_data_change`: 407"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/domain/provenance.py",
+    "sha256": "1233f843ebdcc069cc5fe00fcfde9377cbf7d21ee670d360ab5b62f5ae49c5f4",
+    "lines": 84,
+    "landmarks": [
+      "`def new_operation_id`: 44",
+      "`class ProvenanceStep`: 53",
+      "`def fingerprint_payload`: 80"
+    ]
+  },
+  {
+    "path": "fullstack/backend/app/api/models.py",
+    "sha256": "66efae8d67102620471c207d0840846f7096e9ec246dff3bb921ac3398346cbf",
+    "lines": 432,
+    "landmarks": [
+      "`@router`: 45,180,366,377,396",
+      "`_results`: 28,359,368,370"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/api/client.ts",
+    "sha256": "fd97f69b743fe121624133d4d759212b1a93313ea1f6f81fba6c156d4daf7631",
+    "lines": 281,
+    "landmarks": [
+      "`const BASE`: 3",
+      "`pyodide`: 1,19,68,88,108",
+      "`downloadBlob`: 49"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/engine/pyodide.worker.ts",
+    "sha256": "9e5b66d416e295c5132dffd85dc249a6f93ce56f8d6e183f4cd32ab8157db817",
+    "lines": 322,
+    "landmarks": [
+      "`loadPackage`: 72",
+      "`numpy`: 73",
+      "`scipy`: 74",
+      "`serialQueue`: 7"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/main.tsx",
+    "sha256": "d45e81aa2a941726ddb49c6628f215009953d3ea40b80b56ab969972a97fcd8a",
+    "lines": 115,
+    "landmarks": [
+      "`Route`: 4,70,77,104",
+      "`models`: 14,23,31,32,48"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/app/KeepAliveOutlet.tsx",
+    "sha256": "d707bd4766ce9cce9f0e2fa320b57587b627c546d149486c59f38cf8256040ba",
+    "lines": 138,
+    "landmarks": [
+      "`ROUTE_COMPONENTS`: 35,96,113"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/app/AppShell.tsx",
+    "sha256": "1b7d53ed2c0985f08b6d96b9d49914dbf7a3509f63fa48a804d0d87e7a2d0698",
+    "lines": 483,
+    "landmarks": [
+      "`ANALYSIS_NAV_ITEMS`: 44,60,432,433"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/src/app/store.ts",
+    "sha256": "f4e2c51bd7676be4939f1573ef22de2b2944d030b1dab6e6415678bdae6a9983",
+    "lines": 545,
+    "landmarks": [
+      "`selectionApplied`: 101,163,461",
+      "`activeRowIds`: 34,35,60,89,103,122等",
+      "`hovered`: 39,64,117,118,163"
+    ]
+  },
+  {
+    "path": "fullstack/scripts/build_static.py",
+    "sha256": "090473bcfb6898aebe394774041f370524fd62610d337dd14bb917f0d86514c0",
+    "lines": 314,
+    "landmarks": [
+      "`ROOT =`: 19",
+      "`FRONTEND_DIR =`: 20",
+      "`BACKEND_DIR =`: 21",
+      "`0.27.7`: 25"
+    ]
+  },
+  {
+    "path": "fullstack/backend/requirements.txt",
+    "sha256": "536ad72822e6a2746d8cc9bd016949a666a7811c42b8b207a4be931176d5d9a6",
+    "lines": 12,
+    "landmarks": [
+      "`numpy`: 5",
+      "`scipy`: 7",
+      "`pydantic`: 3"
+    ]
+  },
+  {
+    "path": "fullstack/frontend/package.json",
+    "sha256": "b2d327ff2932ae9cedc27bdaaa6e3fb373c6dddca25fb33d125c90a515f8b2d3",
+    "lines": 35,
+    "landmarks": [
+      "`\"scripts\"`: 6",
+      "`\"test\"`: 12",
+      "`\"build:static\"`: 10"
+    ]
+  },
+  {
+    "path": "feature.zip/tasks/DAVIS-FEAT-027-028.md",
+    "sha256": "38e32bdc86db64457e06949643d578a5ed383bd73e7162931079a03c95b56e06",
+    "lines": 470,
+    "landmarks": [
+      "`isExplorative`: 96,260",
+      "`rowIds`: 69,75,234"
+    ]
+  },
+  {
+    "path": "feature.zip/tasks/DAVIS-FEAT-020-DESIGN.md",
+    "sha256": "49ef9e663ab295cca226641fd8ddecc09adab52c22021c6165d0c7311d3d1c53",
+    "lines": 41,
+    "landmarks": [
+      "`上限`: 41",
+      "`離脱`: 41"
+    ]
+  },
+  {
+    "path": "feature.zip/tasks/DAVIS-FEAT-021-022.md",
+    "sha256": "95daa87aca34e340a67d33f4ede6902ea6558743cd01af0825dfa7899d3eba84",
+    "lines": 494,
+    "landmarks": [
+      "`survey`: 6"
+    ]
+  },
+  {
+    "path": "feature.zip/tasks/DAVIS-FEAT-025-026.md",
+    "sha256": "29e890a1ceb34f44acc85b2dbd4c262c5767b553566c082d71cffdc1429a2406",
+    "lines": 686,
+    "landmarks": [
+      "`commit`: 682",
+      "`provenance`: 7,140,184,275,307,308,309,310,311,312,313,353,365,659,678,686",
+      "`revision`: 104,142,176,183,271,294,299,327,352,354,356,360,363,373,377,395,548,573,579,603,634,651,658,659"
+    ]
+  }
+]

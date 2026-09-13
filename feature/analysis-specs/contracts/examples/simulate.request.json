@@ -1,0 +1,37 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "profiles": [
+    {
+      "alternativeId": "A",
+      "values": {
+        "brand": "A",
+        "price": 120.0
+      },
+      "optOut": false
+    },
+    {
+      "alternativeId": "B",
+      "values": {
+        "brand": "B",
+        "price": 180.0
+      },
+      "optOut": false
+    }
+  ],
+  "includeWtp": true
+}

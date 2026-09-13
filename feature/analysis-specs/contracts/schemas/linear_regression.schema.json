@@ -1,0 +1,320 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "CategoricalPredictor": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "kind": {
+          "const": "categorical",
+          "title": "Kind",
+          "type": "string"
+        },
+        "referenceCategory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referencecategory"
+        }
+      },
+      "required": [
+        "columnId",
+        "kind"
+      ],
+      "title": "CategoricalPredictor",
+      "type": "object"
+    },
+    "NumericPredictor": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "kind": {
+          "const": "numeric",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ordinalAsNumericAcknowledged": {
+          "default": false,
+          "title": "Ordinalasnumericacknowledged",
+          "type": "boolean"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "const": "ordered_rank",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "columnId",
+        "kind"
+      ],
+      "title": "NumericPredictor",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+    },
+    "predictors": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "categorical": "#/$defs/CategoricalPredictor",
+            "numeric": "#/$defs/NumericPredictor"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/NumericPredictor"
+          },
+          {
+            "$ref": "#/$defs/CategoricalPredictor"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Predictors",
+      "type": "array"
+    },
+    "interactions": {
+      "items": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Interactions",
+      "type": "array"
+    },
+    "intercept": {
+      "default": true,
+      "title": "Intercept",
+      "type": "boolean"
+    },
+    "covariance": {
+      "default": "auto",
+      "enum": [
+        "auto",
+        "hc3",
+        "classical",
+        "taylor"
+      ],
+      "title": "Covariance",
+      "type": "string"
+    },
+    "confidenceLevel": {
+      "default": 0.95,
+      "exclusiveMaximum": 1,
+      "exclusiveMinimum": 0,
+      "title": "Confidencelevel",
+      "type": "number"
+    }
+  },
+  "required": [
+    "context",
+    "target",
+    "predictors"
+  ],
+  "title": "LinearRegressionRequest",
+  "type": "object"
+}

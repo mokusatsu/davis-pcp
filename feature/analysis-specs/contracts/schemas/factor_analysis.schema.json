@@ -1,0 +1,286 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "FactorVariable": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "ordinalAsNumericAcknowledged": {
+          "default": false,
+          "title": "Ordinalasnumericacknowledged",
+          "type": "boolean"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "const": "ordered_rank",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "columnId"
+      ],
+      "title": "FactorVariable",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/FactorVariable"
+      },
+      "minItems": 3,
+      "title": "Variables",
+      "type": "array"
+    },
+    "nFactors": {
+      "minimum": 1,
+      "title": "Nfactors",
+      "type": "integer"
+    },
+    "method": {
+      "const": "ml",
+      "default": "ml",
+      "title": "Method",
+      "type": "string"
+    },
+    "rotation": {
+      "default": "varimax",
+      "enum": [
+        "none",
+        "varimax",
+        "promax"
+      ],
+      "title": "Rotation",
+      "type": "string"
+    },
+    "scoreMethod": {
+      "default": "regression",
+      "enum": [
+        "regression",
+        "bartlett"
+      ],
+      "title": "Scoremethod",
+      "type": "string"
+    },
+    "uniquenessLower": {
+      "default": 0.005,
+      "maximum": 0.1,
+      "minimum": 1e-06,
+      "title": "Uniquenesslower",
+      "type": "number"
+    },
+    "nStarts": {
+      "default": 5,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Nstarts",
+      "type": "integer"
+    },
+    "maxIterations": {
+      "default": 2000,
+      "maximum": 20000,
+      "minimum": 100,
+      "title": "Maxiterations",
+      "type": "integer"
+    },
+    "seed": {
+      "default": 42,
+      "maximum": 4294967295,
+      "minimum": 0,
+      "title": "Seed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "context",
+    "variables",
+    "nFactors"
+  ],
+  "title": "FactorAnalysisRequest",
+  "type": "object"
+}

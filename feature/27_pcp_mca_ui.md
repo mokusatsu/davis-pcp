@@ -5,6 +5,7 @@
 優先度: 4
 前提仕様: なし
 実装タスク・引き継ぎ: [tasks/DAVIS-FEAT-027-028.md](../tasks/DAVIS-FEAT-027-028.md#feature-27-実装仕様)
+関連する追加分析設計: [Feature 030 MCA仕様](analysis-specs/feature/30_multiple_correspondence_analysis.md) / [詳細設計](analysis-specs/tasks/DAVIS-FEAT-030-DESIGN.md)
 対象コンポーネント: 
 - `fullstack/backend/app/algorithms/models/mca.py`
 - `fullstack/backend/app/api/models.py`

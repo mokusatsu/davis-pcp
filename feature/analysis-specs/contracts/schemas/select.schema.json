@@ -1,0 +1,388 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "CategorySelector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "categories",
+          "title": "Kind",
+          "type": "string"
+        },
+        "categoryIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Categoryids",
+          "type": "array"
+        },
+        "betweenVariables": {
+          "default": "and",
+          "enum": [
+            "and",
+            "or"
+          ],
+          "title": "Betweenvariables",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "categoryIds"
+      ],
+      "title": "CategorySelector",
+      "type": "object"
+    },
+    "DiagnosticRectangleSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "diagnostic_rectangle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "xField": {
+          "enum": [
+            "fitted",
+            "residual",
+            "leverage"
+          ],
+          "title": "Xfield",
+          "type": "string"
+        },
+        "yField": {
+          "enum": [
+            "fitted",
+            "residual",
+            "leverage"
+          ],
+          "title": "Yfield",
+          "type": "string"
+        },
+        "xBounds": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Xbounds",
+          "type": "array"
+        },
+        "yBounds": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Ybounds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "xField",
+        "yField",
+        "xBounds",
+        "yBounds"
+      ],
+      "title": "DiagnosticRectangleSelector",
+      "type": "object"
+    },
+    "RectangleSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "rectangle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "axes": {
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Axes",
+          "type": "array"
+        },
+        "bounds": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Bounds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "axes",
+        "bounds"
+      ],
+      "title": "RectangleSelector",
+      "type": "object"
+    },
+    "RespondentSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "respondents",
+          "title": "Kind",
+          "type": "string"
+        },
+        "respondentIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Respondentids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "respondentIds"
+      ],
+      "title": "RespondentSelector",
+      "type": "object"
+    },
+    "RowSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "row_ids",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rowIds": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Rowids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "rowIds"
+      ],
+      "title": "RowSelector",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "selector": {
+      "discriminator": {
+        "mapping": {
+          "categories": "#/$defs/CategorySelector",
+          "diagnostic_rectangle": "#/$defs/DiagnosticRectangleSelector",
+          "rectangle": "#/$defs/RectangleSelector",
+          "respondents": "#/$defs/RespondentSelector",
+          "row_ids": "#/$defs/RowSelector"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RectangleSelector"
+        },
+        {
+          "$ref": "#/$defs/CategorySelector"
+        },
+        {
+          "$ref": "#/$defs/RowSelector"
+        },
+        {
+          "$ref": "#/$defs/RespondentSelector"
+        },
+        {
+          "$ref": "#/$defs/DiagnosticRectangleSelector"
+        }
+      ],
+      "title": "Selector"
+    }
+  },
+  "required": [
+    "context",
+    "selector"
+  ],
+  "title": "SelectRequest",
+  "type": "object"
+}

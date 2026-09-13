@@ -28,6 +28,9 @@ import FeatureRankingPage from '../features/mining/FeatureRankingPage'
 import LogisticRegressionPage from '../features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from '../features/models/DiscriminantAnalysisPage'
 import CorrespondenceAnalysisPage from '../features/models/CorrespondenceAnalysisPage'
+import MultipleCorrespondencePage from '../features/models/MultipleCorrespondencePage'
+import FamdPage from '../features/models/FamdPage'
+import LinearRegressionPage from '../features/models/LinearRegressionPage'
 import CrosstabPage from '../features/crosstab/CrosstabPage'
 
 /**
@@ -59,6 +62,9 @@ const ROUTE_COMPONENTS: Record<string, React.ComponentType> = {
   '/logistic': LogisticRegressionPage,
   '/discriminant': DiscriminantAnalysisPage,
   '/models/ca': CorrespondenceAnalysisPage,
+  '/models/mca': MultipleCorrespondencePage,
+  '/models/famd': FamdPage,
+  '/models/linear-regression': LinearRegressionPage,
   '/crosstab': CrosstabPage,
 }
 

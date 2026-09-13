@@ -97,6 +97,96 @@ class CARequest(StrictModel):
         return self
 
 
+class MCARequest(StrictModel):
+    context: AnalysisContextV2
+    variables: list[Id] = Field(min_length=2)
+    maMode: Literal["ordinary_only", "explicit_binary_options"] = "ordinary_only"
+    inertiaAdjustment: Literal["raw", "benzecri"] = "raw"
+
+    @model_validator(mode="after")
+    def check_variables(self):
+        if len(set(self.variables)) != len(self.variables):
+            raise ValueError("variables must not contain duplicates")
+        return self
+
+
+class FAMDRequest(StrictModel):
+    context: AnalysisContextV2
+    numericVariables: list[Id] = Field(min_length=1)
+    categoricalVariables: list[Id] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_variables(self):
+        if len(set(self.numericVariables)) != len(self.numericVariables):
+            raise ValueError("numericVariables must not contain duplicates")
+        if len(set(self.categoricalVariables)) != len(self.categoricalVariables):
+            raise ValueError("categoricalVariables must not contain duplicates")
+        if set(self.numericVariables) & set(self.categoricalVariables):
+            raise ValueError("FAMD variables must not overlap")
+        return self
+
+
+class NumericPredictor(StrictModel):
+    columnId: Id
+    kind: Literal["numeric"]
+    ordinalAsNumericAcknowledged: bool = False
+    score: Literal["ordered_rank"] | None = None
+
+    @model_validator(mode="after")
+    def check_ack(self):
+        if self.ordinalAsNumericAcknowledged != (self.score == "ordered_rank"):
+            raise ValueError("ordered_rank and ordinal acknowledgement must be supplied together")
+        return self
+
+
+class CategoricalPredictor(StrictModel):
+    columnId: Id
+    kind: Literal["categorical"]
+    referenceCategory: str | None = None
+
+
+class LinearRegressionRequest(StrictModel):
+    context: AnalysisContextV2
+    target: Id
+    predictors: list[Annotated[Union[NumericPredictor, CategoricalPredictor], Field(discriminator="kind")]] = Field(min_length=1)
+    interactions: list[list[Id]] = Field(default_factory=list)
+    intercept: bool = True
+    covariance: Literal["auto", "hc3", "classical", "taylor"] = "auto"
+    confidenceLevel: Annotated[float, Field(gt=0, lt=1)] = 0.95
+
+    @model_validator(mode="after")
+    def check_design(self):
+        ids = [p.columnId for p in self.predictors]
+        if len(set(ids)) != len(ids):
+            raise ValueError("predictors must not contain duplicates")
+        if self.target in ids:
+            raise ValueError("target must not be a predictor")
+        seen: set[tuple[str, str]] = set()
+        for pair in self.interactions:
+            if len(pair) != 2 or pair[0] == pair[1] or any(p not in ids for p in pair):
+                raise ValueError("interaction requires two distinct selected main effects")
+            key = tuple(sorted(pair))
+            if key in seen:
+                raise ValueError("duplicate interaction")
+            seen.add(key)
+        return self
+
+
+class DiagnosticRectangleSelector(StrictModel):
+    kind: Literal["diagnostic_rectangle"]
+    xField: Literal["fitted", "residual", "leverage"]
+    yField: Literal["fitted", "residual", "leverage"]
+    xBounds: list[Finite]
+    yBounds: list[Finite]
+
+    @model_validator(mode="after")
+    def check_bounds(self):
+        for b in (self.xBounds, self.yBounds):
+            if len(b) != 2 or b[0] > b[1]:
+                raise ValueError("bounds require lower <= upper")
+        return self
+
+
 class CategorySelector(StrictModel):
     kind: Literal["categories"]
     categoryIds: list[Id] = Field(min_length=1)
@@ -108,9 +198,25 @@ class RowIdSelector(StrictModel):
     rowIds: list[Id]
 
 
+class RectangleSelector(StrictModel):
+    kind: Literal["rectangle"]
+    axes: list[PositiveInt] = Field(min_length=1, max_length=2)
+    bounds: list[list[Finite]] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def check_axes(self):
+        if len(self.axes) != len(self.bounds) or len(set(self.axes)) != len(self.axes):
+            raise ValueError("each distinct axis needs one bound")
+        if any(len(b) != 2 or b[0] > b[1] for b in self.bounds):
+            raise ValueError("bounds require lower <= upper")
+        return self
+
+
 class SelectRequest(StrictModel):
     context: AnalysisContextV2
-    selector: Annotated[Union[CategorySelector, RowIdSelector], Field(discriminator="kind")]
+    selector: Annotated[Union[CategorySelector, RowIdSelector, RectangleSelector,
+                              DiagnosticRectangleSelector],
+                        Field(discriminator="kind")]
 
 
 class ExportRequest(StrictModel):
@@ -134,6 +240,19 @@ class MaterializeRequest(StrictModel):
     idempotencyKey: Id
 
 
+class PredictionOptions(StrictModel):
+    interval: Literal["none", "mean_ci", "individual_pi"] = "none"
+    evaluate: bool = True
+
+
 class PredictRequest(StrictModel):
     context: AnalysisContextV2
-    options: dict = Field(default_factory=dict)
+    options: PredictionOptions = Field(default_factory=PredictionOptions)
+
+    @model_validator(mode="after")
+    def check_options(self):
+        interval = (self.options.interval if isinstance(self.options, PredictionOptions)
+                    else (self.options or {}).get("interval", "none"))
+        if interval not in ("none", "mean_ci", "individual_pi"):
+            raise ValueError("analysis predict supports none/mean_ci/individual_pi only")
+        return self

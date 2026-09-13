@@ -1,0 +1,291 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "ContingencyCAInput": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "contingency",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rowLabelColumn": {
+          "minLength": 1,
+          "title": "Rowlabelcolumn",
+          "type": "string"
+        },
+        "valueColumns": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Valuecolumns",
+          "type": "array"
+        },
+        "cellSemantics": {
+          "enum": [
+            "frequency",
+            "mass"
+          ],
+          "title": "Cellsemantics",
+          "type": "string"
+        },
+        "independentCountsAcknowledged": {
+          "default": false,
+          "title": "Independentcountsacknowledged",
+          "type": "boolean"
+        },
+        "structuralZerosDeclared": {
+          "default": false,
+          "title": "Structuralzerosdeclared",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "rowLabelColumn",
+        "valueColumns",
+        "cellSemantics"
+      ],
+      "title": "ContingencyCAInput",
+      "type": "object"
+    },
+    "RespondentCAInput": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "respondents",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rowVariable": {
+          "minLength": 1,
+          "title": "Rowvariable",
+          "type": "string"
+        },
+        "columnVariable": {
+          "minLength": 1,
+          "title": "Columnvariable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "rowVariable",
+        "columnVariable"
+      ],
+      "title": "RespondentCAInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "input": {
+      "discriminator": {
+        "mapping": {
+          "contingency": "#/$defs/ContingencyCAInput",
+          "respondents": "#/$defs/RespondentCAInput"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RespondentCAInput"
+        },
+        {
+          "$ref": "#/$defs/ContingencyCAInput"
+        }
+      ],
+      "title": "Input"
+    },
+    "mapScaling": {
+      "default": "symmetric",
+      "enum": [
+        "symmetric",
+        "row_principal",
+        "column_principal"
+      ],
+      "title": "Mapscaling",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context",
+    "input"
+  ],
+  "title": "CARequest",
+  "type": "object"
+}

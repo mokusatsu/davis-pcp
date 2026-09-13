@@ -14,3 +14,9 @@
 | DAVIS-FEAT-024 | 探索/検証分離・数値的外れ度に基づく感度分析 | 未完了（推論モード・候補固定・感度比較・実環境証跡が未完了） | [詳細・引き継ぎ](DAVIS-FEAT-023-024.md#feature-24-実装仕様) |
 | DAVIS-FEAT-025 | データ来歴・補完マスク・共通分析コンテキスト・再現パッケージ | 未完了（来歴、raw復元、補完マスク、共通コンテキスト、package roundtrip未実装） | [詳細・引き継ぎ](DAVIS-FEAT-025-026.md#feature-25-実装仕様) |
 | DAVIS-FEAT-026 | 2変量クロス集計・ASR・ウェイト・PCP連携 | 未完了（Crosstabページ、統計、ウェイト、scope、Selection連携未実装） | [詳細・引き継ぎ](DAVIS-FEAT-025-026.md#feature-26-実装仕様) |
+
+| DAVIS-FEAT-032 | 重回帰分析（OLS・HC3・調査設計分散・予測・保存・画面） | 実装済み（実ブラウザ・static未検証） | [詳細](DAVIS-FEAT-032.md) |
+
+## 追加分析の設計資料
+
+[Feature 029〜034の機能仕様・実装詳細化設計](../feature/analysis-specs/README.md)（CA・MCA・FAMD・重回帰・最尤因子分析・コンジョイント分析）。設計資料の参照先であり、上記タスクの実装状態を変更するものではない。

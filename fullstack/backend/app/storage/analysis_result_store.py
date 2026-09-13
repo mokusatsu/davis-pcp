@@ -43,6 +43,8 @@ def save_result(
     arrays: dict[str, np.ndarray],
     members: pl.DataFrame | None = None,
     exclusions: pl.DataFrame | None = None,
+    rows: pl.DataFrame | None = None,
+    predictions: dict[str, pl.DataFrame] | None = None,
 ) -> None:
     for name, arr in arrays.items():
         a = np.asarray(arr)
@@ -64,6 +66,16 @@ def save_result(
             ebuf = _io.BytesIO()
             exclusions.write_parquet(ebuf)
             excl_bytes = ebuf.getvalue()
+        rows_bytes = None
+        if rows is not None:
+            rbuf = _io.BytesIO()
+            rows.write_parquet(rbuf)
+            rows_bytes = rbuf.getvalue()
+        pred_bytes: dict[str, bytes] = {}
+        for pid, pdf in (predictions or {}).items():
+            pbuf = _io.BytesIO()
+            pdf.write_parquet(pbuf)
+            pred_bytes[str(pid)] = pbuf.getvalue()
         files = {
             "model.npz": model_bytes,
             "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2,
@@ -73,6 +85,11 @@ def save_result(
             files["category_members.parquet"] = member_bytes
         if excl_bytes is not None:
             files["exclusions.parquet"] = excl_bytes
+        if rows_bytes is not None:
+            files["rows.parquet"] = rows_bytes
+        for pid, payload in pred_bytes.items():
+            safe = "".join(c for c in pid if c.isalnum() or c in ("-", "_"))
+            files[f"prediction-{safe or 'p'}.parquet"] = payload
         hashes = {name: _hash_bytes(payload) for name, payload in files.items()}
         manifest_with_hash = {**manifest, "files": hashes}
         files["manifest.json"] = json.dumps(manifest_with_hash, ensure_ascii=False, indent=2,
@@ -119,6 +136,41 @@ def load_members(result_id: str) -> pl.DataFrame | None:
         return pl.read_parquet(path)
     except Exception:
         raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。", status_code=404)
+
+
+def load_rows(result_id: str) -> pl.DataFrame | None:
+    path = result_dir(result_id) / "rows.parquet"
+    if not path.exists():
+        return None
+    try:
+        return pl.read_parquet(path)
+    except Exception:
+        raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。", status_code=404)
+
+
+def load_prediction_rows(result_id: str, prediction_id: str) -> pl.DataFrame | None:
+    safe = "".join(c for c in str(prediction_id) if c.isalnum() or c in ("-", "_"))
+    for name in (f"prediction-{safe or 'p'}.parquet", f"prediction-{prediction_id}.parquet"):
+        path = result_dir(result_id) / name
+        if path.exists():
+            try:
+                return pl.read_parquet(path)
+            except Exception:
+                raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。",
+                               status_code=404)
+    return None
+
+
+def save_prediction_rows(result_id: str, prediction_id: str, frame: pl.DataFrame) -> None:
+    import io as _io
+
+    safe = "".join(c for c in str(prediction_id) if c.isalnum() or c in ("-", "_"))
+    path = result_dir(result_id) / f"prediction-{safe or 'p'}.parquet"
+    buf = _io.BytesIO()
+    frame.write_parquet(buf)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_bytes(buf.getvalue())
+    os.replace(tmp, path)
 
 
 def delete_result(result_id: str) -> None:

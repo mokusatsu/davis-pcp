@@ -1,0 +1,437 @@
+{
+  "$defs": {
+    "AnalysisContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetId": {
+          "minLength": 1,
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "expectedDataRevision": {
+          "minimum": 1,
+          "title": "Expecteddatarevision",
+          "type": "integer"
+        },
+        "expectedSchemaRevision": {
+          "minimum": 1,
+          "title": "Expectedschemarevision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "all",
+          "enum": [
+            "all",
+            "active",
+            "selected",
+            "sampled",
+            "explicit"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "rowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rowids"
+        },
+        "activeRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Activerowids"
+        },
+        "selectedRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectedrowids"
+        },
+        "sampledRowIds": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sampledrowids"
+        },
+        "weightMode": {
+          "default": "dataset",
+          "enum": [
+            "dataset",
+            "none",
+            "column"
+          ],
+          "title": "Weightmode",
+          "type": "string"
+        },
+        "weightColumn": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weightcolumn"
+        },
+        "weightType": {
+          "anyOf": [
+            {
+              "enum": [
+                "survey",
+                "frequency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighttype"
+        },
+        "missingPolicy": {
+          "default": "exclude",
+          "enum": [
+            "exclude",
+            "include_missing",
+            "separate_not_applicable"
+          ],
+          "title": "Missingpolicy",
+          "type": "string"
+        },
+        "imputationPolicy": {
+          "const": "use_current_values",
+          "default": "use_current_values",
+          "title": "Imputationpolicy",
+          "type": "string"
+        },
+        "candidateSetHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatesethash"
+        }
+      },
+      "required": [
+        "datasetId",
+        "expectedDataRevision",
+        "expectedSchemaRevision"
+      ],
+      "title": "AnalysisContextV2",
+      "type": "object"
+    },
+    "FactorVariable": {
+      "additionalProperties": false,
+      "properties": {
+        "columnId": {
+          "minLength": 1,
+          "title": "Columnid",
+          "type": "string"
+        },
+        "measurement": {
+          "enum": [
+            "ordinal",
+            "continuous"
+          ],
+          "title": "Measurement",
+          "type": "string"
+        },
+        "treatment": {
+          "enum": [
+            "ordinal",
+            "continuous",
+            "continuous_approximation"
+          ],
+          "title": "Treatment",
+          "type": "string"
+        },
+        "categoryOrder": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Categoryorder"
+        },
+        "reverse": {
+          "default": false,
+          "title": "Reverse",
+          "type": "boolean"
+        },
+        "approximationAcknowledged": {
+          "default": false,
+          "title": "Approximationacknowledged",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "columnId",
+        "measurement",
+        "treatment"
+      ],
+      "title": "FactorVariable",
+      "type": "object"
+    },
+    "ParallelAnalysisOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "iterations": {
+          "default": 500,
+          "maximum": 10000,
+          "minimum": 100,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "quantile": {
+          "default": 0.95,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Quantile",
+          "type": "number"
+        },
+        "seed": {
+          "default": 42,
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "title": "ParallelAnalysisOptions",
+      "type": "object"
+    },
+    "SensitivityAnalysisOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "approximationAcknowledged": {
+          "default": false,
+          "title": "Approximationacknowledged",
+          "type": "boolean"
+        },
+        "alignment": {
+          "const": "signed_permutation",
+          "default": "signed_permutation",
+          "title": "Alignment",
+          "type": "string"
+        },
+        "comparisonExtraction": {
+          "const": "minres",
+          "default": "minres",
+          "title": "Comparisonextraction",
+          "type": "string"
+        },
+        "loadingDifferenceThreshold": {
+          "default": 0.1,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Loadingdifferencethreshold",
+          "type": "number"
+        },
+        "communalityDifferenceThreshold": {
+          "default": 0.1,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Communalitydifferencethreshold",
+          "type": "number"
+        },
+        "factorCorrelationDifferenceThreshold": {
+          "default": 0.1,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Factorcorrelationdifferencethreshold",
+          "type": "number"
+        },
+        "assignmentThreshold": {
+          "default": 0.4,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Assignmentthreshold",
+          "type": "number"
+        },
+        "assignmentMargin": {
+          "default": 0.1,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Assignmentmargin",
+          "type": "number"
+        }
+      },
+      "title": "SensitivityAnalysisOptions",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "$ref": "#/$defs/AnalysisContextV2"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/FactorVariable"
+      },
+      "minItems": 3,
+      "title": "Variables",
+      "type": "array"
+    },
+    "correlation": {
+      "enum": [
+        "pearson",
+        "polychoric"
+      ],
+      "title": "Correlation",
+      "type": "string"
+    },
+    "extraction": {
+      "enum": [
+        "minres",
+        "ml"
+      ],
+      "title": "Extraction",
+      "type": "string"
+    },
+    "nFactors": {
+      "minimum": 1,
+      "title": "Nfactors",
+      "type": "integer"
+    },
+    "compareFactors": {
+      "items": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "title": "Comparefactors",
+      "type": "array"
+    },
+    "rotation": {
+      "default": "promax",
+      "enum": [
+        "none",
+        "varimax",
+        "promax"
+      ],
+      "title": "Rotation",
+      "type": "string"
+    },
+    "scoreMethod": {
+      "default": "none",
+      "enum": [
+        "none",
+        "regression",
+        "bartlett"
+      ],
+      "title": "Scoremethod",
+      "type": "string"
+    },
+    "parallelAnalysis": {
+      "$ref": "#/$defs/ParallelAnalysisOptions"
+    },
+    "sensitivityAnalysis": {
+      "$ref": "#/$defs/SensitivityAnalysisOptions"
+    },
+    "uniquenessLower": {
+      "default": 0.005,
+      "maximum": 0.1,
+      "minimum": 1e-06,
+      "title": "Uniquenesslower",
+      "type": "number"
+    },
+    "nStarts": {
+      "default": 5,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Nstarts",
+      "type": "integer"
+    },
+    "maxIterations": {
+      "default": 2000,
+      "maximum": 20000,
+      "minimum": 100,
+      "title": "Maxiterations",
+      "type": "integer"
+    },
+    "seed": {
+      "default": 42,
+      "maximum": 4294967295,
+      "minimum": 0,
+      "title": "Seed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "context",
+    "variables",
+    "correlation",
+    "extraction",
+    "nFactors"
+  ],
+  "title": "EFARequest",
+  "type": "object"
+}

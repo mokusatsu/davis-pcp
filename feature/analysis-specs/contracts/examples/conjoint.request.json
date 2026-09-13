@@ -1,0 +1,46 @@
+{
+  "context": {
+    "datasetId": "synthetic-survey",
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "scope": "all",
+    "rowIds": null,
+    "activeRowIds": null,
+    "selectedRowIds": null,
+    "sampledRowIds": null,
+    "weightMode": "none",
+    "weightColumn": null,
+    "weightType": null,
+    "missingPolicy": "exclude",
+    "imputationPolicy": "use_current_values",
+    "candidateSetHash": null
+  },
+  "mode": "choice",
+  "columns": {
+    "respondentId": "respondent_id",
+    "taskId": "task_id",
+    "alternativeId": "alternative_id",
+    "response": "chosen",
+    "availability": null,
+    "optOutIndicator": null
+  },
+  "attributes": [
+    {
+      "columnId": "brand",
+      "kind": "categorical",
+      "referenceLevel": null
+    },
+    {
+      "columnId": "price",
+      "kind": "linear",
+      "utilityRange": [
+        100.0,
+        300.0
+      ]
+    }
+  ],
+  "ratingEffects": "pooled",
+  "priceAttribute": "price",
+  "confidenceLevel": 0.95,
+  "maxIterations": 1000
+}
