@@ -73,6 +73,18 @@
 - 実ブラウザ再確認: ca-rev2（80行）で行=brand・列=needを選択し実行。固有値0.25・χ²=20、点選択→一致40/適用40→selection 40行を確認。分割表モードで欠損方針がexclude固定・無効化されることを確認。
 - FactoMineR 2.17照合: CA()で固有値0.25、行R1=0.5・R2=-0.5、列C1=0.5・C2=-0.5。符号除き本体と一致。
 
+## レビュー001の8件修正（2026-09-13）
+- R001 通常値と欠損の衝突: 欠損sentinelを内部キー（MISSING_SENTINEL等）に分離し、kind由来のみ変換。通常値__missing__は3方針すべてで通常カテゴリとして保持、真の欠損（null）はexcludeで除外・include系で欠損カテゴリに分離されることを確認。
+- R002 ページング: export全テーブルでoffset/limitページングを確認（members 6000件を2ページで全件取得）。画面の中央連動とダウンロードはいずれもnextOffsetがなくなるまで取得し、CSVヘッダ重複除去・JSON統合を行う。
+- R003 選択の版再確認: handleSelect開始時のdata/schema revisionを保存し、応答採用時に最新refと比較。遅延応答の書換えを防止。
+- R004 stale表示: 結果表示中に10秒間隔で現版をポーリングし、変更時にstale警告と選択無効化。実ブラウザでschemaRev変更→14秒後にstale・警告・選択無効を確認。
+- R005 行ラベル欠損: label_spec.missingCodesを判定し、該当行をCA_TABLE_INVALIDで拒否。
+- R006 row_ids拒否: capabilities.selectionKindsに従い、CAではcategories以外を422 ANALYSIS_SELECTOR_UNSUPPORTEDで拒否。
+- R007 除外優先順位: invalid>missing>missing_weight>zero_weightで決定。行列入替・複合条件で内訳一致を確認。
+- R008 補完件数: mask entriesから対象列・scope・fit行のみ集計しmetaへ渡す。10件補完でimputedCellCount=10・imputedRowCount=10を確認（マスクのcolumnIdは列名形式のため両対応）。
+- 再検証: test_100_ca 6 passed、全体回帰473 passed、FE全体248 passed、tsc エラーなし。本番・static再配布済み。
+- 実ブラウザ再確認: ca-r001（80行）で実行→固有値0.25、点選択→一致40/適用40→selection 40行。Table1行選択→CA復帰で連動強調2点→解除で消去。分割表CSVボタンのexportを確認。版変更後のstale表示・選択無効を確認。
+
 ## 追加指摘4件の修正（2026-09-13、コミット 6fd247a0）
 - P1 版変更後の古い応答: handleRunの世代確認をref比較（selectionRef・schemaRef）に修正。クロージャの古いdatasetId/dataRevision比較では版変更を取り逃がす問題を解消。
 - P2 中央selection強調: members export応答の解析不具合（payload内JSONの二重解析漏れ）を修正。Tableで1行選択→CAに戻って2点に連動強調（#fa8c16）、解除で強調消去を確認。

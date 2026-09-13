@@ -97,8 +97,8 @@ def _run_respondents(req, ctx, started):
         i, j = ri[rc], ci[cc]
         t[i, j] += ww
         t_phys[i, j] += 1.0
-        rk = row_cat.kind_by_code[rc]
-        ck = col_cat.kind_by_code[cc]
+        rk = row_cat.kind_by_code.get(rc, "value")
+        ck = col_cat.kind_by_code.get(cc, "value")
         rcode = None if rk != "value" else rc
         ccode = None if ck != "value" else cc
         r_id = _category_id(row_cat.variable_id, rk, rcode)
@@ -116,12 +116,12 @@ def _finish_respondents(req, ctx, started, t, t_phys, row_order, col_order, row_
     omitted = []
     for i, code in enumerate(row_order):
         if i not in keep_r:
-            kind = row_cat.kind_by_code[code]
+            kind = row_cat.kind_by_code.get(code, "value")
             cval = None if kind != "value" else code
             omitted.append({"categoryId": _category_id(row_cat.variable_id, kind, cval), "variableId": row_cat.variable_id, "code": cval, "kind": kind, "label": row_cat.labels[code], "side": "row", "reason": "zero_mass", "originalIndex": i})
     for j, code in enumerate(col_order):
         if j not in keep_c:
-            kind = col_cat.kind_by_code[code]
+            kind = col_cat.kind_by_code.get(code, "value")
             cval = None if kind != "value" else code
             omitted.append({"categoryId": _category_id(col_cat.variable_id, kind, cval), "variableId": col_cat.variable_id, "code": cval, "kind": kind, "label": col_cat.labels[code], "side": "column", "reason": "zero_mass", "originalIndex": j})
     total = float(t.sum())
@@ -175,11 +175,13 @@ def _run_contingency(req, ctx, started):
         df = df.filter(pl.col("__rowId__").is_in(scope_ids)) if scope_ids else df.filter(pl.col("__rowId__").is_in(["__none__"]))
         row_ids = [str(v) for v in df["__rowId__"].to_list()]
         labels = df[label_name].to_list()
+        label_missing = {normalize_code(v) for v in (label_spec.get("missingCodes") or [])}
+        label_missing.discard(None)
         seen = set()
         bad_rows = []
         for rid, lab in zip(row_ids, labels):
             code = normalize_code(lab)
-            if code is None:
+            if code is None or code in label_missing:
                 bad_rows.append({"rowId": rid, "reason": "missing_label"})
             elif code in seen:
                 bad_rows.append({"rowId": rid, "reason": "duplicate_label"})
@@ -260,7 +262,7 @@ def _finalize(req, ctx, started, kern, row_order, col_order, keep_r, keep_c, row
     row_entries = []
     for pos, i in enumerate(keep_r):
         code = row_order[i]
-        kind = row_cat.kind_by_code[code]
+        kind = row_cat.kind_by_code.get(code, "value")
         cval = None if kind != "value" else code
         princ = [float(v) for v in f[pos, :].tolist()]
         std = [float(v) for v in phi[pos, :].tolist()]
@@ -273,7 +275,7 @@ def _finalize(req, ctx, started, kern, row_order, col_order, keep_r, keep_c, row
     col_entries = []
     for pos, j in enumerate(keep_c):
         code = col_order[j]
-        kind = col_cat.kind_by_code[code]
+        kind = col_cat.kind_by_code.get(code, "value")
         cval = None if kind != "value" else code
         princ = [float(v) for v in g[pos, :].tolist()]
         std = [float(v) for v in gamma[pos, :].tolist()]
@@ -358,6 +360,8 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
         snap = frame.data_fingerprint
         mask_rev = frame.mask_revision
         excl_counts = dict(frame.exclusion_counts)
+        imputed_cells = int(getattr(frame, "imputed_cell_count", 0) or 0)
+        imputed_rows = int(getattr(frame, "imputed_row_count", 0) or 0)
         scope_count = frame.scope_count
         fit_count = frame.fit_count
         w_applied = frame.weight_applied
@@ -407,7 +411,7 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
     if unit == "table_record":
         meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=False, weight_type=None, weight_column=None, sum_weights=None, kish_effective_n=None, frequency_n=None, mask_revision=mask_rev, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     else:
-        meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=w_applied, weight_type=w_type, weight_column=w_col, sum_weights=sum_w, kish_effective_n=kish, frequency_n=freq_n, mask_revision=mask_rev, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
+        meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=w_applied, weight_type=w_type, weight_column=w_col, sum_weights=sum_w, kish_effective_n=kish, frequency_n=freq_n, mask_revision=mask_rev, imputed_cell_count=imputed_cells, imputed_row_count=imputed_rows, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     result_id = new_result_id()
     manifest = {"schemaVersion": SCHEMA_VERSION, "resultId": result_id, "method": "ca", "ownerDatasetId": ctx["datasetId"], "config": request_json, "meta": meta, "capabilities": {"rows": False, "projection": False, "materialize": False, "selectionKinds": ["categories"], "exportTables": ["manifest", "eigenvalues", "categories", "table"], "materializeFitFields": [], "materializePredictionFields": [], "predictionIntervals": [], "simulation": False}, "summary": summary, "details": details, "summaryKeys": list(summary.keys()), "unavailableReasons": {}}
     arrays = {"eigenvalues": np.asarray(eig, dtype=np.float64), "f": np.asarray(kern["f"]), "g": np.asarray(kern["g"]), "r": np.asarray(kern["r"]), "c": np.asarray(kern["c"])}

@@ -20,12 +20,57 @@ export async function exportCaTable(
   table: 'eigenvalues' | 'categories' | 'manifest' | 'table',
   format: 'json' | 'csv',
 ): Promise<void> {
-  const res = await api.post<{ mime: string; fileName: string; payload: string }>(
-    `/analysis-results/${resultId}/export`,
-    { format, table },
-  )
-  const type = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8'
-  downloadBlob(new Blob([res.payload], { type }), res.fileName)
+  if (table === 'manifest') {
+    const res = await api.post<{ mime: string; fileName: string; payload: string }>(
+      `/analysis-results/${resultId}/export`,
+      { format, table },
+    )
+    downloadBlob(new Blob([res.payload], { type: 'application/json;charset=utf-8' }), res.fileName)
+    return
+  }
+  if (format === 'json') {
+    let offset = 0
+    const columns: string[] = []
+    const rows: unknown[][] = []
+    let fileName = `${resultId}-${table}.json`
+    for (;;) {
+      const res = await api.post<{ fileName: string; payload: string; nextOffset: number | null }>(
+        `/analysis-results/${resultId}/export`,
+        { format, table, offset, limit: 5000 },
+      )
+      fileName = res.fileName
+      const body = JSON.parse(res.payload) as { columns: string[]; rows: unknown[][] }
+      if (offset === 0) columns.push(...body.columns)
+      rows.push(...body.rows)
+      if (res.nextOffset === null || res.nextOffset === undefined) break
+      offset = res.nextOffset
+    }
+    downloadBlob(
+      new Blob([JSON.stringify({ columns, rows }, null, 2)], { type: 'application/json;charset=utf-8' }),
+      fileName,
+    )
+    return
+  }
+  const parts: string[] = []
+  let fileName = `${resultId}-${table}.csv`
+  let offset = 0
+  for (;;) {
+    const res = await api.post<{ fileName: string; payload: string; nextOffset: number | null }>(
+      `/analysis-results/${resultId}/export`,
+      { format, table, offset, limit: 5000 },
+    )
+    fileName = res.fileName
+    const lines = res.payload.split('\n')
+    if (offset === 0) {
+      parts.push(res.payload)
+    } else {
+      const headerEnd = lines.findIndex((l) => l.length > 0 && !l.startsWith('#'))
+      parts.push(lines.slice(headerEnd + 1).join('\n'))
+    }
+    if (res.nextOffset === null || res.nextOffset === undefined) break
+    offset = res.nextOffset
+  }
+  downloadBlob(new Blob([parts.join('')], { type: 'text/csv;charset=utf-8' }), fileName)
 }
 
 export function categoriesToCsv(

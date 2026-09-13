@@ -23,6 +23,10 @@ from .survey_weight import (
 from .weight_mode import resolve_weight_request
 
 
+MISSING_M = "MISSING_SENTINEL __missing__"
+MISSING_NA = "NOTAPPLICABLE_SENTINEL __not_applicable__"
+
+
 @dataclass
 class CategoryCatalog:
     variable_id: str
@@ -52,6 +56,8 @@ class PreparedAnalysisFrame:
     revisions: dict[str, int]
     mask_revision: int | None
     data_fingerprint: str | None
+    imputed_cell_count: int = 0
+    imputed_row_count: int = 0
 
 
 def _spec_by_id(codebook: dict, ref: str) -> dict:
@@ -201,19 +207,36 @@ def prepare_category_frame(
         raw_cols = {name: df[name].to_list() for name in names}
         codes: dict[str, list[str | None]] = {}
         kinds: dict[str, list[str]] = {}
-        reasons: list[str] = ["ok"] * len(ordered_ids)
+        col_reasons: dict[str, list[str]] = {}
         for name in names:
             spec = specs[name]
             col_codes: list[str | None] = []
             col_kinds: list[str] = []
+            col_rs: list[str] = []
             for i, raw in enumerate(raw_cols[name]):
                 code, kind, reason = _classify_category(raw, spec, missing_policy)
+                if code == "__missing__" and kind in ("missing", "not_applicable"):
+                    code = MISSING_M
+                elif code == "__not_applicable__" and kind in ("missing", "not_applicable"):
+                    code = MISSING_NA
                 col_codes.append(code)
                 col_kinds.append(kind)
-                if reason != "ok" and reasons[i] == "ok":
-                    reasons[i] = reason
+                col_rs.append(reason)
             codes[name] = col_codes
             kinds[name] = col_kinds
+            col_reasons[name] = col_rs
+        # R007: 除外理由はinvalid > missing > missing_weight > zero_weightの優先順位で決定
+        _priority = {"invalid": 0, "missing": 1, "missing_weight": 2, "zero_weight": 3}
+        reasons = []
+        for i in range(len(ordered_ids)):
+            best = "ok"
+            for name in names:
+                r = col_reasons[name][i]
+                if r == "ok":
+                    continue
+                if best == "ok" or _priority.get(r, 9) < _priority.get(best, 9):
+                    best = r
+            reasons.append(best)
 
         weights: list[float | None] | None = None
         weight_applied = False
@@ -264,26 +287,53 @@ def prepare_category_frame(
             if not ordered and labels_src:
                 ordered = [c for c in (normalize_code(k) for k in labels_src.keys()) if c is not None]
             observed = [c for c in dict.fromkeys(kept_codes[name]) if c is not None and c not in ordered
-                        and c not in ("__missing__", "__not_applicable__")]
+                        and c not in (MISSING_M, MISSING_NA)]
             full_order = [*ordered, *observed]
             if missing_policy != "exclude":
-                for sentinel in ("__missing__", "__not_applicable__"):
+                for sentinel in (MISSING_M, MISSING_NA):
                     if sentinel in kept_codes[name] and sentinel not in full_order:
                         full_order.append(sentinel)
-            kind_map = {c: ("missing" if c == "__missing__"
-                            else "not_applicable" if c == "__not_applicable__" else "value")
-                        for c in full_order}
+            kind_map = {}
+            for c in full_order:
+                if c == MISSING_M:
+                    kind_map[c] = "missing"
+                elif c == MISSING_NA:
+                    kind_map[c] = "not_applicable"
+                else:
+                    kind_map[c] = "value"
             label_map = {}
             for c in full_order:
-                if c == "__missing__":
+                if c == MISSING_M:
                     label_map[c] = "欠損"
-                elif c == "__not_applicable__":
+                elif c == MISSING_NA:
                     label_map[c] = "非該当"
                 else:
                     label_map[c] = str(labels_src.get(c, c))
             catalogs[name] = CategoryCatalog(variable_id=id_map[name], column_name=name,
                                              kind_by_code=kind_map, order=full_order,
                                              labels=label_map)
+        mask_doc = store.load_mask(dataset_id) or {}
+        mask_entries = mask_doc.get("entries", []) or []
+        try:
+            use_col_ids = {specs[n].get("columnId") for n in names} | {specs[n].get("name") for n in names}
+        except Exception:
+            use_col_ids = set()
+        scope_set = set(ordered_ids)
+        fit_set = set(kept_ids)
+        seen_cells: set[tuple[str, str]] = set()
+        imputed_rows: set[str] = set()
+        for entry in mask_entries:
+            if not isinstance(entry, dict):
+                continue
+            rid = str(entry.get("rowId", ""))
+            cid = str(entry.get("columnId", ""))
+            if cid not in use_col_ids or rid not in scope_set or rid not in fit_set:
+                continue
+            if (rid, cid) not in seen_cells:
+                seen_cells.add((rid, cid))
+                imputed_rows.add(rid)
+        imputed_cell_count = len(seen_cells)
+        imputed_row_count = len(imputed_rows)
         mask_revision = store.mask_revision(dataset_id)
         fingerprint = meta.get("fingerprint")
         return PreparedAnalysisFrame(
@@ -296,4 +346,5 @@ def prepare_category_frame(
             scope_count=len(scope_ids), fit_count=len(kept_ids),
             revisions=revisions, mask_revision=mask_revision,
             data_fingerprint=fingerprint,
+            imputed_cell_count=imputed_cell_count, imputed_row_count=imputed_row_count,
         ), unknown_note  # type: ignore[return-value]

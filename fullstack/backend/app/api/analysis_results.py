@@ -80,6 +80,10 @@ def select_result(result_id: str, payload: dict = Body(...)):
     if members is None:
         _err("ANALYSIS_OPERATION_UNSUPPORTED", "no members", 422)
     sel = req.selector
+    allowed_kinds = set((manifest.get("capabilities") or {}).get("selectionKinds", []))
+    if sel.kind not in allowed_kinds:
+        _err("ANALYSIS_SELECTOR_UNSUPPORTED", "この結果では未対応のselectorです。", 422,
+             details={"allowedKinds": sorted(allowed_kinds)})
     if sel.kind == "row_ids":
         wanted = [str(v) for v in sel.rowIds]
         pool = members["rowId"].to_list()

@@ -198,9 +198,14 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     setSelectInfo(null)
     const seq = ++runSequence.current
     const startedDataset = datasetId
+    const startedDataRev = selectionRef.current.dataRevision
+    const startedSchemaRev = schemaRef.current
     try {
       const res = await selectCaCategories(result.resultId, buildContext(), ids, between)
-      if (seq !== runSequence.current || datasetId !== startedDataset) return
+      if (seq !== runSequence.current) return
+      if (selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev
+        || schemaRef.current !== startedSchemaRev) return
       dispatch(selectionApplied({
         rowIds: res.rowIds,
         operation: getBrushOp(),
@@ -209,6 +214,9 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
       setSelectInfo(`一致 ${res.matchedCount} / 適用 ${res.contextIntersectionCount}`)
     } catch (err) {
       if (seq !== runSequence.current) return
+      if (selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev
+        || schemaRef.current !== startedSchemaRev) return
       message.error(apiErrorMessage(err, '選択の解決に失敗しました。'))
     } finally {
       if (seq === runSequence.current) setSelecting(false)
@@ -219,6 +227,35 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
 
   const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
 
+  const resultStale = result !== null
+    && (result.meta.dataRevision !== selection.dataRevision || result.meta.schemaRevision !== schemaRevision)
+
+  const [liveRevisions, setLiveRevisions] = useState<{ data: number; schema: number } | null>(null)
+
+  useEffect(() => {
+    if (!result || !datasetId) {
+      setLiveRevisions(null)
+      return
+    }
+    let cancelled = false
+    const startedDataset = datasetId
+    const check = (): void => {
+      void api.get<{ dataRevision: number; schemaRevision: number }>(`/datasets/${startedDataset}`)
+        .then((meta) => {
+          if (!cancelled && datasetId === startedDataset) {
+            setLiveRevisions({ data: meta.dataRevision, schema: meta.schemaRevision })
+          }
+        }).catch(() => { /* 版確認の失敗はstale判定に使わない */ })
+    }
+    check()
+    const timer = setInterval(check, 10000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [result?.resultId, datasetId])
+
+  const effectiveStale = result !== null && liveRevisions !== null
+    && (result.meta.dataRevision !== liveRevisions.data || result.meta.schemaRevision !== liveRevisions.schema)
+  const shownStale = resultStale || effectiveStale
+
   useEffect(() => {
     if (!result || !datasetId || selection.selectedRowIds.length === 0) {
       if (selection.selectedRowIds.length === 0) setLinkedCategoryIds(new Set())
@@ -228,27 +265,35 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     let cancelled = false
     const startedDataset = datasetId
     const selSet = new Set(selection.selectedRowIds)
-    void api.post<{ payload: string }>(
-      `/analysis-results/${resultId}/export`,
-      { format: 'json', table: 'members' },
-    ).then((res) => {
-      if (cancelled || selectionRef.current.datasetId !== startedDataset) return
-      let rows: [string, string, string][] = []
+    void (async () => {
       try {
-        rows = JSON.parse(res.payload)?.rows ?? []
+        const hit = new Set<string>()
+        let offset = 0
+        for (;;) {
+          const res = await api.post<{ payload: string; nextOffset: number | null }>(
+            `/analysis-results/${resultId}/export`,
+            { format: 'json', table: 'members', offset, limit: 5000 },
+          )
+          if (cancelled || selectionRef.current.datasetId !== startedDataset) return
+          let rows: [string, string, string][] = []
+          try {
+            rows = JSON.parse(res.payload)?.rows ?? []
+          } catch {
+            rows = []
+          }
+          for (const [cid, rid] of rows) {
+            if (selSet.has(String(rid))) hit.add(String(cid))
+          }
+          if (res.nextOffset === null || res.nextOffset === undefined) break
+          offset = res.nextOffset
+        }
+        if (!cancelled && selectionRef.current.datasetId === startedDataset) setLinkedCategoryIds(hit)
       } catch {
-        rows = []
+        if (!cancelled && selectionRef.current.datasetId === startedDataset) {
+          setLinkedCategoryIds(new Set())
+        }
       }
-      const hit = new Set<string>()
-      for (const [cid, rid] of rows) {
-        if (selSet.has(String(rid))) hit.add(String(cid))
-      }
-      setLinkedCategoryIds(hit)
-    }).catch(() => {
-      if (!cancelled && selectionRef.current.datasetId === startedDataset) {
-        setLinkedCategoryIds(new Set())
-      }
-    })
+    })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, selection.selectedRowIds, datasetId, selection.dataRevision])
@@ -372,7 +417,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
                 <Tag>{result.meta.weightApplied ? `加重 (${result.meta.weightType ?? ''})` : '非加重'}</Tag>
-                {result.meta.resultState === 'stale' && <Tag color="orange">stale（古い版）</Tag>}
+                {(result.meta.resultState === 'stale' || shownStale) && <Tag color="orange">stale（古い版）</Tag>}
                 <Tag>rank {rank}</Tag>
               </Space>
             }
@@ -396,7 +441,14 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 <Radio.Button value="and">両側AND</Radio.Button>
                 <Radio.Button value="or">両側OR</Radio.Button>
               </Radio.Group>
-              <Button loading={selecting} disabled={selectedCats.size === 0} onClick={() => void handleSelect()}>
+              {shownStale && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="結果の版が古くなっています。選択の適用はできません。再実行してください。"
+                />
+              )}
+              <Button loading={selecting} disabled={selectedCats.size === 0 || shownStale} onClick={() => void handleSelect()}>
                 原行IDへ解決して選択 ({selectedCats.size})
               </Button>
               {selectInfo && <Tag>{selectInfo}</Tag>}
