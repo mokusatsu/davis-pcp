@@ -73,6 +73,13 @@
 - 実ブラウザ再確認: ca-rev2（80行）で行=brand・列=needを選択し実行。固有値0.25・χ²=20、点選択→一致40/適用40→selection 40行を確認。分割表モードで欠損方針がexclude固定・無効化されることを確認。
 - FactoMineR 2.17照合: CA()で固有値0.25、行R1=0.5・R2=-0.5、列C1=0.5・C2=-0.5。符号除き本体と一致。
 
+## 追加指摘4件の修正（2026-09-13、コミット 6fd247a0）
+- P1 版変更後の古い応答: handleRunの世代確認をref比較（selectionRef・schemaRef）に修正。クロージャの古いdatasetId/dataRevision比較では版変更を取り逃がす問題を解消。
+- P2 中央selection強調: members export応答の解析不具合（payload内JSONの二重解析漏れ）を修正。Tableで1行選択→CAに戻って2点に連動強調（#fa8c16）、解除で強調消去を確認。
+- P2 切替後の実行中表示: dataset変更時にloading/selecting/linkedをリセット。
+- P2 分割表CSV: 画面に分割表CSV/JSONボタンを追加し、export API 200（table表）を確認。
+- 再検証: test_100_ca 6 passed、全体回帰473 passed、FE全体248 passed、tsc エラーなし。本番・static再配布済み（backend_app.zipにCA組込、dist/staticにmodels/ca 3件）。
+
 R導入手順とFactoMineR照合（実施済み）:
 - `C:\Program Files\R\R-4.6.1\bin\Rscript.exe --version` でR 4.6.1を確認した。
 - `install.packages('FactoMineR', repos='https://cloud.r-project.org')` でFactoMineR 2.17を導入した。
