@@ -17,7 +17,7 @@ function escapeFormula(value: string): string {
 
 export async function exportCaTable(
   resultId: string,
-  table: 'eigenvalues' | 'categories' | 'manifest',
+  table: 'eigenvalues' | 'categories' | 'manifest' | 'table',
   format: 'json' | 'csv',
 ): Promise<void> {
   const res = await api.post<{ mime: string; fileName: string; payload: string }>(

@@ -95,8 +95,11 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     setResult(null)
     setSubmittedKey('')
     setError(null)
+    setLoading(false)
+    setSelecting(false)
     setSelectedCats(new Set())
     setSelectInfo(null)
+    setLinkedCategoryIds(new Set())
     setWeightChoice('dataset')
     setMissingPolicy('exclude')
   }, [datasetId])
@@ -118,12 +121,18 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     : Boolean(datasetId && rowLabelCol && valueCols.length >= 2
       && !valueCols.includes(rowLabelCol ?? '') && (cellSemantics === 'mass' || ack))
 
+  const selectionRef = useRef(selection)
+  selectionRef.current = selection
+  const schemaRef = useRef(schemaRevision)
+  schemaRef.current = schemaRevision
+
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !canRun) return
     const seq = ++runSequence.current
-    const epoch = `${datasetId}:${selection.dataRevision}:${schemaRevision}`
-    const startedKey = draftKey
     const startedDataset = datasetId
+    const startedDataRev = selectionRef.current.dataRevision
+    const startedSchemaRev = schemaRef.current
+    const startedKey = draftKey
     setLoading(true)
     setError(null)
     try {
@@ -138,7 +147,9 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
           }
       const res = await runCa(buildContext(), input, mapScaling)
       if (seq !== runSequence.current) return
-      if (datasetId !== startedDataset || `${datasetId}:${selection.dataRevision}:${schemaRevision}` !== epoch) return
+      if (selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev
+        || schemaRef.current !== startedSchemaRev) return
       setResult(res)
       setSubmittedKey(startedKey)
       setMapScaling((res.details.mapScaling as MapScaling) ?? 'symmetric')
@@ -147,6 +158,9 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
       message.success('コレスポンデンス分析を実行しました。')
     } catch (err) {
       if (seq !== runSequence.current) return
+      if (selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev
+        || schemaRef.current !== startedSchemaRev) return
       setError(apiErrorMessage(err, '分析に失敗しました。'))
     } finally {
       if (seq === runSequence.current) setLoading(false)
@@ -206,27 +220,38 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!result || selection.selectedRowIds.length === 0) {
-      setLinkedCategoryIds(new Set())
+    if (!result || !datasetId || selection.selectedRowIds.length === 0) {
+      if (selection.selectedRowIds.length === 0) setLinkedCategoryIds(new Set())
       return
     }
+    const resultId = result.resultId
     let cancelled = false
+    const startedDataset = datasetId
     const selSet = new Set(selection.selectedRowIds)
-    void api.post<{ rows: [string, string, string][] }>(
-      `/analysis-results/${result.resultId}/export`,
+    void api.post<{ payload: string }>(
+      `/analysis-results/${resultId}/export`,
       { format: 'json', table: 'members' },
     ).then((res) => {
-      if (cancelled) return
+      if (cancelled || selectionRef.current.datasetId !== startedDataset) return
+      let rows: [string, string, string][] = []
+      try {
+        rows = JSON.parse(res.payload)?.rows ?? []
+      } catch {
+        rows = []
+      }
       const hit = new Set<string>()
-      for (const [cid, rid] of res.rows ?? []) {
+      for (const [cid, rid] of rows) {
         if (selSet.has(String(rid))) hit.add(String(cid))
       }
       setLinkedCategoryIds(hit)
     }).catch(() => {
-      if (!cancelled) setLinkedCategoryIds(new Set())
+      if (!cancelled && selectionRef.current.datasetId === startedDataset) {
+        setLinkedCategoryIds(new Set())
+      }
     })
     return () => { cancelled = true }
-  }, [result?.resultId, selection.selectedRowIds])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, selection.selectedRowIds, datasetId, selection.dataRevision])
 
   if (!datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
@@ -378,6 +403,8 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               <Button onClick={() => void exportCaTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</Button>
               <Button onClick={() => void exportCaTable(result.resultId, 'eigenvalues', 'json')}>固有値JSON</Button>
               <Button onClick={() => void exportCaTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</Button>
+              <Button onClick={() => void exportCaTable(result.resultId, 'table', 'csv')}>分割表CSV</Button>
+              <Button onClick={() => void exportCaTable(result.resultId, 'table', 'json')}>分割表JSON</Button>
               <Button onClick={() => void exportCaTable(result.resultId, 'manifest', 'json')}>設定JSON</Button>
               <Button
                 onClick={() => {
