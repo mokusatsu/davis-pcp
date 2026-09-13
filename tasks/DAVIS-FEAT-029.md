@@ -1,0 +1,64 @@
+# DAVIS-FEAT-029 通常CA 実装・受入記録
+
+状態: 実装中（共通基盤→kernel→API→画面→検証の順で進行）
+
+開始時: branch=master, HEAD=77030967
+既存未コミット変更: feature/27_pcp_mca_ui.md, tasks/task-list.md を保全。feature/analysis-specs/ 以下は設計資料として参照のみ。
+
+## 範囲
+- Feature 029（通常CA）+ 成立に必要な共通基盤（V2入力契約・共有前処理・数値共通部・結果store・共通結果API）のみ。
+- 対象外: 030〜034分析機能、回帰/因子/コンジョイント専用基盤、既存API全体移行。
+- CA未対応（個体座標保存・予測）は capabilities と規定エラーで明示。
+
+## 受入条件（CA01〜CA10 + CA適用COM）
+- CA01 [[30,10],[10,30]] λ=0.25, 主座標±0.5, χ²=20
+- CA02 回答者展開一致 / CA03 定数倍不変 / CA04 零周辺不変 / CA05 全慣性分母
+- CA06 不正セル/欠損セル/二重ウェイト拒否 / CA07 AND/OR選択 / CA08 survey p値なし
+- CA09 rank1 / CA10 零慣性
+- COM: 版競合409、scope、分類、重み、保存・stale、KeepAlive、export、有限JSON/CSV注入対策
+
+## 変更ファイル
+- 共通基盤: fullstack/backend/app/domain/analysis_contracts.py, domain/analysis_frame.py, algorithms/analysis_numerics.py, services/analysis_service.py, storage/analysis_result_store.py
+- CA: algorithms/models/correspondence.py, api/correspondence.py (POST /api/v1/models/ca), api/analysis_results.py (GET/DELETE/POST select/predict/materialize/export), main.py ルータ登録
+- 画面: frontend/src/features/models/CorrespondenceAnalysisPage.tsx, caTypes.ts, caMap.ts, caApi.ts, caHelp.tsx, caFigure.tsx, caTables.tsx, caExport.ts + main.tsx / KeepAliveOutlet.tsx / AppShell.tsx へ /models/ca 登録
+- テスト: backend/tests/stats_tests/test_100_ca.py (6件), frontend/tests/correspondence.test.tsx (2件)
+
+## 検証証拠
+- kernel: CA01 [[30,10],[10,30]] λ=0.25, 主座標±0.5, χ²=20, df=1 を確認。定数倍・転置・零周辺不変、零慣性→CA_ZERO_INERTIAを確認。
+- API: 分割表frequencyで200・上記数値一致。回答者80行展開と一致（CA02）。frequency weight適用・survey p値なし・survey倍率不変・mass p値なし・二重ウェイト/構造ゼロ/欠損セル/負セル拒否・部分scope・AND=30/OR=50・stale 409・export・predict/materialize 422・削除後404を手動APIで確認。
+- 自動テスト: test_100_ca.py 6 passed。対応範囲 backend 22 passed。全体回帰（stats_tests/survey_audit隔離を除外）473 passed。FE全体 248 passed（58ファイル、correspondence 2件含む）。FE型検査 tsc --noEmit エラーなし。
+- R/fixture照合: expected_values.json のCA固有値0.25・F/G ±0.5とkernel一致。R oracle実行は未実施。
+
+## 受入対応
+- CA01 達成、CA02 達成、CA03 達成、CA04 達成、CA05 達成（全慣性分母・再正規化なし・軸ラベル%表示）、CA06 達成、CA07 達成、CA08 達成、CA09 達成（rank1は1次元表示・第2軸selectなし）、CA10 達成（422 CA_ZERO_INERTIA）
+- COM-01 達成（409）、COM-02 達成（scope必須・explicit未知422）、COM-05 達成（weight型ゲート・倍率不変）、COM-07/08 非該当（materialize未対応を422で明示）、COM-09 達成（原子的保存・明示delete）、COM-11 達成（KeepAlive登録・dataset変更リセット・runSequence破棄＋実ブラウザ復帰確認）、COM-12 達成（有限JSON・CSV式注入対策）
+- 実ブラウザ確認: 達成（下記）。static/Pyodide実機・外部R oracleは未検証として記録。
+
+## 実ブラウザ確認（2026-09-13、dev :5174＋backend :8420）
+- 検証データ ca-ui（80行、brand×need、R1/C1=30、R1/C2=10、R2/C1=10、R2/C2=30）を投入しdataset切替。
+- /models/ca で行=need・列=brand（転置入力）を実ポインタ順序dispatchで選択し実行ボタンをクリック。
+- 結果: rev 1 / scope active (n=80)、有効80、rank 1、固有値0.25・慣性比100%、χ²=20.000 df=1 p=7.74e-6、行/列カテゴリ±0.5、元表 [[30,10],[10,30]] を画面表示で確認。
+- カテゴリ点クリック→「原行IDへ解決して選択 (1)」→select API→一致40/適用40→中央selection 40行を確認。
+- PCPへ移動し選択40行の連動を確認。CAへ復帰し結果保持（KeepAlive）を確認。
+- 固有値CSVのexport API 200を確認（network log [20900.863]）。
+- network log: POST /models/ca 200（[20900.666]/[20900.841]）、POST /select 200（[20900.842]）、export 200。
+- 既知の操作性注意: preview_click単独ではantd Selectが開かない場合があり、実ポインタ順序（pointerdown→mousedown→pointerup→mouseup→click）のdispatchで選択できた。dataset-selectorの残存dropdownがCAのdropdownと重なる場合があり、切替直後の操作では注意が必要。
+- 画面不具合の修正: ColumnSelectのoption valueを列名に統一（Crosstabと同様）。修正前はcolumnIdのため選択がAPIへ渡らず実行ボタンがdisabledのままだった。修正後に型検査エラーなし。
+
+## 残作業
+- [x] static実機相当の確認（`python -m http.server -d dist/static 8421` で配信。到達200、index.htmlがCAバンドル `index-CLX-_kY0.js` を参照、同バンドルに `models/ca` 4件・コレスポンデンス分析2件を含むことを確認。`pyodide/backend_app.zip` 200・300061 bytesで配信されることを確認）
+- [x] run-production相当の配信確認（backend :8420で `/` 200・フロントdist配信、openapiに `/models/ca` と `/analysis-results` 6経路を掲載、不正入力に規定422が返ること、回答者80行の本番経路実行でλ=0.25・χ²=20を確認）
+- [x] static再配布（`python scripts/build_static.py` をリポジトリルートから実行、exit 0。`dist/static/pyodide/backend_app.zip` にCA8ファイル組込を確認、112 files）
+- [x] static同一性確認（再配布ZIP内の `app.algorithms.models.correspondence` を取出し実行し、λ=0.25・主座標±0.5でlocalと一致）
+- [x] 外部R oracle照合（`C:\Program Files\R\R-4.6.1\bin\Rscript.exe` で実施。MASS::corresp χ²=20 df=1 p=7.744e-06・正準相関0.5、独立SVD計算で特異値0.5・固有値0.25・全慣性0.25・F=∓0.5・G=∓0.5・行距離0.25・寄与0.5・cos2=1を確認。符号除き本体と一致）
+- [x] 本番フロントビルド（許可を得て `npm --prefix fullstack/frontend run build` を実行、exit 0。dist に models/ca を含むことを確認）
+- [x] 静的フロント再ビルド（`npm --prefix fullstack/frontend run build:static` を実行、exit 0。`dist/static/assets` に models/ca を3件含むことを確認）
+
+注意: `fullstack/scripts/build_static.py` を直接実行するとROOT解決が `fullstack/` になり backend が空振りする（設計資料の指摘どおり二重fullstack）。正しくはリポジトリルートの `scripts/build_static.py` を使うこと。今回は誤経路で一度空振りした後、正経路で再配布した。
+
+R導入手順とFactoMineR照合（実施済み）:
+- `C:\Program Files\R\R-4.6.1\bin\Rscript.exe --version` でR 4.6.1を確認した。
+- `install.packages('FactoMineR', repos='https://cloud.r-project.org')` でFactoMineR 2.17を導入した。
+- `CA(matrix(c(30,10,10,30),2,byrow=TRUE), graph=FALSE)` で固有値0.25、行座標R1=0.5・R2=-0.5、列座標C1=0.5・C2=-0.5を確認。符号を除き本体と一致。
+- baseの `chisq.test`（χ²=20、df=1、p=7.744e-06）・`MASS::corresp`（正準相関0.5）・独立SVD計算でも照合済み。
+- static同一コードE2E: 再配布ZIPを取出しASGI実行し、回答者80行でλ=0.25・χ²=20、select 40行、export CSVを確認した（Pyodideブラウザ実機ではなく同一コード実行）。

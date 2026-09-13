@@ -51,6 +51,7 @@ export const ANALYSIS_NAV_ITEMS = [
   { key: '/models', label: 'Models' },
   { key: '/logistic', label: 'Logistic' },
   { key: '/discriminant', label: 'Discriminant' },
+  { key: '/models/ca', label: 'CA' },
   { key: '/pca', label: 'PCA' },
   { key: '/covariance', label: 'Covariance' },
   { key: '/statistics', label: 'Statistics' },

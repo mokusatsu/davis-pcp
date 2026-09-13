@@ -30,6 +30,7 @@ import FeatureRankingPage from './features/mining/FeatureRankingPage'
 import CrosstabPage from './features/crosstab/CrosstabPage'
 import LogisticRegressionPage from './features/models/LogisticRegressionPage'
 import DiscriminantAnalysisPage from './features/models/DiscriminantAnalysisPage'
+import CorrespondenceAnalysisPage from './features/models/CorrespondenceAnalysisPage'
 import { store } from './app/store'
 import { FocusModeProvider } from './features/common/FocusMode'
 import { IS_STATIC_BUILD } from './api/client'
@@ -63,6 +64,7 @@ const routeChildren = [
   { path: 'covariance', element: <CovariancePage /> },
   { path: 'logistic', element: <LogisticRegressionPage /> },
   { path: 'discriminant', element: <DiscriminantAnalysisPage /> },
+  { path: 'models/ca', element: <CorrespondenceAnalysisPage /> },
   { path: 'crosstab', element: <CrosstabPage /> },
 ]
 
