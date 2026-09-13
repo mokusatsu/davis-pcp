@@ -113,3 +113,8 @@ R導入手順とFactoMineR照合（実施済み）:
 - run-production相当: PowerShellでuvicornを起動し、`/` 200・openapiに `/models/ca` 掲載を確認（Stop-Processの日本語出力化けは停止処理のみの問題で起動確認には影響なし）。
 - Pyodide配信: 別ポート8423でstatic配信し、index.html 200、バンドル `index-uGs_xchf.js`、pyodide.mjs・asm.wasm・backend_app.zip・wheels/manifest.jsonの実在を確認。HTTP取得ZIP（113 files）にCA組込を確認し、取出しkernel実行でλ=0.25を確認。
 - ブラウザのPyodide worker内での全操作実行までは未実施（WASM実行環境を含む操作）。同一コードの配信・実行は確認済み。
+
+## レビュー005の2件実行（2026-09-13）
+- run-production.bat相当の直接起動: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File fullstack/run-production.ps1` と同一入口をバックグラウンド起動し、`/` 200・openapiの `/models/ca` 掲載、本番経路でλ=0.25・χ²=20を確認。bat末尾のpauseは起動後の処理であり、起動確認の障害にならない。
+- Pyodide配信の直接確認: スレッド版サーバで8425配信し、index.html 200、バンドル `index-uGs_xchf.js`（models/ca 3件）、pyodide.mjs 200、backend_app.zip 200・304952 bytesをHTTP取得。取得ZIP内のCA組込（113 files）とkernel実行（λ=0.25・±0.5）を確認。
+- ブラウザのPyodide worker内での全操作実行は、preview paneの制約（外部URLへの遷移不可）のため未検証として記録。同一コードの配信・実行は確認済み。
