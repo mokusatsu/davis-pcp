@@ -99,6 +99,11 @@ R導入手順とFactoMineR照合（実施済み）:
 - baseの `chisq.test`（χ²=20、df=1、p=7.744e-06）・`MASS::corresp`（正準相関0.5）・独立SVD計算でも照合済み。
 - static同一コードE2E: 再配布ZIPを取出しASGI実行し、回答者80行でλ=0.25・χ²=20、select 40行、export CSVを確認した（Pyodideブラウザ実機ではなく同一コード実行）。
 
+## 最終受入の未検証2件確認（2026-09-13）
+- Pyodide配信: 別ポート8422でstatic配信し、index.html 200、バンドル `index-uGs_xchf.js`（models/ca 3件）、`backend_app.zip` 200・304952 bytesをHTTP取得。取得ZIP内にCA組込（113 files）を確認し、取出しkernel実行でλ=0.25・主座標±0.5を確認。
+- run-production相当: backend :8420で `/` 200、openapiに `/models/ca` 掲載、本番経路でλ=0.25・χ²=20を確認。起動バッチ自体は対話pause付きのため直接実行せず、同等条件で確認。
+- 残る未検証はPyodideブラウザ実機の全操作のみ（WASM実行環境を含む操作）。同一コードの配信・実行は確認済み。
+
 ## レビュー002の残存2件修正（2026-09-13）
 - R001 衝突不能キー: 欠損sentinelを固定文字列からfrozen dataclass MissingKeyへ変更。通常値（__missing__・旧内部文字列含む）はcode保持、真の欠損とは別カテゴリ・別membershipになることを確認（通常値2行と欠損1行が分離）。
 - R008 分割表の補完件数: 使用セル列・scopeに対応するマスク・版を取得しmetaへ渡す。同一行2セルはcell数とrow数で区別。マスク差し替えの隔離実行でmaskRevision=1・cell=1・row=1を確認。
