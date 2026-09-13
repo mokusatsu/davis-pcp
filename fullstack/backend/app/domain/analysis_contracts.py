@@ -116,7 +116,7 @@ class SelectRequest(StrictModel):
 class ExportRequest(StrictModel):
     format: Literal["json", "csv"]
     table: Literal["manifest", "eigenvalues", "categories", "variables", "coefficients",
-                   "diagnostics", "rows", "utilities"]
+                   "diagnostics", "rows", "utilities", "table", "members"]
     offset: Annotated[int, Field(ge=0)] = 0
     limit: Annotated[int, Field(ge=1, le=10000)] = 5000
 

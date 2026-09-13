@@ -56,6 +56,23 @@
 
 注意: `fullstack/scripts/build_static.py` を直接実行するとROOT解決が `fullstack/` になり backend が空振りする（設計資料の指摘どおり二重fullstack）。正しくはリポジトリルートの `scripts/build_static.py` を使うこと。今回は誤経路で一度空振りした後、正経路で再配布した。
 
+## レビュー指摘12件の修正（2026-09-13）
+- P1 保存済み重み: 画面に重み選択（データ設定/none）を追加し、保存済みweightConfigを初期値として使う。分割表＋dataset重みは二重ウェイトで拒否される旨を表示。
+- P1 カテゴリID衝突: kindに基づき欠損のみcode=nullとし、通常コード（__a等）を保持。__a選択で40行が戻ることを確認。
+- P1 選択のdataset一致: selectでownerDatasetIdとの一致を必須化。別dataset指定は422 ANALYSIS_DATASET_MISMATCH。
+- P1 分割表の欠損コード: codebook missingCodesを参照し、欠損セルをCA_TABLE_INVALIDで拒否。
+- P1 古い応答の採用: dataset変更でrunSequenceを進め、実行・選択ともdataset・版・世代を確認してから状態更新。
+- P2 公開前版再確認: 保存直前にロック内で版を再確認し、変更時は409 ANALYSIS_INPUT_STALE。
+- P2 分割表複数行選択: 同側カテゴリを和集合にし、R1+R2で2行が戻ることを確認。
+- P2 カテゴリCSV: ラベル・質量・主座標・寄与・cos2を含む座標CSVに変更。分割表CSV（table）も追加。
+- P2 GET復元: manifestにsummary/detailsを保存し、GETからCA結果を返す。
+- P2 中央selection連動: 中央selectionに対応するカテゴリをmembers連携で強調（選択指定とは別の色）。
+- P2 行ラベルtext許可: 行ラベル候補をnominal/ordinal/binary/text/idに拡大。
+- P2 欠損方針固定: 分割表ではexclude固定・無効化し、送信値もexcludeに統一。
+- 再検証: test_100_ca 6 passed、全体回帰473 passed、FE全体248 passed、tsc エラーなし。本番・static再配布済み。
+- 実ブラウザ再確認: ca-rev2（80行）で行=brand・列=needを選択し実行。固有値0.25・χ²=20、点選択→一致40/適用40→selection 40行を確認。分割表モードで欠損方針がexclude固定・無効化されることを確認。
+- FactoMineR 2.17照合: CA()で固有値0.25、行R1=0.5・R2=-0.5、列C1=0.5・C2=-0.5。符号除き本体と一致。
+
 R導入手順とFactoMineR照合（実施済み）:
 - `C:\Program Files\R\R-4.6.1\bin\Rscript.exe --version` でR 4.6.1を確認した。
 - `install.packages('FactoMineR', repos='https://cloud.r-project.org')` でFactoMineR 2.17を導入した。

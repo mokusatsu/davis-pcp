@@ -5,6 +5,7 @@ import {
 } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
+import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
@@ -28,17 +29,27 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
-  const { columns, schemaRevision } = useCodebook()
+  const codebook = useCodebook()
+  const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
 
   const globalVars = useSelector(selectOrdinaryVariables)
   const hasGlobalSignal = globalVars.allVariables.length > 0
+  const activeSet = useMemo(() => new Set(globalVars.activeVariableIds), [globalVars.activeVariableIds])
+  const weightConfig = codebook.weightConfig
   const categoricalOptions = useMemo(
     () => columns
       .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
-        && (!hasGlobalSignal || globalVars.activeVariableIds.includes(c.name)))
+        && (!hasGlobalSignal || activeSet.has(c.name)))
       .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
-    [columns, globalVars.activeVariableIds, hasGlobalSignal],
+    [columns, activeSet, hasGlobalSignal],
+  )
+  const rowLabelOptions = useMemo(
+    () => columns
+      .filter((c) => ['nominal', 'ordinal', 'binary', 'text', 'id'].includes(c.scaleType) && !c.multiResponseGroup
+        && (!hasGlobalSignal || activeSet.has(c.name)))
+      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+    [columns, activeSet, hasGlobalSignal],
   )
   const numericOptions = useMemo(
     () => columns
@@ -57,6 +68,11 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const [mapScaling, setMapScaling] = useState<MapScaling>('symmetric')
   const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
+  const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
+
+  const savedWeightColumnId = weightConfig?.weightColumnId ?? null
+  const savedWeightType = weightConfig?.weightType ?? null
+  const effectiveMissing = inputKind === 'contingency' ? 'exclude' : missingPolicy
 
   const [result, setResult] = useState<CAResponse | null>(null)
   const [submittedKey, setSubmittedKey] = useState('')
@@ -70,15 +86,19 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const svgRef = useRef<SVGSVGElement | null>(null)
 
   const draftKey = JSON.stringify([datasetId, inputKind, rowVar, colVar, rowLabelCol, valueCols,
-    cellSemantics, ack, mapScaling, scope, missingPolicy, selection.dataRevision, schemaRevision])
+    cellSemantics, ack, mapScaling, scope, effectiveMissing, weightChoice,
+    selection.dataRevision, schemaRevision])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   useEffect(() => {
+    runSequence.current += 1
     setResult(null)
     setSubmittedKey('')
     setError(null)
     setSelectedCats(new Set())
     setSelectInfo(null)
+    setWeightChoice('dataset')
+    setMissingPolicy('exclude')
   }, [datasetId])
 
   const buildContext = (): CAContext => ({
@@ -89,8 +109,8 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
     selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
     sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-    weightMode: 'none',
-    missingPolicy,
+    weightMode: weightChoice,
+    missingPolicy: effectiveMissing,
   })
 
   const canRun = inputKind === 'respondents'
@@ -101,8 +121,9 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !canRun) return
     const seq = ++runSequence.current
-    const epoch = `${datasetId}:${selection.dataRevision}`
+    const epoch = `${datasetId}:${selection.dataRevision}:${schemaRevision}`
     const startedKey = draftKey
+    const startedDataset = datasetId
     setLoading(true)
     setError(null)
     try {
@@ -117,7 +138,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
           }
       const res = await runCa(buildContext(), input, mapScaling)
       if (seq !== runSequence.current) return
-      void epoch
+      if (datasetId !== startedDataset || `${datasetId}:${selection.dataRevision}:${schemaRevision}` !== epoch) return
       setResult(res)
       setSubmittedKey(startedKey)
       setMapScaling((res.details.mapScaling as MapScaling) ?? 'symmetric')
@@ -161,8 +182,11 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     }
     setSelecting(true)
     setSelectInfo(null)
+    const seq = ++runSequence.current
+    const startedDataset = datasetId
     try {
       const res = await selectCaCategories(result.resultId, buildContext(), ids, between)
+      if (seq !== runSequence.current || datasetId !== startedDataset) return
       dispatch(selectionApplied({
         rowIds: res.rowIds,
         operation: getBrushOp(),
@@ -170,13 +194,39 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
       }))
       setSelectInfo(`一致 ${res.matchedCount} / 適用 ${res.contextIntersectionCount}`)
     } catch (err) {
+      if (seq !== runSequence.current) return
       message.error(apiErrorMessage(err, '選択の解決に失敗しました。'))
     } finally {
-      setSelecting(false)
+      if (seq === runSequence.current) setSelecting(false)
     }
   }
 
   const rank = result?.summary.rank ?? 0
+
+  const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!result || selection.selectedRowIds.length === 0) {
+      setLinkedCategoryIds(new Set())
+      return
+    }
+    let cancelled = false
+    const selSet = new Set(selection.selectedRowIds)
+    void api.post<{ rows: [string, string, string][] }>(
+      `/analysis-results/${result.resultId}/export`,
+      { format: 'json', table: 'members' },
+    ).then((res) => {
+      if (cancelled) return
+      const hit = new Set<string>()
+      for (const [cid, rid] of res.rows ?? []) {
+        if (selSet.has(String(rid))) hit.add(String(cid))
+      }
+      setLinkedCategoryIds(hit)
+    }).catch(() => {
+      if (!cancelled) setLinkedCategoryIds(new Set())
+    })
+    return () => { cancelled = true }
+  }, [result?.resultId, selection.selectedRowIds])
 
   if (!datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
@@ -216,7 +266,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                   placeholder="行ラベル"
                   value={rowLabelCol}
                   onChange={(v) => setRowLabelCol(v as string)}
-                  options={categoricalOptions.map((c) => ({ value: c.value, label: c.label }))}
+                  options={rowLabelOptions}
                 />
                 <span>セル列</span>
                 <Select
@@ -252,14 +302,23 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
             />
             <Select
               style={{ minWidth: 140 }}
-              value={missingPolicy}
+              value={inputKind === 'contingency' ? 'exclude' : missingPolicy}
               onChange={(v) => setMissingPolicy(v)}
               options={[
                 { value: 'exclude', label: '欠損を除外' },
                 { value: 'include_missing', label: '欠損を含める' },
                 { value: 'separate_not_applicable', label: '非該当を分離' },
               ]}
-              disabled={inputKind === 'contingency' && missingPolicy !== 'exclude'}
+              disabled={inputKind === 'contingency'}
+            />
+            <Select
+              style={{ minWidth: 170 }}
+              value={weightChoice}
+              onChange={(v) => setWeightChoice(v)}
+              options={[
+                { value: 'dataset', label: savedWeightColumnId ? `重み: データ設定 (${savedWeightType ?? '未宣言'})` : '重み: データ設定（なし）' },
+                { value: 'none', label: '重みなし' },
+              ]}
             />
             <Radio.Group value={mapScaling} onChange={(e) => setMapScaling(e.target.value)}>
               <Radio.Button value="symmetric">対称</Radio.Button>
@@ -272,7 +331,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
             <SelectionMenu />
           </Space>
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-            重み: なし（dataset適用表示は共通バー参照）。分割表モードではweightModeを変更しません。カテゴリ点に回答者のL1色は割り当てません。
+            重み: {weightChoice === 'dataset' ? (savedWeightColumnId ? `データ設定（${savedWeightType ?? '種類未宣言'}）` : 'データ設定（なし）') : 'なし'}。分割表モードではdataset重みがあると二重ウェイトで実行できません。カテゴリ点に回答者のL1色は割り当てません。
           </Typography.Text>
           {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="設定が変更されています。結果は前回実行分です。" />}
         </Card>
@@ -287,7 +346,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               <Space>
                 <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
-                <Tag>非加重</Tag>
+                <Tag>{result.meta.weightApplied ? `加重 (${result.meta.weightType ?? ''})` : '非加重'}</Tag>
                 {result.meta.resultState === 'stale' && <Tag color="orange">stale（古い版）</Tag>}
                 <Tag>rank {rank}</Tag>
               </Space>
@@ -302,6 +361,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 ratio={result.summary.inertiaRatio}
                 scaling={mapScaling}
                 selected={selectedCats}
+                highlighted={linkedCategoryIds}
                 onToggle={toggleCat}
                 svgRef={svgRef}
               />

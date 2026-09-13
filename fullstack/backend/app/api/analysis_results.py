@@ -43,9 +43,13 @@ def _stale_state(manifest):
 def get_result(result_id):
     manifest = result_store.load_manifest(result_id)
     meta, stale, cur = _stale_state(manifest)
-    arrays = result_store.load_arrays(result_id)
-    summary = {"rank": int(arrays["eigenvalues"].shape[0]), "eigenvalues": [float(v) for v in arrays["eigenvalues"].tolist()]}
-    payload = {"status": "success", "resultId": result_id, "method": manifest.get("method"), "meta": meta, "config": manifest.get("config"), "capabilities": manifest.get("capabilities"), "summary": summary, "details": {"note": "full details available from POST /models/ca response or export"} , "unavailableReasons": manifest.get("unavailableReasons", {})}
+    summary = manifest.get("summary") or {}
+    details = manifest.get("details") or {}
+    if not summary or not details:
+        arrays = result_store.load_arrays(result_id)
+        summary = {"rank": int(arrays["eigenvalues"].shape[0]), "eigenvalues": [float(v) for v in arrays["eigenvalues"].tolist()]}
+        details = {"note": "full details available from POST /models/ca response or export"}
+    payload = {"status": "success", "resultId": result_id, "method": manifest.get("method"), "meta": meta, "config": manifest.get("config"), "capabilities": manifest.get("capabilities"), "summary": summary, "details": details, "unavailableReasons": manifest.get("unavailableReasons", {})}
     check_json_finite(payload)
     return payload
 
@@ -68,6 +72,9 @@ def select_result(result_id: str, payload: dict = Body(...)):
     if stale:
         _err("ANALYSIS_INPUT_STALE", "stale result", 409)
     ctx = req.context.model_dump()
+    if ctx.get("datasetId") != manifest.get("ownerDatasetId"):
+        _err("ANALYSIS_DATASET_MISMATCH", "結果の所有データセットと一致しません。", 422,
+             details={"ownerDatasetId": manifest.get("ownerDatasetId")})
     check_revisions(cur, ctx.get("expectedSchemaRevision"), ctx.get("expectedDataRevision"))
     members = result_store.load_members(result_id)
     if members is None:
@@ -91,7 +98,10 @@ def select_result(result_id: str, payload: dict = Body(...)):
             cols = [c for c in sel.categoryIds if str(members.filter(members["categoryId"] == c)["side"].to_list()[0]) == "column"] if sel.categoryIds else []
             if cols:
                 _err("CA_TABLE_COLUMN_SELECT_UNSUPPORTED", "use highlight", 422)
-            sets = [set(by_cat.get(c, [])) for c in sel.categoryIds]
+            union = set()
+            for c in sel.categoryIds:
+                union |= set(by_cat.get(c, []))
+            sets = [union]
         else:
             sides = {}
             for c in sel.categoryIds:
@@ -139,7 +149,7 @@ def export_result(result_id: str, payload: dict = Body(...)):
         _err("ANALYSIS_REQUEST_INVALID", "bad export", 422)
     manifest = result_store.load_manifest(result_id)
     meta, stale, cur = _stale_state(manifest)
-    allowed = set((manifest.get("capabilities") or {}).get("exportTables", []))
+    allowed = set((manifest.get("capabilities") or {}).get("exportTables", [])) | {"members"}
     if req.table not in allowed:
         _err("ANALYSIS_EXPORT_UNSUPPORTED", "bad table", 422)
     arrays = result_store.load_arrays(result_id)
@@ -171,23 +181,72 @@ def export_result(result_id: str, payload: dict = Body(...)):
         out = {"status": "success", "mime": mime, "fileName": f"{result_id}-eigenvalues.{req.format}", "encoding": "utf-8", "payload": payload_text, "offset": offset, "total": total, "nextOffset": nxt, "hasHeader": req.format == "csv", "snapshot": {"datasetId": meta.get("datasetId"), "dataRevision": meta.get("dataRevision"), "schemaRevision": meta.get("schemaRevision"), "resultId": result_id}}
         check_json_finite(out)
         return out
-    cats = members.rows(named=True) if members is not None else []
-    rows_all = [{"categoryId": r["categoryId"], "rowId": r["rowId"], "side": r["side"]} for r in cats]
+    if req.table == "table":
+        return _export_table(manifest, meta, result_id, req)
+    if req.table == "members":
+        mem = result_store.load_members(result_id)
+        rows = [[str(a), str(b), str(c)] for a, b, c in (mem.iter_rows() if mem is not None else [])]
+        total = len(rows)
+        part = rows[offset:offset + limit]
+        nxt = offset + len(part) if offset + len(part) < total else None
+        body = {"columns": ["categoryId", "rowId", "side"], "rows": part}
+        out = {"status": "success", "mime": "application/json", "fileName": f"{result_id}-members.json", "encoding": "utf-8", "payload": json.dumps(body, ensure_ascii=False, allow_nan=False), "offset": offset, "total": total, "nextOffset": nxt, "hasHeader": False, "snapshot": {"datasetId": meta.get("datasetId"), "dataRevision": meta.get("dataRevision"), "schemaRevision": meta.get("schemaRevision"), "resultId": result_id}}
+        check_json_finite(out)
+        return out
+    details = manifest.get("details") or {}
+    cat_rows = list(details.get("rowCategories") or []) + list(details.get("columnCategories") or [])
+    rank = int((manifest.get("summary") or {}).get("rank", 0))
+    header = ["categoryId", "side", "variableId", "code", "kind", "label", "mass"] + [f"principal{i+1}" for i in range(rank)] + [f"contribution{i+1}" for i in range(rank)] + [f"cos2_{i+1}" for i in range(rank)]
+    rows_all = []
+    for e in cat_rows:
+        princ = list(e.get("principalCoordinates") or [])
+        contrib = list(e.get("contributions") or [])
+        cos2 = list(e.get("cos2") or [])
+        rows_all.append([e.get("categoryId"), e.get("side"), e.get("variableId"), e.get("code"), e.get("kind"), e.get("label"), e.get("mass")] + [princ[i] if i < len(princ) else None for i in range(rank)] + [contrib[i] if i < len(contrib) else None for i in range(rank)] + [cos2[i] if i < len(cos2) else None for i in range(rank)])
     total = len(rows_all)
     part = rows_all[offset:offset + limit]
     nxt = offset + len(part) if offset + len(part) < total else None
     if req.format == "json":
-        body = {"columns": ["categoryId", "rowId", "side"], "rows": [[p["categoryId"], escape_formula_prefix(str(p["rowId"])), p["side"]] for p in part]}
+        body = {"columns": header, "rows": [[(escape_formula_prefix(str(v)) if isinstance(v, str) else v) for v in row] for row in part]}
         payload_text = json.dumps(body, ensure_ascii=False, allow_nan=False)
         mime = "application/json"
     else:
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["categoryId", "rowId", "side"])
-        for p in part:
-            w.writerow([p["categoryId"], escape_formula_prefix(str(p["rowId"])), p["side"]])
+        w.writerow(header)
+        for row in part:
+            w.writerow([(escape_formula_prefix(str(v)) if isinstance(v, str) else ("" if v is None else repr(float(v)) if isinstance(v, float) else v)) for v in row])
         payload_text = buf.getvalue()
         mime = "text/csv"
     out = {"status": "success", "mime": mime, "fileName": f"{result_id}-categories.{req.format}", "encoding": "utf-8", "payload": payload_text, "offset": offset, "total": total, "nextOffset": nxt, "hasHeader": req.format == "csv", "snapshot": {"datasetId": meta.get("datasetId"), "dataRevision": meta.get("dataRevision"), "schemaRevision": meta.get("schemaRevision"), "resultId": result_id}}
+    check_json_finite(out)
+    return out
+
+
+def _export_table(manifest, meta, result_id, req):
+    details = manifest.get("details") or {}
+    table = details.get("table") or []
+    row_ids = details.get("tableRowCategoryIds") or []
+    col_ids = details.get("tableColumnCategoryIds") or []
+    long_rows = []
+    for i, row in enumerate(table):
+        for j, v in enumerate(row):
+            long_rows.append([row_ids[i] if i < len(row_ids) else i, col_ids[j] if j < len(col_ids) else j, float(v)])
+    total = len(long_rows)
+    part = long_rows[req.offset:req.offset + req.limit]
+    nxt = req.offset + len(part) if req.offset + len(part) < total else None
+    if req.format == "json":
+        body = {"columns": ["rowCategoryId", "columnCategoryId", "value"], "rows": part}
+        payload_text = json.dumps(body, ensure_ascii=False, allow_nan=False)
+        mime = "application/json"
+    else:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["rowCategoryId", "columnCategoryId", "value"])
+        for row in part:
+            w.writerow([row[0], row[1], repr(float(row[2]))])
+        payload_text = buf.getvalue()
+        mime = "text/csv"
+    out = {"status": "success", "mime": mime, "fileName": f"{result_id}-table.{req.format}", "encoding": "utf-8", "payload": payload_text, "offset": req.offset, "total": total, "nextOffset": nxt, "hasHeader": req.format == "csv", "snapshot": {"datasetId": meta.get("datasetId"), "dataRevision": meta.get("dataRevision"), "schemaRevision": meta.get("schemaRevision"), "resultId": result_id}}
     check_json_finite(out)
     return out

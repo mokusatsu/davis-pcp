@@ -10,7 +10,7 @@ export interface CAContext {
   selectedRowIds?: string[]
   sampledRowIds?: string[]
   rowIds?: string[]
-  weightMode: 'none'
+  weightMode: 'dataset' | 'none'
   missingPolicy: string
 }
 

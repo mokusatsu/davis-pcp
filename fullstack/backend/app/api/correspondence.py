@@ -99,8 +99,8 @@ def _run_respondents(req, ctx, started):
         t_phys[i, j] += 1.0
         rk = row_cat.kind_by_code[rc]
         ck = col_cat.kind_by_code[cc]
-        rcode = None if rc.startswith("__") else rc
-        ccode = None if cc.startswith("__") else cc
+        rcode = None if rk != "value" else rc
+        ccode = None if ck != "value" else cc
         r_id = _category_id(row_cat.variable_id, rk, rcode)
         c_id = _category_id(col_cat.variable_id, ck, ccode)
         members.setdefault(("row", r_id), []).append(rid)
@@ -117,12 +117,12 @@ def _finish_respondents(req, ctx, started, t, t_phys, row_order, col_order, row_
     for i, code in enumerate(row_order):
         if i not in keep_r:
             kind = row_cat.kind_by_code[code]
-            cval = None if code.startswith("__") else code
+            cval = None if kind != "value" else code
             omitted.append({"categoryId": _category_id(row_cat.variable_id, kind, cval), "variableId": row_cat.variable_id, "code": cval, "kind": kind, "label": row_cat.labels[code], "side": "row", "reason": "zero_mass", "originalIndex": i})
     for j, code in enumerate(col_order):
         if j not in keep_c:
             kind = col_cat.kind_by_code[code]
-            cval = None if code.startswith("__") else code
+            cval = None if kind != "value" else code
             omitted.append({"categoryId": _category_id(col_cat.variable_id, kind, cval), "variableId": col_cat.variable_id, "code": cval, "kind": kind, "label": col_cat.labels[code], "side": "column", "reason": "zero_mass", "originalIndex": j})
     total = float(t.sum())
     if not np.isfinite(total) or total <= 0:
@@ -186,11 +186,14 @@ def _run_contingency(req, ctx, started):
             else:
                 seen.add(code)
         cell_cols = {name: df[name].to_list() for name in value_names}
+        from ..domain.codebook_adapter import normalize_code as _nc2
         bad_cells = []
         for idx, rid in enumerate(row_ids):
             for spec, name in zip(value_specs, value_names):
                 raw = cell_cols[name][idx]
-                if raw is None:
+                missing_codes = {_nc2(v) for v in (spec.get("missingCodes") or [])}
+                missing_codes.discard(None)
+                if raw is None or _nc2(raw) in missing_codes:
                     bad_cells.append({"rowId": rid, "reason": "missing_cell"})
                     continue
                 if isinstance(raw, bool):
@@ -258,7 +261,7 @@ def _finalize(req, ctx, started, kern, row_order, col_order, keep_r, keep_c, row
     for pos, i in enumerate(keep_r):
         code = row_order[i]
         kind = row_cat.kind_by_code[code]
-        cval = None if code.startswith("__") else code
+        cval = None if kind != "value" else code
         princ = [float(v) for v in f[pos, :].tolist()]
         std = [float(v) for v in phi[pos, :].tolist()]
         contrib = [float(v) for v in kern["rowContrib"][pos, :].tolist()]
@@ -271,7 +274,7 @@ def _finalize(req, ctx, started, kern, row_order, col_order, keep_r, keep_c, row
     for pos, j in enumerate(keep_c):
         code = col_order[j]
         kind = col_cat.kind_by_code[code]
-        cval = None if code.startswith("__") else code
+        cval = None if kind != "value" else code
         princ = [float(v) for v in g[pos, :].tolist()]
         std = [float(v) for v in gamma[pos, :].tolist()]
         contrib = [float(v) for v in kern["colContrib"][pos, :].tolist()]
@@ -406,13 +409,22 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
     else:
         meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=w_applied, weight_type=w_type, weight_column=w_col, sum_weights=sum_w, kish_effective_n=kish, frequency_n=freq_n, mask_revision=mask_rev, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     result_id = new_result_id()
-    manifest = {"schemaVersion": SCHEMA_VERSION, "resultId": result_id, "method": "ca", "ownerDatasetId": ctx["datasetId"], "config": request_json, "meta": meta, "capabilities": {"rows": False, "projection": False, "materialize": False, "selectionKinds": ["categories"], "exportTables": ["manifest", "eigenvalues", "categories"], "materializeFitFields": [], "materializePredictionFields": [], "predictionIntervals": [], "simulation": False}, "summaryKeys": list(summary.keys()), "unavailableReasons": {}}
+    manifest = {"schemaVersion": SCHEMA_VERSION, "resultId": result_id, "method": "ca", "ownerDatasetId": ctx["datasetId"], "config": request_json, "meta": meta, "capabilities": {"rows": False, "projection": False, "materialize": False, "selectionKinds": ["categories"], "exportTables": ["manifest", "eigenvalues", "categories", "table"], "materializeFitFields": [], "materializePredictionFields": [], "predictionIntervals": [], "simulation": False}, "summary": summary, "details": details, "summaryKeys": list(summary.keys()), "unavailableReasons": {}}
     arrays = {"eigenvalues": np.asarray(eig, dtype=np.float64), "f": np.asarray(kern["f"]), "g": np.asarray(kern["g"]), "r": np.asarray(kern["r"]), "c": np.asarray(kern["c"])}
     if isinstance(members_rows, dict):
         mem_df = pl.DataFrame({"categoryId": [a for a, b, c in members_rows["rows"]], "rowId": [b for a, b, c in members_rows["rows"]], "side": [c for a, b, c in members_rows["rows"]]})
     else:
         mem_df = pl.DataFrame({"categoryId": [a for a, b, c in members_rows], "rowId": [b for a, b, c in members_rows], "side": [c for a, b, c in members_rows]})
-    result_store.save_result(result_id, manifest, arrays, members=mem_df, exclusions=None)
+    with store.lock(ctx["datasetId"]):
+        cur_meta = store.get_meta(ctx["datasetId"])
+        cur_code = store.load_codebook(ctx["datasetId"]) or {}
+        cur_rev = collect_revisions(cur_meta, cur_code)
+        base_rev = rev
+        if cur_rev["dataRevision"] != base_rev["dataRevision"] or cur_rev["schemaRevision"] != base_rev["schemaRevision"]:
+            raise BizError("ANALYSIS_INPUT_STALE", "計算中にデータが更新されました。再実行してください。", status_code=409,
+                           details={"expectedDataRevision": base_rev["dataRevision"], "currentDataRevision": cur_rev["dataRevision"],
+                                    "expectedSchemaRevision": base_rev["schemaRevision"], "currentSchemaRevision": cur_rev["schemaRevision"]})
+        result_store.save_result(result_id, manifest, arrays, members=mem_df, exclusions=None)
     out = {"status": "success", "resultId": result_id, "method": "ca", "meta": meta, "config": request_json, "capabilities": manifest["capabilities"], "summary": summary, "details": details, "unavailableReasons": {}}
     check_json_finite(out)
     return out

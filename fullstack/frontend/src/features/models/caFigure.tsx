@@ -6,13 +6,14 @@ const W = 560
 const H = 400
 const PAD = { top: 24, right: 24, bottom: 44, left: 56 }
 
-export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, onToggle, svgRef }: {
+export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, highlighted, onToggle, svgRef }: {
   rows: CACategory[]
   cols: CACategory[]
   rank: number
   ratio: number[]
   scaling: MapScaling
   selected: Set<string>
+  highlighted: Set<string>
   onToggle: (id: string) => void
   svgRef: React.RefObject<SVGSVGElement>
 }): JSX.Element {
@@ -64,17 +65,18 @@ export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, o
         const cx = sx(p.x)
         const cy = rank >= 2 ? sy(p.y) : PAD.top + 60 + (i % 8) * 22
         const isSel = selected.has(p.cat.categoryId)
+        const isLinked = highlighted.has(p.cat.categoryId)
         const isRow = p.cat.side === 'row'
         const fill = isRow ? '#1890ff' : '#52c41a'
         const title = `${p.cat.label} 質量=${p.cat.mass.toFixed(4)} 座標=(${p.x.toFixed(3)}${rank >= 2 ? `, ${p.y.toFixed(3)}` : ''}) cos2=${p.cat.cos2[0] ?? '—'}`
         return (
           <g key={p.cat.categoryId} onClick={() => onToggle(p.cat.categoryId)} style={{ cursor: 'pointer' }}>
             {isRow ? (
-              <circle cx={cx} cy={cy} r={isSel ? 7 : 5} fill={fill} stroke={isSel ? '#2a78d6' : '#fff'} strokeWidth={isSel ? 2.5 : 1}>
+              <circle cx={cx} cy={cy} r={isSel || isLinked ? 7 : 5} fill={fill} stroke={isSel ? '#2a78d6' : isLinked ? '#fa8c16' : '#fff'} strokeWidth={isSel || isLinked ? 2.5 : 1}>
                 <title>{title}</title>
               </circle>
             ) : (
-              <rect x={cx - 5} y={cy - 5} width={10} height={10} fill={fill} stroke={isSel ? '#2a78d6' : '#fff'} strokeWidth={isSel ? 2.5 : 1}>
+              <rect x={cx - 5} y={cy - 5} width={10} height={10} fill={fill} stroke={isSel ? '#2a78d6' : isLinked ? '#fa8c16' : '#fff'} strokeWidth={isSel || isLinked ? 2.5 : 1}>
                 <title>{title}</title>
               </rect>
             )}
