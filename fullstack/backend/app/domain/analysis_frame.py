@@ -23,17 +23,22 @@ from .survey_weight import (
 from .weight_mode import resolve_weight_request
 
 
-MISSING_M = "MISSING_SENTINEL __missing__"
-MISSING_NA = "NOTAPPLICABLE_SENTINEL __not_applicable__"
+@dataclass(frozen=True)
+class MissingKey:
+    kind: str
+
+
+MISSING_M = MissingKey("missing")
+MISSING_NA = MissingKey("not_applicable")
 
 
 @dataclass
 class CategoryCatalog:
     variable_id: str
     column_name: str
-    kind_by_code: dict[str, str]  # normalized code -> 'value'|'missing'|'not_applicable'
-    order: list[str]  # normalized codes incl. missing sentinels kept for display
-    labels: dict[str, str]
+    kind_by_code: dict[Any, str]  # code key -> 'value'|'missing'|'not_applicable'
+    order: list[Any]  # codes incl. missing keys kept for display
+    labels: dict[Any, str]
 
 
 @dataclass
@@ -41,7 +46,7 @@ class PreparedAnalysisFrame:
     dataset_id: str
     scope_ids: list[str]
     row_ids: list[str]
-    categorical: dict[str, list[str | None]]  # column name -> normalized code or None
+    categorical: dict[str, list[Any]]  # column name -> code key or None
     numeric_raw: dict[str, list[Any]]
     catalogs: dict[str, CategoryCatalog]
     weights: list[float | None] | None
@@ -205,12 +210,12 @@ def prepare_category_frame(
                                status_code=422, details={"columnIds": [id_map[name]]})
 
         raw_cols = {name: df[name].to_list() for name in names}
-        codes: dict[str, list[str | None]] = {}
+        codes: dict[str, list[Any]] = {}
         kinds: dict[str, list[str]] = {}
         col_reasons: dict[str, list[str]] = {}
         for name in names:
             spec = specs[name]
-            col_codes: list[str | None] = []
+            col_codes: list[Any] = []
             col_kinds: list[str] = []
             col_rs: list[str] = []
             for i, raw in enumerate(raw_cols[name]):

@@ -99,8 +99,8 @@ def _run_respondents(req, ctx, started):
         t_phys[i, j] += 1.0
         rk = row_cat.kind_by_code.get(rc, "value")
         ck = col_cat.kind_by_code.get(cc, "value")
-        rcode = None if rk != "value" else rc
-        ccode = None if ck != "value" else cc
+        rcode = rc if rk == "value" else None
+        ccode = cc if ck == "value" else None
         r_id = _category_id(row_cat.variable_id, rk, rcode)
         c_id = _category_id(col_cat.variable_id, ck, ccode)
         members.setdefault(("row", r_id), []).append(rid)
@@ -117,12 +117,12 @@ def _finish_respondents(req, ctx, started, t, t_phys, row_order, col_order, row_
     for i, code in enumerate(row_order):
         if i not in keep_r:
             kind = row_cat.kind_by_code.get(code, "value")
-            cval = None if kind != "value" else code
+            cval = code if kind == "value" else None
             omitted.append({"categoryId": _category_id(row_cat.variable_id, kind, cval), "variableId": row_cat.variable_id, "code": cval, "kind": kind, "label": row_cat.labels[code], "side": "row", "reason": "zero_mass", "originalIndex": i})
     for j, code in enumerate(col_order):
         if j not in keep_c:
             kind = col_cat.kind_by_code.get(code, "value")
-            cval = None if kind != "value" else code
+            cval = code if kind == "value" else None
             omitted.append({"categoryId": _category_id(col_cat.variable_id, kind, cval), "variableId": col_cat.variable_id, "code": cval, "kind": kind, "label": col_cat.labels[code], "side": "column", "reason": "zero_mass", "originalIndex": j})
     total = float(t.sum())
     if not np.isfinite(total) or total <= 0:
@@ -307,6 +307,38 @@ def _finalize(req, ctx, started, kern, row_order, col_order, keep_r, keep_c, row
     return _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entries, col_entries, omitted, t, t_phys, members_rows, frame, pearson, "respondent_row")
 
 
+def _table_imputed_counts(dataset_id, scope_ids, value_specs):
+    from ..storage.dataset_store import DatasetStore as _DS
+    _store = _DS()
+    mask_doc = _store.load_mask(dataset_id) or {}
+    entries = mask_doc.get("entries", []) or []
+    try:
+        col_ids = {s.get("columnId") for s in value_specs} | {s.get("name") for s in value_specs}
+    except Exception:
+        col_ids = set()
+    scope_set = set(str(v) for v in (scope_ids or []))
+    try:
+        df_ids = [str(v) for v in _store.get_dataframe(dataset_id, columns=["__rowId__"])["__rowId__"].to_list()]
+    except Exception:
+        df_ids = list(scope_set)
+    id_to_pos = {rid: i for i, rid in enumerate(df_ids)}
+    seen: set[tuple[str, str]] = set()
+    rows: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        rid = str(entry.get("rowId", ""))
+        cid = str(entry.get("columnId", ""))
+        if cid not in col_ids or rid not in scope_set:
+            continue
+        key = (rid, cid)
+        if key not in seen:
+            seen.add(key)
+            rows.add(rid)
+    mask_rev = _store.mask_revision(dataset_id)
+    return len(seen), len(rows), mask_rev
+
+
 def _finalize_contingency(req, ctx, started, kern, row_order, value_names, keep_r, keep_c, omitted, t, row_ids, scope_ids, revisions, value_specs, label_spec):
     rank = int(kern["rank"])
     eig = [float(v) for v in kern["eigenvalues"].tolist()]
@@ -342,6 +374,10 @@ def _finalize_contingency(req, ctx, started, kern, row_order, value_names, keep_
         cid = _category_id("rowlabel", "value", row_order[i])
         members_rows.append((cid, row_ids[i], "row"))
     members = {"rows": members_rows, "frame": None, "scope": scope_ids, "revisions": revisions, "row_ids": row_ids, "table": True}
+    table_cells, table_rows, table_mask_rev = _table_imputed_counts(ctx["datasetId"], scope_ids, value_specs)
+    members["imputedCellCount"] = table_cells
+    members["imputedRowCount"] = table_rows
+    members["maskRevision"] = table_mask_rev
     if req.input.cellSemantics == "frequency" and req.input.independentCountsAcknowledged:
         pearson = pearson_reference(t[np.ix_(keep_r, keep_c)], kern["r"], kern["c"], float(t[np.ix_(keep_r, keep_c)].sum()))
         pearson = {"statistic": pearson["statistic"], "df": pearson["df"], "pValue": pearson["pValue"], "status": "available", "reason": None, "smallExpectedCellsLt1": pearson["smallExpectedCellsLt1"], "smallExpectedCellsLt5": pearson["smallExpectedCellsLt5"], "fractionExpectedLt5": pearson["fractionExpectedLt5"]}
@@ -353,7 +389,7 @@ def _finalize_contingency(req, ctx, started, kern, row_order, value_names, keep_
 def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entries, col_entries, omitted, t, t_phys, members_rows, frame, pearson, unit, scope_ids=None, revisions=None):
     request_json = json.loads(req.model_dump_json())
     if frame is not None:
-        fp_payload = {"datasetId": ctx["datasetId"], "dataRevision": frame.revisions["dataRevision"], "schemaRevision": frame.revisions["schemaRevision"], "maskRevision": frame.mask_revision, "snapshotFingerprint": frame.data_fingerprint, "scopeHash": None, "fitRowIdsHash": None, "effectiveConfig": request_json, "catalogs": {k: {"variableId": v.variable_id, "order": v.order} for k, v in frame.catalogs.items()}, "algorithmVersion": ALGORITHM_VERSION}
+        fp_payload = {"datasetId": ctx["datasetId"], "dataRevision": frame.revisions["dataRevision"], "schemaRevision": frame.revisions["schemaRevision"], "maskRevision": frame.mask_revision, "snapshotFingerprint": frame.data_fingerprint, "scopeHash": None, "fitRowIdsHash": None, "effectiveConfig": request_json, "catalogs": {k: {"variableId": v.variable_id, "order": [str(x) for x in v.order]} for k, v in frame.catalogs.items()}, "algorithmVersion": ALGORITHM_VERSION}
         scope_for_hash = frame.scope_ids
         fit_ids = frame.row_ids
         rev = frame.revisions
@@ -379,12 +415,13 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
             if w_type == "frequency":
                 freq_n = float(sum(int(round(v)) for v in w))
     else:
-        fp_payload = {"datasetId": ctx["datasetId"], "dataRevision": revisions["dataRevision"], "schemaRevision": revisions["schemaRevision"], "maskRevision": None, "snapshotFingerprint": None, "effectiveConfig": request_json, "algorithmVersion": ALGORITHM_VERSION}
+        extra = members_rows if isinstance(members_rows, dict) else {}
+        fp_payload = {"datasetId": ctx["datasetId"], "dataRevision": revisions["dataRevision"], "schemaRevision": revisions["schemaRevision"], "maskRevision": extra.get("maskRevision"), "snapshotFingerprint": None, "effectiveConfig": request_json, "algorithmVersion": ALGORITHM_VERSION}
         scope_for_hash = scope_ids or []
         fit_ids = scope_ids or []
         rev = revisions
         snap = None
-        mask_rev = None
+        mask_rev = extra.get("maskRevision")
         excl_counts = {"invalid": 0, "missing": 0, "missing_weight": 0, "zero_weight": 0, "structural_task_exclusion": 0}
         scope_count = len(scope_ids or [])
         fit_count = len(scope_ids or [])
@@ -394,6 +431,8 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
         sum_w = None
         kish = None
         freq_n = None
+        imputed_cells = int(extra.get("imputedCellCount", 0) or 0)
+        imputed_rows = int(extra.get("imputedRowCount", 0) or 0)
     from ..domain.context import scope_hash as _sh
     fp_payload["scopeHash"] = _sh([str(v) for v in scope_for_hash])
     fp_payload["fitRowIdsHash"] = _sh([str(v) for v in fit_ids])
@@ -409,7 +448,7 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
         phys = [[int(round(float(v))) for v in row] for row in t_phys[np.ix_(kern["keepRowIndex"], kern["keepColIndex"])].tolist()]
     details = {"rowCategories": row_entries, "columnCategories": col_entries, "omittedCategories": omitted, "table": table, "tableRowCategoryIds": row_ids_out, "tableColumnCategoryIds": col_ids_out, "physicalTable": phys, "mapScaling": req.mapScaling}
     if unit == "table_record":
-        meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=False, weight_type=None, weight_column=None, sum_weights=None, kish_effective_n=None, frequency_n=None, mask_revision=mask_rev, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
+        meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=False, weight_type=None, weight_column=None, sum_weights=None, kish_effective_n=None, frequency_n=None, mask_revision=mask_rev, imputed_cell_count=imputed_cells, imputed_row_count=imputed_rows, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     else:
         meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=w_applied, weight_type=w_type, weight_column=w_col, sum_weights=sum_w, kish_effective_n=kish, frequency_n=freq_n, mask_revision=mask_rev, imputed_cell_count=imputed_cells, imputed_row_count=imputed_rows, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     result_id = new_result_id()
