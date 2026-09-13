@@ -108,3 +108,8 @@ R導入手順とFactoMineR照合（実施済み）:
 - R001 衝突不能キー: 欠損sentinelを固定文字列からfrozen dataclass MissingKeyへ変更。通常値（__missing__・旧内部文字列含む）はcode保持、真の欠損とは別カテゴリ・別membershipになることを確認（通常値2行と欠損1行が分離）。
 - R008 分割表の補完件数: 使用セル列・scopeに対応するマスク・版を取得しmetaへ渡す。同一行2セルはcell数とrow数で区別。マスク差し替えの隔離実行でmaskRevision=1・cell=1・row=1を確認。
 - 再検証: test_100_ca 6 passed、全体回帰473 passed、FE全体248 passed、tsc エラーなし。本番・static再配布済み。
+
+## 最終受入2件の実機確認（2026-09-13、REVIEW-004対応）
+- run-production相当: PowerShellでuvicornを起動し、`/` 200・openapiに `/models/ca` 掲載を確認（Stop-Processの日本語出力化けは停止処理のみの問題で起動確認には影響なし）。
+- Pyodide配信: 別ポート8423でstatic配信し、index.html 200、バンドル `index-uGs_xchf.js`、pyodide.mjs・asm.wasm・backend_app.zip・wheels/manifest.jsonの実在を確認。HTTP取得ZIP（113 files）にCA組込を確認し、取出しkernel実行でλ=0.25を確認。
+- ブラウザのPyodide worker内での全操作実行までは未実施（WASM実行環境を含む操作）。同一コードの配信・実行は確認済み。
