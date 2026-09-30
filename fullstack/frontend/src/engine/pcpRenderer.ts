@@ -100,7 +100,17 @@ function resolveRowColor(
   return color
 }
 
-export function renderPcp(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, spec: PcpRenderSpec): void {
+/** The drawing subset used by PCP. Canvas remains the interactive renderer;
+ * SVG export implements the same commands so styling cannot drift. */
+export interface PcpDrawingContext extends Pick<CanvasRenderingContext2D,
+  'fillStyle' | 'strokeStyle' | 'lineWidth' | 'lineJoin' | 'lineCap' | 'globalAlpha'
+  | 'font' | 'textAlign' | 'textBaseline' | 'save' | 'restore' | 'translate' | 'rotate'
+  | 'fillRect' | 'setLineDash' | 'beginPath' | 'moveTo' | 'lineTo' | 'closePath'
+  | 'stroke' | 'fill' | 'fillText'> {
+  setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void
+}
+
+export function renderPcp(ctx: PcpDrawingContext, spec: PcpRenderSpec): void {
   const { width, height, dpr, points, nRows, nAxes, bounds } = spec
   const vpX = spec.viewportX ?? 0
   const vpY = spec.viewportY ?? 0

@@ -21,6 +21,8 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { normalizedRect, type Rect } from './brush'
 import { graphEngine } from '../../engine/graphClient'
 import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
+import { pcpSvg } from '../../engine/pcpSvgExport'
+import { downloadBlob } from '../charts/chartExport'
 import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes } from './usePcpPipeline'
 import { useColumnarData } from './useDatasetColumns'
 import { api } from '../../api/client'
@@ -120,6 +122,9 @@ export default function PcpPage() {
   /** OffscreenCanvas mirror of the visible canvas — painted in the worker. */
   const offscreenRef = useRef<OffscreenCanvas | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const lastPaintedSpecRef = useRef<{ datasetKey: string; spec: PcpRenderSpec } | null>(null)
+  const currentDatasetKeyRef = useRef(datasetKey)
+  currentDatasetKeyRef.current = datasetKey
   const overlayRef = useRef<SVGSVGElement>(null)
   const brushRectRef = useRef<SVGRectElement>(null)
   const frameNodeRef = useRef<HTMLDivElement | null>(null)
@@ -143,6 +148,17 @@ export default function PcpPage() {
   const [orderError, setOrderError] = useState<{ message: string; suggestedActions: string[] } | null>(null)
   const [orderingLoading, setOrderingLoading] = useState(false)
   const [firstFrameRendered, setFirstFrameRendered] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const exportSvg = useCallback(() => {
+    const painted = lastPaintedSpecRef.current
+    if (!painted || painted.datasetKey !== currentDatasetKeyRef.current) return
+    try {
+      downloadBlob(new Blob([pcpSvg(painted.spec)], { type: 'image/svg+xml;charset=utf-8' }), 'PCP.svg')
+      setExportError(null)
+    } catch (error) {
+      setExportError(`SVGを書き出せませんでした: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [])
   const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
   const [imputedCells, setImputedCells] = useState<Map<string, Set<string>>>(new Map())
   useEffect(() => {
@@ -192,6 +208,12 @@ export default function PcpPage() {
       frameNodeRef.current.scrollTop = 0
     }
   }, [selection.datasetId])
+
+  useEffect(() => {
+    lastPaintedSpecRef.current = null
+    setFirstFrameRendered(false)
+    setExportError(null)
+  }, [datasetKey])
 
   // Initialize only ordinary axes. Additional axes are chosen explicitly in the page control.
   useEffect(() => {
@@ -260,6 +282,10 @@ export default function PcpPage() {
   const geometryRef = useRef<ReturnType<typeof usePcpGeometry>>(null)
   useEffect(() => {
     geometryRef.current = geometry
+    if (!geometry) {
+      lastPaintedSpecRef.current = null
+      setFirstFrameRendered(false)
+    }
   }, [geometry])
 
   /** Same stale-closure guard for the simplification result (hit expansion). */
@@ -468,24 +494,29 @@ export default function PcpPage() {
           // Reuse the same buffer: the worker clears it before painting.
         }
         await paintOnWorker(offscreen, spec)
+        // A completed frame from an old dataset must not become exportable.
+        if (currentDatasetKeyRef.current !== datasetKey || canvasRef.current !== canvas || geometryRef.current !== geometry) return
         // Blit only AFTER the fresh frame is complete — the visible canvas
         // keeps showing the previous frame until this moment (no blank).
         const ctx = canvas.getContext('2d')!
         ctx.setTransform(1, 0, 0, 1, 0, 0)
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(offscreen as unknown as CanvasImageSource, 0, 0)
+        lastPaintedSpecRef.current = { datasetKey, spec }
         setFirstFrameRendered(true)
         return
       } catch {
         // Worker paint failed — fall back to a synchronous local repaint below.
       }
     }
+    if (currentDatasetKeyRef.current !== datasetKey || canvasRef.current !== canvas || geometryRef.current !== geometry) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     renderPcp(ctx, spec)
+    lastPaintedSpecRef.current = { datasetKey, spec }
     setFirstFrameRendered(true)
     }
-  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme, viewScaleState, viewDprState, viewRevisionState])
+  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme, viewScaleState, viewDprState, viewRevisionState, datasetKey])
 
   useEffect(() => { void renderPlot() }, [renderPlot])
 
@@ -1015,6 +1046,10 @@ export default function PcpPage() {
           title="平行座標プロット (PCP)"
           available={orderedVisibleAxes.length >= 2}
           sizing="responsive"
+          controls={<Space direction="vertical" size="small">
+            <Button data-testid="pcp-export-svg" aria-label="PCPをSVGで保存" title="現在表示中の範囲をSVGで保存" disabled={isPlotLoading || lastPaintedSpecRef.current?.datasetKey !== datasetKey} onClick={exportSvg}>SVG</Button>
+            {exportError && <Alert type="error" showIcon closable message={exportError} onClose={() => setExportError(null)} />}
+          </Space>}
         >
         <PcpPlotViewport onSize={onViewportSize} />
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>

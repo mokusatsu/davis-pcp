@@ -637,9 +637,13 @@ def run_linear_regression(payload: dict = Body(...)):
                                        entry.get("kind", "value"),
                                        entry.get("code")),
             "code": entry.get("code"), "reason": entry.get("reason")})
-    target_spec = frame.numeric_specs.get(frame.target_name, {}) \
-        if hasattr(frame, "numeric_specs") else {}
-    formula = _model_formula(frame.target_id, predictor_specs, frame,
+    # numeric_specs contains predictors only; resolve the target's display
+    # label from its canonical codebook entry, not its generated column ID.
+    target_spec = next((column for column in
+                        (store.load_codebook(frame.dataset_id) or {}).get("columns", [])
+                        if column.get("columnId") == frame.target_id), {})
+    target_label = target_spec.get("label") or frame.target_name
+    formula = _model_formula(target_label, predictor_specs, frame,
                              cat_solutions, bool(req.intercept),
                              [list(v) for v in (req.interactions or [])])
     request_json = json.loads(req.model_dump_json())
@@ -648,7 +652,7 @@ def run_linear_regression(payload: dict = Body(...)):
     effective_config["resolvedReferences"] = {
         cid: sol_ref["reference"] for cid, sol_ref in cat_solutions.items()}
     summary = {
-        "targetLabel": frame.target_id,
+        "targetLabel": target_label,
         "nDesignColumns": p,
         "rank": p,
         "conditionNumber": cond_number if np.isfinite(cond_number) else None,
