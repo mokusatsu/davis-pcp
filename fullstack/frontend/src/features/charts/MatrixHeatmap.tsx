@@ -9,7 +9,9 @@ export default function MatrixHeatmap({ labels, matrix, counts, bound, selected,
   const cells = matrix.flatMap((row, r) => row.map((value, c) => ({ value: [c, r, value ?? 0], raw: value, row: r, col: c,
     itemStyle: { borderWidth: selected?.[0] === r && selected?.[1] === c ? 3 : 1, borderColor: selected?.[0] === r && selected?.[1] === c ? '#1677ff' : '#e5e7eb' } })))
   return <EChart testId={testId} height={height} ariaLabel={title} option={{
-    grid: { left: 140, right: 35, top: 90, bottom: 60, containLabel: true },
+    // containLabel reserves space for both axes. These are only outer gutters;
+    // adding label-sized margins here squeezes compact matrices a second time.
+    grid: { left: 12, right: 24, top: 12, bottom: 44, containLabel: true },
     xAxis: { type: 'category', data: labels, position: 'top', splitArea: { show: true }, axisLabel: { rotate: 35, width: 110, overflow: 'truncate' } },
     yAxis: { type: 'category', data: labels, inverse: true, splitArea: { show: true }, axisLabel: { width: 130, overflow: 'truncate' } },
     visualMap: [{ min: -extent, max: extent, seriesIndex: 0, calculable: false, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#2166ac', '#ffffff', '#b2182b'] } }, { show: false, min: 0, max: 1, seriesIndex: 1, inRange: { color: ['#eeeeee', '#eeeeee'] } }],

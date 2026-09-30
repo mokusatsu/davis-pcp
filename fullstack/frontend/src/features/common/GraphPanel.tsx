@@ -85,9 +85,9 @@ export default function GraphPanel({
 
   const logical = useMemo(() => {
     if (sizing === 'responsive') {
-      // 小数の extent は scrollWidth/Height(切り上げ) と clientWidth/Height(切り下げ) の
-      // 差で 1px の恒常はみ出しを作り、縦SB出現→RO再計測→再描画の振動になるため整数化。
-      return { width: Math.max(1, Math.round(viewport.width)), height: Math.max(1, Math.round(viewport.height)) }
+      // 小数 viewport を四捨五入すると surface が実 content box を越え、
+      // 縦SB出現→RO再計測→再描画の振動になるため、収まる整数寸法へ切り捨てる。
+      return { width: Math.max(1, Math.floor(viewport.width)), height: Math.max(1, Math.floor(viewport.height)) }
     }
     return {
       width: Math.max(1, Math.round(intrinsicSize?.width ?? viewport.width ?? 1)),
@@ -109,7 +109,7 @@ export default function GraphPanel({
       raf = requestAnimationFrame(() => {
         setViewport((prev) => {
           if (rect.width === 0 || rect.height === 0) return prev
-          if (Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) return prev
+          if (Math.floor(prev.width) === Math.floor(rect.width) && Math.floor(prev.height) === Math.floor(rect.height)) return prev
           return { width: rect.width, height: rect.height }
         })
       })
@@ -161,7 +161,13 @@ export default function GraphPanel({
   const fitScale = useMemo(() => {
     if (sizing === 'responsive') return 1
     if (!viewport.width || !viewport.height) return 1
-    return Math.min(viewport.width / logical.width, viewport.height / logical.height)
+    // Fit must stay inside the available whole pixels. Rounding a 598.59px
+    // viewport up to a 599px extent adds a scrollbar; its reduced content box
+    // then changes fit again, repeatedly cancelling in-progress selections.
+    // Leave the fractional remainder unused, including for the scaled surface
+    // itself, rather than merely rounding down its surrounding extent.
+    return Math.min(Math.max(1, Math.floor(viewport.width)) / logical.width,
+      Math.max(1, Math.floor(viewport.height)) / logical.height)
   }, [sizing, viewport, logical])
 
   const z = zoom ?? 1
