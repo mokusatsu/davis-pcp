@@ -6,7 +6,9 @@ Bundles all runtime files and Python wheels locally for full offline support.
 """
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -17,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT / "fullstack" / "frontend"
 BACKEND_DIR = ROOT / "fullstack" / "backend"
-DIST_STATIC = ROOT / "dist" / "static"
+DEFAULT_DIST_STATIC = ROOT / "dist" / "static"
 CACHE_DIR = ROOT / ".cache" / "pyodide_static"
 
 PYODIDE_VERSION = "v0.27.7"
@@ -180,32 +182,34 @@ def package_backend_app() -> Path:
     return zip_path
 
 
-def build_frontend() -> None:
+def build_frontend(out_dir: Path) -> None:
     """Run Vite static build."""
     print("[4/5] Building frontend (Vite static mode) ...")
     # Vite は outDir を初期化しない設定 (emptyOutDir: false) のため、
     # 以前の index.html や古いハッシュ付き資産が残る。出力先全体を消す。
-    if DIST_STATIC.exists():
-        shutil.rmtree(DIST_STATIC)
-    DIST_STATIC.mkdir(parents=True, exist_ok=True)
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    env = os.environ.copy()
+    env["DAVIS_PCP_STATIC_OUT_DIR"] = str(out_dir.resolve())
     subprocess.run([npm_cmd, "run", "build:static"], cwd=FRONTEND_DIR, check=True,
-                   shell=False)
+                   shell=False, env=env)
 
 
-def assemble_dist_static(pyodide_files: list[Path], pure_wheels: list[Path], app_zip: Path) -> None:
-    """Assemble all files into dist/static."""
-    print("[5/5] Assembling dist/static directory ...")
-    pyodide_dest = DIST_STATIC / "pyodide"
+def assemble_dist_static(pyodide_files: list[Path], pure_wheels: list[Path], app_zip: Path, out_dir: Path) -> None:
+    """Assemble all files into target output directory."""
+    print(f"[5/5] Assembling static directory in {out_dir} ...")
+    pyodide_dest = out_dir / "pyodide"
     pyodide_dest.mkdir(parents=True, exist_ok=True)
     wheels_dest = pyodide_dest / "wheels"
     wheels_dest.mkdir(parents=True, exist_ok=True)
 
-    # 1. Copy Pyodide core + native wheels to dist/static/pyodide/
+    # 1. Copy Pyodide core + native wheels to out_dir/pyodide/
     for src in pyodide_files:
         shutil.copy2(src, pyodide_dest / src.name)
 
-    # 2. Copy Pure-python wheels to dist/static/pyodide/wheels/
+    # 2. Copy Pure-python wheels to out_dir/pyodide/wheels/
     pure_manifest = []
     for src in pure_wheels:
         shutil.copy2(src, wheels_dest / src.name)
@@ -213,17 +217,17 @@ def assemble_dist_static(pyodide_files: list[Path], pure_wheels: list[Path], app
 
     (wheels_dest / "manifest.json").write_text(json.dumps(pure_manifest, indent=2), encoding="utf-8")
 
-    # 3. Copy backend_app.zip to dist/static/pyodide/
+    # 3. Copy backend_app.zip to out_dir/pyodide/
     shutil.copy2(app_zip, pyodide_dest / "backend_app.zip")
 
     # 4. Ensure Rust graph_core.wasm is available
     rust_wasm = FRONTEND_DIR / "rust" / "graph-core" / "target" / "wasm32-unknown-unknown" / "release" / "graph_core.wasm"
-    wasm_dest_dir = DIST_STATIC / "wasm"
+    wasm_dest_dir = out_dir / "wasm"
     wasm_dest_dir.mkdir(parents=True, exist_ok=True)
     if rust_wasm.exists():
         shutil.copy2(rust_wasm, wasm_dest_dir / "graph_core.wasm")
 
-    # 5. Place local runner bat in dist/
+    # 5. Place local runner bat in parent or out_dir
     bat_content = """@echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -271,13 +275,30 @@ if "%TARGET_DIR%"=="static" (
     %PYTHON_CMD% -m http.server 8421
 )
 """
-    dist_dir = DIST_STATIC.parent
-    (dist_dir / "run-static.bat").write_text(bat_content, encoding="utf-8")
+    (out_dir.parent / "run-static.bat").write_text(bat_content, encoding="utf-8")
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="DAVIS-PCP Standalone Static Site Builder")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="Target output directory (defaults to DAVIS_PCP_STATIC_OUT_DIR env var or dist/static)",
+    )
+    args = parser.parse_args()
+
+    env_out = os.environ.get("DAVIS_PCP_STATIC_OUT_DIR")
+    if args.out_dir is not None:
+        out_dir = args.out_dir.resolve()
+    elif env_out:
+        out_dir = Path(env_out).resolve()
+    else:
+        out_dir = DEFAULT_DIST_STATIC.resolve()
+
     print("=" * 60)
-    print(" DAVIS-PCP Standalone Static Site Builder (Pyodide WASM)")
+    print(f" DAVIS-PCP Standalone Static Site Builder (Pyodide WASM)")
+    print(f" Output directory: {out_dir}")
     print("=" * 60)
 
     # 0. Check license coverage
@@ -302,32 +323,32 @@ def main() -> int:
     app_zip = package_backend_app()
 
     # 4. Build frontend
-    build_frontend()
+    build_frontend(out_dir)
 
-    # 5. Assemble all assets into dist/static
-    assemble_dist_static(pyodide_files, pure_wheels, app_zip)
+    # 5. Assemble all assets into target out_dir
+    assemble_dist_static(pyodide_files, pure_wheels, app_zip, out_dir)
 
     # Count total size
-    total_size = sum(f.stat().st_size for f in DIST_STATIC.rglob("*") if f.is_file())
+    total_size = sum(f.stat().st_size for f in out_dir.rglob("*") if f.is_file())
     total_mb = total_size / (1024 * 1024)
-    file_count = sum(1 for f in DIST_STATIC.rglob("*") if f.is_file())
+    file_count = sum(1 for f in out_dir.rglob("*") if f.is_file())
 
     # 6. Package standalone zip
-    zip_path = DIST_STATIC.parent / "davis-pcp-static.zip"
+    zip_path = out_dir.parent / "davis-pcp-static.zip"
     print(f"\n[6/6] Packaging standalone zip: {zip_path.name} ...")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in sorted(DIST_STATIC.rglob("*")):
+        for p in sorted(out_dir.rglob("*")):
             if p.is_file():
-                arcname = f"static/{p.relative_to(DIST_STATIC).as_posix()}"
+                arcname = f"{out_dir.name}/{p.relative_to(out_dir).as_posix()}"
                 zf.write(p, arcname)
     zip_mb = zip_path.stat().st_size / (1024 * 1024)
 
     print("\n" + "=" * 60)
-    print(f" SUCCESS: Static build complete in {DIST_STATIC}")
+    print(f" SUCCESS: Static build complete in {out_dir}")
     print(f" Total size: {total_mb:.1f} MB across {file_count} files")
     print(f" Standalone ZIP: {zip_path.name} ({zip_mb:.1f} MB)")
     print(" To test locally:")
-    print(f"   python -m http.server -d dist/static 8421")
+    print(f"   python -m http.server -d {out_dir} 8421")
     print("=" * 60)
     return 0
 

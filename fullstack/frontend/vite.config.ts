@@ -12,7 +12,11 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_STATIC_BUILD': JSON.stringify(isStatic ? 'true' : 'false'),
     },
     build: {
-      outDir: isStatic ? resolve(__dirname, '../../dist/static') : 'dist',
+      outDir: isStatic
+        ? (process.env.DAVIS_PCP_STATIC_OUT_DIR
+            ? resolve(process.env.DAVIS_PCP_STATIC_OUT_DIR)
+            : resolve(__dirname, '../../dist/static'))
+        : 'dist',
       emptyOutDir: isStatic ? false : true,
     },
     worker: {

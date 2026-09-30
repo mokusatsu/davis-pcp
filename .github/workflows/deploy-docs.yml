@@ -1,0 +1,75 @@
+name: Build and Deploy Static Site to /docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'fullstack/frontend/**'
+      - 'fullstack/backend/app/**'
+      - 'scripts/build_static.py'
+      - 'scripts/check_licenses.py'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: fullstack/frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Pyodide assets and wheels
+        uses: actions/cache@v4
+        with:
+          path: .cache/pyodide_static
+          key: pyodide-static-${{ hashFiles('scripts/build_static.py') }}
+          restore-keys: |
+            pyodide-static-
+
+      - name: Build Rust graph-core WASM
+        working-directory: fullstack/frontend/rust/graph-core
+        run: cargo build --target wasm32-unknown-unknown --release
+
+      - name: Install frontend dependencies
+        working-directory: fullstack/frontend
+        run: npm ci
+
+      - name: Build static site into docs/
+        run: python scripts/build_static.py --out-dir docs
+
+      - name: Commit and push changes to docs/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes in docs/ to commit."
+          else
+            git commit -m "chore(docs): update static build in /docs [skip ci]"
+            git push origin main
+          fi
