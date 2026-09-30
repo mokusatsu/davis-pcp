@@ -57,18 +57,18 @@ TARGET_NATIVE_PACKAGES = [
     "sqlite3",
 ]
 
-# Pure-python packages to fetch from PyPI
-PURE_PYTHON_PACKAGES = [
-    "fastapi",
-    "starlette",
-    "python-multipart",
-    "annotated-doc",
-    "typing-inspection",
-    "httpx",
-    "httpcore",
-    "h11",
-    "certifi",
-]
+# Pure-python packages to fetch from PyPI (pinned to maintain consistency with requirements.txt and avoid heavy telemetry dependencies)
+PURE_PYTHON_PACKAGES: dict[str, str | None] = {
+    "fastapi": "0.139.2",
+    "starlette": "0.46.2",
+    "python-multipart": "0.0.32",
+    "annotated-doc": "0.0.5",
+    "typing-inspection": "0.4.4",
+    "httpx": "0.28.1",
+    "httpcore": None,
+    "h11": None,
+    "certifi": None,
+}
 
 
 def download_file(url: str, dest: Path) -> None:
@@ -81,19 +81,32 @@ def download_file(url: str, dest: Path) -> None:
         shutil.copyfileobj(resp, out)
 
 
-def get_pypi_pure_wheel_info(pkg_name: str) -> tuple[str, str]:
-    """Return (filename, download_url) for the latest pure-python wheel from PyPI."""
-    url = f"https://pypi.org/pypi/{pkg_name}/json"
+def get_pypi_pure_wheel_info(pkg_name: str, version: str | None = None) -> tuple[str, str]:
+    """Return (filename, download_url) for the specified or latest pure-python wheel from PyPI."""
+    if version:
+        url = f"https://pypi.org/pypi/{pkg_name}/{version}/json"
+    else:
+        url = f"https://pypi.org/pypi/{pkg_name}/json"
+
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (DAVIS-PCP-Build)"})
     with urllib.request.urlopen(req) as resp:
         data = json.loads(resp.read().decode("utf-8"))
-    version = data["info"]["version"]
-    releases = data["releases"][version]
-    for r in releases:
-        fn = r["filename"]
+
+    # When version is queried directly, releases may not contain the version key; urls list contains download files
+    urls = data.get("urls", [])
+    for r in urls:
+        fn = r.get("filename", "")
         if fn.endswith("-py3-none-any.whl") or fn.endswith("-py2.py3-none-any.whl"):
             return fn, r["url"]
-    raise RuntimeError(f"No pure wheel found for {pkg_name} {version}")
+
+    target_ver = version or data.get("info", {}).get("version")
+    releases = data.get("releases", {}).get(target_ver, [])
+    for r in releases:
+        fn = r.get("filename", "")
+        if fn.endswith("-py3-none-any.whl") or fn.endswith("-py2.py3-none-any.whl"):
+            return fn, r["url"]
+
+    raise RuntimeError(f"No pure wheel found for {pkg_name} {target_ver}")
 
 
 def prepare_pyodide_assets() -> tuple[list[Path], list[Path]]:
@@ -134,8 +147,8 @@ def prepare_pyodide_assets() -> tuple[list[Path], list[Path]]:
 
     print("[3/5] Preparing Pure-Python packages (FastAPI, HTTPX, multipart, etc.) ...")
     pure_wheel_paths = []
-    for pkg in PURE_PYTHON_PACKAGES:
-        fn, url = get_pypi_pure_wheel_info(pkg)
+    for pkg, ver in PURE_PYTHON_PACKAGES.items():
+        fn, url = get_pypi_pure_wheel_info(pkg, ver)
         dest = wheels_cache / fn
         download_file(url, dest)
         pure_wheel_paths.append(dest)
