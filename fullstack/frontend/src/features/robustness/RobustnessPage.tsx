@@ -170,6 +170,19 @@ export default function RobustnessPage() {
     }
   }
 
+  // KeepAlive leaves this page mounted while other routes are active. A new
+  // mining handoff must replace the previous candidate on each navigation.
+  // Ordinary revisits without a handoff preserve the current analysis.
+  useEffect(() => {
+    const incoming = (location.state as { conclusion?: unknown } | null)?.conclusion
+    if (location.pathname.replace(/\/$/, '') === '/robustness' && incoming && incoming !== customConclusion) {
+      requestVersion.current += 1
+      setCustomConclusion(incoming)
+    }
+    // Only a navigation is a handoff; dismissing it must not restore it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, location.pathname, location.state])
+
   useEffect(() => {
     const snapshot = datasetId
     requestVersion.current += 1
@@ -178,11 +191,13 @@ export default function RobustnessPage() {
     setLoading(false)
     setSensitivity(null)
     setSensitivityError(null)
+    setSensitivityLoading(false)
     if (snapshot) {
       void fetchRobustness(customConclusion, snapshot)
     }
+    return () => { requestVersion.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId])
+  }, [datasetId, dataRevision, customConclusion])
 
   const globalVars = useSelector(selectOrdinaryVariables)
   // A conclusion about a variable excluded from the global active variables
@@ -260,7 +275,6 @@ export default function RobustnessPage() {
           closable
           onClose={() => {
             setCustomConclusion(null)
-            void fetchRobustness(null)
           }}
           message="サブグループマイニングから引き継いだ結論を検証中"
           description={
@@ -270,7 +284,6 @@ export default function RobustnessPage() {
                 size="small"
                 onClick={() => {
                   setCustomConclusion(null)
-                  void fetchRobustness(null)
                 }}
               >
                 デフォルト全体結論に戻す
