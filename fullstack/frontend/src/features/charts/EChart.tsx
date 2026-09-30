@@ -1,6 +1,7 @@
 import { useGraphViewport } from '../common/GraphPanel'
-import { useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type MutableRefObject, type RefObject } from 'react'
+import { useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent, type MutableRefObject, type RefObject } from 'react'
 import * as echarts from 'echarts'
+import Eventful from 'zrender/lib/core/Eventful.js'
 import { ReactReduxContext } from 'react-redux'
 import type { ECharts, EChartsOption } from 'echarts'
 
@@ -135,7 +136,30 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     return () => { if (!chart.isDisposed()) handlers.forEach(({ name, handler }) => chart.off(name, handler)) }
   }, [eventNames, chartRef, svgRef, renderer, effectiveDpr])
 
+  const retainNativeControl = (event: MouseEvent<HTMLDivElement>) => {
+    const chart = instance.current, element = container.current
+    if (!chart || chart.isDisposed() || !element) return
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    let target: echarts.ElementEvent['target'] | undefined = chart.getZr().findHover(
+      (event.clientX - rect.left) * chart.getWidth() / rect.width,
+      (event.clientY - rect.top) * chart.getHeight() / rect.height,
+    )?.target
+    // Toolbox/legend controls own their click. An outer selection wrapper must
+    // not capture their pointer: that retargets pointerup/click outside zrender
+    // and silently prevents export. Keep ordinary plot hits/brushes bubbling.
+    while (target) {
+      // Element.isSilent() tests drawing/hit-test visibility, while the Eventful
+      // method inspects handlers registered with .on('click', ...) by ECharts.
+      if (typeof target.onclick === 'function' || !Eventful.prototype.isSilent.call(target, 'click')) {
+        event.stopPropagation(); return
+      }
+      target = target.parent
+    }
+  }
+
   return <div ref={container} data-testid={testId} data-chart-renderer="echarts" role="img" aria-label={ariaLabel}
+    onPointerDown={retainNativeControl} onMouseDown={retainNativeControl}
     style={{ width, height, minWidth: 0, minHeight: 100, userSelect: 'none', touchAction: 'none', ...style }} />
 }
 
