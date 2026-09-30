@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react'
+import CategoryBars from '../charts/CategoryBars'
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import GraphPanel from '../common/GraphPanel'
-import { Button, Card, Segmented, Space, Tag, Tooltip, Typography, theme, Progress } from 'antd'
+import { Button, Card, Segmented, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import Select from '../common/ColumnSelect'
 import type { MultiResponseSummary, MultiResponseWeight } from '../../api/client'
 import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
@@ -24,6 +25,18 @@ const formatWeight = (value: number): string =>
 
 const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect, loading = false, weight = null }) => {
   const { token } = theme.useToken()
+  // Measure untransformed HTML: GraphPanel fit must include wrapped detail rows.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(320)
+  useLayoutEffect(() => {
+    const node = contentRef.current
+    if (!node) return
+    const measure = () => { if (node.offsetHeight > 0) setContentHeight(node.offsetHeight + 16) }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(node)
+    measure()
+    return () => observer?.disconnect()
+  }, [])
   const [base, setBase] = useState<'respondent' | 'response'>('respondent')
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([])
   const [page, setPage] = useState(1)
@@ -63,11 +76,6 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
     return `${value.toFixed(1)}%`
   }
 
-  const getProgressPercent = (value: number | null): number => {
-    if (isRateUnavailable || value == null) return 0
-    return Math.max(0, Math.min(100, value))
-  }
-
   const triggerAny = (optionIds: string[], goToPcp = false) => onSelect(optionIds, 'any', undefined, goToPcp)
   const triggerStatus = (status: 'partial' | 'missing' | 'invalid' | 'notApplicable') => onSelect([], 'status', status)
 
@@ -83,7 +91,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
       title={summary.label}
       available
       sizing="intrinsic"
-      intrinsicSize={{ width: 560, height: 320 }}
+      intrinsicSize={{ width: 560, height: contentHeight }}
       normalWidth="viewport"
       controls={(
         <Segmented
@@ -102,6 +110,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
       )}
     >
     <Card
+      ref={contentRef}
       size="small"
       data-testid={`ma-card-${summary.groupId}`}
       title={
@@ -251,6 +260,12 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
         </Space>
       </Space>
 
+      <CategoryBars axisName={`${base === 'respondent' ? '回答者' : '延べ回答'}ベース (%)`} max={100}
+        testId={`ma-chart-${summary.groupId}`} items={pagedItems.map(item => ({ id: item.columnId, label: item.label || item.name,
+          value: isRateUnavailable ? null : base === 'respondent' ? item.pctRespondent : item.pctResponse,
+          selected: item.selectedInSelection > 0, color: token.colorPrimary,
+          detail: `選択者: ${item.selectedN}人 / 選択中: ${item.selectedInSelection}人${weighted ? ` / 加重: ${item.selectedWeighted}` : ''}` }))}
+        onSelect={id => { if (!loading) triggerAny([id]) }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {pagedItems.map((item) => {
           const pct = base === 'respondent' ? item.pctRespondent : item.pctResponse
@@ -306,12 +321,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
                   aria-label={`${showLabel}の回答者を選択`}
                   onClick={() => triggerAny([item.columnId])}
                 >
-                  <Progress
-                    percent={getProgressPercent(pct)}
-                    size="small"
-                    showInfo={false}
-                    strokeColor={token.colorPrimary}
-                  />
+                  回答者を選択
                 </Button>
 
                 <Space size={8} align="center" wrap style={{ minWidth: 220, justifyContent: 'flex-end' }}>

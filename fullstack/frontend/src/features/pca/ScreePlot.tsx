@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import { useMemo, type FC } from 'react'
 import { Card, Space, Tag, Typography } from 'antd'
 import GraphPanel from '../common/GraphPanel'
@@ -92,7 +93,7 @@ export const ScreePlot: FC<ScreePlotProps> = ({
         intrinsicSize={{ width, height: panelHeight }}
       >
         <div style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
-        <svg
+        <EChartSurface
           viewBox={`0 0 ${width} ${chartHeight}`}
           style={{ width, height: chartHeight, maxWidth: '100%', display: 'block', background: '#fafafa', borderRadius: 4 }}
           data-testid="pca-scree-canvas"
@@ -233,7 +234,7 @@ export const ScreePlot: FC<ScreePlotProps> = ({
           >
             累積寄与率 (%)
           </text>
-        </svg>
+        </EChartSurface>
 
         <div style={{ fontSize: 11, color: '#888', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px' }}>
           <span style={{ marginRight: 'auto' }}>※ 棒をクリックしてX軸/Y軸に割り当て</span>

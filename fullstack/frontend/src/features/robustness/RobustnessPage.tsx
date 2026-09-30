@@ -1,3 +1,4 @@
+import CategoryBars from '../charts/CategoryBars'
 import Table from '../common/ColumnTable'
 import { QuestionTooltip, useQuestionText } from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -6,7 +7,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
-  Statistic, Alert, Spin, Empty, Progress,
+  Statistic, Alert, Spin, Empty,
 } from 'antd'
 import {
   AlertOutlined, AimOutlined,
@@ -452,28 +453,10 @@ export default function RobustnessPage() {
                       <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
                         各摂動シナリオ下での推定値ドリフト（%）。反転が起きた場合は赤色でハイライト。
                       </Typography.Text>
-                      <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                        {currentConclusion.perturbations.map((p, idx) => {
-                          const driftPct = Math.min(100, Math.round(p.drift * 100))
-                          return (
-                            <div key={idx}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                                <span><strong>{p.label}</strong> (推定: {p.estimate})</span>
-                                <span>
-                                  {p.flipped && <Tag color="error">反転発生</Tag>}
-                                  ドリフト: {driftPct}%
-                                </span>
-                              </div>
-                              <Progress
-                                percent={driftPct}
-                                status={p.flipped ? 'exception' : 'normal'}
-                                strokeColor={p.flipped ? '#ff4d4f' : '#1890ff'}
-                                size="small"
-                              />
-                            </div>
-                          )
-                        })}
-                      </Space>
+                      <CategoryBars axisName="推定値ドリフト (%)" testId="robustness-tornado-echart" items={currentConclusion.perturbations.map((p, index) => ({
+                        id: String(index), label: p.label, value: p.drift * 100, color: p.flipped ? '#ff4d4f' : '#1890ff',
+                        detail: `推定値: ${p.estimate}${p.flipped ? ' / 反転発生' : ''}`,
+                      }))} />
                     </Card>
                   </GraphPanel>
 

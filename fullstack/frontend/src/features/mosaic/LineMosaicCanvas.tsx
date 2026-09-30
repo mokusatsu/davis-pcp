@@ -1,7 +1,9 @@
-import { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
+import EChartSurface from '../charts/EChartSurface'
+import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
+import { getSvgPoint } from '../../utils/svgCoordinates'
 import { useEffect, useMemo, useRef, useState, type FC, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Dropdown, Tooltip } from 'antd'
+import { Dropdown } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
@@ -32,12 +34,29 @@ export function lineMosaicDimensions(mosaicData: LineMosaicResponse): { width: n
   }
 }
 
-export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
+export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = (props) => {
+  const dispatch = useDispatch<AppDispatch>()
+  const selectCell = (cell: LineMosaicCell) => {
+    props.onSelectCell?.(cell)
+    if (cell.rowIds.length) dispatch(selectionApplied({ rowIds: cell.rowIds, operation: getBrushOp(), label: `モザイクセル選択 (${cell.rowIds.length}行)` }))
+  }
+  return <GraphPanel graphId="mosaic/main" title="Line Mosaic Plot" sizing="intrinsic" intrinsicSize={lineMosaicDimensions(props.mosaicData)}
+    controls={<details><summary>セル一覧・キーボード選択</summary>{props.mosaicData.cells.map(cell =>
+      <button key={`${cell.i}-${cell.j}`} type="button" onClick={() => selectCell(cell)} style={{ margin: 3 }}>
+        {mosaicPathLabel(props.mosaicData, 'row', cell.rowPath)} × {mosaicPathLabel(props.mosaicData, 'col', cell.colPath)}: {cell.totalCount}行
+      </button>)}</details>}>
+    <LineMosaicDrawing {...props} />
+  </GraphPanel>
+}
+
+const LineMosaicDrawing: FC<LineMosaicCanvasProps> = ({
   mosaicData,
   normalization,
   onSelectCell,
 }) => {
   const dispatch = useDispatch<AppDispatch>()
+  const viewport = useGraphViewport()
+  const getPopupContainer = useGraphPopupContainer()
   const selection = useSelector((s: RootState) => s.selection)
 
   const selectedSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
@@ -80,14 +99,15 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
   // Drag state
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const dragEnd = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const containerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<SVGSVGElement>(null)
   const [dragBox, setDragBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const pointerId = useRef<number | null>(null)
 
   const positionOf = (clientX: number, clientY: number) => {
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return null
-    return { x: clientX - rect.left, y: clientY - rect.top }
+    const svg = containerRef.current
+    if (!svg) return null
+    const point = getSvgPoint(svg, { clientX, clientY }, { width: totalWidth, height: totalHeight })
+    return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null
   }
 
   const commitDrag = (end: { x: number; y: number }) => {
@@ -133,7 +153,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     setDragBox(null)
   }
 
-  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 || dragStart.current) return
     if ((e.target as HTMLElement | null)?.closest?.('[data-selectable]')) return
     const position = positionOf(e.clientX, e.clientY)
@@ -145,7 +165,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }
 
-  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const start = dragStart.current
     if (!start || (pointerId.current !== null && e.pointerId !== pointerId.current)) return
     const position = positionOf(e.clientX, e.clientY)
@@ -154,7 +174,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     setDragBox({ x1: start.x, y1: start.y, x2: position.x, y2: position.y })
   }
 
-  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!dragStart.current || (pointerId.current !== null && e.pointerId !== pointerId.current)) return
     const position = positionOf(e.clientX, e.clientY) ?? dragEnd.current
     commitDrag(position)
@@ -170,7 +190,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     dragStart.current = null
     pointerId.current = null
     setDragBox(null)
-  }, [mosaicData])
+  }, [mosaicData, viewport.revision, viewport.scale, viewport.zoom, viewport.dpr])
 
   const handleCellClick = (cell: LineMosaicCell, e: ReactMouseEvent) => {
     e.stopPropagation()
@@ -226,249 +246,46 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
         width: visualWidth,
         height: visualHeight,
         overflow: 'visible',
+        padding: 10,
+        boxSizing: 'border-box',
       }}
     >
-      <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
-        <div
-          ref={containerRef}
-          style={{
-            position: 'relative',
-            width: totalWidth,
-            height: totalHeight,
-            background: '#ffffff',
-            borderRadius: 6,
-            border: '1px solid #e5e7eb',
-            padding: 10,
-            userSelect: 'none',
-            cursor: 'crosshair',
-          }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          data-testid="mosaic-canvas"
-        >
-          {/* Column Header Labels */}
-          {grid.colLabels &&
-            grid.colLabels.map((cl, idx) => {
-              const cIdx = cl.j ? cl.j - 1 : idx
-              const cx = leftLabelWidth + cIdx * (boxW + colGap)
-              return (
-                <div
-                  key={`col-label-${idx}`}
-                  style={{
-                    position: 'absolute',
-                    left: cx,
-                    top: 4,
-                    width: boxW,
-                    height: headerHeight - 8,
-                    textAlign: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: '#333',
-                    borderBottom: '2px solid #d9d9d9',
-                    paddingBottom: 4,
-                    paddingTop: 2,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={mosaicPathLabel(mosaicData, 'col', cl.path)}
-                >
-                  {cl.path.map((p, pIdx) => (
-                    <div key={pIdx} style={{ fontSize: pIdx === 0 ? 11 : 10, color: pIdx === 0 ? '#111' : '#666', lineHeight: 1.3 }}>
-                      {mosaicData.valueLabels?.[grid.colVariables[pIdx]]?.[p] ?? p}
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-
-          {/* Row Labels & Cell Boxes */}
-          {Array.from({ length: nRows }, (_, rIdx) => {
-            const r = rIdx + 1
-            const cy = headerHeight + rIdx * (boxH + rowGap)
-            const rl = grid.rowLabels ? grid.rowLabels[rIdx] : null
-
-            return (
-              <div key={`row-${r}`}>
-                {/* Left Row Header */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 8,
-                    top: cy,
-                    width: leftLabelWidth - 14,
-                    height: boxH,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    paddingRight: 8,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: '#333',
-                    textAlign: 'right',
-                    borderRight: '2px solid #d9d9d9',
-                  }}
-                  title={rl ? mosaicPathLabel(mosaicData, 'row', rl.path) : undefined}
-                >
-                  {rl ? mosaicPathLabel(mosaicData, 'row', rl.path) : `Row ${r}`}
-                </div>
-
-                {/* Cells in Row */}
-                {Array.from({ length: nCols }, (_, cIdx) => {
-                  const c = cIdx + 1
-                  const cx = leftLabelWidth + cIdx * (boxW + colGap)
-                  const cell = cellMap.get(`${r}-${c}`)
-                  const count = cell ? cell.totalCount : 0
-                  const maxF = normalization === 'row' ? (rowMaxFreq.get(r) || 1) : maxCellFrequency
-                  const lineLengthRatio = Math.min(count / maxF, 1.0)
-                  const linePixelLength = Math.max(lineLengthRatio * (boxW - 12), count > 0 ? 3 : 0)
-
-                  // Check if any rowIds in cell are currently selected
-                  const selectedInCell = cell
-                    ? cell.rowIds.filter((id) => selectedSet.has(id)).length
-                    : 0
-                  const isCellSelected = selectedInCell > 0
-
-                  // Build tooltip text
-                  const tooltipContent = cell ? (
-                    <div style={{ fontSize: 11 }}>
-                      <div><strong>{mosaicPathLabel(mosaicData, 'row', cell.rowPath)} × {mosaicPathLabel(mosaicData, 'col', cell.colPath)}</strong></div>
-                      <div>度数: <strong>{cell.totalCount}</strong> 行 ({(lineLengthRatio * 100).toFixed(1)}%)</div>
-                      {target && (
-                        <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px dashed #666' }}>
-                          <div><ColumnQuestionText nameOrId={target.name} /> 分布:</div>
-                          {target.categories.map((cat) => {
-                            const tc = cell.targetCounts[cat] || 0
-                            const pct = cell.totalCount > 0 ? ((tc / cell.totalCount) * 100).toFixed(1) : '0.0'
-                            return (
-                              <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                                <span>{target.valueLabels?.[cat] ?? cat}:</span>
-                                <strong>{tc} ({pct}%)</strong>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {selectedInCell > 0 && (
-                        <div style={{ color: '#2a78d6', marginTop: 2 }}>
-                          選択行数: {selectedInCell} / {cell.totalCount}
-                        </div>
-                      )}
-                    </div>
-                  ) : null
-
-                  return (
-                    <Tooltip key={`cell-${r}-${c}`} title={tooltipContent} placement="top">
-                      <div
-                        data-selectable={cell && cell.rowIds.length > 0 ? true : undefined}
-                        role={cell && cell.rowIds.length > 0 ? 'button' : undefined}
-                        tabIndex={cell && cell.rowIds.length > 0 ? 0 : undefined}
-                        aria-label={cell ? `${mosaicPathLabel(mosaicData, 'row', cell.rowPath)} × ${mosaicPathLabel(mosaicData, 'col', cell.colPath)}: ${count}行` : undefined}
-                        onClick={(e) => cell && handleCellClick(cell, e)}
-                        onKeyDown={(e) => { if (cell && (e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); handleCellClick(cell, e as never) } }}
-                        style={{
-                          position: 'absolute',
-                          left: cx,
-                          top: cy,
-                          width: boxW,
-                          height: boxH,
-                          background: isCellSelected ? '#e6f7ff' : '#fafafa',
-                          border: isCellSelected ? '2px solid #2a78d6' : '1px solid #d9d9d9',
-                          borderRadius: 4,
-                          padding: '4px 6px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          boxSizing: 'border-box',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {/* Cell Count Label */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#666' }}>
-                          <span style={{ fontWeight: count > 0 ? 600 : 'normal', color: count > 0 ? '#222' : '#aaa' }}>
-                            {count}
-                          </span>
-                          {isCellSelected && (
-                            <span style={{ color: '#2a78d6', fontWeight: 'bold' }}>●</span>
-                          )}
-                        </div>
-
-                        {/* Aligned Horizontal Line (Line Mosaic Core) */}
-                        <div
-                          style={{
-                            width: '100%',
-                            height: 10,
-                            background: '#f0f0f0',
-                            borderRadius: 2,
-                            overflow: 'hidden',
-                            display: 'flex',
-                          }}
-                        >
-                          {count > 0 && target && cell ? (
-                            // Segmented by target variable
-                            target.categories.map((cat, catIdx) => {
-                              const catCount = cell.targetCounts[cat] || 0
-                              const segRatio = catCount / count
-                              const segW = linePixelLength * segRatio
-                              const color = target.colors[catIdx % target.colors.length]
-
-                              if (segW <= 0) return null
-                              return (
-                                <div
-                                  key={cat}
-                                  style={{
-                                    width: segW,
-                                    height: '100%',
-                                    backgroundColor: color,
-                                  }}
-                                  title={`${target.valueLabels?.[cat] ?? cat}: ${catCount}`}
-                                />
-                              )
-                            })
-                          ) : count > 0 ? (
-                            // Standard primary blue line
-                            <div
-                              style={{
-                                width: linePixelLength,
-                                height: '100%',
-                                backgroundColor: isCellSelected ? '#2a78d6' : '#1677ff',
-                                borderRadius: 2,
-                              }}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                    </Tooltip>
-                  )
-                })}
-              </div>
-            )
+      <Dropdown getPopupContainer={getPopupContainer} menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+        <div>
+        <EChartSurface ref={containerRef} width={totalWidth} height={totalHeight} viewBox={`0 0 ${totalWidth} ${totalHeight}`}
+          style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'crosshair' }}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onLostPointerCapture={handlePointerCancel}
+          data-testid="mosaic-canvas" aria-label="Line Mosaic セル度数と内部カテゴリ分布">
+          {grid.colLabels?.map((cl, index) => <text key={`col-${index}`} x={leftLabelWidth + ((cl.j ? cl.j - 1 : index) + .5) * (boxW + colGap)}
+            y={headerHeight - 12} textAnchor="middle" fontSize={11}>{mosaicPathLabel(mosaicData, 'col', cl.path)}<title>{mosaicPathLabel(mosaicData, 'col', cl.path)}</title></text>)}
+          {Array.from({ length: nRows }, (_, index) => <text key={`row-${index}`} x={leftLabelWidth - 10} y={headerHeight + index * (boxH + rowGap) + boxH / 2}
+            textAnchor="end" fontSize={11}>{grid.rowLabels[index] ? mosaicPathLabel(mosaicData, 'row', grid.rowLabels[index].path) : `Row ${index + 1}`}</text>)}
+          {Array.from({ length: nRows * nCols }, (_, index) => {
+            const r = Math.floor(index / nCols) + 1, c = index % nCols + 1
+            const cell = cellMap.get(`${r}-${c}`), count = cell?.totalCount ?? 0
+            const x = leftLabelWidth + (c - 1) * (boxW + colGap), y = headerHeight + (r - 1) * (boxH + rowGap)
+            const maxF = normalization === 'row' ? rowMaxFreq.get(r) || 1 : maxCellFrequency || 1
+            const length = Math.max(Math.min(count / maxF, 1) * (boxW - 12), count > 0 ? 3 : 0)
+            const selectedCount = cell?.rowIds.filter(id => selectedSet.has(id)).length ?? 0
+            let offset = 0
+            return <g key={index} data-selectable={!!cell?.rowIds.length} onClick={(event) => cell && handleCellClick(cell, event)} style={{ cursor: cell ? 'pointer' : 'default' }}>
+              <rect x={x} y={y} width={boxW} height={boxH} rx={4} fill={selectedCount ? '#e6f7ff' : '#fafafa'} stroke={selectedCount ? '#2a78d6' : '#d9d9d9'} strokeWidth={selectedCount ? 2 : 1}>
+                <title>{cell ? `${mosaicPathLabel(mosaicData, 'row', cell.rowPath)} × ${mosaicPathLabel(mosaicData, 'col', cell.colPath)}\n度数: ${count}行 / 最大比率: ${(count / maxF * 100).toFixed(1)}%\n選択中: ${selectedCount}行` : '度数0'}</title>
+              </rect>
+              <text x={x + 6} y={y + 18} fontSize={10}>{count}{selectedCount ? ' ✓' : ''}</text>
+              <rect x={x + 6} y={y + boxH - 16} width={boxW - 12} height={10} fill="#f0f0f0" />
+              {target && cell ? target.categories.map((category, categoryIndex) => {
+                const n = cell.targetCounts[category] || 0, segmentWidth = count ? length * n / count : 0
+                const left = offset; offset += segmentWidth
+                return <rect key={category} x={x + 6 + left} y={y + boxH - 16} width={segmentWidth} height={10}
+                  fill={target.colors[categoryIndex % target.colors.length]}><title>{`${target.valueLabels?.[category] ?? category}: ${n} (${count ? (n / count * 100).toFixed(1) : 0}%)`}</title></rect>
+              }) : <rect x={x + 6} y={y + boxH - 16} width={length} height={10} fill={selectedCount ? '#2a78d6' : '#1677ff'} />}
+            </g>
           })}
+          {dragBox && <rect x={Math.min(dragBox.x1, dragBox.x2)} y={Math.min(dragBox.y1, dragBox.y2)} width={Math.abs(dragBox.x2 - dragBox.x1)} height={Math.abs(dragBox.y2 - dragBox.y1)}
+            fill="rgba(42,120,214,0.15)" stroke="#2a78d6" strokeWidth={1.5} pointerEvents="none" data-testid="mosaic-brush-rect" />}
+        </EChartSurface>
 
-          {/* Drag Selection Box Overlay */}
-          {dragBox && (
-            <div
-              data-testid="mosaic-brush-rect"
-              style={{
-                position: 'absolute',
-                left: Math.min(dragBox.x1, dragBox.x2),
-                top: Math.min(dragBox.y1, dragBox.y2),
-                width: Math.abs(dragBox.x2 - dragBox.x1),
-                height: Math.abs(dragBox.y2 - dragBox.y1),
-                backgroundColor: 'rgba(42, 120, 214, 0.15)',
-                border: '1.5px solid #2a78d6',
-                pointerEvents: 'none',
-                borderRadius: 2,
-                zIndex: 10,
-              }}
-            />
-          )}
         </div>
       </Dropdown>
     </div>

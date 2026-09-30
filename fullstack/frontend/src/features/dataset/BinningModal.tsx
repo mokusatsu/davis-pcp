@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
 import Table from '../common/ColumnTable'
@@ -165,7 +166,7 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
           <div style={{ background: '#fafafa', padding: 8, borderRadius: 4 }}>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>度数分布ヒストグラム &amp; ビン境界線</Typography.Text>
             <div style={{ height: 60, width: '100%', position: 'relative', marginTop: 4 }}>
-              <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <EChartSurface width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
                 {/* Histogram bars */}
                 {(() => {
                   const maxC = Math.max(...preview.histogram.counts, 1)
@@ -206,7 +207,7 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
                     )
                   })
                 })()}
-              </svg>
+              </EChartSurface>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#888' }}>
               <span>Min: {preview.min.toFixed(2)}</span>

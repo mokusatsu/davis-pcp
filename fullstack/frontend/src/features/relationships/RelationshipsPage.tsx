@@ -1,6 +1,7 @@
+import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Col, Dropdown, Row, Space, Spin, Typography } from 'antd'
+import { Alert, Card, Col, Dropdown, Row, Space, Spin, Typography } from 'antd'
 import Select from '../common/ColumnSelect'
 import { api } from '../../api/client'
 import { deleteSelected, focusSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables,
@@ -9,7 +10,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { useRowColorResolver } from '../../theme/useRowColor'
-import GraphPanel from '../common/GraphPanel'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import RelationshipCanvas, { type RelationshipPoints } from './RelationshipCanvas'
 
@@ -33,6 +34,7 @@ function useRelationshipResult<T>(path: string, body: unknown | null) {
 }
 
 export default function RelationshipsPage() {
+  const graphPopupContainer = useGraphPopupContainer('relationships/pair')
   const dispatch = useDispatch()
   const selection = useSelector((state: RootState) => state.selection)
   const colorBy = useSelector((state: RootState) => state.pcp.colorBy)
@@ -111,20 +113,11 @@ export default function RelationshipsPage() {
         >
           <Spin spinning={matrix.loading}>
             <div style={{ width: heatmapWidth, height: heatmapHeight }}>
-              {matrix.value && <table aria-label="相関行列" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: heatmapWidth, height: heatmapHeight, fontSize: 12 }}>
-                <colgroup><col style={{ width: heatmapLabelWidth }} />{matrix.value.columns.map(name => <col key={name} style={{ width: heatmapCellWidth }} />)}</colgroup>
-                <thead><tr style={{ height: heatmapHeaderHeight }}><th style={{ width: heatmapLabelWidth }} />{matrix.value.columns.map(name => <th key={name} title={title(name)} style={{ width: heatmapCellWidth, maxWidth: heatmapCellWidth, padding: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title(name)}</th>)}</tr></thead>
-                <tbody>{matrix.value.columns.map((left, i) => <tr key={left} style={{ height: heatmapCellHeight }}><th title={title(left)} style={{ width: heatmapLabelWidth, maxWidth: heatmapLabelWidth, padding: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title(left)}</th>
-                  {matrix.value!.columns.map((right, j) => {
-                    const value = matrix.value!.matrix[i][j]
-                    return <td key={right} style={{ width: heatmapCellWidth, height: heatmapCellHeight, padding: 0, textAlign: 'center' }}><Button size="small" type="text" aria-label={`${left}と${right}の関係`}
-                      disabled={i === j} onClick={() => setFocusPair([left, right])}
-                      title={`r=${value?.toFixed(3) ?? '計算不可'} / n=${matrix.value!.counts[i][j]}`}
-                      style={{ width: 54, minWidth: 54, height: 40, borderRadius: 0, background: value === null ? '#fafafa' : value >= 0 ? `rgba(22,119,255,${Math.abs(value) * .65})` : `rgba(245,34,45,${Math.abs(value) * .65})` }}>
-                      {value?.toFixed(2) ?? '—'}
-                    </Button></td>
-                  })}</tr>)}</tbody>
-              </table>}
+              {matrix.value && <MatrixHeatmap labels={matrix.value.columns.map(title)} matrix={matrix.value.matrix} counts={matrix.value.counts} bound={1}
+                height={heatmapHeight} title="Pearson相関行列" testId="relationships-matrix"
+                selected={pair ? [matrix.value.columns.indexOf(pair[0]), matrix.value.columns.indexOf(pair[1])] : null}
+                onSelect={(row, col) => { if (row !== col) setFocusPair([matrix.value!.columns[row], matrix.value!.columns[col]]) }} />}
+
             </div>
           </Spin>
         </GraphPanel>
@@ -140,13 +133,13 @@ export default function RelationshipsPage() {
           normalWidth="viewport"
           controls={pair ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', minWidth: 0 }}>
-              {[0, 1].map(index => <Select key={index} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
+              {[0, 1].map(index => <Select key={index} getPopupContainer={graphPopupContainer} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
                 style={{ width: 280, maxWidth: '100%', minWidth: 0 }} options={names.filter(name => name !== pair[1 - index]).map(name => ({ value: name, label: title(name) }))}
                 onChange={value => setFocusPair(index === 0 ? [value, pair[1]] : [pair[0], value])} />)}
             </div>
           ) : undefined}
         >
-          <Spin spinning={points.loading}><Dropdown menu={{ items }} trigger={['contextMenu']}>
+          <Spin spinning={points.loading}><Dropdown menu={{ items }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
             <div>{points.value && pair && <RelationshipCanvas data={points.value} labels={[title(pair[0]), title(pair[1])]} colorOf={getColor} />}</div>
           </Dropdown></Spin>
         </GraphPanel>

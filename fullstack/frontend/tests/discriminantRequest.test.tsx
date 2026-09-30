@@ -1,3 +1,4 @@
+import { getInstanceByDom } from 'echarts'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
@@ -112,20 +113,24 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   state.globalObservations = { ...base.globalObservations, totalRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2', 'r3'], selectedRowIds: ['r1', 'r2'] }
   const local = configureStore({ reducer: (current = state, action: any) => ({ ...current,
     globalObservations: globalObservationsSlice.reducer(current.globalObservations, action) }), middleware: get => get({ serializableCheck: false }) })
+  const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><GraphExpansionProvider><FocusControls /><OperationPicker /><DiscriminantAnalysisPage /></GraphExpansionProvider></Provider>)
   fireEvent.change(view.getByTestId('discriminant-target-select'), { target: { value: 'y' } })
   fireEvent.change(view.getByTestId('discriminant-features-select'), { target: { value: 'x' } })
   fireEvent.click(view.getByRole('button', { name: /判別分析.*実行|分析実行|Run/ }))
-  const svg = await view.findByTestId('discriminant-map-svg')
+  const element = await view.findByTestId('discriminant-map-svg')
+  const chart = getInstanceByDom(element)!
+  chart.resize({width:460,height:300})
+  const svg = element.parentElement!
   vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20, width: 460 * scale, height: 300 * scale } as DOMRect)
   const capture = vi.fn()
   Object.defineProperty(svg, 'setPointerCapture', { value: capture, configurable: true })
-  const dispatch = vi.spyOn(local, 'dispatch')
-  const middle = svg.querySelectorAll('circle')[1]
-  expect(middle).toHaveAttribute('fill', '#abcdef')
-  expect(middle).toHaveAttribute('stroke', '#123456')
-  expect(middle).toHaveAttribute('r', '6')
-  const x = Number(middle.getAttribute('cx')), y = Number(middle.getAttribute('cy'))
+  const series = (chart.getOption().series as any[]).find(s => s.id === 'model-points')
+  const middle = series.data[1]
+  expect(middle.itemStyle.color).toBe('#abcdef')
+  expect(middle.itemStyle.borderColor).toBe('#123456')
+  expect(middle.symbolSize).toBe(14)
+  const [x,y] = chart.convertToPixel({gridIndex:0}, middle.value) as number[]
   const point = (x: number, y: number) => ({ clientX: 10 + x * scale, clientY: 20 + y * scale, button: 0 })
   fireEvent.pointerDown(svg, point(x, y))
   fireEvent.pointerUp(svg, point(x, y))
@@ -135,8 +140,8 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   // Pointer-up position is authoritative even when no move event was delivered.
   fireEvent.pointerUp(svg, point(x + 20, y + 15))
   expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ rowIds: ['r2'], operation: 'replace' }) }))
-  fireEvent.pointerDown(svg, point(100, 25))
-  fireEvent.pointerUp(svg, point(150, 65))
+  fireEvent.pointerDown(svg, point(145, 70))
+  fireEvent.pointerUp(svg, point(165, 100))
   expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ rowIds: [], operation: 'replace' }) }))
   const operation = view.getByRole('combobox', { name: 'test operation' })
   const rectangle = () => {
@@ -149,8 +154,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
     expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ operation: op, rowIds: ['r2'] }) }))
     expect(local.getState().globalObservations.selectedRowIds).toEqual(expected)
   }
-  const first = svg.querySelector('[data-row-id="r1"]')!
-  const firstX = Number(first.getAttribute('cx')), firstY = Number(first.getAttribute('cy'))
+  const [firstX,firstY] = chart.convertToPixel({gridIndex:0}, series.data[0].value) as number[]
   fireEvent.pointerDown(svg, point(firstX, firstY))
   fireEvent.pointerUp(svg, point(firstX, firstY))
   fireEvent.change(operation, { target: { value: 'add' } })
@@ -173,7 +177,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   expect(view.getByTestId('graph-expansion-dialog')).toBeInTheDocument()
   expect(view.getByTestId('graph-expansion-dock')).toContainElement(host)
   expect(host).toContainElement(view.getByTestId('discriminant-map-svg'))
-  expect(view.getByTestId('discriminant-map-svg').querySelectorAll('[data-row-id]')).toHaveLength(3)
+  expect(((getInstanceByDom(view.getByTestId('discriminant-map-svg'))!.getOption().series as any[]).find(s => s.id === 'model-points')).data).toHaveLength(3)
   fireEvent.click(view.getByText('test zoom'))
   expect(view.getByTestId('graph-expansion-zoom-label')).toHaveTextContent('125%')
   expect(view.getByTestId('graph-expansion-dock')).toContainElement(host)
@@ -184,6 +188,6 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   fireEvent.click(view.getByText('test exit'))
   expect(view.getByTestId('discriminant-target-select')).toHaveValue('y')
   expect(view.getByTestId('discriminant-features-select')).toHaveValue(['x'])
-  expect(view.getByTestId('discriminant-map-svg').querySelectorAll('[data-row-id]')).toHaveLength(3)
+  expect(((getInstanceByDom(view.getByTestId('discriminant-map-svg'))!.getOption().series as any[]).find(s => s.id === 'model-points')).data).toHaveLength(3)
   expect(vi.mocked(api.post).mock.calls.length).toBe(callsBeforeFocus)
 })

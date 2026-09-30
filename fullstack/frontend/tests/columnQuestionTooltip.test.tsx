@@ -42,7 +42,7 @@ describe('column question popup', () => {
     await waitFor(() => expect(screen.getByText('保存済み')).toBeVisible())
     act(() => { testStore.dispatch(draftColumnUpdated({ columnId: 'q-id', patch: { label: '下書き' } })) })
     expect(screen.queryByText('下書き')).toBeNull()
-    act(() => { testStore.dispatch(saveCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 2, columns: [{ ...column, label: '保存後' }] } as any, 'save')) })
+    act(() => { testStore.dispatch(saveCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 2, columns: [{ ...column, label: '保存後' }], submittedColumns: [{ ...column, label: '下書き' }], multiResponseGroups: [], submittedGroups: [] } as any, 'save')) })
     await waitFor(() => expect(screen.getByText('保存後')).toBeVisible())
   })
   it.each([['   ', 'ds'], ['別の設問', 'other']])('omits unavailable questions (%s/%s)', (label, dataset) => {

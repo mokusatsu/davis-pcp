@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
@@ -252,6 +253,12 @@ export default function StatisticsPage() {
   const categoriesOf = domain ? [...domain.codes, null] : null
 
   // Histogram layout.
+  useEffect(() => {
+    histDragRef.current = null
+    setHistDrag(null)
+    setClickedBin(null)
+  }, [data, scopedIndexes, columnValues, currentColumnPage])
+
   const binsCount = 20
   const histWidth = 560
   const histHeight = 300
@@ -504,7 +511,8 @@ export default function StatisticsPage() {
                   </div>
                   <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
                   <div>
-                  <svg
+                  <EChartSurface
+                    onViewportChange={() => { histDragRef.current = null; setHistDrag(null) }}
                     ref={(el) => { if (el) histSvgRefs.current.set(column, el) }}
                     data-testid={`histogram-${column}`}
                     viewBox={`0 0 ${histWidth} ${histHeight}`}
@@ -567,9 +575,9 @@ export default function StatisticsPage() {
                       <text key={ti} x={22 + ((tick - min) / (max - min || 1)) * (histWidth - 38)} y={histHeight - 10}
                         textAnchor="middle" fontSize={10} fill="#6b7280">{Number(tick).toFixed(1)}</text>
                     ))}
-                  </svg>
+                  </EChartSurface>
                   {/* jittered strip under the histogram */}
-                  <svg
+                  <EChartSurface
                     viewBox={`0 0 ${histWidth} 40`}
                     width={histWidth}
                     height={40}
@@ -605,7 +613,7 @@ export default function StatisticsPage() {
                         </g>
                       )
                     })}
-                  </svg>
+                  </EChartSurface>
                   </div>
                   </Dropdown>
                 </div>

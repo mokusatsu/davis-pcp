@@ -7,6 +7,12 @@ import { store, groupsReplaced, clusterResultStored, selectionApplied } from '..
 import { api } from '../src/api/client'
 import { graphEngine } from '../src/engine/graphClient'
 import ClustersPage from '../src/features/clustering/ClustersPage'
+// Controller regressions use deterministic logical coordinates; the ECharts
+// adapter has separate rendering and event tests.
+vi.mock('../src/features/charts/EChartSurface', async () => {
+  const { forwardRef } = await import('react')
+  return { default: forwardRef<SVGSVGElement, any>((props, ref) => <svg {...props} ref={ref} />) }
+})
 vi.mock('../src/features/pcp/MaAxisPicker', () => ({ default: ({ onAdd }: any) => <button onClick={() => onAdd([{ columnId: 'A' }])}>MA候補追加</button> }))
 
 vi.mock('../src/features/common/ColumnSelect', () => ({ default: (props: any) => <select data-testid={props['data-testid']} multiple={props.mode === 'multiple'} value={props.value ?? ''}

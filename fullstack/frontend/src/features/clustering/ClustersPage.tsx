@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import { Select as AntSelect } from 'antd'
 import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -17,8 +18,8 @@ import { api } from '../../api/client'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import L1Legend from '../common/L1Legend'
 import { vizTheme, composedColor } from '../../theme/viz'
-import { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
-import GraphPanel from '../common/GraphPanel'
+import SelectionMenu, { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
+import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 
 import CobwebTreeViewer from './CobwebTreeViewer'
@@ -376,42 +377,32 @@ export default function ClustersPage() {
       {stored && !running && (
         <>
           <ClusterSummaryPanel result={stored} onSelect={selectCluster} />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              クラスタボタン/凡例/シルエット/樹形図クリック=集合演算で反映
-            </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            クラスタボタン/凡例/シルエット/樹形図クリック=集合演算で反映
+          </Typography.Text>
           {stored.pcaProjection && (
-            <GraphPanel graphId="clusters/pca" title="主成分散布図 (PCA)" available sizing="intrinsic" intrinsicSize={{ width: 560, height: 560 }} style={{ height: 'auto', flex: 'none' }}>
-              <PcaScatterPlot result={stored} onSelect={selectCluster} />
-            </GraphPanel>
+            <PcaScatterPlot result={stored} onSelect={selectCluster} />
           )}
           {stored.silhouette && (
-            <GraphPanel graphId="clusters/silhouette" title="シルエット図" available sizing="intrinsic" intrinsicSize={{ width: 760, height: 420 }} style={{ height: 'auto', flex: 'none' }}>
-              <SilhouettePlot result={stored} onSelect={selectCluster} />
-            </GraphPanel>
+            <SilhouettePlot result={stored} onSelect={selectCluster} />
           )}
           {stored.linkageMatrix && (
-            <GraphPanel graphId="clusters/dendrogram" title="樹形図 (デンドログラム)" available sizing="intrinsic" intrinsicSize={{ width: 800, height: 360 }} style={{ height: 'auto', flex: 'none' }}>
-              <DendrogramPanel linkageMatrix={stored.linkageMatrix} rowIds={stored.rowIds} />
-            </GraphPanel>
+            <DendrogramPanel linkageMatrix={stored.linkageMatrix} rowIds={stored.rowIds} />
           )}
           {stored.conceptTree && (
-            <GraphPanel graphId="clusters/cobweb" title="Cobweb 概念木" available sizing="intrinsic" intrinsicSize={{ width: 720, height: 480 }} style={{ height: 'auto', flex: 'none' }}>
-              <CobwebTreeViewer
-                conceptTree={stored.conceptTree}
-                rowIds={stored.rowIds}
-                onSelectRows={(ids) =>
-                  dispatch(selectionApplied({ rowIds: ids, operation: getBrushOp(), label: 'Cobweb概念選択' }))
-                }
-              />
-            </GraphPanel>
+            <CobwebTreeViewer
+              conceptTree={stored.conceptTree}
+              rowIds={stored.rowIds}
+              onSelectRows={(ids) =>
+                dispatch(selectionApplied({ rowIds: ids, operation: getBrushOp(), label: 'Cobweb概念選択' }))
+              }
+            />
           )}
           {stored.categoryMatrices && (
-            <GraphPanel graphId="clusters/disc" title="DISC カテゴリ関係行列" available sizing="intrinsic" intrinsicSize={{ width: 640, height: 420 }} style={{ height: 'auto', flex: 'none' }}>
-              <DiscCategoryMatrix
-                categoryMatrices={stored.categoryMatrices}
-                clusterCount={stored.k}
-              />
-            </GraphPanel>
+            <DiscCategoryMatrix
+              categoryMatrices={stored.categoryMatrices}
+              clusterCount={stored.k}
+            />
           )}
         </>
       )}
@@ -422,20 +413,39 @@ export default function ClustersPage() {
 /** PCA 2D scatter of the clustering: PC1×PC2 with cluster colors and
  *  selection highlight; click a point to toggle that row in the shared selection. */
 function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelect: (label: number) => void }) {
+  const size = Math.max(360, Math.min(760, window.innerWidth - 220))
+  const pca = result.pcaProjection!
+  return <div data-testid="pca-panel">
+    <GraphPanel graphId="clusters/pca" title="主成分散布図 (PCA)" available sizing="intrinsic"
+      style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 14, userSelect: 'none' }}
+      intrinsicSize={{ width: size, height: size }}
+      controls={<>
+        <Space wrap>
+          <Typography.Text strong>主成分散布図（PC1 {(pca.varianceRatio[0] * 100).toFixed(1)}% ／ PC2 {(pca.varianceRatio[1] * 100).toFixed(1)}% 分散）</Typography.Text>
+          <SelectionMenu testId="clusters-pca-selection" />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ドラッグ=矩形選択 · 点クリック=toggle · 右クリックで操作</Typography.Text>
+        </Space>
+        <L1Legend />
+      </>}>
+      <PcaScatterSurface result={result} onSelect={onSelect} size={size} />
+    </GraphPanel>
+  </div>
+}
+
+function PcaScatterSurface({ result, onSelect, size }: { result: ClusterResponse; onSelect: (label: number) => void; size: number }) {
   const { getColor, selectionColor } = useRowColorResolver()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const rowScope = useSelector(selectEffectiveRowIds)
   const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
-
+  const viewport = useGraphViewport()
+  const getPopupContainer = useGraphPopupContainer()
   const context = useMemo(() => ({}), [selection.datasetId, selection.dataRevision, schemaRevision,
-    selection.activeRowIds, rowScope, result])
+    selection.activeRowIds, rowScope, result, size, viewport.scale, viewport.zoom, viewport.dpr, viewport.revision])
   const currentContext = useRef(context)
   currentContext.current = context
   const selectionVersion = useRef(0)
   const theme = vizTheme(false)
-  // Square plot sized to the viewport (fills available width, capped).
-  const size = Math.max(360, Math.min(760, window.innerWidth - 220))
   const pca = result.pcaProjection!
   const selectedSet = new Set(selection.selectedRowIds)
   const hoveredId = selection.hoveredRowId
@@ -495,7 +505,7 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
     dragRef.current = null
     setDrag(null)
     if (!cur) return
-    if (Math.abs(cur.x2 - cur.x1) < 5 && Math.abs(cur.y2 - cur.y1) < 5) return
+    if (Math.abs(cur.x2 - cur.x1) * viewport.scale < 5 && Math.abs(cur.y2 - cur.y1) * viewport.scale < 5) return
     const pxLo = Math.min(cur.x1, cur.x2), pxHi = Math.max(cur.x1, cur.x2)
     const pyLo = Math.min(cur.y1, cur.y2), pyHi = Math.max(cur.y1, cur.y2)
     const vxLo = invScaleX(pxLo), vxHi = invScaleX(pxHi)
@@ -552,17 +562,8 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
   ]
 
   return (
-    <div data-testid="pca-panel" style={{ maxWidth: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-        <Space wrap align="center">
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            主成分散布図（PC1 {`${(pca.varianceRatio[0] * 100).toFixed(1)}%`} ／ PC2 {(pca.varianceRatio[1] * 100).toFixed(1)}% 分散）
-          </Typography.Title>
-        </Space>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>ドラッグ=矩形選択 · 点クリック=toggle · 右クリックで操作</Typography.Text>
-      </div>
-      <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
-      <svg
+      <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={getPopupContainer}>
+      <EChartSurface
         ref={svgRef}
         data-testid="pca-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
         style={{ width: '100%', height: 'auto', aspectRatio: '1 / 1', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', touchAction: 'none' }}
@@ -623,10 +624,8 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
             style={{ pointerEvents: 'none' }}
           />
         )}
-      </svg>
+      </EChartSurface>
       </Dropdown>
-      <L1Legend />
-    </div>
   )
 }
 
@@ -673,6 +672,7 @@ function ClusterSummaryPanel({ result, onSelect }: { result: ClusterResponse; on
  *  Width = how confidently the row belongs to its cluster (1 = strong).
  *  Row ordering comes from the engine's silhouetteOrder (WASM in worker). */
 function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelect: (label: number) => void }) {
+  const dispatch = useDispatch()
   const { getColor, isSelected, selectionColor } = useRowColorResolver()
   const width = Math.max(760, Math.min(1200, window.innerWidth - 220))
   const rowHeight = Math.max(1.5, Math.min(5, 420 / result.rowIds.length))
@@ -732,6 +732,8 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
           strokeWidth={isSelected(row.id) ? 1.5 : 0}
           style={{ cursor: 'pointer' }}
           onClick={() => onSelect(cluster.label)}
+          onMouseEnter={() => dispatch({ type: 'selection/hovered', payload: row.id })}
+          onMouseLeave={() => dispatch({ type: 'selection/hovered', payload: null })}
         >
           <title>{`${row.id}: シルエット ${row.s.toFixed(3)}`}</title>
         </rect>,
@@ -745,18 +747,18 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
   const zeroX = 100 + (width - 120) / 2
   const meanX = 100 + ((result.silhouette.mean + 1) / 2) * (width - 120)
   return (
-    <div data-testid="silhouette-panel" style={{ minWidth: 0, overflow: 'visible', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-        <Space wrap align="center">
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            シルエット幅図（平均 {result.silhouette.mean.toFixed(3)}）
-          </Typography.Title>
-        </Space>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>幅が広いほどそのクラスタへの所属確からしさが高い · クリックで選択</Typography.Text>
-      </div>
-      <L1Legend />
-      <div style={{ overflow: 'visible', minHeight: 200 }}>
-        <svg data-testid="silhouette-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+    <div data-testid="silhouette-panel">
+      <GraphPanel graphId="clusters/silhouette" title="シルエット図" available sizing="intrinsic"
+      style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 14, userSelect: 'none' }}
+        intrinsicSize={{ width, height }} controls={<>
+          <Space wrap>
+            <Typography.Text strong>シルエット幅図（平均 {result.silhouette.mean.toFixed(3)}）</Typography.Text>
+            <SelectionMenu testId="clusters-silhouette-selection" />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>幅が広いほどそのクラスタへの所属確からしさが高い · クリックで選択</Typography.Text>
+          </Space>
+          <L1Legend />
+        </>}>
+        <EChartSurface data-testid="silhouette-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           {/* reference lines: -1, 0, mean, +1 */}
           <line x1={100} y1={20} x2={100} y2={height - 10} stroke="#e5e7eb" strokeWidth={1} />
           <text x={100} y={14} textAnchor="middle" fontSize={10} fill="#898781">s=-1</text>
@@ -767,8 +769,8 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
           <line x1={meanX} y1={20} x2={meanX} y2={height - 10} stroke="#eb6834" strokeWidth={1} strokeDasharray="4 3" />
           <text x={meanX} y={14} textAnchor="middle" fontSize={10} fill="#eb6834">平均</text>
           {bars}
-        </svg>
-      </div>
+        </EChartSurface>
+      </GraphPanel>
     </div>
   )
 }
@@ -776,17 +778,12 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
 function DendrogramPanel({ linkageMatrix, rowIds }: { linkageMatrix: number[][]; rowIds: string[] }) {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
-  const theme = vizTheme(false)
+  const { getColor, selectionColor } = useRowColorResolver()
   const width = Math.max(800, Math.min(1400, window.innerWidth - 220))
   const height = 360
   const n = linkageMatrix.length + 1
   const maxMerge = Math.max(...linkageMatrix.map((row) => row[2])) || 1
   const selectedSet = new Set(selection.selectedRowIds)
-  const groupByRow = new Map<string, number>()
-  selection.groups.forEach((group, index) => {
-    group.rowIds.forEach((id) => { if (!groupByRow.has(id)) groupByRow.set(id, index) })
-  })
-
   const xOf = new Map<number, number>()
   for (let i = 0; i < n; i += 1) xOf.set(i, 20 + (i / Math.max(1, n - 1)) * (width - 60))
   linkageMatrix.forEach((merge, index) => {
@@ -811,15 +808,14 @@ function DendrogramPanel({ linkageMatrix, rowIds }: { linkageMatrix: number[][];
 
 
   return (
-    <div data-testid="dendrogram-panel" style={{ minWidth: 0, overflow: 'visible', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-        <Space wrap align="center">
-          <Typography.Title level={5} style={{ margin: 0 }}>Dendrogram（樹形図）</Typography.Title>
-        </Space>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>部分木クリックで選択</Typography.Text>
-      </div>
-      <div style={{ overflow: 'visible', minHeight: 360 }}>
-        <svg data-testid="dendrogram-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+    <div data-testid="dendrogram-panel">
+      <GraphPanel graphId="clusters/dendrogram" title="樹形図 (デンドログラム)" available sizing="intrinsic"
+      style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 14, userSelect: 'none' }}
+        intrinsicSize={{ width, height }} controls={<Space wrap>
+          <SelectionMenu testId="clusters-dendrogram-selection" />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>部分木クリックで選択</Typography.Text>
+        </Space>}>
+        <EChartSurface data-testid="dendrogram-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height, display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           {linkageMatrix.map((merge, index) => {
             const node = n + index
             const x1 = xOf.get(merge[0]) ?? 0
@@ -829,21 +825,20 @@ function DendrogramPanel({ linkageMatrix, rowIds }: { linkageMatrix: number[][];
             const yTop = yOf(merge[2])
             const leafIds = subtreeLeaves(node).map((i) => rowIds[i])
             const allSelected = leafIds.length > 0 && leafIds.every((id) => selectedSet.has(id))
-            const groupColor = leafIds.length && leafIds.every((id) => groupByRow.has(id))
-              ? composedColor(theme, { l2Group: groupByRow.get(leafIds[0])! })
-              : undefined
+            const firstColor = leafIds.length ? getColor(leafIds[0]) : undefined
+            const groupColor = leafIds.every(id => getColor(id) === firstColor) ? firstColor : undefined
             return (
               <g key={index} onClick={() => selectSubtree(node)} style={{ cursor: 'pointer' }}>
                 <title>{`クラスタ ${index}: ${leafIds.length}行 (merge高さ ${merge[2].toFixed(2)}) — クリックで部分木を選択`}</title>
-                <line x1={x1} y1={y1} x2={x1} y2={yTop} stroke={allSelected ? theme.selection : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
-                <line x1={x2} y1={y2} x2={x2} y2={yTop} stroke={allSelected ? theme.selection : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
-                <line x1={x1} y1={yTop} x2={x2} y2={yTop} stroke={allSelected ? theme.selection : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
+                <line x1={x1} y1={y1} x2={x1} y2={yTop} stroke={allSelected ? selectionColor : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
+                <line x1={x2} y1={y2} x2={x2} y2={yTop} stroke={allSelected ? selectionColor : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
+                <line x1={x1} y1={yTop} x2={x2} y2={yTop} stroke={allSelected ? selectionColor : groupColor ?? '#64748b'} strokeWidth={allSelected ? 2 : 1} />
                 <rect x={Math.min(x1, x2)} y={yTop - 6} width={Math.abs(x2 - x1) + 2} height={12} fill="transparent" />
               </g>
             )
           })}
-        </svg>
-      </div>
+        </EChartSurface>
+      </GraphPanel>
     </div>
   )
 }

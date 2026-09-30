@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -10,7 +11,7 @@ import { selectOrdinaryVariables } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
 import { useBrushOp } from '../selection/SelectionMenu'
-import GraphPanel from '../common/GraphPanel'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { truncateText } from '../../utils/textUtils'
@@ -49,6 +50,7 @@ interface FedfResponse {
 }
 
 export default function FedfPage() {
+  const graphPopupContainer = useGraphPopupContainer('fedf/main')
   const questionText = useQuestionText()
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -67,6 +69,7 @@ export default function FedfPage() {
   // Drag brushing state per axis
   const [dragAxis, setDragAxis] = useState<string | null>(null)
   const [dragRange, setDragRange] = useState<{ y1: number; y2: number } | null>(null)
+  useEffect(() => { setDragAxis(null); setDragRange(null) }, [fedfData, datasetId, mode])
   const svgRef = useRef<SVGSVGElement>(null)
   const graphHostRef = useRef<HTMLDivElement>(null)
   const [graphHostWidth, setGraphHostWidth] = useState(0)
@@ -287,7 +290,7 @@ export default function FedfPage() {
           sizing="intrinsic"
           intrinsicSize={{ width: displayWidth, height: displayHeight }}
         >
-          <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']}>
+          <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
             <div
               style={{
                 position: 'relative',
@@ -307,7 +310,8 @@ export default function FedfPage() {
             )}
 
             {!loading && fedfData && (
-              <svg
+              <EChartSurface
+                onViewportChange={() => { setDragAxis(null); setDragRange(null) }}
                 ref={svgRef}
                 data-testid="fedf-svg"
                 width={displayWidth}
@@ -532,7 +536,7 @@ export default function FedfPage() {
                     </text>
                   </g>
                 )}
-              </svg>
+              </EChartSurface>
             )}
 
             {!loading && (!fedfData || fedfData.columns.length === 0) && (

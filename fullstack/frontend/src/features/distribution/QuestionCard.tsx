@@ -1,7 +1,8 @@
+import CategoryBars from '../charts/CategoryBars'
 import { QuestionTooltip } from '../common/ColumnQuestionTooltip'
-import React, { useState } from 'react'
+import React, { useLayoutEffect, useRef, useState } from 'react'
 import GraphPanel from '../common/GraphPanel'
-import { Card, Tag, Typography, Segmented, Progress, Row, Col, Button, Space } from 'antd'
+import { Card, Tag, Typography, Segmented, Row, Col, Button, Space } from 'antd'
 import { SlidersOutlined } from '@ant-design/icons'
 import type { CodebookColumn } from '../../api/client'
 
@@ -80,6 +81,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   onSelectCategory,
   selectedCountByCode,
 }) => {
+  // Measure untransformed HTML: GraphPanel fit must include wrapped detail rows.
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(320)
+  useLayoutEffect(() => {
+    const node = contentRef.current
+    if (!node) return
+    const measure = () => { if (node.offsetHeight > 0) setContentHeight(node.offsetHeight + 16) }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(node)
+    measure()
+    return () => observer?.disconnect()
+  }, [])
   const [base, setBase] = useState<'valid' | 'total'>('valid')
 
   const title = codebookColumn?.label || summary.columnId
@@ -125,7 +138,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       title={title}
       available
       sizing="intrinsic"
-      intrinsicSize={{ width: 560, height: 320 }}
+      intrinsicSize={{ width: 560, height: contentHeight }}
       normalWidth="viewport"
       controls={(
         <Segmented
@@ -142,6 +155,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
     >
     <Card
+      ref={contentRef}
       size="small"
       data-testid={`question-card-${summary.columnId}`}
       title={
@@ -206,6 +220,13 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         )}
       </div>
 
+      <CategoryBars axisName={`${base === 'valid' ? '有効回答' : '全対象者'}ベース (%)`} max={100} testId={`question-chart-${summary.columnId}`}
+        items={distribution.map(item => ({ id: item.code === null ? '__null__' : String(item.code), label: item.label || String(item.code),
+          value: base === 'valid' && item.isMissing ? null : base === 'valid' ? item.percentageValid : item.percentageTotal,
+          selected: (selectedCountByCode?.[item.code === null ? '__null__' : String(item.code)] ?? 0) > 0,
+          color: item.isMissing ? '#bfbfbf' : undefined,
+          detail: `件数: ${item.count} / コード: ${item.code ?? '空欄'}${item.isMissing ? ` / 欠損: ${item.missingReason ?? '無回答'}` : ''}` }))}
+        onSelect={key => { const item = distribution.find(d => (d.code === null ? '__null__' : String(d.code)) === key); if (item) onSelectCategory?.(item.code, item.label) }} />
       {/* Distribution items */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
         {distribution.map((item) => {
@@ -243,15 +264,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   {item.code !== null && <Text type="secondary">{rowCodeText}.</Text>} {displayLabel}
                 </Text>
               </Col>
-              <Col xs={24} sm={7} style={{ minWidth: 0 }}>
-                <Progress
-                  percent={Math.min(100, Math.max(0, pct))}
-                  size="small"
-                  showInfo={false}
-                  strokeColor="#1677ff"
-                />
-              </Col>
-              <Col xs={24} sm={9} style={{ textAlign: 'right', minWidth: 0 }}>
+              <Col xs={24} sm={16} style={{ textAlign: 'right', minWidth: 0 }}>
                 <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
                   <Text ellipsis={{ tooltip: false }} style={{ fontSize: 12, fontFamily: 'monospace' }}>
                     {displayPct} ({item.count.toLocaleString()})

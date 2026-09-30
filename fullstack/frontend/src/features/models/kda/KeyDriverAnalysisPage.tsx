@@ -1,12 +1,14 @@
+import ColumnQuestionTooltip, { useQuestionText } from '../../common/ColumnQuestionTooltip'
+import { truncateText } from '../../../utils/textUtils'
+import EChart from '../../charts/EChart'
 import Table from '../../common/ColumnTable'
-import ColumnQuestionTooltip from '../../common/ColumnQuestionTooltip'
 import Select from '../../common/ColumnSelect'
 import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
-  Statistic, Alert, Spin, Progress, Slider, Divider,
+  Statistic, Alert, Spin, Slider, Divider,
 } from 'antd'
 import {
   RocketOutlined, ThunderboltOutlined, ExperimentOutlined,
@@ -49,6 +51,7 @@ export interface KdaResponse {
 }
 
 export default function KeyDriverAnalysisPage() {
+  const questionText = useQuestionText()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -295,34 +298,14 @@ export default function KeyDriverAnalysisPage() {
                     data-testid="kda-importance-chart"
                     style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
                   >
-                    <Space direction="vertical" style={{ width: '100%' }} size={14}>
-                      {result.drivers.map((d, idx) => {
-                        const isTop = idx === 0
-                        return (
-                          <div key={d.name}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <Space>
-                                <Typography.Text strong style={{ fontSize: 13 }}>
-                                  #{idx + 1} <ColumnQuestionTooltip nameOrId={d.name}>{d.label}</ColumnQuestionTooltip>
-                                </Typography.Text>
-                                <Tag color={d.direction >= 0 ? 'blue' : 'red'}>
-                                  {d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}
-                                </Tag>
-                                {isTop && <Tag color="gold">#1 Driver</Tag>}
-                              </Space>
-                              <Typography.Text strong style={{ fontSize: 13 }}>
-                                {d.importance_pct.toFixed(1)}%
-                              </Typography.Text>
-                            </div>
-                            <Progress
-                              percent={Math.round(d.importance_pct)}
-                              strokeColor={isTop ? '#faad14' : (d.direction >= 0 ? '#1677ff' : '#ff4d4f')}
-                              size="small"
-                            />
-                          </div>
-                        )
-                      })}
-                    </Space>
+                    <EChart height={Math.max(280, result.drivers.length * 48 + 80)} ariaLabel="Shapley重要度"
+                      option={{ grid: { left: 170, right: 60, top: 20, bottom: 45 },
+                        tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; const d = p && result.drivers[p.dataIndex]; return d ? `${questionText(d.name)}\n重要度: ${d.importance_pct}%\n方向: ${d.direction}` : '' } },
+                        xAxis: { type: 'value', min: 0, max: 100, name: '重要度 (%)', nameLocation: 'middle', nameGap: 28 },
+                        yAxis: { type: 'category', inverse: true, data: result.drivers.map((d,i) => `#${i+1} ${truncateText(d.label, 16)}\n${d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}`) },
+                        series: [{ type: 'bar', data: result.drivers.map((d,i) => ({ value: d.importance_pct,
+                          itemStyle: { color: i === 0 ? '#faad14' : d.direction >= 0 ? '#1677ff' : '#ff4d4f' } })),
+                          label: { show: true, position: 'right', color: '#333', formatter: (p:any) => `${Number(p.value).toFixed(1)}%` } }] }} />
                   </Card>
                   </GraphPanel>
               </Col>

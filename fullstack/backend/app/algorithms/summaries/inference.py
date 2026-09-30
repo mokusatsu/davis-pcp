@@ -56,6 +56,7 @@ class InferenceResult:
     method: str | None = None
     statistic_type: str | None = None
     statistic: float | None = None
+    statistic_status: str | None = None
     numerator_df: float | None = None
     denominator_df: float | None = None
     p_value: float | None = None
@@ -70,6 +71,7 @@ class InferenceResult:
             "method": self.method,
             "statisticType": self.statistic_type,
             "statistic": self.statistic,
+            "statisticStatus": self.statistic_status,
             "numeratorDf": self.numerator_df,
             "denominatorDf": self.denominator_df,
             "pValue": self.p_value,
@@ -128,18 +130,29 @@ def resolve_inference(requested: str, weight_type: str | None, has_weight: bool)
 
 def unweighted_inference(counts: np.ndarray, method: str = REQUEST_PEARSON) -> InferenceResult:
     """Ordinary inference on counts that are real counts."""
+    if method == REQUEST_FISHER:
+        # Retain zero margins for a requested 2x2 exact test: p remains defined
+        # even when its sample odds ratio is infinite or undefined.
+        odds_ratio, p_value = stats.fisher_exact(np.asarray(counts).astype(int))
+        statistic_status = ("finite" if np.isfinite(odds_ratio)
+                            else "undefined" if np.isnan(odds_ratio) else "infinite")
+        warnings = [] if statistic_status == "finite" else [{
+            "code": "CROSSTAB_FISHER_ODDS_RATIO_NONFINITE",
+            "message": ("Fisher検定のオッズ比は無限大です。p値は計算されています。" if statistic_status == "infinite"
+                        else "Fisher検定のオッズ比は周辺度数0のため未定義です。p値は計算されています。"),
+        }]
+        return InferenceResult(
+            requested=True, status=STATUS_OK, method=METHOD_FISHER,
+            statistic_type="odds_ratio",
+            statistic=float(odds_ratio) if statistic_status == "finite" else None,
+            statistic_status=statistic_status,
+            p_value=float(p_value),
+            warnings=warnings,
+        )
     matrix, keep_rows, keep_cols = positive_marginal_submatrix(counts)
     n_rows, n_cols = matrix.shape if matrix.size else (0, 0)
     if n_rows < 2 or n_cols < 2:
         return InferenceResult(requested=True, status=STATUS_UNAVAILABLE, method=method)
-    if method == REQUEST_FISHER:
-        odds_ratio, p_value = stats.fisher_exact(matrix.astype(int))
-        return InferenceResult(
-            requested=True, status=STATUS_OK, method=METHOD_FISHER,
-            statistic_type="odds_ratio",
-            statistic=float(odds_ratio),
-            p_value=float(p_value),
-        )
     chi2 = pearson_chi_square(matrix)
     df_value = float((n_rows - 1) * (n_cols - 1))
     return InferenceResult(

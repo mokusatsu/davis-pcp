@@ -63,6 +63,22 @@ def compute_pca(
     if n_samples < 2:
         raise BizError("PCA_INSUFFICIENT_ROWS", "非欠損値を持つデータが2行未満です。")
 
+    # A constant variable has no correlation and contributes no covariance.
+    # Detect constants in the analysed rows, after scope and missing filtering.
+    constant_mask = np.all(X_clean == X_clean[0], axis=0)
+    constant_columns = [name for name, constant in zip(selected_columns, constant_mask) if constant]
+    if constant_mask.all():
+        raise BizError("PCA_ZERO_VARIANCE", "対象行ではすべての分析変数が定数です。分散がないためPCAを計算できません。",
+                       details={"columns": constant_columns})
+    warnings = []
+    if constant_columns:
+        warnings.append({"code": "PCA_CONSTANT_COLUMNS_EXCLUDED",
+                         "message": f"対象行で値が一定の列をPCAから除外しました: {', '.join(constant_columns)}",
+                         "details": {"columns": constant_columns}})
+        selected_columns = [name for name, constant in zip(selected_columns, constant_mask) if not constant]
+        X_clean = X_clean[:, ~constant_mask]
+        p = len(selected_columns)
+
     # Center and scale
     mean = np.mean(X_clean, axis=0)
     X_centered = X_clean - mean
@@ -118,6 +134,8 @@ def compute_pca(
 
     return {
         "columns": selected_columns,
+        "excludedConstantColumns": constant_columns,
+        "warnings": warnings,
         "nSamples": n_samples,
         "n_samples": n_samples,
         "nComponents": k,

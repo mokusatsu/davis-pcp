@@ -15,7 +15,9 @@ import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
-import { truncateText } from '../../utils/textUtils'
+import EChart from '../charts/EChart'
+import { kanoOption, praImpactOption } from './praCharts'
+import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 
 export interface PraAttribute {
   name: string
@@ -44,6 +46,7 @@ export default function PenaltyRewardPage() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
+  const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
 
   const globalVars = useSelector(selectOrdinaryVariables)
   const [allColumns, setAllColumns] = useState<string[]>([])
@@ -123,7 +126,7 @@ export default function PenaltyRewardPage() {
     if (ids.length > 0) {
       dispatch(selectionApplied({
         rowIds: ids,
-        operation: 'replace',
+        operation: getBrushOp(),
         label: attr ? `不満顧客: ${attr.label} (${ids.length}行)` : `当たり前品質の不満顧客 (${ids.length}行)`,
       }))
     }
@@ -289,7 +292,7 @@ export default function PenaltyRewardPage() {
                             minHeight: 0,
             }}
           >
-            {/* Left: 4-Quadrant Kano Strategy Board (SVG) */}
+            {/* Signed low/high coefficient comparison */}
             {(
               <Col
                 xs={24}
@@ -303,21 +306,11 @@ export default function PenaltyRewardPage() {
                 {(
                   <GraphPanel
                     graphId="penalty-reward/kano"
-                    title="Kano 4象限戦略マトリクス"
+                    title="低評価側係数×高評価側係数"
                     available={Boolean(result?.attributes?.length)}
                     sizing="intrinsic"
-                    intrinsicSize={{ width: 500, height: 400 }}
-                  >
-                    <Card
-                      size="small"
-                      data-testid="kano-quadrant-board"
-                      style={{
-                                                display: 'flex',
-                        flexDirection: 'column',
-                        minHeight: 0,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    intrinsicSize={{ width: 560, height: 440 }}
+                    controls={<>                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                         <Button
                           size="small"
                           type="primary"
@@ -338,80 +331,27 @@ export default function PenaltyRewardPage() {
                         </Button>
                       </div>
 
-                      {/* 4 Quadrants Graphic Area */}
-                      <div style={{ position: 'relative', width: '100%', aspectRatio: '500 / 400', background: '#fdfdfd', border: '1px solid #e5e7eb', borderRadius: 6, userSelect: 'none' }}>
-                        {/* Quadrant background badges */}
-                        <div style={{ position: 'absolute', top: 8, right: 12, textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#1677ff' }}>
-                          一元的品質 (Performance) ↗
-                        </div>
-                        <div style={{ position: 'absolute', top: 8, left: 12, fontSize: 11, fontWeight: 'bold', color: '#389e0d' }}>
-                          ↖ 魅力的品質 (Delighter/Excitement)
-                        </div>
-                        <div style={{ position: 'absolute', bottom: 8, right: 12, textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#d4380d' }}>
-                          当たり前品質 (Must-be/Basic) ↘
-                        </div>
-                        <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: 11, fontWeight: 'bold', color: '#8c8c8c' }}>
-                          ↙ 無関心品質 (Indifferent)
-                        </div>
-
-                        {/* Interactive Kano Scatter SVG */}
-                        <svg viewBox="0 0 500 400" style={{ width: '100%', height: '100%', display: 'block' }}>
-                          {/* Axes */}
-                          <line x1={250} y1={20} x2={250} y2={380} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1.5} />
-                          <line x1={20} y1={200} x2={480} y2={200} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1.5} />
-
-                          {/* 45 degree diagonal threshold line (symmetric impact) */}
-                          <line x1={50} y1={350} x2={450} y2={50} stroke="#f0f0f0" strokeWidth={2} />
-
-                          {/* Axis labels */}
-                          <text x={250} y={395} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
-                            Penalty Impact (|β_low|: 不満低下度) →
-                          </text>
-                          <text x={12} y={200} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151" transform="rotate(-90 12 200)">
-                            Reward Impact (β_high: 満足向上度) →
-                          </text>
-
-                          {result.attributes.map((a) => {
-                            const cx = 50 + Math.min(Math.max(Math.abs(a.penalty.coef) / 1.5, 0), 1) * 400
-                            const cy = 350 - Math.min(Math.max(a.reward.coef / 1.5, 0), 1) * 300
-                            const isSelected = a.name === selectedAttribute
-                            const color = getKanoColor(a.classification)
-                            const r = isSelected ? 8 : 6
-
-                            return (
-                              <g
-                                key={a.name}
-                                onClick={() => setSelectedAttribute(a.name)}
-                                style={{ cursor: 'pointer' }}
-                              >
-                                <circle
-                                  cx={cx}
-                                  cy={cy}
-                                  r={r}
-                                  fill={color}
-                                  opacity={isSelected ? 1.0 : 0.8}
-                                  stroke={isSelected ? '#000' : '#fff'}
-                                  strokeWidth={isSelected ? 2 : 1}
-                                />
-                                <ColumnQuestionTooltip nameOrId={a.name} svg><text
-                                  x={cx > 380 ? cx - 10 : cx + 10}
-                                  y={cy + 4}
-                                  textAnchor={cx > 380 ? 'end' : 'start'}
-                                  fontSize={11}
-                                  fontWeight={isSelected ? 'bold' : 'normal'}
-                                  fill="#1f1f1f"
-                                  paintOrder="stroke"
-                                  stroke="#ffffff"
-                                  strokeWidth={3}
-                                >
-
-                                  {isSelected ? a.label : truncateText(a.label, 10)}
-                                </text></ColumnQuestionTooltip>
-                              </g>
-                            )
-                          })}
-                        </svg>
-                      </div>
+                      <SelectionMenu />
+                      <Typography.Text type="secondary">点の色は既存モデルによる分類です。位置は両係数の符号と大きさをそのまま表します。</Typography.Text>
+</>}
+                  >
+                    <Card
+                      size="small"
+                      styles={{ body: { padding: 0 } }}
+                      bordered={false}
+                      data-testid="kano-quadrant-board"
+                      style={{
+                                                display: 'flex',
+                        flexDirection: 'column',
+                        minHeight: 0,
+                      }}
+                    >
+                      <EChart testId="kano-chart" height={440} ariaLabel="低評価側係数と高評価側係数の符号付き比較"
+                        option={kanoOption(result.attributes, selectedAttribute, selectedRowIds)}
+                        onEvents={{ click: event => {
+                          const attribute = result.attributes.find(a => a.name === event.data?.name)
+                          if (attribute) { setSelectedAttribute(attribute.name); handleSelectDissatisfied(attribute) }
+                        } }} />
                     </Card>
                   </GraphPanel>
                 )}
@@ -420,66 +360,30 @@ export default function PenaltyRewardPage() {
                 {(
                   <GraphPanel
                     graphId="penalty-reward/diverging"
-                    title="非対称インパクト対比"
+                    title="低評価側・高評価側の符号付き係数"
                     available={Boolean(result?.attributes?.length)}
                     sizing="intrinsic"
-                    intrinsicSize={{ width: 560, height: Math.max(300, 120 + (result?.attributes?.length ?? 4) * 64) }}
-                    normalWidth="viewport"
+                    intrinsicSize={{ width: 560, height: Math.max(260, result.attributes.length * 58 + 90) }}
+                    controls={<SelectionMenu />}
                   >
                     <Card
                       size="small"
+                      styles={{ body: { padding: 0 } }}
+                      bordered={false}
                       data-testid="diverging-impact-bars"
                       style={{
-                        marginTop: 16,
                                                 display: 'flex',
                         flexDirection: 'column',
                         minHeight: 0,
                       }}
                     >
-                      <div style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 4, fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>
-                          <span style={{ color: '#cf1322' }}>◀ Penalty Impact (低評価時の満足度低下 β_low)</span>
-                          <span style={{ color: '#3f8600' }}>Reward Impact (高評価時の満足度向上 β_high) ▶</span>
-                        </div>
-
-                        {result.attributes.map((a) => {
-                          const penWidth = Math.min(50, Math.round(Math.abs(a.penalty.coef) * 50))
-                          const rewWidth = Math.min(50, Math.round(Math.abs(a.reward.coef) * 50))
-                          const isSelected = a.name === selectedAttribute
-
-                          return (
-                            <div
-                              key={a.name}
-                              onClick={() => setSelectedAttribute(a.name)}
-                              style={{
-                                marginBottom: 8,
-                                cursor: 'pointer',
-                                padding: '4px 6px',
-                                borderRadius: 4,
-                                background: isSelected ? '#e6f7ff' : 'transparent',
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                                <Typography.Text strong ellipsis={{ tooltip: a.label }}><ColumnQuestionTooltip nameOrId={a.name}>{a.label}</ColumnQuestionTooltip></Typography.Text>
-                                <Tag color={getKanoColor(a.classification)}>{a.class_label}</Tag>
-                              </div>
-                              <div style={{ display: 'flex', height: 16, background: '#f0f0f0', borderRadius: 8, overflow: 'hidden' }}>
-                                <div style={{ width: '50%', display: 'flex', justifyContent: 'flex-end' }}>
-                                  <div style={{ width: `${penWidth * 2}%`, background: '#ff4d4f', height: '100%', borderRadius: '8px 0 0 8px' }} />
-                                </div>
-                                <div style={{ width: 2, background: '#8c8c8c' }} />
-                                <div style={{ width: '50%', display: 'flex', justifyContent: 'flex-start' }}>
-                                  <div style={{ width: `${rewWidth * 2}%`, background: '#52c41a', height: '100%', borderRadius: '0 8px 8px 0' }} />
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#888', marginTop: 1 }}>
-                                <span>{a.penalty.coef.toFixed(2)}</span>
-                                <span>+{a.reward.coef.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                      <EChart testId="pra-impact-chart" height={Math.max(260, result.attributes.length * 58 + 90)}
+                        ariaLabel="Penalty と Reward の符号付き回帰係数"
+                        option={praImpactOption(result.attributes, selectedAttribute, selectedRowIds)}
+                        onEvents={{ click: event => {
+                          const attribute = result.attributes.find(a => a.name === event.data?.name)
+                          if (attribute) { setSelectedAttribute(attribute.name); handleSelectDissatisfied(attribute) }
+                        } }} />
                     </Card>
                   </GraphPanel>
                 )}
@@ -607,7 +511,7 @@ export default function PenaltyRewardPage() {
                     {
                       title: 'Reward',
                       dataIndex: ['reward', 'coef'],
-                      render: (v: number) => <span style={{ color: '#3f8600' }}>+{v.toFixed(2)}</span>,
+                      render: (v: number) => <span style={{ color: '#3f8600' }}>{v.toFixed(2)}</span>,
                     },
                     {
                       title: '分類',

@@ -959,6 +959,7 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
         "datasetId": dataset_id,
         "schemaRevision": new_rev,
         "updatedColumns": updated_count,
+        "codebook": {**cb, "multiResponseGroups": _get_visible_multi_response_groups(cb)},
     }
 
 

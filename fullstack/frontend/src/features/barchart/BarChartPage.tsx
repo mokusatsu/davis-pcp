@@ -1,3 +1,5 @@
+import EChart from '../charts/EChart'
+import type { EChartsOption } from 'echarts'
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -33,10 +35,11 @@ export default function BarChartPage() {
   const ordinary = useSelector(selectOrdinaryVariables)
   const [brushOp] = useBrushOp()
   const { colorBy, getColor } = useRowColorResolver()
+  const l2ColorEnabled = useSelector((s: RootState) => s.selection.l2ColorEnabled)
 
   const [requestedColumn, setSelectedColumn] = useState<string>('')
   const [requestedSubColumn, setSubColumn] = useState<string>('')
-  const [displayMode, setDisplayMode] = useState<'count' | 'percent' | 'stacked'>('count')
+  const [displayMode, setDisplayMode] = useState<'count' | 'percent'>('count')
   const [sortOrder, setSortOrder] = useState<'count-desc' | 'name-asc' | 'ratio-desc'>('count-desc')
   const [hoveredCategory, setHoveredBar] = useState<string | null>(null)
 
@@ -123,7 +126,7 @@ export default function BarChartPage() {
   const hoveredBar = barData.find(item => item.category === hoveredCategory)
   const colorSegmentsByCategory = useMemo(() => {
     const result = new Map<string, { color: string; count: number }[]>()
-    if (!colorBy) return result
+    if (!colorBy && !l2ColorEnabled) return result
     for (const item of barData) {
       const counts = new Map<string, number>()
       for (const rowId of item.rowIds) {
@@ -133,7 +136,7 @@ export default function BarChartPage() {
       result.set(item.category, [...counts.entries()].map(([color, count]) => ({ color, count })))
     }
     return result
-  }, [barData, colorBy, getColor])
+  }, [barData, colorBy, l2ColorEnabled, getColor])
 
   const totalActive = activeRowIds.length
   const maxBarCount = useMemo(() => {
@@ -156,15 +159,55 @@ export default function BarChartPage() {
     else if (key === 'reset') dispatch(resetWorkingSet())
   }
 
-  // Layout parameters
-  const MARGIN_LEFT = 250
-  const MARGIN_RIGHT = 120
-  const MARGIN_TOP = 40
-  const BAR_HEIGHT = 34
-  const BAR_GAP = 14
-  const PLOT_WIDTH = 640
-  const totalSvgHeight = Math.max(380, MARGIN_TOP + barData.length * (BAR_HEIGHT + BAR_GAP) + 60)
-  const totalSvgWidth = MARGIN_LEFT + PLOT_WIDTH + MARGIN_RIGHT
+  // ECharts owns bar layout and hit-testing at every GraphPanel scale.
+  const chartHeight = Math.max(380, 100 + barData.length * 48)
+  const chartWidth = 1010
+  const colors = [...new Set(barData.flatMap(item =>
+    (colorSegmentsByCategory.get(item.category) ?? [{ color: '#e2e8f0', count: item.totalCount }]).map(segment => segment.color)))]
+  const chartValue = (count: number) => displayMode === 'count' ? count : count / (totalActive || 1) * 100
+  const chartOption: EChartsOption = {
+    grid: { left: 250, right: 220, top: 40, bottom: 45 },
+    xAxis: { type: 'value', min: 0, max: displayMode === 'count' ? maxBarCount : 100,
+      position: 'top', axisLabel: { formatter: (value: number) => displayMode === 'count' ? String(value) : `${value}%` },
+      splitLine: { lineStyle: { color: '#f3f4f6' } } },
+    // Category codes are distinct even when the displayed labels match.
+    yAxis: { type: 'category', inverse: true, triggerEvent: true, data: barData.map(item => item.category),
+      axisLabel: { width: 230, overflow: 'truncate', formatter: (code: string) => truncateText(formatValueLabel(selectedColumn, code), 18) },
+      axisLine: { show: false }, axisTick: { show: false } },
+    tooltip: { show: false },
+    series: [
+      ...colors.map(color => ({
+        id: `category-color-${color}`, type: 'bar' as const, stack: 'total', barWidth: 34,
+        itemStyle: { color, opacity: color === '#e2e8f0' ? 1 : 0.78 },
+        data: barData.map(item => {
+          const segments = colorSegmentsByCategory.get(item.category) ?? [{ color: '#e2e8f0', count: item.totalCount }]
+          const count = segments.find(segment => segment.color === color)?.count ?? 0
+          const fraction = item.selectedCount / (item.totalCount || 1)
+          const lastColor = colors.filter(candidate => segments.some(segment => segment.color === candidate)).at(-1)
+          return { value: chartValue(count), name: item.category,
+            label: { show: lastColor === color, position: 'right' as const, distance: 8,
+              color: item.selectedCount > 0 ? '#2a78d6' : '#64748b', fontSize: 11,
+              formatter: `${item.totalCount}件${item.selectedCount ? ` (${item.selectedCount}件選択 / ${(fraction * 100).toFixed(0)}%)` : ''}${displayMode === 'percent' ? ` [${chartValue(item.totalCount).toFixed(1)}%]` : ''}` },
+          }
+        }),
+      })),
+      { id: 'selected-count', type: 'bar', barWidth: 34, barGap: '-100%', z: 3,
+        itemStyle: { color: '#2a78d6', opacity: 0.9 },
+        data: barData.map(item => ({ name: item.category, value: chartValue(item.selectedCount) })) },
+    ],
+  }
+
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
+  React.useLayoutEffect(() => {
+    const node = contentRef.current
+    if (!node) return
+    const measure = () => { if (node.offsetHeight > 0) setContentHeight(node.offsetHeight) }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(node)
+    measure()
+    return () => observer?.disconnect()
+  }, [])
 
   return (
     <div
@@ -258,10 +301,11 @@ export default function BarChartPage() {
         title="対話型棒グラフ"
         available={barData.length > 0}
         sizing="intrinsic"
-        intrinsicSize={{ width: totalSvgWidth, height: totalSvgHeight }}
+        intrinsicSize={{ width: chartWidth, height: contentHeight ?? chartHeight + 150 }}
       >
         <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
           <div
+            ref={contentRef}
             style={{
               border: '1px solid #e5e7eb',
               borderRadius: 6,
@@ -288,116 +332,20 @@ export default function BarChartPage() {
               {selectedColumn && <div>対象変数: <ColumnQuestionText nameOrId={selectedColumn} /></div>}
               {subColumn && <div>内訳変数: <ColumnQuestionText nameOrId={subColumn} /></div>}
             </div>
-            <svg data-testid="barchart-svg" width={totalSvgWidth} height={totalSvgHeight} viewBox={`0 0 ${totalSvgWidth} ${totalSvgHeight}`} style={{ display: 'block', width: '100%', height: 'auto' }}>
-              {/* Background Grid Lines */}
-              {[0, 0.25, 0.5, 0.75, 1.0].map((frac) => {
-                const gx = MARGIN_LEFT + frac * PLOT_WIDTH
-                const valLabel =
-                  displayMode === 'count'
-                    ? Math.round(frac * maxBarCount)
-                    : `${(frac * 100).toFixed(0)}%`
-                return (
-                  <g key={frac}>
-                    <line x1={gx} y1={MARGIN_TOP - 10} x2={gx} y2={totalSvgHeight - 40} stroke="#f3f4f6" strokeWidth={1} />
-                    <text x={gx} y={MARGIN_TOP - 15} textAnchor="middle" style={{ fontSize: 10, fill: '#9ca3af' }}>
-                      {valLabel}
-                    </text>
-                  </g>
-                )
-              })}
-
-              {/* Bars */}
-              {barData.map((item, idx) => {
-                const y = MARGIN_TOP + idx * (BAR_HEIGHT + BAR_GAP)
-                const frac = displayMode === 'count' ? item.totalCount / maxBarCount : item.totalCount / (totalActive || 1)
-                const barWidth = Math.max(2, frac * PLOT_WIDTH)
-
-                // Selected fraction within this bar
-                const selFrac = item.totalCount > 0 ? item.selectedCount / item.totalCount : 0
-                const selBarWidth = barWidth * selFrac
-                const colorSegments = colorSegmentsByCategory.get(item.category) ?? []
-                let segmentOffset = 0
-
-                return (
-                  <g
-                    key={item.category}
-                    data-testid={`barchart-bar-${idx}`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => dispatch(selectionApplied({ rowIds: item.rowIds, operation: brushOp, label: 'BarChart' }))}
-                    onMouseEnter={() => setHoveredBar(item.category)}
-                    onMouseLeave={() => setHoveredBar(null)}
-                  >
-                    {/* Category Label */}
-                    <text
-                      x={MARGIN_LEFT - 12}
-                      y={y + BAR_HEIGHT / 2 + 4}
-                      textAnchor="end"
-                      style={{ fontSize: 12, fontWeight: 500, fill: '#374151' }}
-                    >
-                      <title>{formatValueLabel(selectedColumn, item.category)} ({item.category})</title>
-                      {truncateText(formatValueLabel(selectedColumn, item.category), 18)}
-                    </text>
-
-                    {/* Base Bar (Unselected / Total) */}
-                    <rect
-                      x={MARGIN_LEFT}
-                      y={y}
-                      width={barWidth}
-                      height={BAR_HEIGHT}
-                      rx={4}
-                      fill="#e2e8f0"
-                      stroke="#cbd5e1"
-                      strokeWidth={1}
-                    />
-                    {colorSegments.length > 0 && (
-                      <g clipPath={`url(#barchart-color-clip-${idx})`}>
-                        <defs>
-                          <clipPath id={`barchart-color-clip-${idx}`}>
-                            <rect x={MARGIN_LEFT} y={y} width={barWidth} height={BAR_HEIGHT} rx={4} />
-                          </clipPath>
-                        </defs>
-                        {colorSegments.map(({ color, count }) => {
-                          const width = barWidth * count / item.totalCount
-                          const x = MARGIN_LEFT + segmentOffset
-                          segmentOffset += width
-                          return <rect key={color} x={x} y={y} width={width} height={BAR_HEIGHT} fill={color} opacity={0.78} />
-                        })}
-                      </g>
-                    )}
-
-                    {/* Selected Highlight Overlay Bar */}
-                    {selBarWidth > 0 && (
-                      <rect
-                        x={MARGIN_LEFT}
-                        y={y}
-                        width={selBarWidth}
-                        height={BAR_HEIGHT}
-                        rx={selFrac === 1 ? 4 : 0}
-                        fill="#2a78d6"
-                        opacity={0.9}
-                      />
-                    )}
-
-                    {/* Value Badge / Text */}
-                    <text
-                      x={MARGIN_LEFT + barWidth + 8}
-                      y={y + BAR_HEIGHT / 2 + 4}
-                      style={{ fontSize: 11, fill: item.selectedCount > 0 ? '#2a78d6' : '#64748b', fontWeight: 600 }}
-                    >
-                      {item.totalCount}件
-                      {item.selectedCount > 0 && (
-                        <tspan fill="#2a78d6"> ({item.selectedCount}件選択 / {(selFrac * 100).toFixed(0)}%)</tspan>
-                      )}
-                      {displayMode === 'percent' && (
-                        <tspan fill="#94a3b8"> [{(frac * 100).toFixed(1)}%]</tspan>
-                      )}
-                    </text>
-                  </g>
-                )
-              })}
-
-              {/* Hover Tooltip Overlay */}
-            </svg>
+            <EChart testId="barchart-svg" width="100%" height={chartHeight}
+              ariaLabel={`${selectedColumn} の度数分布`} option={chartOption}
+              onEvents={{
+                click: params => {
+                  const item = params.componentType === 'yAxis' ? barData.find(item => item.category === String(params.value)) : barData[params.dataIndex]
+                  if (item) dispatch(selectionApplied({ rowIds: item.rowIds, operation: brushOp, label: 'BarChart' }))
+                },
+                mouseover: params => {
+                  const item = params.componentType === 'yAxis' ? barData.find(item => item.category === String(params.value)) : barData[params.dataIndex]
+                  if (item) setHoveredBar(item.category)
+                },
+                mouseout: () => setHoveredBar(null),
+                globalout: () => setHoveredBar(null),
+              }} />
             {hoveredBar && (
               <div role="status" style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, maxWidth: 360, maxHeight: 'calc(100% - 32px)', overflowY: 'auto', padding: 8, background: '#1e293b', color: '#fff', pointerEvents: 'none', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                 {formatValueLabel(selectedColumn, hoveredBar.category)} ({hoveredBar.category}): 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択

@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import EChart, { escapeHtml } from '../charts/EChart'
+import { useColumnarData } from '../pcp/useDatasetColumns'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Card, Empty, Radio, Segmented, Space, Spin, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Empty, Radio, Segmented, Space, Spin, Typography } from 'antd'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
 import GraphPanel from '../common/GraphPanel'
 import { api } from '../../api/client'
 import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
-import { neutralIndex, sortLikertRows, toLikertRow, type LikertRow, type LikertSort } from './likertTransform'
+import { neutralIndex, sortLikertRows, toLikertRow, likertIntervals, validLikertOrder, type LikertMode, type LikertRow, type LikertSort } from './likertTransform'
 
 interface LikertColumnPayload {
   denominators?: { total: number; target: number; valid: number; missing: number; notApplicable: number }
-  distribution?: { code: string; label: string; count: number; percentageValid: number }[]
+  distribution?: { code: string; label: string; count: number; percentageValid: number; isMissing?: boolean; isInvalid?: boolean }[]
   auxiliaryStats?: { mean?: number; meanNote?: string; top2Box?: { pct: number; n: number } | null }
   weighted?: { weightedN: number | null; distribution: { code: string; weightedCount: number; weightedPct: number | null }[] } | null
 }
@@ -25,6 +27,12 @@ export default function LikertComparisonPage() {
   const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
   const { columns: definitions, schemaRevision } = useCodebook()
   const [sort, setSort] = useState<LikertSort>('top2-desc')
+  const [mode, setMode] = useState<LikertMode>('stacked100')
+  const columnsData = useColumnarData(selection.datasetId)
+  useEffect(() => {
+    const value = localStorage.getItem(`davis:likert-mode:${selection.datasetId}`)
+    setMode(value === 'diverging' ? 'diverging' : 'stacked100')
+  }, [selection.datasetId])
   const [basis, setBasis] = useState<Basis>('unweighted')
   const [payload, setPayload] = useState<Record<string, LikertColumnPayload> | null>(null)
   const [weightMeta, setWeightMeta] = useState<{ status: string; columnName?: string | null; unweightedN?: number | null; weightedN?: number | null } | null>(null)
@@ -61,7 +69,7 @@ export default function LikertComparisonPage() {
       {
         datasetId: selection.datasetId, rowIds: effectiveRowIds, columns: columnNames,
         expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
-        ...(weightName ? { weightColumn: weightName } : {}),
+        ...(weightName ? { weightMode: 'column', weightColumn: weightName } : { weightMode: 'none' }),
       },
     ).then((res) => {
       if (cancelled || currentInput.current !== inputKey) return
@@ -81,15 +89,14 @@ export default function LikertComparisonPage() {
     const items = ordinalColumns.map((col) => {
       const data = payload[col.name]
       if (!data) return null
-      const order = (col.categoryOrder?.length ? col.categoryOrder : (data.distribution ?? []).map((d) => String(d.code)))
-        .map((c) => String(c))
+      const order = validLikertOrder(col, data.distribution ?? [])
       const distByCode = new Map((data.distribution ?? []).map((d) => [String(d.code), d]))
       const useWeighted = basis === 'weighted' && data.weighted
       const weightedByCode = new Map((data.weighted?.distribution ?? []).map((d) => [String(d.code), d]))
       const categories = order.map((code) => {
         if (useWeighted) {
           const w = weightedByCode.get(code)
-          return { code, label: distByCode.get(code)?.label ?? code, count: Math.round(w?.weightedCount ?? 0), pct: w?.weightedPct ?? 0 }
+          return { code, label: distByCode.get(code)?.label ?? code, count: w?.weightedCount ?? 0, pct: w?.weightedPct ?? 0 }
         }
         const d = distByCode.get(code)
         return { code, label: d?.label ?? code, count: d?.count ?? 0, pct: d?.percentageValid ?? 0 }
@@ -120,12 +127,32 @@ export default function LikertComparisonPage() {
     }
   }
 
+  const intervals = likertIntervals(rows, mode)
+  const selectedByCategory = new Set<string>()
+  if (columnsData) {
+    const selectedIds = new Set(selection.selectedRowIds)
+    columnsData.rowIds.forEach((id, i) => {
+      if (!selectedIds.has(id)) return
+      for (const row of rows) selectedByCategory.add(`${row.columnId}\0${normalizeCode(columnsData.columns[row.columnId]?.[i])}`)
+    })
+  }
+
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(300)
+  useLayoutEffect(() => {
+    const node = contentRef.current
+    if (!node) return
+    const measure = () => { if (node.offsetHeight > 0) setContentHeight(node.offsetHeight) }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(node)
+    measure()
+    return () => observer?.disconnect()
+  }, [Boolean(selection.datasetId)])
+
   if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
-  return (
-    <div data-testid="likert-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4 }}>
+  const controls = (
         <Space wrap>
-          <Typography.Text strong>Likert Comparison</Typography.Text>
           <Segmented
             size="small"
             aria-label="並べ替え"
@@ -145,7 +172,15 @@ export default function LikertComparisonPage() {
             <Radio.Button value="unweighted">非加重</Radio.Button>
             <Radio.Button value="weighted" disabled={!weightName}>加重</Radio.Button>
           </Radio.Group>
+          <Segmented size="small" aria-label="Likert表示形式" data-testid="likert-mode" value={mode}
+            options={[{ label: '100%積み上げ', value: 'stacked100' }, { label: '発散型', value: 'diverging' }]}
+            onChange={value => { setMode(value as LikertMode); localStorage.setItem(`davis:likert-mode:${selection.datasetId}`, String(value)) }} />
         </Space>
+  )
+
+  return (
+    <div data-testid="likert-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4 }}>
+
       {weightMeta && weightMeta.status !== 'omitted' && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="likert-weight-meta">
           表示基準: {basis === 'weighted' ? `加重（${weightMeta.columnName}）` : '非加重'}
@@ -159,66 +194,36 @@ export default function LikertComparisonPage() {
         title="Likert Comparison"
         available={rows.length > 0}
         sizing="intrinsic"
-        intrinsicSize={{ width: 900, height: Math.max(300, 60 + rows.length * 110) }}
+        controls={controls}
+        intrinsicSize={{ width: 900, height: contentHeight }}
       >
+        <div ref={contentRef}>
         {loading ? <div style={{ padding: 40, textAlign: 'center' }}><Spin tip="Likert集計を計算中..." /></div>
           : !rows.length ? <Empty description={ordinalColumns.length ? '表示可能な行がありません。' : '順序尺度の質問列がありません。'} />
           : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', fontSize: 11, color: '#666' }}>
-                <span style={{ flex: 1, textAlign: 'center' }}>← Negative</span>
-                <span style={{ width: 220 }} />
-                <span style={{ flex: 1, textAlign: 'center' }}>Positive →</span>
-                <span style={{ width: 90, textAlign: 'right' }}>Top-2</span>
-              </div>
+              <EChart height={Math.max(240, rows.length * 65 + 85)} testId="likert-echart" ariaLabel={`Likert ${mode === 'stacked100' ? '100%積み上げ' : '発散型'}・有効回答割合`}
+                option={{
+                  grid: { left: 190, right: 35, top: 25, bottom: 45, containLabel: true },
+                  xAxis: { type: 'value', min: mode === 'diverging' ? -100 : 0, max: 100, name: '有効回答割合 (%)', nameLocation: 'middle', nameGap: 30,
+                    axisLabel: { formatter: (v: number) => `${Math.abs(v)}%` } },
+                  yAxis: { type: 'category', inverse: true, data: rows.map(row => row.title), axisLabel: { width: 170, overflow: 'truncate' } },
+                  tooltip: { confine: true, formatter: (p: any) => { const mark = intervals[p.dataIndex]; return `${escapeHtml(rows[mark.rowIndex].title)}<br/>${escapeHtml(mark.label)} (${escapeHtml(mark.code)}): ${mark.count} / ${mark.pct.toFixed(2)}%<br/>有効n=${rows[mark.rowIndex].validN}` } },
+                  series: [{ type: 'custom', data: intervals.map(mark => [mark.start, mark.end, mark.rowIndex]),
+                    renderItem: (_params: any, api: any) => {
+                      const mark = intervals[_params.dataIndex], start = api.coord([mark.start, mark.rowIndex]), end = api.coord([mark.end, mark.rowIndex])
+                      return { type: 'rect', shape: { x: start[0], y: start[1] - 16, width: Math.max(0, end[0] - start[0]), height: 32 },
+                        style: { fill: mark.color, stroke: selectedByCategory.has(`${mark.columnId}\0${mark.code}`) ? '#2a78d6' : '#fff', lineWidth: selectedByCategory.has(`${mark.columnId}\0${mark.code}`) ? 3 : 1 } }
+                    } }],
+                }} onEvents={{ click: params => { const mark = intervals[params.dataIndex]; if (mark) void clickSegment(rows[mark.rowIndex], mark.code) } }} />
               {rows.map((row) => (
                 <Card key={row.columnId} size="small" title={`${row.title}（n=${row.validN}）`}>
-                  <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
-                    <div style={{ flex: 1, display: 'flex', height: 26, background: '#f5f5f5', borderRadius: 4, overflow: 'hidden' }} role="img" aria-label={`${row.title} 分布`}>
-                      {row.negative.map((seg) => (
-                        <Tooltip key={seg.code} title={`${seg.label}: ${seg.count}（${seg.pct.toFixed(1)}%）`}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`${row.title} ${seg.label} ${seg.count}`}
-                            data-testid={`likert-seg-${row.columnId}-${seg.code}`}
-                            onClick={() => void clickSegment(row, seg.code)}
-                            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); void clickSegment(row, seg.code) } }}
-                            style={{ width: `${seg.widthPct}%`, minWidth: seg.count > 0 ? 3 : 0, background: '#1677ff', opacity: 0.55 + (seg.widthPct / 200), cursor: 'pointer' }}
-                          />
-                        </Tooltip>
-                      ))}
-                      {row.neutral && (
-                        <Tooltip title={`${row.neutral.label}: ${row.neutral.count}（${row.neutral.pct.toFixed(1)}%）`}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`${row.title} ${row.neutral.label} ${row.neutral.count}`}
-                            data-testid={`likert-seg-${row.columnId}-${row.neutral.code}`}
-                            onClick={() => void clickSegment(row, row.neutral!.code)}
-                            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); void clickSegment(row, row.neutral!.code) } }}
-                            style={{ width: `${row.neutral.widthPct}%`, minWidth: row.neutral.count > 0 ? 3 : 0, background: '#d9d9d9', cursor: 'pointer' }}
-                          />
-                        </Tooltip>
-                      )}
-                      {row.positive.map((seg) => (
-                        <Tooltip key={seg.code} title={`${seg.label}: ${seg.count}（${seg.pct.toFixed(1)}%）`}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`${row.title} ${seg.label} ${seg.count}`}
-                            data-testid={`likert-seg-${row.columnId}-${seg.code}`}
-                            onClick={() => void clickSegment(row, seg.code)}
-                            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); void clickSegment(row, seg.code) } }}
-                            style={{ width: `${seg.widthPct}%`, minWidth: seg.count > 0 ? 3 : 0, background: '#52c41a', opacity: 0.55 + (seg.widthPct / 200), cursor: 'pointer' }}
-                          />
-                        </Tooltip>
-                      ))}
-                    </div>
-                    <div style={{ width: 90, textAlign: 'right', fontSize: 12 }}>
-                      {row.top2Pct == null ? '—' : `${row.top2Pct.toFixed(1)}%`}
-                    </div>
-                  </div>
+                  <Space wrap>
+                    {[...row.negative, ...(row.neutral ? [row.neutral] : []), ...row.positive].map(seg => <Button key={seg.code} size="small"
+                      data-testid={`likert-seg-${row.columnId}-${seg.code}`} onClick={() => void clickSegment(row, seg.code)}
+                      type={selectedByCategory.has(`${row.columnId}\0${seg.code}`) ? 'primary' : 'default'}>{seg.label}: {seg.count} ({seg.pct.toFixed(1)}%)</Button>)}
+                    <span>Top-2: {row.top2Pct == null ? '—' : `${row.top2Pct.toFixed(1)}%`}</span>
+                  </Space>
                   <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
                     {(() => {
                       const idx = neutralIndex(row.negative.length + (row.neutral ? 1 : 0) + row.positive.length)
@@ -230,6 +235,7 @@ export default function LikertComparisonPage() {
               ))}
             </div>
           )}
+        </div>
       </GraphPanel>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           セグメントをクリックすると該当回答者を中央Selectionへ送ります。* 中立の意味は原票で確認してください。

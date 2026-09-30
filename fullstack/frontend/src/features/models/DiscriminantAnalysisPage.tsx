@@ -1,6 +1,11 @@
+import { truncateText } from '../../utils/textUtils'
+import ModelScatter from './ModelScatter'
+import { CorrelationCircle } from './FamdFigure'
+import EChart from '../charts/EChart'
+import type { SeriesOption } from 'echarts'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import Table from '../common/ColumnTable'
-import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import ColumnQuestionTooltip, { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
@@ -34,7 +39,6 @@ import L1Legend from '../common/L1Legend'
 import GraphPanel from '../common/GraphPanel'
 import { getBrushOp } from '../selection/SelectionMenu'
 import DiscriminantDiagnostics, { type DiscriminantDiagnosticsData } from './DiscriminantDiagnostics'
-import { truncateText } from '../../utils/textUtils'
 
 export interface CanonicalAxisInfo {
   axisIndex: number
@@ -111,6 +115,7 @@ const CLASS_PALETTE = [
 
 export default function DiscriminantAnalysisPage() {
   const { getColor, selectionColor } = useRowColorResolver()
+  const questionText = useQuestionText()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
@@ -157,10 +162,7 @@ export default function DiscriminantAnalysisPage() {
 
   // Brush state on 2D Map
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const [brushBox, setBrushBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
 
-  const brushStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
-  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey])
 
   // Run analysis
   const handleRunAnalysis = async () => {
@@ -227,12 +229,9 @@ export default function DiscriminantAnalysisPage() {
     message.success(`グローバル有効変数を [${vars.join(', ')}] に更新しました。`)
   }
 
-  // Map 2D plot dimensions
   const mapWidth = 460
   const mapHeight = 300
-  const padding = { top: 20, right: 20, bottom: 40, left: 45 }
-  const innerWidth = mapWidth - padding.left - padding.right
-  const innerHeight = mapHeight - padding.top - padding.bottom
+  const biplotSize = 300
 
   // Map scales
   const mapExtents = useMemo(() => {
@@ -256,90 +255,6 @@ export default function DiscriminantAnalysisPage() {
       yMax: yMax + padY,
     }
   }, [result])
-
-  const scaleMapX = (ld1: number) => {
-    const { xMin, xMax } = mapExtents
-    if (xMax <= xMin) return padding.left
-    return padding.left + ((ld1 - xMin) / (xMax - xMin)) * innerWidth
-  }
-
-  const scaleMapY = (ld2: number) => {
-    const { yMin, yMax } = mapExtents
-    if (yMax <= yMin) return padding.top
-    return padding.top + (1.0 - (ld2 - yMin) / (yMax - yMin)) * innerHeight
-  }
-
-  const sampleY = (sample: DiscriminantSamplePoint) => {
-    if ((result?.axes.length ?? 0) >= 2) return scaleMapY(sample.ld2)
-    const jitter = (((sample.rowId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0) * 17) % 100) / 100 - 0.5) * innerHeight * 0.4
-    return padding.top + innerHeight / 2 + jitter
-  }
-
-  // Brush drag interaction
-  const plotCoordinates = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return null
-    const rect = svgRef.current.getBoundingClientRect()
-    if (!rect.width || !rect.height) return null
-    return { x: (e.clientX - rect.left) * mapWidth / rect.width, y: (e.clientY - rect.top) * mapHeight / rect.height, rect }
-  }
-  const handleMouseDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return
-    const point = plotCoordinates(e)
-    if (!point) return
-    const { x, y } = point
-    brushStart.current = { x, y, clientX: e.clientX, clientY: e.clientY }
-    e.currentTarget.setPointerCapture(e.pointerId)
-    setBrushBox({ startX: x, startY: y, currentX: x, currentY: y })
-  }
-
-  const handleMouseMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!brushStart.current) return
-    const point = plotCoordinates(e)
-    if (!point) return
-    const { x, y } = point
-    setBrushBox((prev) => (prev ? { ...prev, currentX: x, currentY: y } : null))
-  }
-
-  const handleMouseUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    const start = brushStart.current
-    const end = plotCoordinates(e)
-    brushStart.current = null
-    setBrushBox(null)
-    if (!start || !end) return
-    const xMin = Math.min(start.x, end.x)
-    const xMax = Math.max(start.x, end.x)
-    const yMin = Math.min(start.y, end.y)
-    const yMax = Math.max(start.y, end.y)
-
-    // Check if dragging was intentional (> 4px)
-    if (Math.abs(e.clientX - start.clientX) > 4 || Math.abs(e.clientY - start.clientY) > 4) {
-      const selected: string[] = []
-      for (const pt of result?.samples ?? []) {
-        const px = scaleMapX(pt.ld1)
-        const py = sampleY(pt)
-        if (px >= xMin && px <= xMax && py >= yMin && py <= yMax) {
-          selected.push(pt.rowId)
-        }
-      }
-      handleSelectRows(selected)
-    } else {
-      let nearest: string | null = null
-      let distance = 49
-      for (const pt of result?.samples ?? []) {
-        const dx = (scaleMapX(pt.ld1) - end.x) * end.rect.width / mapWidth
-        const dy = (sampleY(pt) - end.y) * end.rect.height / mapHeight
-        const squared = dx * dx + dy * dy
-        if (squared < distance) { nearest = pt.rowId; distance = squared }
-      }
-      if (nearest) dispatch(selectionApplied({ rowIds: [nearest], operation: 'toggle', label: '判別分析の点選択' }))
-    }
-  }
-
-  // Biplot dimensions
-  const biplotSize = 300
-  const biplotPadding = 40
-  const biplotRadius = (biplotSize - biplotPadding * 2) / 2
-  const biplotCenter = biplotSize / 2
 
   // Color mapping helper
   const classColorMap = useMemo(() => {
@@ -523,147 +438,16 @@ export default function DiscriminantAnalysisPage() {
                   ))}
                 </Space>
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
-                  <svg
-                    ref={svgRef}
-                    data-testid="discriminant-map-svg"
-                    viewBox={`0 0 ${mapWidth} ${mapHeight}`}
-                    width="100%"
-                    style={{ aspectRatio: `${mapWidth} / ${mapHeight}`, touchAction: 'none', background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none' }}
-                    onPointerDown={handleMouseDown}
-                    onPointerMove={handleMouseMove}
-                    onPointerUp={handleMouseUp}
-                    onPointerCancel={() => { brushStart.current = null; setBrushBox(null) }}
-                    onLostPointerCapture={() => { brushStart.current = null; setBrushBox(null) }}
-                  >
-                    {/* Boundary Mesh Background (if available) */}
-                    {result.boundaryMesh && (
-                      <g opacity={0.15}>
-                        {(() => {
-                          const mesh = result.boundaryMesh
-                          const res = mesh.gridResolution
-                          const cellW = innerWidth / res
-                          const cellH = innerHeight / res
-                          const rects = []
-                          for (let r = 0; r < res; r++) {
-                            for (let c = 0; c < res; c++) {
-                              const cIdx = mesh.gridClassIndices[r][c]
-                              const cls = mesh.classes[cIdx]
-                              const fill = classColorMap[cls] || '#ccc'
-                              rects.push(
-                                <rect
-                                  key={`${r}-${c}`}
-                                  x={padding.left + c * cellW}
-                                  y={padding.top + (res - 1 - r) * cellH}
-                                  width={cellW + 0.5}
-                                  height={cellH + 0.5}
-                                  fill={fill}
-                                />
-                              )
-                            }
-                          }
-                          return rects
-                        })()}
-                      </g>
-                    )}
-
-                    {/* Zero Axes */}
-                    {mapExtents.xMin <= 0 && mapExtents.xMax >= 0 && (
-                      <line
-                        x1={scaleMapX(0)}
-                        y1={padding.top}
-                        x2={scaleMapX(0)}
-                        y2={padding.top + innerHeight}
-                        stroke="#d9d9d9"
-                        strokeDasharray="2 2"
-                      />
-                    )}
-                    {result.axes.length >= 2 && mapExtents.yMin <= 0 && mapExtents.yMax >= 0 && (
-                      <line
-                        x1={padding.left}
-                        y1={scaleMapY(0)}
-                        x2={padding.left + innerWidth}
-                        y2={scaleMapY(0)}
-                        stroke="#d9d9d9"
-                        strokeDasharray="2 2"
-                      />
-                    )}
-
-                    {/* Boundary line for 1D mode */}
-                    {result.axes.length < 2 && (
-                      <line
-                        x1={scaleMapX(result.decisionThreshold1D ?? 0)}
-                        y1={padding.top}
-                        x2={scaleMapX(result.decisionThreshold1D ?? 0)}
-                        y2={padding.top + innerHeight}
-                        stroke="#ff4d4f"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 3"
-                      />
-                    )}
-
-                    {/* Samples */}
-                    {result.samples.map((s) => {
-                      const cx = scaleMapX(s.ld1)
-                      const cy = sampleY(s)
-                      const isSelected = selectedRowIdSet.has(s.rowId)
-                      const color = getColor(s.rowId)
-
-                      return (
-                        <g key={s.rowId}>
-                        {s.isMisclassified && <circle cx={cx} cy={cy} r={isSelected ? 9 : 7} fill="none" stroke="#ff4d4f" strokeWidth={1.5} />}
-                        <circle
-                          data-row-id={s.rowId}
-                          cx={cx}
-                          cy={cy}
-                          r={isSelected ? 6 : 4}
-                          fill={color}
-                          stroke={isSelected ? selectionColor : '#ffffff'}
-                          strokeWidth={isSelected ? 2.5 : 0.8}
-                          opacity={0.88}
-                        >
-                          <title>{`Row: ${s.rowId}\nActual: ${s.actualClass}\nPred: ${s.predictedClass}\nLD1: ${s.ld1}\nLD2: ${s.ld2}\nDist: ${s.mahalanobisDistance}`}</title>
-                        </circle>
-                        </g>
-                      )
-                    })}
-
-                    {/* Brush box */}
-                    {brushBox && (
-                      <rect
-                        x={Math.min(brushBox.startX, brushBox.currentX)}
-                        y={Math.min(brushBox.startY, brushBox.currentY)}
-                        width={Math.abs(brushBox.currentX - brushBox.startX)}
-                        height={Math.abs(brushBox.currentY - brushBox.startY)}
-                        fill="rgba(42,120,214,0.15)"
-                        stroke="#2a78d6"
-                        strokeWidth={1.5}
-                        pointerEvents="none"
-                      />
-                    )}
-
-                    {/* Axis labels */}
-                    <text
-                      x={padding.left + innerWidth / 2}
-                      y={mapHeight - 6}
-                      textAnchor="middle"
-                      fontSize={11}
-                      fill="#595959"
-                    >
-                      LD1 (第1正準判別軸)
-                    </text>
-                    {result.axes.length >= 2 && (
-                      <text
-                        x={12}
-                        y={padding.top + innerHeight / 2}
-                        textAnchor="middle"
-                        transform={`rotate(-90 12 ${padding.top + innerHeight / 2})`}
-                        fontSize={11}
-                        fill="#595959"
-                      >
-                        LD2 (第2正準判別軸)
-                      </text>
-                    )}
-                  </svg>
+                  <ModelScatter testId="discriminant-map-svg" svgRef={svgRef} height={mapHeight}
+                    points={result.samples.map(s => ({ id: s.rowId, rowId:s.rowId, x: s.ld1, y: s.ld2,
+                      selected: selectedRowIdSet.has(s.rowId), selectionColor, color: getColor(s.rowId), misclassified: s.isMisclassified,
+                      title: `Row: ${s.rowId}\nActual: ${s.actualClass}\nPred: ${s.predictedClass}\nLD1: ${s.ld1}\nLD2: ${s.ld2}\nDist: ${s.mahalanobisDistance}` }))}
+                    oneDimensional={result.axes.length < 2} xLabel="LD1 (第1正準判別軸)" yLabel="LD2 (第2正準判別軸)"
+                    xExtent={[mapExtents.xMin, mapExtents.xMax]} yExtent={[mapExtents.yMin, mapExtents.yMax]}
+                    extraSeries={discriminantBackground(result, classColorMap)}
+                    onToggle={id => dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: '判別分析の点選択' }))}
+                    onBrush={b => handleSelectRows(result.samples.filter(s => s.ld1 >= b.x[0] && s.ld1 <= b.x[1]
+                      && (!b.y || s.ld2 >= b.y[0] && s.ld2 <= b.y[1])).map(s => s.rowId))} />
                 </div>
 
                 <L1Legend />
@@ -703,98 +487,17 @@ export default function DiscriminantAnalysisPage() {
               <Card size="small">
                 {result.axes.length >= 2 ? (
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <svg width={biplotSize} height={biplotSize} style={{ background: '#fafafa', borderRadius: 4 }}>
-                      {/* Unit circle */}
-                      <circle
-                        cx={biplotCenter}
-                        cy={biplotCenter}
-                        r={biplotRadius}
-                        fill="none"
-                        stroke="#d9d9d9"
-                        strokeDasharray="2 2"
-                      />
-                      {/* Axes */}
-                      <line
-                        x1={biplotPadding}
-                        y1={biplotCenter}
-                        x2={biplotSize - biplotPadding}
-                        y2={biplotCenter}
-                        stroke="#bfbfbf"
-                      />
-                      <line
-                        x1={biplotCenter}
-                        y1={biplotPadding}
-                        x2={biplotCenter}
-                        y2={biplotSize - biplotPadding}
-                        stroke="#bfbfbf"
-                      />
-
-                      {/* Vector arrows */}
-                      {result.loadings.map((l) => {
-                        const targetX = biplotCenter + l.ld1 * biplotRadius
-                        const targetY = biplotCenter - (l.ld2 ?? 0) * biplotRadius
-                        const label = truncateText(l.variable, 16)
-                        const estimatedLabelWidth = Math.min(96, Array.from(label).length * 6)
-                        const canPlaceRight = targetX + 5 + estimatedLabelWidth <= biplotSize - 8
-                        const canPlaceLeft = targetX - 5 - estimatedLabelWidth >= 8
-                        const labelOnRight = l.ld1 >= 0 ? (canPlaceRight || !canPlaceLeft) : (!canPlaceLeft && canPlaceRight)
-                        const labelX = labelOnRight ? Math.min(biplotSize - 8, targetX + 5) : Math.max(8, targetX - 5)
-
-                        return (
-                          <g key={l.variable}>
-                            <line
-                              x1={biplotCenter}
-                              y1={biplotCenter}
-                              x2={targetX}
-                              y2={targetY}
-                              stroke="#722ed1"
-                              strokeWidth={1.8}
-                            />
-                            <circle cx={targetX} cy={targetY} r={3} fill="#722ed1" />
-                            <ColumnQuestionTooltip nameOrId={l.variable} svg><text
-                              x={labelX}
-                              y={targetY + (l.ld2 && l.ld2 >= 0 ? -4 : 10)}
-                              textAnchor={labelOnRight ? 'start' : 'end'}
-                              fontSize={10}
-                              fontWeight="bold"
-                              fill="#531dab"
-                            >
-                              {label}
-                            </text></ColumnQuestionTooltip>
-                          </g>
-                        )
-                      })}
-
-                      <text x={biplotSize - 16} y={biplotCenter - 4} fontSize={9} fill="#8c8c8c">LD1</text>
-                      <text x={biplotCenter + 4} y={16} fontSize={9} fill="#8c8c8c">LD2</text>
-                    </svg>
+                    <CorrelationCircle size={biplotSize} testId="discriminant-loadings-chart" points={result.loadings.map(l => ({
+                      id: l.variable, label: l.variable, x: l.ld1, y: l.ld2 ?? 0, title: `${questionText(l.variable)} LD1=${l.ld1}, LD2=${l.ld2}`, color: '#722ed1' }))} />
                   </div>
                 ) : (
                   <div style={{ padding: 8 }}>
                     <Typography.Text strong style={{ fontSize: 12 }}>LD1 負荷量 (1D Mode)</Typography.Text>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-                      {result.loadings.map((l) => (
-                        <div key={l.variable} style={{ display: 'flex', alignItems: 'center' }}>
-                          <span style={{ width: 100, fontSize: 12 }}><ColumnQuestionTooltip nameOrId={l.variable}>{l.variable}</ColumnQuestionTooltip></span>
-                          <div style={{ flex: 1, position: 'relative', height: 16, background: '#f0f0f0', borderRadius: 2 }}>
-                            <div
-                              style={{
-                                position: 'absolute',
-                                left: l.ld1 >= 0 ? '50%' : `${50 + l.ld1 * 50}%`,
-                                width: `${Math.abs(l.ld1) * 50}%`,
-                                height: '100%',
-                                background: l.ld1 >= 0 ? '#1890ff' : '#fa8c16',
-                                borderRadius: 2,
-                              }}
-                            />
-                            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#8c8c8c' }} />
-                          </div>
-                          <span style={{ width: 50, textAlign: 'right', fontSize: 11, fontFamily: 'monospace' }}>
-                            {l.ld1.toFixed(3)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <EChart height={Math.max(220, result.loadings.length * 32 + 60)} ariaLabel="LD1 負荷量"
+                      option={{ grid: { left: 110, right: 40, top: 20, bottom: 35 }, tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; return p ? `${questionText(p.name)}\nLD1: ${p.value}` : '' } },
+                        xAxis: { type: 'value', min: -1, max: 1 }, yAxis: { type: 'category', inverse: true, data: result.loadings.map(l => l.variable), axisLabel: { formatter: (name: string) => truncateText(name, 16) } },
+                        series: [{ type: 'bar', data: result.loadings.map(l => ({ value: l.ld1, itemStyle: { color: l.ld1 >= 0 ? '#1890ff' : '#fa8c16' } })),
+                          label: { show: true, formatter: (p: any) => Number(p.value).toFixed(3) } }] }} />
                   </div>
                 )}
               </Card>
@@ -918,4 +621,21 @@ export default function DiscriminantAnalysisPage() {
       )}
     </div>
   )
+}
+
+/** Boundary cells use the backend mesh's data extents, not the sample plot extent. */
+export function discriminantBackground(result: DiscriminantResponse, colors: Record<string, string>): SeriesOption[] {
+  const mesh = result.boundaryMesh
+  if (result.axes.length < 2) return [{ type: 'scatter', data: [], markLine: { silent: true, symbol: 'none',
+    data: [{ xAxis: result.decisionThreshold1D ?? 0 }], lineStyle: { color: '#ff4d4f' }, label: { formatter: '判別閾値' } } }]
+  if (!mesh) return []
+  const n = mesh.gridResolution
+  const dx = (mesh.xRange[1] - mesh.xRange[0]) / n, dy = (mesh.yRange[1] - mesh.yRange[0]) / n
+  return [{ type: 'custom', silent: true, clip: true, z: 0,
+    data: mesh.gridClassIndices.flatMap((row, r) => row.map((cls, c) => [mesh.xRange[0] + c * dx, mesh.yRange[0] + r * dy, cls])),
+    renderItem: (_params: any, api: any) => {
+      const x = Number(api.value(0)), y = Number(api.value(1)), a = api.coord([x, y]), b = api.coord([x + dx, y + dy])
+      return { type: 'rect', shape: { x: a[0], y: b[1], width: b[0]-a[0], height: a[1]-b[1] },
+        style: { fill: colors[mesh.classes[Number(api.value(2))]] ?? '#ccc', opacity: .15 } }
+    } }]
 }

@@ -33,3 +33,18 @@ it('runs PCA manually with ordinary columns and preserves empty scope', async ()
     expectedSchemaRevision: 2, expectedDataRevision: 3 })))
   await view.findByText('対象行がありません。')
 })
+
+it('shows the backend explanation when constant input columns were excluded', async () => {
+  const base = store.getState()
+  const columns = ['x', 'y', 'constant'].map(name => ({ name, columnId: name, label: name, role: 'question',
+    scaleType: 'ratio', multiResponseGroup: null, valueLabels: {}, categoryOrder: [], missingCodes: [] }))
+  const state = { ...base, selection: { ...base.selection, datasetId: 'd' },
+    globalVariables: { ...base.globalVariables, allVariables: columns.map(c => c.name), activeEntities: null },
+    codebook: { ...base.codebook, datasetId: 'd', columns } }
+  const local = configureStore({ reducer: () => state as any })
+  vi.spyOn(api, 'post').mockResolvedValue({ nComponents: 2, eigenvalues: [1.5, .5],
+    warnings: [{ code: 'PCA_CONSTANT_COLUMNS_EXCLUDED', message: '対象行で値が一定の列をPCAから除外しました: constant' }] })
+  const view = render(<Provider store={local}><MemoryRouter><PcaPage /></MemoryRouter></Provider>)
+  fireEvent.click(view.getByTestId('pca-run-button'))
+  await waitFor(() => expect(view.getByTestId('pca-warning')).toHaveTextContent('constant'))
+})

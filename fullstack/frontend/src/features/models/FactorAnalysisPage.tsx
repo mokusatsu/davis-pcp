@@ -13,11 +13,39 @@ import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import type { EFAContext, EFAResponse } from './efaApi'
 import { cancelEFAComparison, exportEFATable, fetchAllEFARows, fetchEFAComparison, materializeEFA, predictEFA, runEFA, selectEFA } from './efaApi'
 import EfaScoreFigure from './EfaScoreFigure'
+import type { EChartsOption } from 'echarts'
+import EChart from '../charts/EChart'
+import L1Legend from '../common/L1Legend'
+import { useRowColorResolver } from '../../theme/useRowColor'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
   if (typeof msg !== 'string' || !msg) return fallback
   return typeof code === 'string' && code ? msg + '(' + code + ')' : msg
+}
+
+/** Keep parallel-analysis ranks aligned, including missing reference quantiles. */
+export function efaScreeOption(observed: (number | null)[], reference: (number | null)[], suggestedFactors: number | null): EChartsOption {
+  const ranks = Array.from({ length: Math.max(observed.length, reference.length) }, (_, i) => String(i + 1))
+  const values = (source: (number | null)[]) => ranks.map((_, i) =>
+    typeof source[i] === 'number' && Number.isFinite(source[i]) ? source[i] : null)
+  return {
+    animation: false, backgroundColor: '#fafafa',
+    title: { text: `平行分析（候補 ${suggestedFactors ?? 'x'}）`, left: 12, top: 6,
+      textStyle: { fontSize: 11, fontWeight: 'normal' } },
+    grid: { left: 54, right: 24, top: 56, bottom: 42 },
+    legend: { data: ['観測', '参照分位'], top: 24, left: 'center' },
+    tooltip: { trigger: 'axis', renderMode: 'richText', valueFormatter: (value) =>
+      typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : '未提供' },
+    xAxis: { type: 'category', data: ranks, name: '順位', nameLocation: 'middle', nameGap: 26, boundaryGap: false },
+    yAxis: { type: 'value', name: '固有値', scale: false },
+    series: [
+      { id: 'efa-observed-eigenvalues', name: '観測', type: 'line', data: values(observed),
+        connectNulls: false, symbol: 'circle', symbolSize: 8, itemStyle: { color: '#1890ff' }, lineStyle: { width: 1.5 } },
+      { id: 'efa-reference-quantiles', name: '参照分位', type: 'line', data: values(reference),
+        connectNulls: false, symbol: 'emptyCircle', symbolSize: 6, itemStyle: { color: '#fa8c16' }, lineStyle: { width: 1.5, type: 'dashed' } },
+    ],
+  }
 }
 
 type Treat = 'ordinal' | 'continuous_approximation' | 'continuous'
@@ -28,6 +56,7 @@ export default function FactorAnalysisPage(): JSX.Element {
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
+  const { getColor } = useRowColorResolver()
 
   const colById = useMemo(() => {
     const m = new Map<string, { name: string; label: string; scaleType: string; categoryOrder?: string[] }>()
@@ -495,35 +524,11 @@ export default function FactorAnalysisPage(): JSX.Element {
                     sizing="intrinsic"
                     intrinsicSize={{ width: 560, height: 220 }}
                   >
-                  <svg viewBox="0 0 560 220" width="560" height="220" style={{ background: '#fafafa', borderRadius: 4 }} data-testid="efa-scree">
-                    {(() => {
-                      const obs = result.details.parallelAnalysis.observedEigenvalues ?? []
-                      const ref = result.details.parallelAnalysis.referenceQuantiles ?? []
-                      const all = [...obs, ...ref.filter((v): v is number => typeof v === 'number')]
-                      const mx = all.length ? Math.max(...all) : 1
-                      const X = (i: number, n: number): number => 46 + (i / Math.max(1, n - 1)) * 490
-                      const Y = (v: number): number => 190 - (v / (mx > 0 ? mx : 1)) * 160
-                      const line = (vs: (number | null)[]): string =>
-                        vs.map((v, i) => (typeof v === 'number' ? (i === 0 ? 'M' : 'L') + X(i, vs.length).toFixed(1) + ' ' + Y(v).toFixed(1) : '')).join(' ')
-                      return (
-                        <>
-                          {obs.map((v, i) => (
-                            <circle key={'o' + i} cx={X(i, obs.length)} cy={Y(v)} r={4} fill="#1890ff">
-                              <title>{'順位' + (i + 1) + ' 観測' + Number(v).toFixed(3)}</title>
-                            </circle>
-                          ))}
-                          {ref.map((v, i) => (typeof v === 'number' ? (
-                            <circle key={'r' + i} cx={X(i, ref.length)} cy={Y(v)} r={3} fill="none" stroke="#fa8c16" strokeWidth={1.5}>
-                              <title>{'順位' + (i + 1) + ' 参照' + Number(v).toFixed(3)}</title>
-                            </circle>
-                          ) : null))}
-                          <path d={line(obs)} fill="none" stroke="#1890ff" strokeWidth={1.5} />
-                          <path d={line(ref)} fill="none" stroke="#fa8c16" strokeWidth={1.5} strokeDasharray="5 4" />
-                          <text x={8} y={16} fontSize={11}>●観測 ○参照分位（候補 {result.details.parallelAnalysis.suggestedFactors ?? 'x'}）</text>
-                        </>
-                      )
-                    })()}
-                  </svg>
+                  <EChart
+                    option={efaScreeOption(result.details.parallelAnalysis.observedEigenvalues ?? [],
+                      result.details.parallelAnalysis.referenceQuantiles ?? [], result.details.parallelAnalysis.suggestedFactors)}
+                    height={220} testId="efa-scree" ariaLabel="固有値・平行分析スクリープロット"
+                  />
                   </GraphPanel>
                   <Table
                     columns={[{ title: '順位', dataIndex: 'rank', key: 'rank' }, { title: '観測', dataIndex: 'obs', key: 'obs' }, { title: '参照分位', dataIndex: 'ref', key: 'ref' }]}
@@ -679,6 +684,7 @@ export default function FactorAnalysisPage(): JSX.Element {
                       yLabel={factorIds[figY - 1] ?? ('F' + figY)}
                       selected={selectedSet}
                       hovered={selection.hoveredRowId ?? null}
+                      getColor={getColor}
                       onToggle={(id) => void handleToggleScore(id)}
                       onBrush={(b) => void handleBrush(b)}
                       svgRef={svgRef}
@@ -686,6 +692,7 @@ export default function FactorAnalysisPage(): JSX.Element {
                     />
                     </GraphPanel>
                   )}
+                  <L1Legend />
                   <Space wrap>
                     <Button disabled={!result.capabilities.rows} onClick={() => void handlePredict()}>予測</Button>
                     <span>保存する因子:</span>

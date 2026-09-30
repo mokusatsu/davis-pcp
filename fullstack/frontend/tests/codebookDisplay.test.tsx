@@ -1,3 +1,4 @@
+import { getInstanceByDom } from 'echarts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -9,7 +10,9 @@ import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 import StatisticsPage from '../src/features/dataset/StatisticsPage'
 import BarChartPage from '../src/features/barchart/BarChartPage'
 import { graphEngine } from '../src/engine/graphClient'
-import type { CodebookColumn } from '../src/api/client'
+import { api, type CodebookColumn } from '../src/api/client'
+import LikertComparisonPage from '../src/features/distribution/LikertComparisonPage'
+import QuestionCard from '../src/features/distribution/QuestionCard'
 import { useColumnarData } from '../src/features/pcp/useDatasetColumns'
 
 const fixture = vi.hoisted(() => ({
@@ -36,7 +39,18 @@ function setup(scale: CodebookColumn['scaleType'] = 'ordinal') {
     return s
   }, middleware: g => g({ serializableCheck: false }) })
 }
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks() })
+
+function barChart() {
+  const host = screen.queryByTestId('barchart-svg')
+  return host ? getInstanceByDom(host) : undefined
+}
+function chartBars() {
+  return ((barChart()?.getOption().series as any[]) ?? []).find(series => series.id?.startsWith('category-color-'))?.data ?? []
+}
+function chartCategories() {
+  return (barChart()?.getOption().yAxis as any[])?.[0]?.data ?? []
+}
 
 describe('saved codebook display', () => {
   it.each([undefined, 'multiple'] as const)('shows name and question with one information control (%s)', async mode => {
@@ -109,12 +123,13 @@ describe('saved codebook display', () => {
   })
   it('labels bars without merging codes that share a label and shows the full question', async () => {
     render(<Provider store={setup()}><BarChartPage /></Provider>)
-    const bars = await screen.findAllByTestId(/^barchart-bar-/)
+    await waitFor(() => expect(chartBars()).toHaveLength(4))
+    const bars = chartBars()
     expect(bars).toHaveLength(4)
-    expect(bars[0]).toHaveTextContent('同じ表示')
-    expect(bars[1]).toHaveTextContent('同じ表示')
+    const axis = (barChart()!.getOption().yAxis as any[])[0]
+    expect(chartCategories().filter((code: string) => axis.axisLabel.formatter(code) === '同じ表示')).toHaveLength(2)
     expect(screen.getByTestId('barchart-questions')).toHaveTextContent(spec.label)
-    fireEvent.mouseEnter(bars[0])
+    act(() => (barChart() as any).trigger('mouseover', { dataIndex: 0 }))
     const tooltip = screen.getByRole('status')
     expect(tooltip).toHaveTextContent('同じ表示 (1)')
     expect(tooltip).toHaveStyle({ position: 'absolute' })
@@ -126,16 +141,73 @@ describe('saved codebook display', () => {
       { ...spec, columnId: 'child', name: 'MAChild', multiResponseGroup: 'services' },
       { ...spec, columnId: 'unused', name: 'Unused' }] }) })
     render(<Provider store={local}><BarChartPage /></Provider>)
-    await screen.findAllByTestId(/^barchart-bar-/)
+    await waitFor(() => expect(chartBars()).toHaveLength(4))
     expect(useColumnarData).toHaveBeenLastCalledWith('ds', ['Q'])
     act(() => { local.dispatch({ type: 'test/scope', payload: ['r2'] }) })
-    await waitFor(() => expect(screen.getAllByTestId(/^barchart-bar-/)).toHaveLength(1))
-    expect(screen.getByTestId('barchart-bar-0').querySelector('title')).toHaveTextContent('同じ表示 (2)')
+    await waitFor(() => expect(chartBars()).toHaveLength(1))
+    expect(chartCategories()).toEqual(['2'])
     act(() => { local.dispatch({ type: 'test/entities', payload: [] }) })
     await waitFor(() => expect(useColumnarData).toHaveBeenLastCalledWith('ds', []))
-    expect(screen.queryAllByTestId(/^barchart-bar-/)).toHaveLength(0)
+    expect(chartBars()).toHaveLength(0)
     act(() => { local.dispatch({ type: 'test/entities', payload: [{ kind: 'column', columnId: 'child' }] }) })
     expect(useColumnarData).toHaveBeenLastCalledWith('ds', [])
-    expect(screen.queryAllByTestId(/^barchart-bar-/)).toHaveLength(0)
+    expect(chartBars()).toHaveLength(0)
   })
+  it('sizes expanded question cards from the full chart and wrapped content height', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === 'question-card-Q' ? 640 : 0
+    })
+    render(<Provider store={setup()}><GraphExpansionProvider>
+      <QuestionCard summary={{ columnId: 'Q', distribution: [{ code: '1', count: 3, percentageValid: 100, percentageTotal: 100 }] }} />
+    </GraphExpansionProvider></Provider>)
+    const chartHost = screen.getByTestId('question-chart-Q')
+    const chart = getInstanceByDom(chartHost)
+    fireEvent.click(screen.getByTestId('graph-expand-distribution/question/Q'))
+    await waitFor(() => expect(screen.getByTestId('graph-expansion-dock')).toContainElement(chartHost))
+    expect(screen.getByTestId('graph-surface-distribution/question/Q')).toHaveStyle({ height: '656px' })
+    expect(getInstanceByDom(chartHost)).toBe(chart)
+  })
+
+  it('keeps five- and six-point Likert denominators and display controls intact when expanded', async () => {
+    localStorage.removeItem('davis:likert-mode:ds')
+    const testStore = setup()
+    const makeColumn = (name: string, length: number) => ({ ...spec, columnId: name, name, label: name,
+      categoryOrder: [...Array.from({ length }, (_, index) => String(index + 1)), '99'] })
+    act(() => {
+      testStore.dispatch({ type: 'test/columns', payload: [makeColumn('Q5', 5), makeColumn('Q6', 6)] })
+      testStore.dispatch({ type: 'test/entities', payload: [{ kind: 'column', columnId: 'Q5' }, { kind: 'column', columnId: 'Q6' }] })
+    })
+    const payload = (counts: number[]) => ({ denominators: { total: 10, target: 10, valid: 8, missing: 2, notApplicable: 0 },
+      distribution: [...counts.map((count, index) => ({ code: String(index + 1), label: `回答${index + 1}`, count, percentageValid: count / 8 * 100 })),
+        { code: '99', label: '無回答', count: 2, percentageValid: 0, isMissing: true }] })
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ columns: { Q5: payload([1, 1, 2, 2, 2]), Q6: payload([1, 1, 1, 1, 2, 2]) } })
+    render(<Provider store={testStore}><GraphExpansionProvider><LikertComparisonPage /></GraphExpansionProvider></Provider>)
+    const element = await screen.findByTestId('likert-echart')
+    const chart = getInstanceByDom(element)!
+    const bars = () => (chart.getOption().series as any[])[0].data as number[][]
+    expect(bars()).toHaveLength(11)
+    expect(bars().filter(item => item[2] === 0).at(-1)?.[1]).toBe(100)
+    expect(bars().filter(item => item[2] === 1).at(-1)?.[1]).toBe(100)
+    expect(screen.queryByTestId('likert-seg-Q5-99')).toBeNull()
+    expect(screen.getByText('Q5（n=8）')).toBeInTheDocument()
+    expect(screen.getByText('Q6（n=8）')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('graph-expand-likert/comparison'))
+    await waitFor(() => expect(screen.getByTestId('graph-expansion-dock')).toContainElement(element))
+    expect(screen.getByTestId('graph-expansion-dock')).toContainElement(screen.getByTestId('likert-mode'))
+    fireEvent.click(screen.getByText('発散型'))
+    const divergent = bars()
+    expect(divergent[2].slice(0, 2)).toEqual([-12.5, 12.5])
+    expect(divergent[7][1]).toBe(0)
+    expect(divergent[8][0]).toBe(0)
+    expect(getInstanceByDom(element)).toBe(chart)
+    expect(post).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId('graph-expansion-exit'))
+    await waitFor(() => expect(screen.getByTestId('graph-slot-likert/comparison')).toContainElement(element))
+    expect(getInstanceByDom(element)).toBe(chart)
+    expect(localStorage.getItem('davis:likert-mode:ds')).toBe('diverging')
+    post.mockRestore()
+    localStorage.removeItem('davis:likert-mode:ds')
+  })
+
 })

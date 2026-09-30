@@ -1,19 +1,15 @@
 import { selectOrdinaryVariables } from '../../app/store'
-import CanvasColumnQuestions from '../common/CanvasColumnQuestions'
+import RowScatter from '../charts/RowScatter'
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Card, Dropdown, Space, Tag, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
+import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import { useColumnarData } from '../pcp/useDatasetColumns'
-import { useRowColorResolver } from '../../theme/useRowColor'
-import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
-import { canvasBufferSize, clientToCanvas } from '../common/graphCoordinates'
-import { getBrushOp } from '../selection/SelectionMenu'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
-import { truncateText } from '../../utils/textUtils'
 
 interface QQPoint {
   rowId: string
@@ -47,17 +43,6 @@ interface QQResponse {
   maxVal: number
 }
 
-type CanvasViewport = Pick<ReturnType<typeof useGraphViewport>, 'scale' | 'dpr' | 'revision'>
-
-/** GraphPanel の子で得た倍率を、親が保持する Q-Q Canvas の描画 effect へ中継する。 */
-function QQPlotViewportSync({ onViewportChange }: { onViewportChange: (viewport: CanvasViewport) => void }) {
-  const { scale, dpr, revision } = useGraphViewport()
-  useLayoutEffect(() => {
-    onViewportChange({ scale, dpr, revision })
-  }, [scale, dpr, revision, onViewportChange])
-  return null
-}
-
 export default function QQPlotView() {
   const graphPopupContainer = useGraphPopupContainer('distribution/qq')
   const dispatch = useDispatch<AppDispatch>()
@@ -77,22 +62,6 @@ export default function QQPlotView() {
   const [selectedColumn, setSelectedColumn] = useState<string>('')
   const [qqData, setQqData] = useState<QQResponse | null>(null)
   const [loading, setLoading] = useState(false)
-  const [canvasViewport, setCanvasViewport] = useState<CanvasViewport>(() => ({
-    scale: 1,
-    dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
-    revision: 0,
-  }))
-  const updateCanvasViewport = useCallback((next: CanvasViewport) => {
-    setCanvasViewport(current => current.scale === next.scale && current.dpr === next.dpr && current.revision === next.revision
-      ? current
-      : next)
-  }, [])
-
-  // Brush drag state
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [dragBox, setDragBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
-  const isDragging = useRef(false)
-  const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
   useEffect(() => {
     if (numericColumns.length > 0 && (!selectedColumn || !numericColumns.includes(selectedColumn))) {
@@ -101,226 +70,24 @@ export default function QQPlotView() {
   }, [numericColumns, selectedColumn])
 
   useEffect(() => {
-    if (!selection.datasetId || !selectedColumn) return
+    let cancelled = false
+    setQqData(null)
+    if (!selection.datasetId || !selectedColumn || !numericColumns.includes(selectedColumn)) { setLoading(false); return }
     setLoading(true)
     api.post<QQResponse>('/summaries/qqplot', {
       datasetId: selection.datasetId,
       column: selectedColumn,
-      rowIds: effectiveRowIds.length < (data?.rowIds.length ?? 0) ? effectiveRowIds : undefined,
+      rowIds: effectiveRowIds,
+      expectedDataRevision: selection.dataRevision,
     })
-      .then(setQqData)
-      .catch(() => setQqData(null))
-      .finally(() => setLoading(false))
-  }, [selection.datasetId, selectedColumn, effectiveRowIds, data])
+      .then(value => { if (!cancelled) setQqData(value) })
+      .catch(() => { if (!cancelled) setQqData(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [selection.datasetId, selection.dataRevision, selectedColumn, effectiveRowIds, data, numericColumns])
 
-  const { selectedSet, getColor, selectionColor } = useRowColorResolver()
-  const { scale: viewportScale, dpr: viewportDpr, revision: viewportRevision } = canvasViewport
-
-  // Canvas dimensions: 固定論理寸法。表示倍率と DPR に応じた再描画は下の effect で行う。
   const width = 680
   const height = 440
-  const margin = { top: 30, right: 30, bottom: 50, left: 60 }
-  const plotW = width - margin.left - margin.right
-  const plotH = height - margin.top - margin.bottom
-
-  // Scales
-  const scales = useMemo(() => {
-    if (!qqData) return null
-    const zPad = (qqData.maxZ - qqData.minZ) * 0.08 || 0.5
-    const vPad = (qqData.maxVal - qqData.minVal) * 0.08 || 0.5
-
-    const minZ = qqData.minZ - zPad
-    const maxZ = qqData.maxZ + zPad
-    const minV = qqData.minVal - vPad
-    const maxV = qqData.maxVal + vPad
-
-    const scaleX = (z: number) => margin.left + ((z - minZ) / (maxZ - minZ)) * plotW
-    const scaleY = (v: number) => margin.top + plotH - ((v - minV) / (maxV - minV)) * plotH
-
-    const invertX = (px: number) => minZ + ((px - margin.left) / plotW) * (maxZ - minZ)
-    const invertY = (py: number) => minV + ((margin.top + plotH - py) / plotH) * (maxV - minV)
-
-    return { scaleX, scaleY, invertX, invertY, minZ, maxZ, minV, maxV }
-  }, [qqData, plotW, plotH, margin.left, margin.top])
-
-  // Canvas drawing
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !qqData || !scales) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // 表示倍率と DPR に応じた描画バッファ更新。寸法変更だけで分析 API は再実行しない。
-    const dpr = viewportDpr
-    const buffer = canvasBufferSize({ width, height }, viewportScale, dpr)
-    canvas.width = buffer.width
-    canvas.height = buffer.height
-    ctx.setTransform(buffer.width / width, 0, 0, buffer.height / height, 0, 0)
-
-    // Clear
-    ctx.clearRect(0, 0, width, height)
-
-    // Background
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
-
-    // Grid lines
-    ctx.strokeStyle = '#f0f0f0'
-    ctx.lineWidth = 1
-    for (let z = Math.ceil(scales.minZ); z <= Math.floor(scales.maxZ); z++) {
-      const x = scales.scaleX(z)
-      ctx.beginPath()
-      ctx.moveTo(x, margin.top)
-      ctx.lineTo(x, margin.top + plotH)
-      ctx.stroke()
-    }
-
-    // Axes
-    ctx.strokeStyle = '#d9d9d9'
-    ctx.lineWidth = 1.2
-    ctx.strokeRect(margin.left, margin.top, plotW, plotH)
-
-    // Axis Ticks
-    ctx.fillStyle = '#6b7280'
-    ctx.font = '10px sans-serif'
-    ctx.textAlign = 'center'
-    for (let z = Math.ceil(scales.minZ); z <= Math.floor(scales.maxZ); z++) {
-      const x = scales.scaleX(z)
-      ctx.fillText(String(z), x, margin.top + plotH + 18)
-    }
-
-    // X Axis Title
-    ctx.fillStyle = '#374151'
-    ctx.font = '600 12px sans-serif'
-    ctx.fillText('理論正規分位点 (Theoretical Normal Quantiles)', margin.left + plotW / 2, height - 12)
-
-    // Y Ticks
-    ctx.fillStyle = '#6b7280'
-    ctx.font = '10px sans-serif'
-    ctx.textAlign = 'right'
-    const nYTicks = 5
-    for (let i = 0; i <= nYTicks; i++) {
-      const v = scales.minV + (i / nYTicks) * (scales.maxV - scales.minV)
-      const y = scales.scaleY(v)
-      ctx.fillText(v.toFixed(1), margin.left - 8, y + 4)
-    }
-    // Y Axis Label (vertical)
-    ctx.save()
-    ctx.translate(16, margin.top + plotH / 2)
-    ctx.rotate(-Math.PI / 2)
-    ctx.textAlign = 'center'
-    ctx.fillStyle = '#374151'
-    ctx.font = '600 12px sans-serif'
-    ctx.fillText(`サンプル分位点 (${truncateText(qqData.column, 24)})`, 0, 0)
-    ctx.restore()
-
-    // Robust Reference Line (Q1 - Q3)
-    const ref = qqData.referenceLine
-    const lineX1 = scales.minZ
-    const lineY1 = ref.intercept + ref.slope * lineX1
-    const lineX2 = scales.maxZ
-    const lineY2 = ref.intercept + ref.slope * lineX2
-
-    ctx.strokeStyle = '#ff4d4f'
-    ctx.lineWidth = 1.5
-    ctx.setLineDash([4, 3])
-    ctx.beginPath()
-    ctx.moveTo(scales.scaleX(lineX1), scales.scaleY(lineY1))
-    ctx.lineTo(scales.scaleX(lineX2), scales.scaleY(lineY2))
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Data points with L1/L2 and selection coloring
-    for (const pt of qqData.points) {
-      const px = scales.scaleX(pt.theoreticalQuantile)
-      const py = scales.scaleY(pt.sampleValue)
-      const isSelected = selectedSet.has(pt.rowId)
-      const ptColor = getColor(pt.rowId)
-
-      ctx.beginPath()
-      ctx.arc(px, py, isSelected ? 5.0 : 3.5, 0, Math.PI * 2)
-      if (isSelected) {
-        ctx.fillStyle = selectionColor
-        ctx.fill()
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-      } else {
-        ctx.fillStyle = ptColor
-        ctx.globalAlpha = 0.7
-        ctx.fill()
-        ctx.globalAlpha = 1.0
-      }
-    }
-
-    // Drag selection box (AGENTS.md rule 5.2)
-    if (dragBox) {
-      const bx = Math.min(dragBox.x1, dragBox.x2)
-      const by = Math.min(dragBox.y1, dragBox.y2)
-      const bw = Math.abs(dragBox.x2 - dragBox.x1)
-      const bh = Math.abs(dragBox.y2 - dragBox.y1)
-
-      ctx.fillStyle = 'rgba(42, 120, 214, 0.15)'
-      ctx.strokeStyle = '#2a78d6'
-      ctx.lineWidth = 1.5
-      ctx.fillRect(bx, by, bw, bh)
-      ctx.strokeRect(bx, by, bw, bh)
-    }
-  }, [qqData, scales, selectedSet, getColor, selectionColor, dragBox, width, height, plotW, plotH, margin.left, margin.top, viewportScale, viewportDpr, viewportRevision])
-
-  // Mouse drag handlers: Canvas 自体の表示矩形と論理寸法を基準に変換する。
-  const canvasPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!canvasRef.current) return { x: NaN, y: NaN }
-    return clientToCanvas(canvasRef.current, e, { width, height })
-  }
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0 || !canvasRef.current) return
-    const { x, y } = canvasPoint(e)
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    isDragging.current = true
-    dragStart.current = { x, y }
-    setDragBox({ x1: x, y1: y, x2: x, y2: y })
-  }
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging.current || !canvasRef.current) return
-    const { x, y } = canvasPoint(e)
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    setDragBox({ x1: dragStart.current.x, y1: dragStart.current.y, x2: x, y2: y })
-  }
-
-  const handleMouseUp = () => {
-    if (!isDragging.current || !dragBox || !qqData || !scales) {
-      isDragging.current = false
-      setDragBox(null)
-      return
-    }
-    isDragging.current = false
-
-    const minX = Math.min(dragBox.x1, dragBox.x2)
-    const maxX = Math.max(dragBox.x1, dragBox.x2)
-    const minY = Math.min(dragBox.y1, dragBox.y2)
-    const maxY = Math.max(dragBox.y1, dragBox.y2)
-
-    // Find points in box
-    const selectedIds: string[] = []
-    for (const pt of qqData.points) {
-      const px = scales.scaleX(pt.theoreticalQuantile)
-      const py = scales.scaleY(pt.sampleValue)
-      if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
-        selectedIds.push(pt.rowId)
-      }
-    }
-
-    if (selectedIds.length > 0) {
-      dispatch(selectionApplied({
-        rowIds: selectedIds,
-        operation: getBrushOp(),
-        label: `QQ-Plotから${selectedIds.length}件選択`,
-      }))
-    }
-    setDragBox(null)
-  }
 
   // Right-click context menu items (DAVIS legacy)
   const contextMenuItems = [
@@ -361,6 +128,7 @@ export default function QQPlotView() {
         value={selectedColumn}
         onChange={setSelectedColumn}
         options={numericColumns.map((c) => ({ label: c, value: c }))}
+        getPopupContainer={graphPopupContainer}
         data-testid="qqplot-column-select"
       />
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -381,7 +149,6 @@ export default function QQPlotView() {
         controls={columnControls}
         style={{ flex: '1 1 680px', minWidth: 0 }}
       >
-          <QQPlotViewportSync onViewportChange={updateCanvasViewport} />
           <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
             <div
               style={{
@@ -395,17 +162,11 @@ export default function QQPlotView() {
                 userSelect: 'none',
               }}
             >
-              <canvas
-                ref={canvasRef}
-                title={`正規Q-Qプロット: ${qqData?.column ?? ''}`}
-                style={{ width, height, cursor: 'crosshair', display: 'block' }}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                data-testid="qqplot-canvas"
-              />
-              <CanvasColumnQuestions canvasRef={canvasRef} width={width} height={height}
-                regions={qqData ? [{ key: qqData.column, x: 6, y: margin.top + plotH / 2 - 130, width: 24, height: 260 }] : []} />
+              <RowScatter points={(qqData?.points ?? []).map(point => ({ rowId: point.rowId, x: point.theoreticalQuantile, y: point.sampleValue,
+                tooltip: `rowId: ${point.rowId}\n順位: ${point.rank}\n理論分位点: ${point.theoreticalQuantile}\n観測値: ${point.sampleValue}` }))}
+                xName="理論正規分位点" yName={`サンプル分位点 (${qqData?.column ?? ''})`} height={height} testId="qqplot-canvas"
+                option={{ series: qqData ? [{ type: 'line', name: 'Q1–Q3基準線', symbol: 'none', lineStyle: { color: '#ff4d4f', type: 'dashed' },
+                  data: [qqData.minZ, qqData.maxZ].map(z => [z, qqData.referenceLine.intercept + qqData.referenceLine.slope * z]) }] : [] }} />
             </div>
           </Dropdown>
       </GraphPanel>

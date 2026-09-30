@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { type FC } from 'react'
 import { Card, Typography } from 'antd'
@@ -31,7 +32,7 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
       bodyStyle={{ padding: 8, display: 'flex', justifyContent: 'center' }}
       data-testid="tgt-projection-circle"
     >
-      <svg width={size} height={size} style={{ display: 'block' }}>
+      <EChartSurface width={size} height={size} style={{ display: 'block' }}>
         {/* Background unit circle */}
         <circle cx={center} cy={center} r={radius} fill="#fafafa" stroke="#d9d9d9" strokeWidth={1} />
 
@@ -86,7 +87,7 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
             </g>
           )
         })}
-      </svg>
+      </EChartSurface>
     </Card>
   )
 }

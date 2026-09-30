@@ -1,8 +1,9 @@
+import ModelScatter from './ModelScatter'
+import OddsRatioForest, { formatOdds } from './OddsRatioForest'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
 import GraphPanel from '../common/GraphPanel'
-import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
@@ -44,9 +45,13 @@ export interface CoefficientItem {
   stdError: number
   zValue: number
   pValue: number
-  oddsRatio: number
-  ciLower: number
-  ciUpper: number
+  oddsRatio: number | null
+  ciLower: number | null
+  ciUpper: number | null
+  logOddsRatio: number
+  logCiLower: number
+  logCiUpper: number
+  exponentiationStatus?: { oddsRatio: string; ciLower: string; ciUpper: string }
 }
 
 export interface SigmoidCurvePoint {
@@ -80,6 +85,7 @@ export interface ConfusionMatrix {
 }
 
 export interface LogisticResponse {
+  warnings?: { code: string; message: string }[]
   diagnostics: { completeSeparation: boolean | null }
   target: string
   classes: string[]
@@ -148,9 +154,6 @@ export default function LogisticRegressionPage() {
 
   // Brush state on Sigmoid Plot
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const [brushBox, setBrushBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
-  const brushStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
-  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey, focusAxis])
 
   // Run model
   const handleRunModel = async () => {
@@ -261,12 +264,8 @@ export default function LogisticRegressionPage() {
   // Selected row ids set for fast lookup
   const selectedRowIdSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
 
-  // Sigmoid chart dimensions
-  const chartWidth = 480
+  const chartWidth = 560
   const chartHeight = 280
-  const padding = { top: 20, right: 30, bottom: 40, left: 50 }
-  const innerWidth = chartWidth - padding.left - padding.right
-  const innerHeight = chartHeight - padding.top - padding.bottom
 
   // Prepare points and curve for Focus Axis
   const axisCurve = useMemo(() => {
@@ -307,104 +306,11 @@ export default function LogisticRegressionPage() {
     }).filter((p) => !isNaN(p.xVal))
   }, [result?.samples, focusAxis])
 
-  // Map to SVG coordinates
-  const scaleX = (val: number) => {
-    const { min, max } = axisMinMax
-    if (max <= min) return padding.left
-    return padding.left + ((val - min) / (max - min)) * innerWidth
-  }
-
-  const scaleY = (prob: number) => {
-    return padding.top + (1.0 - prob) * innerHeight
-  }
-
-  // Generate SVG path for S-curve
-  const curvePath = useMemo(() => {
-    if (axisCurve.length < 2) return ''
-    return axisCurve
-      .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${scaleX(pt.x).toFixed(1)} ${scaleY(pt.probability).toFixed(1)}`)
-      .join(' ')
-  }, [axisCurve, axisMinMax])
-
-  // Brush drag interaction
-  const plotCoordinates = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return null
-    const rect = svgRef.current.getBoundingClientRect()
-    if (!rect.width || !rect.height) return null
-    const x = (e.clientX - rect.left) * (chartWidth / rect.width)
-    const y = (e.clientY - rect.top) * (chartHeight / rect.height)
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
-    return { x, y, rect }
-  }
-  const handleMouseDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return
-    const point = plotCoordinates(e)
-    if (!point) return
-    const { x, y } = point
-    brushStart.current = { x, y, clientX: e.clientX, clientY: e.clientY }
-    e.currentTarget.setPointerCapture(e.pointerId)
-    setBrushBox({ startX: x, startY: y, currentX: x, currentY: y })
-  }
-
-  const handleMouseMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!brushStart.current) return
-    const point = plotCoordinates(e)
-    if (!point) return
-    const { x, y } = point
-    setBrushBox((prev) => (prev ? { ...prev, currentX: x, currentY: y } : null))
-  }
-
-  const handleMouseUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    const start = brushStart.current
-    const end = plotCoordinates(e)
-    brushStart.current = null
-    setBrushBox(null)
-    if (!start || !end) return
-    const xMin = Math.min(start.x, end.x)
-    const xMax = Math.max(start.x, end.x)
-    const yMin = Math.min(start.y, end.y)
-    const yMax = Math.max(start.y, end.y)
-
-    // Check if dragging was intentional (> 4px)
-    if (Math.abs(e.clientX - start.clientX) > 4 || Math.abs(e.clientY - start.clientY) > 4) {
-      const selected: string[] = []
-      for (const pt of samplePointsWithCoord) {
-        const px = scaleX(pt.xVal)
-        const py = scaleY(pt.jitterY)
-        if (px >= xMin && px <= xMax && py >= yMin && py <= yMax) {
-          selected.push(pt.rowId)
-        }
-      }
-      handleSelectRows(selected)
-    } else {
-      let nearest: string | null = null
-      let distance = 49
-      for (const pt of samplePointsWithCoord) {
-        const dx = (scaleX(pt.xVal) - end.x) * end.rect.width / chartWidth
-        const dy = (scaleY(pt.jitterY) - end.y) * end.rect.height / chartHeight
-        const squared = dx * dx + dy * dy
-        if (squared < distance) { nearest = pt.rowId; distance = squared }
-      }
-      if (nearest) dispatch(selectionApplied({ rowIds: [nearest], operation: 'toggle', label: 'ロジスティック回帰の点選択' }))
-    }
-  }
-
   // Odds ratio forest plot data
   const forestData = useMemo(() => {
     if (!result?.coefficients) return []
     return result.coefficients.filter((c) => c.name !== 'Intercept')
   }, [result])
-
-  const forestMinMax = useMemo(() => {
-    if (!forestData.length) return { min: 0.1, max: 10 }
-    let min = 0.5
-    let max = 2.0
-    for (const item of forestData) {
-      if (item.ciLower > 0 && item.ciLower < min) min = item.ciLower
-      if (item.ciUpper > max && item.ciUpper < 100) max = item.ciUpper
-    }
-    return { min: Math.max(0.01, min * 0.8), max: Math.min(100, max * 1.2) }
-  }, [forestData])
 
   // Table columns
   const coeffColumns = [
@@ -449,12 +355,12 @@ export default function LogisticRegressionPage() {
       title: 'オッズ比 (OR)',
       dataIndex: 'oddsRatio',
       key: 'oddsRatio',
-      render: (v: number) => <Tag color={v > 1.0 ? 'blue' : 'orange'}>{v.toFixed(3)}</Tag>,
+      render: (v: number | null, r: CoefficientItem) => <Tag color={r.coefficient > 0 ? 'blue' : 'orange'}>{formatOdds(v, r.exponentiationStatus?.oddsRatio)}</Tag>,
     },
     {
       title: '95% 信頼区間 (CI)',
       key: 'ci',
-      render: (_: any, r: CoefficientItem) => `[${r.ciLower.toFixed(3)}, ${r.ciUpper.toFixed(3)}]`,
+      render: (_: any, r: CoefficientItem) => `[${formatOdds(r.ciLower, r.exponentiationStatus?.ciLower)}, ${formatOdds(r.ciUpper, r.exponentiationStatus?.ciUpper)}]`,
     },
   ]
 
@@ -583,6 +489,8 @@ export default function LogisticRegressionPage() {
             style={{ marginTop: 12 }}
           />
         )}
+        {result?.warnings?.map((warning, i) => <Alert key={`${warning.code}-${i}`} type="warning" showIcon
+          style={{ marginTop: 12 }} message={warning.message} />)}
         {result?.diagnostics?.completeSeparation === true && <Alert type="warning" showIcon style={{ marginTop: 12 }}
           message="完全分離が検出されました。"
           description="説明変数で2クラスを完全に分離できます。通常の最尤推定では有限の係数が定まらないため、係数・標準誤差・p値・信頼区間を通常の推論として解釈できません。正則化や変数の見直しを検討してください。" />}
@@ -626,147 +534,18 @@ export default function LogisticRegressionPage() {
               >
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
                   <L1Legend />
-                  <svg
-                    ref={svgRef}
-                    data-testid="logistic-sigmoid-svg"
-                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                    width="100%"
-                    style={{ aspectRatio: `${chartWidth} / ${chartHeight}`, background: '#fafafa', borderRadius: 4, cursor: 'crosshair', userSelect: 'none', touchAction: 'none' }}
-                    onPointerDown={handleMouseDown}
-                    onPointerMove={handleMouseMove}
-                    onPointerUp={handleMouseUp}
-                    onPointerCancel={() => { brushStart.current = null; setBrushBox(null) }}
-                    onLostPointerCapture={() => { brushStart.current = null; setBrushBox(null) }}
-                  >
-                    {/* Axes */}
-                    <line
-                      x1={padding.left}
-                      y1={padding.top + innerHeight}
-                      x2={padding.left + innerWidth}
-                      y2={padding.top + innerHeight}
-                      stroke="#bfbfbf"
-                    />
-                    <line
-                      x1={padding.left}
-                      y1={padding.top}
-                      x2={padding.left}
-                      y2={padding.top + innerHeight}
-                      stroke="#bfbfbf"
-                    />
-
-                    {/* Cutoff Reference Line */}
-                    <line
-                      x1={padding.left}
-                      y1={scaleY(cutoff)}
-                      x2={padding.left + innerWidth}
-                      y2={scaleY(cutoff)}
-                      stroke="#faad14"
-                      strokeDasharray="4 3"
-                      strokeWidth={1.5}
-                    />
-                    <text
-                      x={padding.left + innerWidth - 4}
-                      y={scaleY(cutoff) - 4}
-                      textAnchor="end"
-                      fill="#faad14"
-                      fontSize={10}
-                    >
-                      Cutoff = {cutoff.toFixed(2)}
-                    </text>
-
-                    {/* Grid lines & labels */}
-                    {[0.0, 0.25, 0.5, 0.75, 1.0].map((tick) => (
-                      <g key={tick}>
-                        <line
-                          x1={padding.left}
-                          y1={scaleY(tick)}
-                          x2={padding.left + innerWidth}
-                          y2={scaleY(tick)}
-                          stroke="#e8e8e8"
-                          strokeDasharray="2 2"
-                        />
-                        <text
-                          x={padding.left - 8}
-                          y={scaleY(tick) + 4}
-                          textAnchor="end"
-                          fontSize={10}
-                          fill="#8c8c8c"
-                        >
-                          {tick.toFixed(2)}
-                        </text>
-                      </g>
-                    ))}
-
-                    {/* S-curve path */}
-                    {curvePath && (
-                      <path
-                        d={curvePath}
-                        fill="none"
-                        stroke="#1890ff"
-                        strokeWidth={2.5}
-                      />
-                    )}
-
-                    {/* Data Points */}
-                    {samplePointsWithCoord.map((pt) => {
-                      const cx = scaleX(pt.xVal)
-                      const cy = scaleY(pt.jitterY)
-                      const isSelected = selectedRowIdSet.has(pt.rowId)
-                      const isMisclassified = (pt.predictedProb >= cutoff ? 1 : 0) !== pt.actual
-
-                      return (
-                        <g key={pt.rowId}>
-                        {isMisclassified && <circle cx={cx} cy={cy} r={isSelected ? 8 : 6} fill="none" stroke="#ff4d4f" strokeWidth={1.5} pointerEvents="none" />}
-                        <circle
-                          data-row-id={pt.rowId}
-                          cx={cx}
-                          cy={cy}
-                          r={isSelected ? 5.5 : 3.5}
-                          fill={getColor(pt.rowId)}
-                          stroke={isSelected ? selectionColor : '#ffffff'}
-                          strokeWidth={isSelected ? 2 : 0.8}
-                          opacity={0.85}
-                        >
-                          <title>{`Row: ${pt.rowId}\n${questionText(focusAxis)}: ${pt.xVal}\nActual: ${pt.actual} (${result.classes[pt.actual]})\nProb: ${pt.predictedProb}`}</title>
-                        </circle>
-                        </g>
-                      )
-                    })}
-
-                    {/* Drag selection rectangle */}
-                    {brushBox && (
-                      <rect
-                        x={Math.min(brushBox.startX, brushBox.currentX)}
-                        y={Math.min(brushBox.startY, brushBox.currentY)}
-                        width={Math.abs(brushBox.currentX - brushBox.startX)}
-                        height={Math.abs(brushBox.currentY - brushBox.startY)}
-                        fill="rgba(24, 144, 255, 0.2)"
-                        stroke="#1890ff"
-                        strokeDasharray="3 3"
-                      />
-                    )}
-
-                    {/* Axis Labels */}
-                    <ColumnQuestionTooltip nameOrId={focusAxis} svg><text
-                      x={padding.left + innerWidth / 2}
-                      y={chartHeight - 6}
-                      textAnchor="middle"
-                      fontSize={11}
-                      fill="#595959"
-                    >
-                      {focusAxis}
-                    </text></ColumnQuestionTooltip>
-                    <text
-                      x={14}
-                      y={padding.top + innerHeight / 2}
-                      textAnchor="middle"
-                      transform={`rotate(-90 14 ${padding.top + innerHeight / 2})`}
-                      fontSize={11}
-                      fill="#595959"
-                    >
-                      P(Y = 1 | X)
-                    </text>
-                  </svg>
+                  <ModelScatter testId="logistic-sigmoid-svg" svgRef={svgRef} height={chartHeight}
+                    points={samplePointsWithCoord.map(p => ({ id: p.rowId, rowId:p.rowId, x: p.xVal, y: p.jitterY,
+                      selected: selectedRowIdSet.has(p.rowId), selectionColor, color: getColor(p.rowId),
+                      misclassified: (p.predictedProb >= cutoff ? 1 : 0) !== p.actual,
+                      title: `Row: ${p.rowId}\n${questionText(focusAxis)}: ${p.xVal}\nActual: ${p.actual} (${result.classes[p.actual]})\nProb: ${p.predictedProb}` }))}
+                    xLabel={questionText(focusAxis)} yLabel="P(Y = 1 | X)" xExtent={[axisMinMax.min, axisMinMax.max]} yExtent={[0, 1]}
+                    extraSeries={[{ type: 'line', data: axisCurve.map(p => [p.x, p.probability]), symbol: 'none', silent: true,
+                      lineStyle: { color: '#1890ff', width: 2.5 }, markLine: { symbol: 'none', data: [{ yAxis: cutoff }],
+                        lineStyle: { color: '#faad14' }, label: { formatter: `Cutoff = ${cutoff.toFixed(2)}` } } }]}
+                    onToggle={id => dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'ロジスティック回帰の点選択' }))}
+                    onBrush={b => handleSelectRows(samplePointsWithCoord.filter(p => p.xVal >= b.x[0] && p.xVal <= b.x[1]
+                      && (!b.y || p.jitterY >= b.y[0] && p.jitterY <= b.y[1])).map(p => p.rowId))} />
                 </div>
                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                   ※ 矩形ドラッグで点を選択。赤枠点は誤分類サンプル。他変数は中央値に固定。
@@ -786,79 +565,7 @@ export default function LogisticRegressionPage() {
                 normalWidth="viewport"
               >
               <Card size="small">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e8', paddingBottom: 4 }}>
-                    <span style={{ width: 120, fontWeight: 'bold', fontSize: 12 }}>変数名</span>
-                    <span style={{ width: 140, fontWeight: 'bold', fontSize: 12 }}>OR (95% CI)</span>
-                    <span style={{ flex: 1, textAlign: 'center', fontWeight: 'bold', fontSize: 12 }}>
-                      抑制 (&lt; 1.0) | 促進 (&gt; 1.0)
-                    </span>
-                  </div>
-
-                  {forestData.map((item) => {
-                    const barWidth = 180
-                    const logMin = Math.log(forestMinMax.min)
-                    const logMax = Math.log(forestMinMax.max)
-                    const scaleLog = (v: number) => {
-                      const clamped = Math.max(forestMinMax.min, Math.min(forestMinMax.max, v))
-                      const logV = Math.log(clamped)
-                      return ((logV - logMin) / (logMax - logMin)) * barWidth
-                    }
-
-                    const xRef = scaleLog(1.0)
-                    const xOr = scaleLog(item.oddsRatio)
-                    const xLow = scaleLog(item.ciLower)
-                    const xHigh = scaleLog(item.ciUpper)
-
-                    return (
-                      <div key={item.name} style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ width: 120, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <ColumnQuestionTooltip nameOrId={item.name}>{item.name}</ColumnQuestionTooltip>
-                        </span>
-                        <span style={{ width: 140, fontSize: 11, fontFamily: 'monospace' }}>
-                          {item.oddsRatio.toFixed(2)} [{item.ciLower.toFixed(2)}, {item.ciUpper.toFixed(2)}]
-                        </span>
-                        <div style={{ flex: 1, position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}>
-                          {/* Reference line OR = 1.0 */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: xRef,
-                              top: 0,
-                              bottom: 0,
-                              width: 1,
-                              background: '#8c8c8c',
-                              borderLeft: '1px dashed #8c8c8c',
-                            }}
-                          />
-                          {/* CI Bar */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: Math.min(xLow, xHigh),
-                              width: Math.max(2, Math.abs(xHigh - xLow)),
-                              height: 2,
-                              background: item.pValue < 0.05 ? '#1890ff' : '#bfbfbf',
-                            }}
-                          />
-                          {/* OR Point */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: xOr - 4,
-                              top: 6,
-                              width: 8,
-                              height: 8,
-                              borderRadius: '50%',
-                              background: item.pValue < 0.05 ? '#1890ff' : '#8c8c8c',
-                            }}
-                            title={`OR: ${item.oddsRatio.toFixed(3)}, p: ${item.pValue}`}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                <OddsRatioForest items={forestData} />
               </Card>
               </GraphPanel>
             </Col>

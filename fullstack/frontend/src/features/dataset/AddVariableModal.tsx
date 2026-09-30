@@ -1,3 +1,4 @@
+import CategoryBars from '../charts/CategoryBars'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useEffect, useState } from 'react'
 import {
@@ -121,10 +122,6 @@ export default function AddVariableModal({
   const appendToExpr = (text: string) => {
     setExpression((prev) => `${prev} ${text}`.trim())
   }
-
-  const maxHistCount = preview?.histogram
-    ? Math.max(...preview.histogram.map((h) => h.count), 1)
-    : 1
 
   return (
     <Modal
@@ -345,23 +342,9 @@ export default function AddVariableModal({
                       <Typography.Text style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>
                         分布プレビュー:
                       </Typography.Text>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {preview.histogram.map((h, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', fontSize: 11, gap: 6 }}>
-                            <span style={{ width: 100, textAlign: 'right', color: '#64748b' }}>{h.bin}</span>
-                            <div style={{ flex: 1, background: '#f1f5f9', height: 14, borderRadius: 3, overflow: 'hidden' }}>
-                              <div
-                                style={{
-                                  width: `${(h.count / maxHistCount) * 100}%`,
-                                  background: '#06b6d4',
-                                  height: '100%',
-                                }}
-                              />
-                            </div>
-                            <span style={{ width: 40, color: '#334155' }}>{h.count}件</span>
-                          </div>
-                        ))}
-                      </div>
+                      <CategoryBars testId="calculated-variable-histogram" axisName="件数"
+                        height={Math.max(180, preview.histogram.length * 30 + 70)}
+                        items={preview.histogram.map((bin, index) => ({ id: String(index), label: bin.bin, value: bin.count, color: '#06b6d4' }))} />
                     </div>
                   )}
                 </>

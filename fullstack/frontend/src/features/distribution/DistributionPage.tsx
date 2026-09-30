@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
@@ -215,6 +216,11 @@ export default function DistributionPage() {
   const domains = useL1ColorDomains(data)
   const domain = domains.find(d => d.key === pcp.colorBy)
   const groupBy = domain?.key ?? null
+
+  useEffect(() => {
+    dragRef.current = null
+    setDrag(null)
+  }, [data, inputKey, orientation, groupBy, numericColumns])
 
   /** Active row indexes via O(1) map lookups. */
   const activeIndexes = useMemo(() => {
@@ -810,7 +816,8 @@ export default function DistributionPage() {
                     <Spin size="large" tip="分布統計（BoxPlot）を計算中..." />
                   </div>
                 )}
-                <svg
+                <EChartSurface
+                  onViewportChange={() => { dragRef.current = null; setDrag(null) }}
                   ref={svgRef}
                   data-testid="distribution-svg"
                   viewBox={`0 0 ${width} ${height}`}
@@ -834,7 +841,7 @@ export default function DistributionPage() {
                       style={{ pointerEvents: 'none' }}
                     />
                   )}
-                </svg>
+                </EChartSurface>
               </div>
             </Dropdown>
           </GraphPanel>

@@ -1,8 +1,9 @@
+import CategoryBars from '../charts/CategoryBars'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Empty, Progress, Space, Spin, Typography } from 'antd'
+import { Alert, Button, Card, Empty, Space, Spin, Typography } from 'antd'
 
 import { ClearOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons'
 import type { AppDispatch, RootState } from '../../app/store'
@@ -11,8 +12,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
 import { MosaicControlPanel } from './MosaicControlPanel'
-import { LineMosaicCanvas, lineMosaicDimensions } from './LineMosaicCanvas'
-import GraphPanel from '../common/GraphPanel'
+import { LineMosaicCanvas } from './LineMosaicCanvas'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
 import { mosaicPathLabel } from './types'
 
@@ -154,13 +154,6 @@ export default function LineMosaicPage() {
             background: '#fff', padding: 10, borderRadius: 8, border: '1px solid #f0f0f0', minHeight: 0,
           }}
         >
-          <GraphPanel
-            graphId="mosaic/main"
-            title="Line Mosaic Plot"
-            available={Boolean(!loading && resultKey === inputKey && mosaicData && mosaicData.cells.length > 0)}
-            sizing="intrinsic"
-            intrinsicSize={mosaicData ? lineMosaicDimensions(mosaicData) : { width: 720, height: 480 }}
-          >
             {loading ? (
               <div style={{ padding: 40, textAlign: 'center' }}>
                 <Spin tip="モザイククロス集計を計算中..." />
@@ -175,7 +168,6 @@ export default function LineMosaicPage() {
             ) : (
               <Empty description={mosaicData && resultKey === inputKey ? '対象範囲に表示可能な行がありません。' : '表示可能なセルがありません。変数を指定してください。'} />
             )}
-          </GraphPanel>
         </div>
 
         {/* Right Details Card */}
@@ -216,28 +208,11 @@ export default function LineMosaicPage() {
                     <Typography.Text strong style={{ fontSize: 12 }}>
                       <ColumnQuestionTooltip nameOrId={mosaicData.target.name}>{mosaicData.target.name}</ColumnQuestionTooltip> 比率:
                     </Typography.Text>
-                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {mosaicData.target.categories.map((cat, idx) => {
-                        const count = selectedCell.targetCounts[cat] || 0
-                        const pct = selectedCell.totalCount > 0 ? (count / selectedCell.totalCount) * 100 : 0
-                        const color = mosaicData.target!.colors[idx % mosaicData.target!.colors.length]
-
-                        return (
-                          <div key={cat}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                              <span style={{ color }}>{mosaicData.target?.valueLabels?.[cat] ?? cat}</span>
-                              <span>{count} ({pct.toFixed(1)}%)</span>
-                            </div>
-                            <Progress
-                              percent={Number(pct.toFixed(1))}
-                              strokeColor={color}
-                              size="small"
-                              showInfo={false}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
+                    <CategoryBars axisName="セル内割合 (%)" max={100} testId="mosaic-cell-distribution" items={mosaicData.target.categories.map((category, index) => ({
+                      id: category, label: mosaicData.target?.valueLabels?.[category] ?? category,
+                      value: selectedCell.totalCount > 0 ? (selectedCell.targetCounts[category] || 0) / selectedCell.totalCount * 100 : null,
+                      color: mosaicData.target!.colors[index % mosaicData.target!.colors.length], detail: `件数: ${selectedCell.targetCounts[category] || 0}`,
+                    }))} />
                   </div>
                 )}
               </Space>

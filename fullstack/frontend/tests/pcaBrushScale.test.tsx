@@ -1,22 +1,20 @@
+import { getInstanceByDom } from 'echarts'
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store, selectionApplied } from '../src/app/store'
 import { BiplotView } from '../src/features/pca/BiplotView'
 import { PcaMatrixPlot } from '../src/features/pca/PcaMatrixPlot'
-import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 
+import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 vi.mock('../src/features/common/CanvasColumnQuestions', () => ({ default: () => null }))
-vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getColor: () => '#1677ff', isSelected: () => false, selectionColor: '#000', selectedSet: new Set() }) }))
+vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getColor: () => '#1677ff', isSelected: () => false, selectionColor: '#000' }) }))
 const fixture = vi.hoisted(() => ({ operation: 'replace' }))
-vi.mock('../src/features/selection/SelectionMenu', () => ({
-  getBrushOp: () => fixture.operation,
-  useBrushOp: () => [fixture.operation, (operation: typeof fixture.operation) => { fixture.operation = operation }],
-}))
+vi.mock('../src/features/selection/SelectionMenu', () => ({ getBrushOp: () => fixture.operation, useBrushOp: () => [fixture.operation, (operation: string) => { fixture.operation = operation }] }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-// Center lies at (370,230) in the biplot and (467.5,172.5) in matrix cell PC2/PC1.
+// Ask ECharts for logical point coordinates, independently of the CSS display scale.
 const pcaData = { nComponents: 2, eigenvalues: [1, 1], explainedVarianceRatio: [0.5, 0.5], columns: [], loadings: {}, scores: [
   { rowId: 'canonical-center', pc: [0, 0] }, { rowId: 'left', pc: [-1, -1] }, { rowId: 'right', pc: [1, 1] },
 ] } as any
@@ -26,20 +24,21 @@ for (const plot of ['biplot', 'matrix']) {
     for (const operation of ['replace', 'add', 'subtract', 'toggle']) {
       it(`${plot} maps a ${scale}x displayed brush to canonical rows (${operation})`, () => {
         vi.stubGlobal('PointerEvent', MouseEvent)
-        vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
         fixture.operation = operation
         const local = configureStore({ reducer: () => store.getState(), middleware: g => g({ serializableCheck: false }) })
         const dispatch = vi.spyOn(local, 'dispatch')
         const view = render(<Provider store={local}><GraphExpansionProvider>{plot === 'biplot'
           ? <BiplotView pcaData={pcaData} selectedX={0} selectedY={1} onSelectX={() => {}} onSelectY={() => {}} />
           : <PcaMatrixPlot pcaData={pcaData} />}</GraphExpansionProvider></Provider>)
-        const canvas = view.container.querySelector('canvas')!
+        const chartDom = view.getByTestId(plot === 'biplot' ? 'pca-biplot-canvas' : 'pca-matrix-canvas')
+        const chart = getInstanceByDom(chartDom)!
+        const canvas = chartDom.parentElement!
+        const width = plot === 'biplot' ? 720 : 640, height = plot === 'biplot' ? 480 : 640
+        act(() => { chart.resize({ width, height }) })
         canvas.setPointerCapture = vi.fn()
-        // 論理寸法は固定（biplot 720x480 / matrix 640x640）。属性 width は描画バッファのため使わない。
-        const logical = plot === 'biplot' ? { width: 720, height: 480 } : { width: 640, height: 640 }
-        vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 70, top: 90, width: logical.width * scale, height: logical.height * scale } as DOMRect)
-        const [x, y] = plot === 'biplot' ? [370, 230] : [467.5, 172.5]
-        fireEvent.pointerDown(canvas, { button: 0, clientX: 70 + (x - 10) * scale, clientY: 90 + (y - 10) * scale })
+        vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 70, top: 90, width: width * scale, height: height * scale } as DOMRect)
+        const [x, y] = chart.convertToPixel({ gridIndex: plot === 'biplot' ? 0 : 1 }, [0, 0]) as number[]
+        fireEvent.pointerDown(canvas, { button: 0, clientX: 70 + (x - 20 / scale) * scale, clientY: 90 + (y - 20 / scale) * scale })
         fireEvent.pointerMove(canvas, { clientX: 70 + (x + 5) * scale, clientY: 90 + (y + 5) * scale })
         fireEvent.pointerUp(canvas, { clientX: 70 + (x + 10) * scale, clientY: 90 + (y + 10) * scale })
         expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: selectionApplied.type, payload: expect.objectContaining({ rowIds: ['canonical-center'], operation }) }))
@@ -55,7 +54,7 @@ for (const plot of ['biplot', 'matrix']) {
         fireEvent.pointerUp(canvas, { clientX: 70 + (x + 35) * scale, clientY: 90 + (y + 35) * scale })
         expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ rowIds: [], operation }) }))
         dispatch.mockClear()
-        fireEvent.pointerDown(canvas, { button: 0, clientX: 70 + (x - 10) * scale, clientY: 90 + (y - 10) * scale })
+        fireEvent.pointerDown(canvas, { button: 0, clientX: 70 + (x - 20 / scale) * scale, clientY: 90 + (y - 20 / scale) * scale })
         fireEvent.pointerCancel(canvas)
         fireEvent.pointerUp(canvas, { clientX: 70 + (x + 10) * scale, clientY: 90 + (y + 10) * scale })
         expect(dispatch).not.toHaveBeenCalled()
@@ -64,30 +63,42 @@ for (const plot of ['biplot', 'matrix']) {
   }
 }
 
-it('biplot rebuilds its Canvas buffer for the expanded GraphPanel scale and DPR', async () => {
-  vi.stubGlobal('PointerEvent', MouseEvent)
-  vi.stubGlobal('devicePixelRatio', 2)
-  const ctx = new Proxy({ setTransform: vi.fn() } as any, {
-    get: (target, key) => key in target ? target[key] : () => {},
+for (const plot of ['biplot', 'matrix']) {
+  it(`${plot} preserves the ECharts SVG instance across expansion, zoom and DPR changes and cancels an old brush`, async () => {
+    vi.stubGlobal('PointerEvent', MouseEvent)
+    vi.stubGlobal('devicePixelRatio', 2)
+    const local = configureStore({ reducer: () => store.getState(), middleware: g => g({ serializableCheck: false }) })
+    const dispatch = vi.spyOn(local, 'dispatch')
+    const view = render(<Provider store={local}><GraphExpansionProvider>{plot === 'biplot'
+      ? <BiplotView pcaData={pcaData} selectedX={0} selectedY={1} onSelectX={() => {}} onSelectY={() => {}} />
+      : <PcaMatrixPlot pcaData={pcaData} />}</GraphExpansionProvider></Provider>)
+    const chartDom = view.getByTestId(plot === 'biplot' ? 'pca-biplot-canvas' : 'pca-matrix-canvas')
+    const chart = getInstanceByDom(chartDom)!
+    const width = plot === 'biplot' ? 720 : 640, height = plot === 'biplot' ? 480 : 640
+    act(() => { chart.resize({ width, height }) })
+    const pointerHost = chartDom.parentElement!
+    pointerHost.setPointerCapture = vi.fn()
+    vi.spyOn(pointerHost, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width, height } as DOMRect)
+    const gridIndex = plot === 'biplot' ? 0 : 1
+    const [x, y] = chart.convertToPixel({ gridIndex }, [0, 0]) as number[]
+    const svg = chartDom.querySelector('svg')
+    expect(svg).not.toBeNull()
+    expect(chartDom.querySelector('canvas')).toBeNull()
+    fireEvent.pointerDown(pointerHost, { button: 0, clientX: x - 20, clientY: y - 20 })
+    fireEvent.click(screen.getByTestId(`graph-expand-pca/${plot}`))
+    fireEvent.click(await screen.findByTestId('graph-expansion-zoom-in'))
+    await waitFor(() => expect(screen.getByTestId(`graph-surface-pca/${plot}`).style.transform).toBe('scale(1.25)'))
+    fireEvent.pointerUp(pointerHost, { clientX: x + 10, clientY: y + 10 })
+    expect(dispatch.mock.calls.some(([action]) => action.type === selectionApplied.type)).toBe(false)
+    expect(getInstanceByDom(chartDom)).toBe(chart)
+    expect(chartDom.querySelector('svg')).toBe(svg)
+    // SVG stays resolution independent; DPR/zoom never reintroduce a Canvas renderer.
+    vi.stubGlobal('devicePixelRatio', 3)
+    fireEvent(window, new Event('resize'))
+    fireEvent.click(screen.getByTestId('graph-expansion-fit'))
+    fireEvent.click(screen.getByTestId('graph-expansion-exit'))
+    expect(view.getByTestId(plot === 'biplot' ? 'pca-biplot-canvas' : 'pca-matrix-canvas')).toBe(chartDom)
+    expect(getInstanceByDom(chartDom)).toBe(chart)
+    expect(chartDom.querySelector('svg')).toBe(svg)
   })
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx)
-  const local = configureStore({ reducer: () => store.getState(), middleware: g => g({ serializableCheck: false }) })
-  const view = render(
-    <Provider store={local}>
-      <GraphExpansionProvider>
-        <BiplotView pcaData={pcaData} selectedX={0} selectedY={1} onSelectX={() => {}} onSelectY={() => {}} />
-      </GraphExpansionProvider>
-    </Provider>,
-  )
-  const canvas = view.container.querySelector('canvas')!
-  await waitFor(() => expect(canvas.width).toBe(1440))
-  expect(canvas.height).toBe(960)
-
-  fireEvent.click(screen.getByTestId('graph-expand-pca/biplot'))
-  fireEvent.click(await screen.findByTestId('graph-expansion-zoom-in'))
-  await waitFor(() => {
-    expect(canvas.width).toBe(1800)
-    expect(canvas.height).toBe(1200)
-  })
-  expect(ctx.setTransform).toHaveBeenLastCalledWith(2.5, 0, 0, 2.5, 0, 0)
-})
+}

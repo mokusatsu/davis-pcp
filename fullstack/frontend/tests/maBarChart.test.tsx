@@ -1,3 +1,4 @@
+import { getInstanceByDom } from 'echarts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { configureStore } from '@reduxjs/toolkit'
@@ -80,10 +81,12 @@ it('pages comparison categories without changing the global count scale', async 
   fireEvent.click(await view.findByText('Area — 地域'))
   await view.findByRole('button', { name: 'A 群0の回答者を選択' })
   expect(view.getAllByRole('button', { name: /の回答者を選択$/ })).toHaveLength(10)
-  const firstBar = view.getByRole('button', { name: 'A 群0の回答者を選択' })
-  expect(firstBar.querySelector('.ant-progress-bg')).toHaveStyle({ width: '1%' })
+  const chart = getInstanceByDom(view.getByTestId('ma-grouped-chart'))!
+  expect((chart.getOption().xAxis as any)[0].max).toBe(100)
+  expect((chart.getOption().series as any)[0].data[0].value).toBe(1)
   fireEvent.click(view.getByTitle('3'))
   expect(view.getAllByRole('button', { name: /の回答者を選択$/ })).toHaveLength(1)
-  expect(view.getByRole('button', { name: 'A 群20の回答者を選択' }).querySelector('.ant-progress-bg')).toHaveStyle({ width: '100%' })
+  expect((chart.getOption().xAxis as any)[0].max).toBe(100)
+  expect((chart.getOption().series as any)[0].data[0].value).toBe(100)
   expect(post).toHaveBeenCalledTimes(2)
 })

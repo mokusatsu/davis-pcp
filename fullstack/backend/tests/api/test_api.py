@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import polars as pl
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
@@ -23,6 +24,13 @@ def iris_id() -> str:
     response = client.post("/api/v1/datasets/import/sample", json={"name": "Iris"})
     assert response.status_code == 200
     return response.json()["datasetId"]
+
+
+@pytest.fixture(scope="module")
+def iris_rows(iris_id):
+    response = client.post(f"/api/v1/datasets/{iris_id}/view", json={})
+    assert response.status_code == 200
+    return pl.read_ipc_stream(io.BytesIO(response.content))
 
 
 class TestHealth:
@@ -48,7 +56,7 @@ class TestDatasets:
         r = client.get(f"/api/v1/datasets/{iris_id}")
         meta = r.json()
         assert meta["rowCount"] == 150
-        assert meta["rowIdentity"] == "column:id"
+        assert meta["rowIdentity"] == "generated"  # Sample id is a data column, not canonical row identity.
 
     def test_get_missing_404(self):
         r = client.get("/api/v1/datasets/nope")
@@ -65,10 +73,12 @@ class TestDatasets:
         assert r.status_code == 200
         assert r.content[:6] == b"ARROW1" or len(r.content) > 100
 
-    def test_row_filter_view(self, iris_id):
+    def test_row_filter_view(self, iris_id, iris_rows):
+        selected = iris_rows["__rowId__"].to_list()[:2]
         r = client.post(f"/api/v1/datasets/{iris_id}/view",
-                        json={"rowIds": ["IRIS-001", "IRIS-002"]})
+                        json={"rowIds": selected})
         assert r.status_code == 200
+        assert pl.read_ipc_stream(io.BytesIO(r.content))["__rowId__"].to_list() == selected
 
     def test_delete(self):
         created = client.post("/api/v1/datasets/import/sample", json={"name": "temp"}).json()
@@ -214,9 +224,9 @@ class TestExports:
         r = client.post("/api/v1/exports", json={"datasetId": iris_id, "scope": "all", "format": "parquet"})
         assert r.content[:4] == b"PAR1"
 
-    def test_selected_scope(self, iris_id):
+    def test_selected_scope(self, iris_id, iris_rows):
         r = client.post("/api/v1/exports", json={
-            "datasetId": iris_id, "scope": "selected", "rowIds": ["IRIS-001"], "format": "csv"})
+            "datasetId": iris_id, "scope": "selected", "rowIds": [iris_rows["__rowId__"][0]], "format": "csv"})
         lines = r.content.decode("utf-8-sig").strip().split("\n")
         assert len(lines) == 2  # header + 1 row
 

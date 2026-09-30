@@ -1,3 +1,5 @@
+import EChart from '../charts/EChart'
+import { imputationHistogramOption } from './preprocessingCharts'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -233,9 +235,6 @@ export default function ImputationModal({
 
   const activePreview = previewData?.perColumn.find((c) => c.column === previewCol)
     ?? previewData?.perColumn[0]
-  const maxHistCount = activePreview?.histogram
-    ? Math.max(...activePreview.histogram.map((h) => h.afterCount), 1)
-    : 1
 
   return (
     <Modal
@@ -524,53 +523,11 @@ export default function ImputationModal({
                   title="補完前後の分布比較"
                   available={open && Boolean(activePreview)}
                   sizing="intrinsic"
-                  intrinsicSize={{ width: 560, height: Math.max(200, 60 + activePreview.histogram.length * 28) }}
+                  intrinsicSize={{ width: 560, height: Math.max(200, 90 + activePreview.histogram.length * 30) }}
                 >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Typography.Text strong style={{ fontSize: 12 }}>
-                      ビン度数分布（青=補完前観測値、緑=補完追加分）
-                    </Typography.Text>
-                    <Space size="small">
-                      <Tag color="#3b82f6" style={{ margin: 0 }}>観測値</Tag>
-                      <Tag color="#10b981" style={{ margin: 0 }}>補完生成値</Tag>
-                    </Space>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {activePreview.histogram.map((item, idx) => {
-                      const obsWidth = (item.beforeCount / maxHistCount) * 100
-                      const impWidth = (item.imputedAdded / maxHistCount) * 100
-                      return (
-                        <div key={idx} style={{ display: 'flex', alignItems: 'center', fontSize: 11, gap: 8 }}>
-                          <span style={{ width: 110, textAlign: 'right', color: '#64748b', whiteSpace: 'nowrap' }}>
-                            {item.binLabel}
-                          </span>
-                          <div style={{ flex: 1, background: '#f1f5f9', height: 16, borderRadius: 3, display: 'flex', overflow: 'hidden' }}>
-                            <div
-                              style={{
-                                width: `${obsWidth}%`,
-                                background: '#3b82f6',
-                                height: '100%',
-                              }}
-                              title={`観測値: ${item.beforeCount}`}
-                            />
-                            <div
-                              style={{
-                                width: `${impWidth}%`,
-                                background: '#10b981',
-                                height: '100%',
-                              }}
-                              title={`補完追加: ${item.imputedAdded}`}
-                            />
-                          </div>
-                          <span style={{ width: 60, color: '#334155' }}>
-                            {item.afterCount}件
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                  <EChart testId="imputation-histogram" height={Math.max(200, 90 + activePreview.histogram.length * 30)}
+                    ariaLabel="補完前観測値と補完追加分の度数分布" resetKey={previewCol}
+                    option={imputationHistogramOption(activePreview.histogram)} />
                 </GraphPanel>
               )}
             </div>

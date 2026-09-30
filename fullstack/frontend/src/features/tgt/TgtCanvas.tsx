@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type FC, type MouseEvent as ReactMouseEvent } from 'react'
+import { useGraphViewport, useGraphPopupContainer } from '../common/GraphPanel'
+import { useEffect, useMemo, useRef, useState, type FC, type PointerEvent } from 'react'
+import type { ECharts, EChartsOption } from 'echarts'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
@@ -6,270 +8,116 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { getBrushOp } from '../selection/SelectionMenu'
 import type { GeodesicEngine, ProjectionPoint } from './geodesicEngine'
+import EChart from '../charts/EChart'
 
 interface TgtCanvasProps {
   engine: GeodesicEngine
   rowIds: string[]
-  dataMatrix: number[][] // shape: N x p
+  dataMatrix: number[][]
   isPlaying: boolean
   isTracking: boolean
   onBasisUpdate: (alpha: number[], beta: number[]) => void
 }
-
-export const TgtCanvas: FC<TgtCanvasProps> = ({
-  engine,
-  rowIds,
-  dataMatrix,
-  isPlaying,
-  isTracking,
-  onBasisUpdate,
-}) => {
-  const dispatch = useDispatch<AppDispatch>()
-  const selection = useSelector((s: RootState) => s.selection)
-  const { getColor, isSelected: isRowSelected, selectionColor } = useRowColorResolver()
-
-  const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const isDragging = useRef(false)
-  const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const dragEnd = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const [dragBox, setDragBox] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
-
-  const dimsRef = useRef({ width: 860, height: 540 })
-  const [dims, setDims] = useState({ width: 860, height: 540 })
-
-  useEffect(() => {
-    if (!containerRef.current) return
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
-        if (width > 50 && height > 50) {
-          const w = Math.round(width)
-          const h = Math.round(height)
-          dimsRef.current = { width: w, height: h }
-          setDims({ width: w, height: h })
+export interface TourPoint extends ProjectionPoint {
+  color: string; selected: boolean; trails: {x:number;y:number}[]
+}
+/** The engine, not ECharts animation, remains authoritative for coordinates. */
+export function tourOption(points: TourPoint[], width: number, height: number, selectionColor: string): EChartsOption {
+  const scale = Math.max(1, Math.min(width-60,height-60)/6.5)
+  const xmax = width/(2*scale), ymax = height/(2*scale)
+  return { animation: false, backgroundColor: '#141414', grid:{left:0,right:0,top:0,bottom:0},
+    xAxis:{type:'value',show:false,min:-xmax,max:xmax},yAxis:{type:'value',show:false,min:-ymax,max:ymax},
+    tooltip:{renderMode:'richText',formatter:(p:any)=>p.data?.rowId ? `rowId: ${p.data.rowId}\nx: ${p.value[0]}\ny: ${p.value[1]}` : ''},
+    graphic:[... [3,1.5].map((r,i)=>({id:`guide-${i}`,type:'circle' as const,silent:true,
+      shape:{cx:width/2,cy:height/2,r:r*scale},style:{fill:'none',stroke:'#262626',lineWidth:1}})),
+      {id:'cross-x',type:'line',silent:true,shape:{x1:width/2-3*scale,y1:height/2,x2:width/2+3*scale,y2:height/2},style:{stroke:'#333',lineDash:[3,3]}},
+      {id:'cross-y',type:'line',silent:true,shape:{x1:width/2,y1:height/2-3*scale,x2:width/2,y2:height/2+3*scale},style:{stroke:'#333',lineDash:[3,3]}}],
+    series:[{id:'tour-trails',type:'custom',silent:true,z:1,data:points.map((p,i)=>[p.x,p.y,i]),
+      renderItem:(_params:any,api:any)=>{
+        const p=points[Number(api.value(2))],children:any[]=[]
+        for(let i=0;i<p.trails.length-1;i++) {
+          const a=api.coord([p.trails[i].x,p.trails[i].y]),b=api.coord([p.trails[i+1].x,p.trails[i+1].y])
+          children.push({type:'line',shape:{x1:a[0],y1:a[1],x2:b[0],y2:b[1]},
+            style:{stroke:p.selected?selectionColor:p.color,lineWidth:p.selected?1.5:1,opacity:(i+1)/p.trails.length*.5}})
         }
-      }
-    })
-    ro.observe(containerRef.current)
-    return () => ro.disconnect()
-  }, [])
-
-  const getMetrics = () => {
-    const { width, height } = dimsRef.current
-    const margin = 30
-    const plotW = width - margin * 2
-    const plotH = height - margin * 2
-    const viewScale = Math.min(plotW, plotH) / 6.5
-    const centerX = width / 2
-    const centerY = height / 2
-    return {
-      width,
-      height,
-      viewScale,
-      centerX,
-      centerY,
-      toScreenX: (x: number) => centerX + x * viewScale,
-      toScreenY: (y: number) => centerY - y * viewScale,
-    }
+        return {type:'group',children}
+      }},
+      {id:'tour-points',type:'scatter',z:3,data:points.map(p=>({id:p.rowId,rowId:p.rowId,value:[p.x,p.y],
+        symbolSize:p.selected?10:7,itemStyle:{color:p.selected?selectionColor:p.color,borderColor:'#fff',borderWidth:p.selected?2:.5,opacity:1}}))}],
   }
-
-  // Animation frame loop
-  const pointsRef = useRef<ProjectionPoint[]>([])
-
-  useEffect(() => {
-    let animId: number
-
-    const render = () => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-
-      const { width, height, viewScale, centerX, centerY, toScreenX, toScreenY } = getMetrics()
-
-      if (isPlaying) {
-        engine.step()
-        onBasisUpdate([...engine.alpha], [...engine.beta])
-      }
-
-      // Project current points
-      const points = engine.project(rowIds, dataMatrix, isTracking)
-      pointsRef.current = points
-
-      // Clear Canvas
-      ctx.fillStyle = '#141414' // Dark theme for high contrast Grand Tour
-      ctx.fillRect(0, 0, width, height)
-
-      // Background guide circle (radius 3 sigma)
-      ctx.strokeStyle = '#262626'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(centerX, centerY, 3 * viewScale, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(centerX, centerY, 1.5 * viewScale, 0, Math.PI * 2)
-      ctx.stroke()
-
-      // Center crosshair
-      ctx.strokeStyle = '#333333'
-      ctx.setLineDash([3, 3])
-      ctx.beginPath()
-      ctx.moveTo(centerX - 3 * viewScale, centerY)
-      ctx.lineTo(centerX + 3 * viewScale, centerY)
-      ctx.moveTo(centerX, centerY - 3 * viewScale)
-      ctx.lineTo(centerX, centerY + 3 * viewScale)
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      // Draw tracking trails
-      if (isTracking) {
-        for (const pt of points) {
-          const trails = engine.getTrails(pt.rowId)
-          if (trails.length < 2) continue
-
-          const isSelected = isRowSelected(pt.rowId)
-          const ptColor = isSelected ? selectionColor : getColor(pt.rowId)
-
-          ctx.lineWidth = isSelected ? 1.5 : 1
-          for (let i = 0; i < trails.length - 1; i++) {
-            const p1 = trails[i]
-            const p2 = trails[i + 1]
-            const alphaVal = ((i + 1) / trails.length) * 0.5 // Fade older frames
-
-            ctx.save()
-            ctx.globalAlpha = alphaVal
-            ctx.strokeStyle = ptColor
-            ctx.beginPath()
-            ctx.moveTo(toScreenX(p1.x), toScreenY(p1.y))
-            ctx.lineTo(toScreenX(p2.x), toScreenY(p2.y))
-            ctx.stroke()
-            ctx.restore()
-          }
-        }
-      }
-
-      // Draw points
-      for (const pt of points) {
-        const sx = toScreenX(pt.x)
-        const sy = toScreenY(pt.y)
-        const isSelected = isRowSelected(pt.rowId)
-        const color = getColor(pt.rowId)
-
-        ctx.beginPath()
-        if (isSelected) {
-          ctx.arc(sx, sy, 5, 0, Math.PI * 2)
-          ctx.fillStyle = selectionColor
-          ctx.fill()
-          ctx.lineWidth = 2
-          ctx.strokeStyle = '#ffffff'
-          ctx.stroke()
-        } else {
-          ctx.arc(sx, sy, 3.5, 0, Math.PI * 2)
-          ctx.fillStyle = color
-          ctx.fill()
-          ctx.lineWidth = 0.5
-          ctx.strokeStyle = '#ffffff'
-          ctx.stroke()
-        }
-      }
-
-      // Draw Drag selection box (only when paused)
-      if (!isPlaying && dragBox) {
-        const rx = Math.min(dragBox.x1, dragBox.x2)
-        const ry = Math.min(dragBox.y1, dragBox.y2)
-        const rw = Math.abs(dragBox.x2 - dragBox.x1)
-        const rh = Math.abs(dragBox.y2 - dragBox.y1)
-
-        ctx.fillStyle = 'rgba(42, 120, 214, 0.25)'
-        ctx.fillRect(rx, ry, rw, rh)
-        ctx.strokeStyle = '#2a78d6'
-        ctx.lineWidth = 1.5
-        ctx.strokeRect(rx, ry, rw, rh)
-      }
-
-      if (isPlaying) {
-        animId = requestAnimationFrame(render)
-      }
-    }
-
-    render()
-
-    return () => {
-      if (animId) cancelAnimationFrame(animId)
-    }
-  }, [isPlaying, isTracking, rowIds, dataMatrix, engine, isRowSelected, getColor, selectionColor, dragBox, onBasisUpdate, dims])
-
-  // Mouse handlers for dragging when paused
-  const handleMouseDown = (e: ReactMouseEvent<HTMLCanvasElement>) => {
-    if (isPlaying || e.button !== 0) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    isDragging.current = true
-    dragStart.current = { x, y }
-    dragEnd.current = { x, y }
-    setDragBox({ x1: x, y1: y, x2: x, y2: y })
+}
+export const TgtCanvas: FC<TgtCanvasProps> = props => {
+  const { engine, rowIds, dataMatrix, isPlaying, isTracking }=props
+  const viewportKey=JSON.stringify(useGraphViewport())
+  const getPopupContainer=useGraphPopupContainer()
+  const dispatch=useDispatch<AppDispatch>(),selection=useSelector((s:RootState)=>s.selection)
+  const colors=useRowColorResolver()
+  const latest=useRef({props,colors});latest.current={props,colors}
+  const containerRef=useRef<HTMLDivElement>(null),chartRef=useRef<ECharts|null>(null)
+  const pointsRef=useRef<ProjectionPoint[]>([]),start=useRef<{x:number;y:number;clientX:number;clientY:number;pointerId:number;coordKey:string;pointId?:string}|null>(null)
+  const lastProjection=useRef<{engine:GeodesicEngine;rowIds:string[];dataMatrix:number[][];basis:string}|null>(null)
+  const [ready,setReady]=useState(false)
+  const pausedBasisKey=isPlaying?'':JSON.stringify([engine.alpha,engine.beta])
+  const baseOption=useMemo<EChartsOption>(()=>({animation:false,backgroundColor:'#141414'}),[])
+  const clear=()=>{
+    const drag=start.current
+    start.current=null
+    const element=containerRef.current
+    if(drag && element?.hasPointerCapture?.(drag.pointerId))element.releasePointerCapture(drag.pointerId)
+    const chart=chartRef.current
+    if(chart && !chart.isDisposed())chart.setOption({graphic:[{id:'tour-brush',type:'rect',invisible:true,shape:{x:0,y:0,width:0,height:0}}]})
   }
-
-  const handleMouseMove = (e: ReactMouseEvent<HTMLCanvasElement>) => {
-    if (isPlaying || !isDragging.current) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    dragEnd.current = { x, y }
-    setDragBox({
-      x1: dragStart.current.x,
-      y1: dragStart.current.y,
-      x2: x,
-      y2: y,
-    })
+  const draw=()=>{
+    const chart=chartRef.current
+    if(!chart || chart.isDisposed())return
+    const {props:p,colors:c}=latest.current
+    const points:TourPoint[]=pointsRef.current.map(q=>({...q,color:c.getColor(q.rowId),selected:c.isSelected(q.rowId),
+      trails:p.isTracking?p.engine.getTrails(q.rowId):[]}))
+    chart.setOption(tourOption(points,chart.getWidth(),chart.getHeight(),c.selectionColor),{notMerge:false,lazyUpdate:false})
   }
-
-  const handleMouseUp = (e?: ReactMouseEvent<HTMLCanvasElement>) => {
-    if (isPlaying || !isDragging.current) {
-      isDragging.current = false
-      setDragBox(null)
-      return
-    }
-    isDragging.current = false
-
-    if (e && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect()
-      dragEnd.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-    }
-
-    const bx1 = Math.min(dragStart.current.x, dragEnd.current.x)
-    const bx2 = Math.max(dragStart.current.x, dragEnd.current.x)
-    const by1 = Math.min(dragStart.current.y, dragEnd.current.y)
-    const by2 = Math.max(dragStart.current.y, dragEnd.current.y)
-
-    if (bx2 - bx1 > 4 || by2 - by1 > 4) {
-      const { toScreenX, toScreenY } = getMetrics()
-      const hitIds: string[] = []
-      for (const pt of pointsRef.current) {
-        const sx = toScreenX(pt.x)
-        const sy = toScreenY(pt.y)
-        if (sx >= bx1 && sx <= bx2 && sy >= by1 && sy <= by2) {
-          hitIds.push(pt.rowId)
-        }
+  // One step/project per requested frame. Parent basis-label renders must not
+  // advance or append trail history a second time.
+  useEffect(()=>{
+    if(!ready)return
+    let id:number|undefined,cancelled=false
+    const frame=()=>{
+      if(cancelled)return
+      if(isPlaying){engine.step();latest.current.props.onBasisUpdate([...engine.alpha],[...engine.beta])}
+      const basis=JSON.stringify([engine.alpha,engine.beta]),previous=lastProjection.current
+      // Pausing or toggling trail visibility is a redraw of the same frame,
+      // not another history sample. Manual step/reset changes the basis.
+      if(isPlaying || !previous || previous.engine!==engine || previous.rowIds!==rowIds || previous.dataMatrix!==dataMatrix || previous.basis!==basis){
+        pointsRef.current=engine.project(rowIds,dataMatrix,latest.current.props.isTracking)
+        lastProjection.current={engine,rowIds,dataMatrix,basis}
       }
-      if (hitIds.length > 0) {
-        dispatch(
-          selectionApplied({
-            rowIds: hitIds,
-            operation: getBrushOp(),
-            label: `Touring選択 (${hitIds.length}行)`,
-          })
-        )
-      }
+      draw()
+      if(isPlaying)id=requestAnimationFrame(frame)
     }
-
-    setDragBox(null)
+    frame()
+    return ()=>{cancelled=true;if(id!==undefined)cancelAnimationFrame(id);clear()}
+  },[ready,engine,rowIds,dataMatrix,isPlaying,pausedBasisKey])
+  // Recolor and resize without mutating the projection/trail engine.
+  useEffect(()=>{if(ready)draw()},[ready,isTracking,colors.getColor,colors.isSelected,colors.selectionColor])
+  useEffect(()=>{
+    if(!ready||!containerRef.current||typeof ResizeObserver==='undefined')return
+    const observer=new ResizeObserver(()=>{const chart=chartRef.current;if(chart&&!chart.isDisposed()){chart.resize();clear();draw()}})
+    observer.observe(containerRef.current);return ()=>observer.disconnect()
+  },[ready])
+  const local=(e:PointerEvent<HTMLDivElement>)=>{
+    const box=e.currentTarget.getBoundingClientRect(),c=chartRef.current
+    if(!c||!box.width||!box.height)return null
+    return {x:(e.clientX-box.left)*c.getWidth()/box.width,y:(e.clientY-box.top)*c.getHeight()/box.height}
   }
-
+  useEffect(()=>{clear();draw()},[viewportKey])
+  const nearestRow=(point:{x:number;y:number},box:DOMRect)=>{
+    const chart=chartRef.current
+    if(!chart)return undefined
+    let hit:string|undefined,distance=64.000001
+    for(const q of pointsRef.current){const xy=chart.convertToPixel({gridIndex:0},[q.x,q.y]) as number[]
+      const d=((xy[0]-point.x)*box.width/chart.getWidth())**2+((xy[1]-point.y)*box.height/chart.getHeight())**2
+      if(d<distance){distance=d;hit=q.rowId}}
+    return hit
+  }
   const contextMenuItems = [
     {
       key: 'focus',
@@ -299,36 +147,34 @@ export const TgtCanvas: FC<TgtCanvasProps> = ({
     },
   ]
 
-  return (
-    <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
-      <div
-        ref={containerRef}
-        style={{
-          position: 'relative',
-          border: '1px solid #333',
-          borderRadius: 8,
-          overflow: 'hidden',
-          display: 'block',
-          width: '100%',
-          height: '100%',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          width={dims.width}
-          height={dims.height}
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'block',
-            cursor: isPlaying ? 'default' : 'crosshair',
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          data-testid="tgt-canvas"
-        />
-      </div>
-    </Dropdown>
-  )
+
+  return <Dropdown getPopupContainer={getPopupContainer} menu={{items:contextMenuItems}} trigger={['contextMenu']}>
+    <div ref={containerRef} data-testid="tgt-canvas" style={{height:'100%',width:'100%',position:'relative',border:'1px solid #333',borderRadius:8,overflow:'hidden',userSelect:'none',touchAction:'none'}}
+      onPointerDown={e=>{if(isPlaying||e.button!==0||start.current)return;const p=local(e);if(!p)return;
+        start.current={...p,clientX:e.clientX,clientY:e.clientY,pointerId:e.pointerId,coordKey:viewportKey,pointId:nearestRow(p,e.currentTarget.getBoundingClientRect())};try{e.currentTarget.setPointerCapture?.(e.pointerId)}catch{/* synthetic event */}}}
+      onPointerMove={e=>{const a=start.current,p=local(e);if(!a||a.pointId||a.pointerId!==e.pointerId||!p||isPlaying)return;
+        chartRef.current?.setOption({graphic:[{id:'tour-brush',type:'rect',invisible:false,silent:true,z:100,
+          shape:{x:Math.min(a.x,p.x),y:Math.min(a.y,p.y),width:Math.abs(a.x-p.x),height:Math.abs(a.y-p.y)},style:{fill:'rgba(42,120,214,.15)',stroke:'#2a78d6',lineWidth:1.5}}]})}}
+      onPointerCancel={e=>{if(start.current?.pointerId===e.pointerId)clear()}}
+      onLostPointerCapture={e=>{if(start.current?.pointerId===e.pointerId)clear()}}
+      onPointerUp={e=>{
+        const a=start.current,p=local(e),chart=chartRef.current
+        if(a?.pointerId!==e.pointerId)return
+        clear()
+        if(!a||!p||!chart||isPlaying||a.coordKey!==viewportKey)return
+        const box=e.currentTarget.getBoundingClientRect()
+        if(Math.abs(e.clientX-a.clientX)<=4&&Math.abs(e.clientY-a.clientY)<=4){
+          const hit=a.pointId??nearestRow(p,box)
+          if(hit)dispatch(selectionApplied({rowIds:[hit],operation:'toggle',label:'Touring点選択'}))
+        }else if(!a.pointId){
+          const hit=pointsRef.current.filter(q=>{const xy=chart.convertToPixel({gridIndex:0},[q.x,q.y]) as number[]
+            return xy[0]>=Math.min(a.x,p.x)&&xy[0]<=Math.max(a.x,p.x)&&xy[1]>=Math.min(a.y,p.y)&&xy[1]<=Math.max(a.y,p.y)}).map(q=>q.rowId)
+          dispatch(selectionApplied({rowIds:hit,operation:getBrushOp(),label:`Touring選択 (${hit.length}行)`}))
+        }
+      }}>
+      <EChart chartRef={chartRef} renderer="canvas" height="100%" option={baseOption} ariaLabel="Grand Tour 投影図" onReady={()=>setReady(true)}
+        onEvents={{mouseover:event=>{if(event.seriesId==='tour-points'&&event.data?.rowId)dispatch({type:'selection/hovered',payload:event.data.rowId})},
+          mouseout:event=>{if(event.seriesId==='tour-points')dispatch({type:'selection/hovered',payload:null})}}} />
+    </div>
+  </Dropdown>
 }

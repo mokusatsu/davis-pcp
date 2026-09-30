@@ -97,8 +97,12 @@ export const saveCodebookThunk = createAsyncThunk(
     return {
       ...res,
       datasetId: state.datasetId,
-      columns: snapshotColumns,
-      multiResponseGroups: snapshotGroups,
+      columns: res.codebook.columns,
+      multiResponseGroups: res.codebook.multiResponseGroups ?? [],
+      weightConfig: res.codebook.weightConfig ?? null,
+      surveyDesign: res.codebook.surveyDesign ?? null,
+      submittedColumns: snapshotColumns,
+      submittedGroups: snapshotGroups,
     }
   }
 )
@@ -126,8 +130,8 @@ export const saveWeightConfigThunk = createAsyncThunk(
     return {
       ...res,
       datasetId: state.datasetId,
-      weightConfig: payload.weightConfig,
-      surveyDesign: payload.surveyDesign ?? null,
+      weightConfig: res.codebook.weightConfig ?? null,
+      surveyDesign: res.codebook.surveyDesign ?? null,
     }
   }
 )
@@ -327,6 +331,16 @@ export const codebookSlice = createSlice({
         state.schemaRevision = action.payload.schemaRevision
         state.columns = JSON.parse(JSON.stringify(action.payload.columns))
         state.multiResponseGroups = action.payload.multiResponseGroups
+        state.weightConfig = action.payload.weightConfig
+        state.surveyDesign = action.payload.surveyDesign
+        // Apply the server's normalization immediately, without discarding
+        // edits the user made while this particular save was in flight.
+        if (isColumnEqual(state.draftColumns, action.payload.submittedColumns)) {
+          state.draftColumns = JSON.parse(JSON.stringify(action.payload.columns))
+        }
+        if (JSON.stringify(state.draftMultiResponseGroups) === JSON.stringify(action.payload.submittedGroups)) {
+          state.draftMultiResponseGroups = JSON.parse(JSON.stringify(action.payload.multiResponseGroups))
+        }
         state.hasChanges = !isColumnEqual(state.draftColumns, action.payload.columns)
           || JSON.stringify(state.draftMultiResponseGroups) !== JSON.stringify(action.payload.multiResponseGroups)
       })

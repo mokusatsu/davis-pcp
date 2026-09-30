@@ -197,7 +197,7 @@ export async function updateCodebook(
     surveyDesign?: SurveyDesignSpec | null
     expectedSchemaRevision?: number
   }
-): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number }> {
+): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number; codebook: CodebookResponse }> {
   return api.put(`/datasets/${datasetId}/codebook`, {
     columns,
     ...(options ?? {}),

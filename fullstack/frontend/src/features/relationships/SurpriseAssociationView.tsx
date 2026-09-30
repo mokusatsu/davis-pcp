@@ -1,3 +1,5 @@
+import MatrixHeatmap from '../charts/MatrixHeatmap'
+import EChartSurface from '../charts/EChartSurface'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useState, useEffect, useMemo, useRef } from 'react'
@@ -140,7 +142,7 @@ export default function SurpriseAssociationView() {
   const heatmapLabelWidth = 150
   const heatmapCellWidth = 54
   const heatmapCellHeight = 40
-  const heatmapHeaderHeight = 40
+  const heatmapHeaderHeight = 160
   const heatmapWidth = Math.max(400, heatmapLabelWidth + heatmapColumnCount * heatmapCellWidth)
   const heatmapHeight = Math.max(300, heatmapHeaderHeight + heatmapColumnCount * heatmapCellHeight)
   const quadrant = { left: 40, right: 460, top: 28, bottom: 320 }
@@ -282,7 +284,7 @@ export default function SurpriseAssociationView() {
                     </div>
 
                     {/* SVG Plot of pairs with unified coordinate system */}
-                    <svg width={500} height={400} viewBox="0 0 500 400" style={{ width: 500, height: 400, display: 'block' }}>
+                    <EChartSurface width={500} height={400} viewBox="0 0 500 400" style={{ width: 500, height: 400, display: 'block' }}>
                       {/* Crosshairs */}
                       <line x1={(quadrant.left + quadrant.right) / 2} y1={quadrant.top} x2={(quadrant.left + quadrant.right) / 2} y2={quadrant.bottom} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
                       <line x1={quadrant.left} y1={(quadrant.top + quadrant.bottom) / 2} x2={quadrant.right} y2={(quadrant.top + quadrant.bottom) / 2} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
@@ -336,7 +338,7 @@ export default function SurpriseAssociationView() {
                           </g>
                         )
                       })}
-                    </svg>
+                    </EChartSurface>
                 </div>
               </GraphPanel>
             )}
@@ -351,62 +353,18 @@ export default function SurpriseAssociationView() {
                 controls={<Typography.Text type="secondary" style={{ fontSize: 12 }}>補正V<CorrectedVTip /></Typography.Text>}
               >
                 <div data-testid="surprise-heatmap" style={{ width: heatmapWidth, height: heatmapHeight, overflow: 'hidden' }}>
-                  <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: heatmapWidth, fontSize: 11, userSelect: 'none' }}>
-                    <colgroup><col style={{ width: heatmapLabelWidth }} />{result.pair_matrix.columns.map((col) => <col key={col} style={{ width: heatmapCellWidth }} />)}</colgroup>
-                    <thead>
-                      <tr style={{ height: heatmapHeaderHeight }}>
-                        <th style={{ width: heatmapLabelWidth }} />
-                        {result.pair_matrix.columns.map((col) => (
-                          <th key={col} title={col} style={{ width: heatmapCellWidth, maxWidth: heatmapCellWidth, height: heatmapHeaderHeight, padding: '4px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <ColumnQuestionTooltip nameOrId={col}>{col}</ColumnQuestionTooltip>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.pair_matrix.columns.map((rowCol, rIdx) => (
-                        <tr key={rowCol} style={{ height: heatmapCellHeight }}>
-                          <th scope="row" title={rowCol} style={{ width: heatmapLabelWidth, maxWidth: heatmapLabelWidth, padding: '4px 8px', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, textAlign: 'left', whiteSpace: 'nowrap' }}><ColumnQuestionTooltip nameOrId={rowCol}>{rowCol}</ColumnQuestionTooltip></th>
-                          {result.pair_matrix.columns.map((colCol, cIdx) => {
-                            const val = result.pair_matrix.matrix[rIdx][cIdx]
-                            // Heatmap color from -1 (blue) to 0 (white) to 1 (red)
-                            let bg = '#ffffff'
-                            if (val > 0) {
-                              const intensity = Math.min(1.0, val)
-                              bg = `rgba(245, 34, 45, ${intensity * 0.85})`
-                            } else if (val < 0) {
-                              const intensity = Math.min(1.0, Math.abs(val))
-                              bg = `rgba(24, 144, 255, ${intensity * 0.85})`
-                            }
-                            return (
-                              <td
-                                key={cIdx}
-                                onClick={() => {
-                                  const matched = result.pairs.find(
-                                    (p) => (p.x.name === rowCol && p.y.name === colCol) || (p.x.name === colCol && p.y.name === rowCol)
-                                  )
-                                  if (matched) setSelectedPairId(matched.id)
-                                }}
-                                style={{
-                                  width: heatmapCellWidth,
-                                  height: heatmapCellHeight,
-                                  padding: 0,
-                                  textAlign: 'center',
-                                  background: bg,
-                                  cursor: 'pointer',
-                                  border: '1px solid #f0f0f0',
-                                  color: Math.abs(val) > 0.5 ? '#fff' : '#333',
-                                }}
-                                title={`${rowCol} × ${colCol}: 補正V = ${val}`}
-                              >
-                                {val !== 0 ? val.toFixed(2) : '0'}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <MatrixHeatmap labels={result.pair_matrix.columns.map(name => {
+                      const label = columns.find(column => column.name === name)?.label
+                      return label && label !== name ? `${name} — ${label}` : name
+                    })} matrix={result.pair_matrix.matrix} bound={1}
+                    height={heatmapHeight} title="補正V 相関ヒートマップ" testId="surprise-heatmap-chart"
+                    selected={currentPair ? [result.pair_matrix.columns.indexOf(currentPair.x.name), result.pair_matrix.columns.indexOf(currentPair.y.name)] : null}
+                    onSelect={(row, col) => {
+                      const rowName = result.pair_matrix.columns[row], colName = result.pair_matrix.columns[col]
+                      const matched = result.pairs.find(pair => (pair.x.name === rowName && pair.y.name === colName)
+                        || (pair.x.name === colName && pair.y.name === rowName))
+                      if (matched) setSelectedPairId(matched.id)
+                    }} />
                 </div>
               </GraphPanel>
             )}

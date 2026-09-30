@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Card, Empty, Pagination, Progress, Radio, Space, Spin, Tooltip, Typography } from 'antd'
+import CategoryBars from '../charts/CategoryBars'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Alert, Button, Card, Empty, Pagination, Radio, Space, Spin, Tooltip, Typography } from 'antd'
 import Select from '../common/ColumnSelect'
 import { useDispatch, useSelector } from 'react-redux'
 import { api, type MultiResponseSummary, type MultiResponseSummaryResponse, type MultiResponseWeight } from '../../api/client'
@@ -98,6 +99,18 @@ export default function MultiResponseBarChart() {
     return () => { cancelled = true }
   }, [key, selection.selectedRowIds, isLoading, retry])
 
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(300)
+  useLayoutEffect(() => {
+    const node = contentRef.current
+    if (!node) return
+    const measure = () => { if (node.offsetHeight > 0) setContentHeight(node.offsetHeight) }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(node)
+    measure()
+    return () => observer?.disconnect()
+  }, [Boolean(groups.length)])
+
   const select = async (columnId: string, code: string) => {
     const requestVersion = ++version.current
     const operation = getBrushOp()
@@ -146,11 +159,11 @@ export default function MultiResponseBarChart() {
     title="複数回答の棒グラフ"
     available={Boolean(group)}
     sizing="intrinsic"
-    intrinsicSize={{ width: 680, height: Math.max(300, 120 + visible.length * 60) }}
+    intrinsicSize={{ width: 680, height: contentHeight }}
     normalWidth="viewport"
     controls={maControls}
   >
-  <Card size="small" data-testid="ma-barchart">
+  <Card ref={contentRef} size="small" data-testid="ma-barchart">
     {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => setRetry(value => value + 1)}>再試行</Button>} />}
     {loading && <Spin />}
     <WeightUnsupportedAlert weightColumnName={value?.weightStatus === 'unsupported' ? value?.weightColumn : null} />
@@ -163,6 +176,14 @@ export default function MultiResponseBarChart() {
     {value && value.strata.length > 10 && <Space style={{ marginBottom: 12 }}><span>比較カテゴリ</span>
       <Pagination size="small" current={currentStrataPage} pageSize={10} total={value.strata.length} showSizeChanger={false} onChange={setStrataPage} />
     </Space>}
+    <CategoryBars axisName={mode === 'percent' ? '選択率 (%)' : weighted ? '加重人数 (Σw)' : '人数'}
+      max={mode === 'percent' ? 100 : maxValue} testId="ma-grouped-chart"
+      items={visible.flatMap(option => visibleStrata.map(stratum => {
+        const item = stratum.summary.items.find(item => item.columnId === option.columnId)!
+        return { id: JSON.stringify([item.columnId, stratum.code]), label: `${option.label || option.name} / ${stratum.label}`,
+          value: mode === 'percent' ? item.pctRespondent : barValue(item), selected: item.selectedInSelection > 0,
+          detail: `非加重: ${item.selectedN}人 / 有効: ${stratum.summary.denominators.valid}人 / 選択中: ${item.selectedInSelection}人` }
+      }))} onSelect={id => { if (!matching && !loading) { const [columnId, code] = JSON.parse(id); void select(columnId, code) } }} />
     {visible.map(option => <div key={option.columnId} style={{ marginBottom: 16 }}>
       <Typography.Text strong>{option.name} {option.label}</Typography.Text>
       {visibleStrata.map(stratum => {
@@ -175,8 +196,7 @@ export default function MultiResponseBarChart() {
           </Tooltip>
           <button type="button" disabled={matching || loading || !item.selectedN} aria-label={`${option.name} ${stratum.label}の回答者を選択`}
             onClick={() => void select(item.columnId, stratum.code)} style={{ flex: '1 1 120px', minWidth: 0, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}>
-            <Progress percent={mode === 'percent' ? item.pctRespondent ?? 0 : barValue(item) / maxValue * 100} showInfo={false}
-              strokeColor="#cbd5e1" success={{ percent: mode === 'percent' ? item.selectedInSelection / Math.max(1, stratum.summary.denominators.valid) * 100 : item.selectedInSelection / maxValue * 100, strokeColor: '#1677ff' }} />
+            回答者を選択
           </button>
           <span style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>{weighted ? `加重${formatWeight(item.selectedWeighted ?? 0)} / ` : ''}{item.selectedN}人 / {item.pctRespondent == null ? '—（分母0）' : `${item.pctRespondent.toFixed(1)}%`}{weighted && item.pctRespondentUnweighted != null ? `（非加重 ${item.pctRespondentUnweighted.toFixed(1)}%）` : ''} ・ 選択中{item.selectedInSelection}人</span>
         </div>

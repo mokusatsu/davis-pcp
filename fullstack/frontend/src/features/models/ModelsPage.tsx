@@ -1,3 +1,5 @@
+import { useQuestionText } from '../common/ColumnQuestionTooltip'
+import EChart from '../charts/EChart'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -56,6 +58,7 @@ interface ModelResponse {
 interface LeafRow { key: string; leafId: string; count: number; rowIds: string[] }
 
 export default function ModelsPage() {
+  const questionText = useQuestionText()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const rowIds = useSelector(selectEffectiveRowIds)
@@ -314,15 +317,13 @@ export default function ModelsPage() {
                   data-testid="feature-importance-panel"
                   style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
                 >
-                  {Object.entries(result.featureImportance).sort((a, b) => b[1] - a[1]).map(([feature, importance]) => (
-                    <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ width: 140, fontSize: 12, fontWeight: 500 }}><ColumnQuestionTooltip nameOrId={feature}>{feature}</ColumnQuestionTooltip></span>
-                      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 12 }}>
-                        <div style={{ width: `${importance * 100}%`, background: '#3b82f6', height: '100%', borderRadius: 4 }} />
-                      </div>
-                      <span style={{ fontSize: 11, width: 60, textAlign: 'right', fontWeight: 600 }}>{importance.toFixed(4)}</span>
-                    </div>
-                  ))}
+                  <EChart height={Math.max(220, Object.keys(result.featureImportance).length * 32 + 70)} ariaLabel="特徴量重要度"
+                    option={{ grid: { left: 150, right: 70, top: 20, bottom: 35 }, tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; return p ? `${questionText(p.name)}\n重要度: ${p.value}` : '' } },
+                      xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true, axisLabel: { formatter: (name: string) => truncateText(name, 16) },
+                        data: Object.entries(result.featureImportance).sort((a,b) => b[1]-a[1]).map(([name]) => name) },
+                      series: [{ type: 'bar', itemStyle: { color: '#3b82f6' },
+                        data: Object.entries(result.featureImportance).sort((a,b) => b[1]-a[1]).map(([,value]) => value),
+                        label: { show: true, position: 'right', color: '#333', formatter: (p: any) => Number(p.value).toFixed(4) } }] }} />
                 </div>
               </div>
             </GraphPanel>
@@ -387,6 +388,7 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
   onLeafSelect: (rowIds: string[]) => void
   headerNote?: string
 }) {
+  const questionText = useQuestionText()
   const CLASS_COLORS = ['#eb6834', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4']
   const MIN_LEAF_W = 96
   const MAX_TREE_HEIGHT = 520
@@ -409,7 +411,6 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
   const colW = MIN_LEAF_W + 8
   const maxDepth = Math.max(...[...positions.values()].map((p) => p.y))
   const rowH = Math.max(56, Math.min(92, Math.floor(MAX_TREE_HEIGHT / (maxDepth + 1))))
-  const width = Math.max(1, leafCursor) * colW + 40
   const height = (maxDepth + 1) * rowH + 30
   // The active leaf is the one whose membership equals the current selection.
   const selectedSet = new Set(selectedRowIds)
@@ -445,69 +446,31 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
         </Typography.Title>
       </Space>
       <div style={{ flex: 1, overflow: 'visible', minHeight: 0 }}>
-        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', minWidth: Math.min(width, 700), maxWidth: 'none', height: 'auto', margin: '0 auto' }}>
-        {[...positions.values()].map(({ x, y, node }) => {
-          if (!node.children) return null
-          return node.children!.map((child) => {
-            const childPos = positions.get(child.nodeId)!
-            const rule = child === node.children![0] ? 'yes' : 'no'
-            return (
-              <g key={`${node.nodeId}-${child.nodeId}`}>
-                <line x1={px(x)} y1={py(y) + 16} x2={px(childPos.x)} y2={py(childPos.y) - 14}
-                  stroke="#c3c2b7" strokeWidth={1.2} />
-                <text x={(px(x) + px(childPos.x)) / 2} y={(py(y) + py(childPos.y)) / 2}
-                  textAnchor="middle" fontSize={10} fill="#898781">{rule}</text>
-              </g>
-            )
-          })
-        })}
-        {[...positions.values()].map(({ x, y, node }) => {
-          const cx = px(x)
-          const cy = py(y)
-          if (node.isLeaf) {
-            const color = classColorOf(node.majority ?? null)
-            const topClass = node.values?.[0]
-            const isActive = node.nodeId === activeLeafNodeId
-            const leafLabel = `${node.majority ?? 'leaf'}${isActive ? ' ✓' : ''}`
-            return (
-              <g key={node.nodeId} style={{ cursor: 'pointer' }}
-                role="button" tabIndex={0} aria-label={`葉${node.nodeId}の${node.count}行を選択`} aria-pressed={isActive}
-                onClick={() => selectByNode(node.nodeId)}
-                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectByNode(node.nodeId) } }}
-                data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`}
-              >
-                <title>クリックでこのリーフの行を選択{isActive ? '（選択中）' : ''}</title>
-                {isActive && (
-                  <rect x={cx - 43} y={cy - 19} width={86} height={38} rx={8}
-                        fill="none" stroke="#2a78d6" strokeWidth={2.5} strokeDasharray="5 3" />
-                )}
-                <rect x={cx - 38} y={cy - 15} width={76} height={30} rx={6}
-                  fill={color} opacity={isActive ? 0.45 : 0.18} stroke={color}
-                  strokeWidth={isActive ? 2.2 : 1.4} />
-                <text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0b0b0b">
-                  <title>{leafLabel}</title>
-                  {truncateText(leafLabel, 12)}
-                </text>
-                <text x={cx} y={cy + 10} textAnchor="middle" fontSize={9} fill="#52514e">
-                  n={node.count}{topClass ? ` · ${Math.round(topClass.ratio * 100)}%` : ''}
-                </text>
-              </g>
-            )
-          }
-          const ruleLabel = `${node.feature?.replace(/_cm$/, '') ?? ''} ≤ ${node.threshold ?? '—'}`
-          return (
-            <g key={node.nodeId}>
-              <rect x={cx - 46} y={cy - 15} width={92} height={30} rx={4}
-                fill="#f8fafc" stroke="#94a3b8" strokeWidth={1.2} />
-              <ColumnQuestionTooltip nameOrId={node.feature ?? ''} svg><text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={600} fill="#0b0b0b">
-                <title>{ruleLabel}</title>
-                {truncateText(ruleLabel, 12)}
-              </text></ColumnQuestionTooltip>
-              <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="#52514e">n={node.count}</text>
-            </g>
-          )
-        })}
-      </svg>
+        <EChart height={height} ariaLabel="決定木構造"
+          option={{ tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.description ?? p.name },
+            series: [{ type: 'graph', layout: 'none', roam: false, edgeSymbol: ['none', 'none'],
+              left: 55, right: 55, top: 30, bottom: 30,
+              data: [...positions.values()].map(({x, y, node}) => ({ id: String(node.nodeId), x: px(x), y: py(y),
+                nodeId: node.nodeId, isLeaf: node.isLeaf, symbol: 'roundRect', symbolSize: node.isLeaf ? [84, 38] : [100, 38],
+                name: node.isLeaf ? `${truncateText(node.majority ?? 'leaf', 12)}${node.nodeId === activeLeafNodeId ? ' ✓' : ''}\nn=${node.count}${node.values?.[0] ? ` · ${Math.round(node.values[0].ratio * 100)}%` : ''}`
+                  : `${truncateText(`${node.feature ?? ''} ≤ ${node.threshold}`, 14)}\nn=${node.count}`,
+                description: node.isLeaf ? `${node.majority ?? 'leaf'}\n葉${node.nodeId} 学習時n=${node.count}\nクリックで所属行を選択`
+                  : `${questionText(node.feature ?? '')} ≤ ${node.threshold}\n学習時n=${node.count}`,
+                itemStyle: { color: node.isLeaf ? classColorOf(node.majority ?? null) : '#f8fafc',
+                  borderColor: node.nodeId === activeLeafNodeId ? '#2a78d6' : '#94a3b8', borderWidth: node.nodeId === activeLeafNodeId ? 3 : 1 },
+                label: { show: true, fontSize: 10, color: '#111' },
+              })),
+              links: [...positions.values()].flatMap(({node}) => (node.children ?? []).map((child, i) => ({
+                source: String(node.nodeId), target: String(child.nodeId), name: i === 0 ? 'yes' : 'no' }))),
+              edgeLabel: { show: true, formatter: (p: any) => p.data.name, fontSize: 10 },
+              lineStyle: { color: '#b5b5ae', width: 1.3 }, emphasis: { focus: 'adjacency' },
+            }] }} onEvents={{ click: p => { if (p.dataType === 'node' && p.data.isLeaf) selectByNode(p.data.nodeId) } }} />
+        <details open style={{ padding: '4px 12px' }}><summary>葉をキーボードで選択</summary>
+          {[...positions.values()].filter(p => p.node.isLeaf).map(({node}) => <button key={node.nodeId}
+            data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`} aria-pressed={node.nodeId === activeLeafNodeId} aria-label={`葉${node.nodeId}の${node.count}行を選択`}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectByNode(node.nodeId) } }}
+            onClick={() => selectByNode(node.nodeId)}>葉{node.nodeId}: {node.majority ?? 'leaf'} (学習時n={node.count})</button>)}
+        </details>
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 4, padding: '0 12px 8px' }}>
         {[...new Set(collectLabels(root))].sort().map((label) => (

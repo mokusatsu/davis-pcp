@@ -17,6 +17,17 @@ from sklearn.linear_model import LogisticRegression
 from ...domain.errors import BizError
 
 
+def _exponentiate_estimate(value: float) -> tuple[float | None, str]:
+    """Preserve representable odds ratios; never invent a capped estimate."""
+    with np.errstate(over="ignore", under="ignore"):
+        result = float(np.exp(value))
+    if not math.isfinite(result):
+        return None, "overflow"
+    if result == 0:
+        return None, "underflow"
+    return result, "finite"
+
+
 def run_logistic_regression(
     df: pl.DataFrame,
     target_column: str,
@@ -237,21 +248,35 @@ def run_logistic_regression(
     p_values = 2.0 * (1.0 - stats.norm.cdf(np.abs(z_values)))
 
     # Odds ratio and 95% CI
-    odds_ratios = np.exp(np.clip(beta_orig, -20.0, 20.0))
-    ci_lowers = np.exp(np.clip(beta_orig - 1.96 * std_errors, -20.0, 20.0))
-    ci_uppers = np.exp(np.clip(beta_orig + 1.96 * std_errors, -20.0, 20.0))
+    log_ci_lowers = beta_orig - 1.96 * std_errors
+    log_ci_uppers = beta_orig + 1.96 * std_errors
 
     coefficients = []
+    warnings: list[dict[str, Any]] = []
     for i, name in enumerate(feature_names_with_intercept):
+        estimates = {
+            "oddsRatio": _exponentiate_estimate(float(beta_orig[i])),
+            "ciLower": _exponentiate_estimate(float(log_ci_lowers[i])),
+            "ciUpper": _exponentiate_estimate(float(log_ci_uppers[i])),
+        }
+        out_of_range = [key for key, (_, status) in estimates.items() if status != "finite"]
+        if out_of_range:
+            warnings.append({
+                "code": "LOGISTIC_EXPONENTIATION_RANGE",
+                "message": f"{name} のオッズ比または信頼区間が数値の表現範囲外です。対数値を参照してください。",
+                "details": {"column": name, "fields": out_of_range},
+            })
         coefficients.append({
             "name": name,
             "coefficient": round(float(beta_orig[i]), 6),
             "stdError": round(float(std_errors[i]), 6),
             "zValue": round(float(z_values[i]), 4),
             "pValue": round(float(p_values[i]), 6),
-            "oddsRatio": round(float(odds_ratios[i]), 6),
-            "ciLower": round(float(ci_lowers[i]), 6),
-            "ciUpper": round(float(ci_uppers[i]), 6),
+            **{key: estimate for key, (estimate, _) in estimates.items()},
+            "logOddsRatio": float(beta_orig[i]),
+            "logCiLower": float(log_ci_lowers[i]),
+            "logCiUpper": float(log_ci_uppers[i]),
+            "exponentiationStatus": {key: status for key, (_, status) in estimates.items()},
         })
 
     # Fit metrics
@@ -356,6 +381,7 @@ def run_logistic_regression(
         curves[feat_name] = curve_points
 
     return {
+        "warnings": warnings,
         "diagnostics": {"completeSeparation": complete_separation,
                         "separationMethod": "strict-margin-linear-feasibility"},
         "target": target_column,

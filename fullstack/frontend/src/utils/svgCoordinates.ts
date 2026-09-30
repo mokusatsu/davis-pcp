@@ -16,6 +16,17 @@ export function getSvgPoint(
 ): { x: number; y: number } {
   if (!svg) return { x: NaN, y: NaN }
 
+  // ECharts custom graphics retain logical statistical coordinates through resize.
+  if (svg.dataset?.logicalWidth && svg.dataset?.logicalHeight) {
+    const rect = svg.getBoundingClientRect()
+    const width = Number(svg.dataset.logicalWidth), height = Number(svg.dataset.logicalHeight)
+    if (!rect.width || !rect.height) return { x: NaN, y: NaN }
+    if (svg.dataset.logicalAspect === 'none') return { x: (event.clientX - rect.left) * width / rect.width, y: (event.clientY - rect.top) * height / rect.height }
+    const scale = Math.min(rect.width / width, rect.height / height)
+    return { x: (event.clientX - rect.left - (rect.width - width * scale) / 2) / scale,
+      y: (event.clientY - rect.top - (rect.height - height * scale) / 2) / scale }
+  }
+
   // 1. Primary: Native SVG CTM inversion
   try {
     if (typeof svg.getScreenCTM === 'function') {

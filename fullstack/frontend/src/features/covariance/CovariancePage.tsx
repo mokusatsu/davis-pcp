@@ -1,3 +1,4 @@
+import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { selectOrdinaryVariables } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -11,7 +12,6 @@ import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { truncateText } from '../../utils/textUtils'
 
 interface CovarianceResponse {
   columns: string[]
@@ -77,6 +77,7 @@ export default function CovariancePage() {
   const fetchCov = useCallback(async () => {
     const generation = ++requestGeneration.current
     setCovData(null)
+    setSelectedCell(null)
     setError(null)
     if (!datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !numericColumns.includes(c))) { setLoading(false); return }
     setLoading(true)
@@ -123,30 +124,6 @@ export default function CovariancePage() {
     return { min, max }
   }, [activeMatrix])
 
-  const getCellColor = (val: number) => {
-    if (mode === 'corr' || mode === 'prec') {
-      // Bipolar -1 to 1: negative blue, positive red/orange
-      if (val > 0) {
-        const a = Math.min(1, val).toFixed(2)
-        return `rgba(239, 68, 68, ${a})` // red
-      } else if (val < 0) {
-        const a = Math.min(1, Math.abs(val)).toFixed(2)
-        return `rgba(59, 130, 246, ${a})` // blue
-      }
-      return '#ffffff'
-    } else {
-      // Raw covariance: normalize by max abs
-      const maxAbs = Math.max(Math.abs(colorScale.min), Math.abs(colorScale.max)) || 1
-      const norm = val / maxAbs
-      if (norm > 0) {
-        return `rgba(239, 68, 68, ${Math.min(1, norm).toFixed(2)})`
-      } else if (norm < 0) {
-        return `rgba(59, 130, 246, ${Math.min(1, Math.abs(norm)).toFixed(2)})`
-      }
-      return '#ffffff'
-    }
-  }
-
   const handleCellClick = (r: number, c: number) => {
     if (!covData) return
     setSelectedCell({
@@ -169,11 +146,9 @@ export default function CovariancePage() {
     navigate('/loess')
   }
 
-  const CELL_SIZE = 76
-  const CELL_HEIGHT = 48
-  const LABEL_WIDTH = 130
-  const FONT_SIZE = 11
-  const HEADER_FONT_SIZE = 12
+
+  const matrixWidth = Math.max(560, 200 + (covData?.columns.length ?? 4) * 76)
+  const matrixHeight = Math.max(400, (covData?.columns.length ?? 4) * 45 + 180)
 
   return (
     <div
@@ -255,18 +230,53 @@ export default function CovariancePage() {
         graphId="covariance/matrix"
         title="分散共分散行列"
         available={Boolean(!loading && covData && covData.columns.length >= 2)}
+        controls={<>{/* Cell Inspector Toolbar */}
+              {selectedCell && covData && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: '10px 14px',
+                    borderRadius: 6,
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Space wrap size={12}>
+                    <Typography.Text strong>
+                      選択セル: [<ColumnQuestionTooltip nameOrId={selectedCell.col1}>{selectedCell.col1}</ColumnQuestionTooltip>] × [<ColumnQuestionTooltip nameOrId={selectedCell.col2}>{selectedCell.col2}</ColumnQuestionTooltip>]
+                    </Typography.Text>
+                    <span>
+                      共分散: {covData.covariance[selectedCell.r][selectedCell.c].toFixed(4)} | 相関: {covData.correlation[selectedCell.r][selectedCell.c].toFixed(3)} | 偏相関: {covData.partialCorrelation[selectedCell.r][selectedCell.c].toFixed(3)}
+                    </span>
+                  </Space>
+
+                  <Space wrap size={8}>
+                    <Button size="small" type="primary" icon={<ArrowRightOutlined />} onClick={projectToPcp}>
+                      PCPでこの2軸を先頭配置
+                    </Button>
+                    <Button size="small" icon={<LineChartOutlined />} onClick={navigateToLoess}>
+                      Loess散布図で開く
+                    </Button>
+                  </Space>
+                </div>
+              )}</>}
         sizing="intrinsic"
         intrinsicSize={{
-          width: Math.max(480, 32 + LABEL_WIDTH + 20 + (covData?.columns.length ?? 4) * (CELL_SIZE + 12)),
-          height: Math.max(360, 32 + 32 + (covData?.columns.length ?? 4) * CELL_HEIGHT),
+          width: matrixWidth,
+          height: matrixHeight,
         }}
       >
         <div
           style={{
-            border: '1px solid #e5e7eb',
+            outline: '1px solid #e5e7eb',
+            outlineOffset: -1,
             borderRadius: 6,
             background: '#ffffff',
-            padding: 16,
             position: 'relative',
             overflow: 'visible',
             userSelect: 'none',
@@ -281,123 +291,12 @@ export default function CovariancePage() {
 
           {!loading && covData && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-              <table data-testid="covariance-matrix" style={{ borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: LABEL_WIDTH, padding: 6 }}></th>
-                    {covData.columns.map((col) => (
-                      <th
-                        key={col}
-                        title={col}
-                        style={{
-                          width: CELL_SIZE,
-                          padding: 6,
-                          fontSize: HEADER_FONT_SIZE,
-                          fontWeight: 600,
-                          color: '#374151',
-                          textAlign: 'center',
-                          borderBottom: '1px solid #e5e7eb',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        <ColumnQuestionTooltip nameOrId={col}>{truncateText(col, 10)}</ColumnQuestionTooltip>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {covData.columns.map((rCol, rIdx) => (
-                    <tr key={rCol}>
-                      <td
-                        title={rCol}
-                        style={{
-                          width: LABEL_WIDTH,
-                          padding: '6px 10px',
-                          fontSize: HEADER_FONT_SIZE,
-                          fontWeight: 600,
-                          color: '#374151',
-                          textAlign: 'right',
-                          borderRight: '1px solid #e5e7eb',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        <ColumnQuestionTooltip nameOrId={rCol}>{truncateText(rCol, 12)}</ColumnQuestionTooltip>
-                      </td>
-                      {covData.columns.map((cCol, cIdx) => {
-                        const val = activeMatrix[rIdx]?.[cIdx] ?? 0
-                        const isDiag = rIdx === cIdx
-                        const isSelected = selectedCell?.r === rIdx && selectedCell?.c === cIdx
-                        const cellBg = getCellColor(val)
+              <MatrixHeatmap labels={covData.columns} matrix={activeMatrix} bound={mode === 'cov' ? Math.max(Math.abs(colorScale.min), Math.abs(colorScale.max), 1e-12) : 1}
+                title={mode === 'cov' ? '分散共分散行列' : mode === 'corr' ? '相関行列' : '偏相関行列'} testId="covariance-matrix"
+                selected={selectedCell ? [selectedCell.r, selectedCell.c] : null} onSelect={handleCellClick} decimals={mode === 'cov' ? 3 : 2}
+                height={matrixHeight} />
 
-                        return (
-                          <td
-                            key={cCol}
-                            data-testid={`covariance-cell-${rIdx}-${cIdx}`}
-                            onClick={() => handleCellClick(rIdx, cIdx)}
-                            style={{
-                              width: CELL_SIZE,
-                              height: CELL_HEIGHT,
-                              textAlign: 'center',
-                              background: cellBg,
-                              border: isSelected ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                              cursor: 'pointer',
-                              position: 'relative',
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: FONT_SIZE,
-                                fontWeight: isDiag ? 700 : 500,
-                                color: Math.abs(val) > (mode === 'cov' ? (colorScale.max * 0.6) : 0.6) ? '#ffffff' : '#1f2937',
-                              }}
-                            >
-                              {mode === 'cov' ? val.toFixed(3) : val.toFixed(2)}
-                            </span>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
 
-              {/* Cell Inspector Toolbar */}
-              {selectedCell && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    padding: '10px 14px',
-                    borderRadius: 6,
-                    background: '#f8fafc',
-                    border: '1px solid #cbd5e1',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <Space size={12}>
-                    <Typography.Text strong>
-                      選択セル: [<ColumnQuestionTooltip nameOrId={selectedCell.col1}>{selectedCell.col1}</ColumnQuestionTooltip>] × [<ColumnQuestionTooltip nameOrId={selectedCell.col2}>{selectedCell.col2}</ColumnQuestionTooltip>]
-                    </Typography.Text>
-                    <span>
-                      共分散: {covData.covariance[selectedCell.r][selectedCell.c].toFixed(4)} | 相関: {covData.correlation[selectedCell.r][selectedCell.c].toFixed(3)} | 偏相関: {covData.partialCorrelation[selectedCell.r][selectedCell.c].toFixed(3)}
-                    </span>
-                  </Space>
-
-                  <Space size={8}>
-                    <Button size="small" type="primary" icon={<ArrowRightOutlined />} onClick={projectToPcp}>
-                      PCPでこの2軸を先頭配置
-                    </Button>
-                    <Button size="small" icon={<LineChartOutlined />} onClick={navigateToLoess}>
-                      Loess散布図で開く
-                    </Button>
-                  </Space>
-                </div>
-              )}
             </div>
           )}
 

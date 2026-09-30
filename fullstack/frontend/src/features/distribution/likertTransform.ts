@@ -99,3 +99,31 @@ export function sortLikertRows(rows: LikertRow[], sort: LikertSort, order: strin
       : (valueOf(b) - valueOf(a)) || (a.tiebreak - b.tiebreak) || (a.row.columnId < b.row.columnId ? -1 : 1))
     .map((entry) => entry.row)
 }
+
+export type LikertMode = 'stacked100' | 'diverging'
+export interface LikertInterval extends LikertSegment { rowIndex: number; columnId: string; start: number; end: number; color: string }
+/** Ordered intervals avoid reversed low-side stacking and represent the neutral
+ * category once, straddling zero. Selection always uses its original code. */
+export function likertIntervals(rows: LikertRow[], mode: LikertMode): LikertInterval[] {
+  const low = ['#2166ac', '#4393c3', '#92c5de'], high = ['#f4a582', '#d6604d', '#b2182b']
+  return rows.flatMap((row, rowIndex) => {
+    const ordered = [...row.negative, ...(row.neutral ? [row.neutral] : []), ...row.positive]
+    let cursor = mode === 'diverging' ? -row.negative.reduce((sum, s) => sum + s.pct, 0) - (row.neutral?.pct ?? 0) / 2 : 0
+    return ordered.map(segment => {
+      const start = cursor
+      cursor += segment.pct
+      const index = segment.side === 'negative' ? row.negative.indexOf(segment) : row.positive.indexOf(segment)
+      return { ...segment, rowIndex, columnId: row.columnId, start, end: cursor,
+        color: segment.side === 'neutral' ? '#bdbdbd' : segment.side === 'negative' ? low[Math.min(index, low.length - 1)] : high[Math.min(index, high.length - 1)] }
+    })
+  })
+}
+
+/** Missing sentinels must not become zero-count scale slots. Valid unobserved
+ * categories remain to preserve the codebook's ordinal meaning. */
+export function validLikertOrder(column: { categoryOrder?: string[]; missingCodes?: string[]; missingReasons?: Record<string, string> }, distribution: { code: string; isMissing?: boolean; isInvalid?: boolean }[]): string[] {
+  const missing = new Set([...(column.missingCodes ?? []).map(String), ...Object.keys(column.missingReasons ?? {}),
+    ...distribution.filter(d => d.isMissing || d.isInvalid).map(d => String(d.code)), '__missing__', '__null__', '__not_applicable__'])
+  const order = column.categoryOrder?.length ? column.categoryOrder : distribution.map(d => d.code)
+  return [...new Set(order.map(String).filter(code => !missing.has(code)))]
+}

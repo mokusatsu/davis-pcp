@@ -222,7 +222,7 @@ def compute_crosstab(
             "rowTotals": [], "colTotals": [],
             "grandTotal": {"unweightedCount": 0, "count": 0.0},
             "descriptiveAssociation": {"pearsonChi2": None, "df": 0,
-                                       "weightedCramersV": None, "weighted": weights is not None},
+                                       "cramersV": None, "weightedCramersV": None, "weighted": weights is not None},
             "inference": not_requested_inference().to_payload(),
             "weightDiagnostics": None,
             "diagnostics": {"expectedLt5Count": 0, "expectedLt5Ratio": None,
@@ -389,12 +389,14 @@ def compute_crosstab(
             cell["significance"] = None
             cell["residualType"] = "descriptive"
     elif resolved == REQUEST_FISHER:
-        eff_rows, eff_cols = effective_matrix.shape if effective_matrix.size else (0, 0)
-        if eff_rows != 2 or eff_cols != 2:
+        # Preserve a declared 2x2 table even when an OR is undefined; continue
+        # excluding unused extra display levels for an otherwise valid 2x2 test.
+        fisher_matrix = counts if counts.shape == (2, 2) else effective_matrix
+        if fisher_matrix.shape != (2, 2):
             raise BizError("CROSSTAB_FISHER_UNSUPPORTED",
                            "Fisher正確検定は無ウェイトの2x2表で明示指定時のみ利用できます。",
                            status_code=422)
-        inference_result = unweighted_inference(effective_matrix, REQUEST_FISHER)
+        inference_result = unweighted_inference(fisher_matrix, REQUEST_FISHER)
     elif resolved == REQUEST_RAO_SCOTT:
         inference_result = survey_inference(survey_counts, row_of_kept, col_of_kept, survey_design)
     elif use_weights:

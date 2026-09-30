@@ -1,7 +1,12 @@
-import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import React, { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { Button, Space, Tag, Typography } from 'antd'
-import { DownOutlined, RightOutlined } from '@ant-design/icons'
+import type { RootState } from '../../app/store'
+import GraphPanel from '../common/GraphPanel'
+import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import SelectionMenu from '../selection/SelectionMenu'
+import EChart from '../charts/EChart'
+import { useRowColorResolver } from '../../theme/useRowColor'
 
 export interface CobwebTreeNode {
   id: string
@@ -18,130 +23,80 @@ interface CobwebTreeViewerProps {
   onSelectRows: (rowIds: string[]) => void
 }
 
-function TreeNodeItem({
-  node,
-  rowIds,
-  onSelectRows,
-  depth = 0,
-}: {
-  node: CobwebTreeNode
-  rowIds: string[]
-  onSelectRows: (ids: string[]) => void
-  depth?: number
-}) {
-  const [expanded, setExpanded] = useState(depth < 2)
-  const hasChildren = node.children && node.children.length > 0
-
-  const handleSelect = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const targetIds = node.rowIndices.map((i) => rowIds[i]).filter(Boolean)
-    onSelectRows(targetIds)
+export default function CobwebTreeViewer({ conceptTree, rowIds, onSelectRows }: CobwebTreeViewerProps) {
+  const dispatch = useDispatch()
+  const { getColor, selectionColor } = useRowColorResolver()
+  const selected = useSelector((state: RootState) => state.selection.selectedRowIds)
+  const hovered = useSelector((state: RootState) => state.selection.hoveredRowId)
+  const selectedSet = new Set(selected)
+  const [inspectedId, setInspectedId] = useState(conceptTree.id)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set([conceptTree.id, ...(conceptTree.children ?? []).map(node => node.id)]))
+  const { nodes, width, height } = useMemo(() => {
+    const items = new Map<string, CobwebTreeNode>()
+    let leaves = 0
+    let maxDepth = 0
+    const visit = (node: CobwebTreeNode, depth: number) => {
+      items.set(node.id, node)
+      maxDepth = Math.max(maxDepth, depth)
+      if (!node.children?.length) leaves++
+      node.children?.forEach(child => visit(child, depth + 1))
+    }
+    visit(conceptTree, 0)
+    // The full topology determines the drawing extent, including collapsed
+    // descendants. Expanding a branch never clips or rescales another branch.
+    return { nodes: items, width: Math.max(720, maxDepth * 200 + 260), height: Math.max(480, leaves * 34 + 70) }
+  }, [conceptTree])
+  useEffect(() => {
+    setInspectedId(conceptTree.id)
+    setExpanded(new Set([conceptTree.id, ...(conceptTree.children ?? []).map(node => node.id)]))
+  }, [conceptTree])
+  const inspected = nodes.get(inspectedId) ?? conceptTree
+  const convert = (node: CobwebTreeNode): any => {
+    const ids = node.rowIndices.map(index => rowIds[index]).filter(Boolean)
+    const allSelected = ids.length > 0 && ids.every(id => selectedSet.has(id))
+    const isHovered = Boolean(hovered && ids.includes(hovered))
+    return { id: node.id, name: `${node.name} (${node.count})`, value: node.count,
+      description: `${node.name}\n${node.count} 行\n${ids.length === 1 ? `${ids[0]}\n` : ''}${Object.entries(node.stats ?? {}).map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`).join('\n')}`,
+      collapsed: !expanded.has(node.id), symbolSize: allSelected || isHovered ? 28 : 24,
+      itemStyle: { color: ids.length ? getColor(ids[0]) : '#64748b', borderColor: allSelected || isHovered ? selectionColor : '#fff', borderWidth: allSelected || isHovered ? 3 : 1 },
+      lineStyle: { color: allSelected ? selectionColor : '#94a3b8', width: allSelected ? 3 : 1 },
+      children: node.children?.map(convert) ?? [] }
   }
-
-  return (
-    <div style={{ marginLeft: depth * 20, marginBottom: 8 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '6px 12px',
-          background: depth === 0 ? '#f8fafc' : '#ffffff',
-          border: '1px solid #e5e7eb',
-          borderRadius: 6,
-          cursor: 'pointer',
-          transition: 'all 0.15s ease',
-        }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        {hasChildren ? (
-          <span style={{ fontSize: 11, color: '#64748b' }}>
-            {expanded ? <DownOutlined /> : <RightOutlined />}
-          </span>
-        ) : (
-          <span style={{ display: 'inline-block', width: 12 }} />
-        )}
-
-        <Typography.Text strong style={{ fontSize: 13, color: '#1e293b' }}>
-          {node.name}
-        </Typography.Text>
-
-        <Tag color="blue" style={{ borderRadius: 4, margin: 0 }}>
-          {node.count} 行
-        </Tag>
-
-        {/* Attribute summary chips */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, marginLeft: 8 }}>
-          {Object.entries(node.stats).slice(0, 3).map(([k, v]) => (
-            <Tag key={k} style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', margin: 0 }}>
-              <ColumnQuestionTooltip nameOrId={k}>{k}</ColumnQuestionTooltip>: {typeof v === 'object' && v !== null ? (v.mean !== undefined ? `μ=${v.mean}` : JSON.stringify(v).slice(0, 15)) : String(v)}
-            </Tag>
-          ))}
-        </div>
-
-        <Button
-          size="small"
-          type="link"
-          data-testid={`select-cobweb-node-${node.id}`}
-          onClick={handleSelect}
-          style={{ fontSize: 12, padding: '0 6px' }}
-        >
-          この概念を選択 ({node.count})
-        </Button>
-      </div>
-
-      {hasChildren && expanded && (
-        <div style={{ marginTop: 4 }}>
-          {node.children.map((child) => (
-            <TreeNodeItem
-              key={child.id}
-              node={child}
-              rowIds={rowIds}
-              onSelectRows={onSelectRows}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function CobwebTreeViewer({
-  conceptTree,
-  rowIds,
-  onSelectRows,
-}: CobwebTreeViewerProps) {
-
-  return (
-    <div
-      data-testid="cobweb-tree-panel"
-      style={{
-        border: '1px solid #e5e7eb',
-        borderRadius: 6,
-        background: '#ffffff',
-        padding: 14,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        flexShrink: 0,
-        minHeight: 0,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <Space wrap align="center">
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            Cobweb 概念階層木 (Concept Formation Hierarchy)
-          </Typography.Title>
+  return <div data-testid="cobweb-tree-panel">
+    <GraphPanel graphId="clusters/cobweb" title="Cobweb 概念木" available sizing="intrinsic" intrinsicSize={{ width, height }}
+      style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 14, userSelect: 'none' }}
+      controls={<Space direction="vertical" size="small" style={{ width: '100%' }}>
+        <Space wrap>
+          <Typography.Text strong>Cobweb 概念階層木 (Concept Formation Hierarchy)</Typography.Text>
+          <SelectionMenu testId="clusters-cobweb-selection" />
+          <Typography.Text type="secondary">ノードクリックで対象行を選択・枝を展開/折りたたみ</Typography.Text>
         </Space>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          ノードクリック=展開/折りたたみ · 「この概念を選択」=集合演算で全ビューへ伝播
-        </Typography.Text>
-      </div>
-
-      <div style={{ paddingRight: 4 }}>
-        <TreeNodeItem node={conceptTree} rowIds={rowIds} onSelectRows={onSelectRows} depth={0} />
-      </div>
-    </div>
-  )
+        <Space wrap>
+          <Typography.Text strong>{inspected.name}</Typography.Text>
+          <Tag>{inspected.count} 行</Tag>
+          {Object.entries(inspected.stats ?? {}).slice(0, 3).map(([name, value]) => <Tag key={name}>
+            <ColumnQuestionTooltip nameOrId={name}>{name}</ColumnQuestionTooltip>: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+          </Tag>)}
+          <Button size="small" data-testid={`select-cobweb-node-${inspected.id}`}
+            onClick={() => onSelectRows(inspected.rowIndices.map(index => rowIds[index]).filter(Boolean))}>この概念を選択 ({inspected.count})</Button>
+        </Space>
+      </Space>}>
+      <EChart testId="cobweb-tree-chart" height={height} width={width} ariaLabel="Cobweb 概念階層木"
+        option={{ tooltip: { trigger: 'item', renderMode: 'richText', formatter: (event: any) => event.data?.description ?? '' },
+          series: [{ type: 'tree', data: [convert(conceptTree)], left: 80, right: 180, top: 35, bottom: 35,
+            roam: true, expandAndCollapse: false, initialTreeDepth: -1,
+            label: { position: 'right', fontSize: 12, color: '#333', width: 160, overflow: 'truncate' }, lineStyle: { curveness: 0.5 }, emphasis: { focus: 'descendant' } }] }}
+        onEvents={{ click: event => {
+          const node = nodes.get(event.data?.id)
+          if (!node) return
+          setInspectedId(node.id)
+          setExpanded(previous => { const next = new Set(previous); next.has(node.id) ? next.delete(node.id) : next.add(node.id); return next })
+          onSelectRows(node.rowIndices.map(index => rowIds[index]).filter(Boolean))
+        }, mouseover: event => {
+          const node = nodes.get(event.data?.id)
+          const ids = node?.rowIndices.map(index => rowIds[index]).filter(Boolean) ?? []
+          if (ids.length === 1) dispatch({ type: 'selection/hovered', payload: ids[0] })
+        }, mouseout: () => dispatch({ type: 'selection/hovered', payload: null }) }} />
+    </GraphPanel>
+  </div>
 }

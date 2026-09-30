@@ -5,6 +5,8 @@ export interface PcaScore {
 }
 
 export interface PcaResponse {
+  warnings?: { code: string; message: string }[]
+  excludedConstantColumns?: string[]
   columns: string[]
   nSamples: number
   n_samples?: number

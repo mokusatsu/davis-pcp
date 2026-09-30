@@ -79,7 +79,7 @@ def _run_pca(dataset_id, req):
         row_ids=None,
     )
     return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
-            'scopeCount': scope_count, 'usedRows': result['nSamples'], 'usedColumns': plan.names,
+            'scopeCount': scope_count, 'usedRows': result['nSamples'], 'usedColumns': result['columns'],
             'excludedCounts': {'ordinaryMissing': scope_count - result['nSamples']}, 'method': 'pca-ordinary-columns'}
 
 

@@ -1,3 +1,4 @@
+import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -165,6 +166,8 @@ export default function LoessPlotPage() {
 
     return { xMin, xMax, yMin, yMax, getSvgX, getSvgY, getValX, getValY }
   }, [loessData, showCi])
+
+  useEffect(() => setDrag(null), [loessData, scales, datasetId])
 
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return
@@ -347,7 +350,8 @@ export default function LoessPlotPage() {
             )}
 
             {!loading && loessData && scales && (
-              <svg
+              <EChartSurface
+                onViewportChange={() => setDrag(null)}
                 ref={svgRef}
                 data-testid="loess-svg"
                 viewBox={`0 0 ${totalSvgWidth} ${totalSvgHeight}`}
@@ -487,7 +491,7 @@ export default function LoessPlotPage() {
                     </text>
                   </g>
                 )}
-              </svg>
+              </EChartSurface>
             )}
 
             {!loading && (!loessData || !scales) && (

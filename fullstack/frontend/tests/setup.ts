@@ -1,6 +1,9 @@
+import { setPlatformAPI } from 'echarts'
+// jsdom has no canvas text metrics; SVG rendering remains real ECharts.
+setPlatformAPI({ measureText: text => ({ width: String(text).length * 7 }) })
 import '@testing-library/jest-dom/vitest'
 
-Object.defineProperty(window, 'matchMedia', {
+if (typeof window !== 'undefined') Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
     matches: false,

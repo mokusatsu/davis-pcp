@@ -1,3 +1,5 @@
+import { truncateText } from '../../utils/textUtils'
+import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -16,7 +18,6 @@ import type { FAMDResponse } from './famdTypes'
 import { exportFamdTable, fetchFamdRows, runFamd, selectFamd, type FAMDContext } from './famdApi'
 import { downloadPng, downloadSvg } from './mcaApi'
 import FamdFigure, { CorrelationCircle, famdAxisLabel, famdCategoryPoints } from './FamdFigure'
-import { truncateText } from '../../utils/textUtils'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -657,60 +658,14 @@ export default function FamdPage(): JSX.Element {
                         title="FAMD変数関係図"
                         available={tab === 'relation'}
                         sizing="intrinsic"
-                        intrinsicSize={{ width: 560, height: 300 }}
+                        intrinsicSize={{ width: 560, height: Math.max(300, result.details.variableRelation.length * 38 + 90) }}
                       >
-                      <svg data-testid="famd-relation-svg" viewBox="0 0 560 300" width="560" height="300" style={{ background: '#fafafa', borderRadius: 4, userSelect: 'none' }}>
-                        {(() => {
-                          const rows = result.details.variableRelation
-                          const W = 560
-                          const H = 300
-                          const PAD = { left: 150, right: 24, top: 16, bottom: 28 }
-                          const rh = rows.length > 0 ? Math.min(28, (H - PAD.top - PAD.bottom) / rows.length) : 28
-                          return (
-                            <g>
-                              {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-                                const x = PAD.left + t * (W - PAD.left - PAD.right)
-                                return (
-                                  <g key={t}>
-                                    <line x1={x} y1={PAD.top} x2={x} y2={H - PAD.bottom} stroke="#e5e7eb" />
-                                    <text x={x} y={H - 8} textAnchor="middle" fontSize={10} fill="#666">{t.toFixed(2)}</text>
-                                  </g>
-                                )
-                              })}
-                              {rows.map((v, i) => {
-                                const y = PAD.top + i * rh + rh / 2
-                                const relX = Math.max(0, Math.min(1, v.relationStrength[axisX - 1] ?? 0))
-                                const relY = rank >= 2 ? Math.max(0, Math.min(1, v.relationStrength[effAxisY - 1] ?? 0)) : null
-                                const wX = relX * (W - PAD.left - PAD.right)
-                                const wY = relY === null ? 0 : relY * (W - PAD.left - PAD.right)
-                                const label = nameById.get(v.variableId) ?? v.variableId
-                                const relationLabel = `${label}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`
-                                return (
-                                  <g key={v.variableId}>
-                                    <text x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize={11} fill="#333">
-                                      {truncateText(relationLabel, 12)}
-                                      <title>{`${label} kind=${v.kind} 第${axisX}軸=${(v.relationStrength[axisX - 1] ?? 0).toFixed(4)}`}</title>
-                                    </text>
-                                    <rect x={PAD.left} y={y - 8} width={W - PAD.left - PAD.right} height={7} fill="#f0f0f0" />
-                                    <rect x={PAD.left} y={y - 8} width={wX} height={7} fill="#1890ff">
-                                      <title>{`${label} 第${axisX}軸 ${v.kind === 'numeric' ? 'r²' : 'η²'}=${(v.relationStrength[axisX - 1] ?? 0).toFixed(4)}`}</title>
-                                    </rect>
-                                    {relY !== null && (
-                                      <rect x={PAD.left} y={y - 1} width={wY} height={7} fill="#fa8c16" fillOpacity={0.75}>
-                                        <title>{`${label} 第${effAxisY}軸 ${v.kind === 'numeric' ? 'r²' : 'η²'}=${(v.relationStrength[effAxisY - 1] ?? 0).toFixed(4)}`}</title>
-                                      </rect>
-                                    )}
-                                  </g>
-                                )
-                              })}
-                              <text x={PAD.left} y={H - 8 - 12} fontSize={10} fill="#1890ff">{`■ 第${axisX}軸`}</text>
-                              {rank >= 2 && (
-                                <text x={PAD.left + 90} y={H - 8 - 12} fontSize={10} fill="#fa8c16">{`■ 第${effAxisY}軸`}</text>
-                              )}
-                            </g>
-                          )
-                        })()}
-                      </svg>
+                      <EChart testId="famd-relation-svg" height={Math.max(300, result.details.variableRelation.length * 38 + 90)} ariaLabel="FAMD変数関係"
+                        option={{ grid: { left: 150, right: 30, top: 40, bottom: 40 }, legend: {}, tooltip: { trigger: 'axis', renderMode: 'richText' },
+                          xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true, axisLabel: { formatter: (name: string) => truncateText(name, 12) },
+                            data: result.details.variableRelation.map(v => `${nameById.get(v.variableId) ?? v.variableId}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`) },
+                          series: (rank >= 2 ? [axisX, effAxisY] : [axisX]).map((axis, i) => ({ type: 'bar' as const, name: `第${axis}軸`,
+                            itemStyle: { color: i === 0 ? '#1890ff' : '#fa8c16' }, data: result.details.variableRelation.map(v => v.relationStrength[axis - 1] ?? 0) })) }} />
                       </GraphPanel>
                       <Table
                         size="small"

@@ -44,3 +44,24 @@ it('sorts deterministically with categoryOrder tie-breaks', () => {
   expect(sortLikertRows(rows, 'mean-desc', ['b', 'a', 'c']).map((r) => r.columnId)).toEqual(['b', 'a', 'c'])
   expect(sortLikertRows(rows, 'original', ['c', 'b', 'a']).map((r) => r.columnId)).toEqual(['c', 'b', 'a'])
 })
+
+import { likertIntervals, validLikertOrder } from '../src/features/distribution/likertTransform'
+for (const counts of [[1, 2, 2, 1, 4], [1, 1, 2, 2, 1, 3]]) {
+  it(`keeps ${counts.length} Likert codes/widths/colors stable across modes, with correct neutral placement`, () => {
+    const row = toLikertRow({ columnId: 'item', title: 'item', categories: cats(counts), validN: 10, top2Pct: null, mean: null })
+    const conventional = likertIntervals([row], 'stacked100'), diverging = likertIntervals([row], 'diverging')
+    expect(conventional[0].start).toBe(0)
+    expect(conventional.at(-1)?.end).toBe(100)
+    expect(diverging.map(d => [d.code, d.pct, d.count, d.color])).toEqual(conventional.map(d => [d.code, d.pct, d.count, d.color]))
+    expect(diverging.map(d => d.end - d.start)).toEqual(counts.map(c => c * 10))
+    if (counts.length === 5) expect([diverging[2].start, diverging[2].end]).toEqual([-10, 10])
+    else { expect(diverging[2].end).toBe(0); expect(diverging[3].start).toBe(0) }
+  })
+}
+it('excludes missing/invalid/NA from the scale and preserves valid zero-count ordered levels', () => {
+  const distribution = ['1', '2', '3', '4', '5', '6'].map(code => ({ code }))
+  const extra = [...distribution, { code: '__missing__', isMissing: true }, { code: '99', isInvalid: true }]
+  expect(validLikertOrder({}, extra)).toEqual(distribution.map(d => d.code))
+  expect(validLikertOrder({ categoryOrder: ['1', '2', '3', '4', '5', '6', '9'], missingCodes: ['9'] }, extra)).toHaveLength(6)
+  expect(validLikertOrder({ categoryOrder: ['1', '2', '3'], missingReasons: { '2': 'notApplicable' } }, [])).toEqual(['1', '3'])
+})

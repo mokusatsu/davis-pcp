@@ -1,3 +1,5 @@
+import EChart from '../charts/EChart'
+import { importanceBarsOption, rankingBarsOption, rankingScatterOption } from './rankingCharts'
 import { selectOrdinaryVariables } from '../../app/store'
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
@@ -32,7 +34,6 @@ import MaAxisPicker from '../pcp/MaAxisPicker'
 import type { VariableEntity } from '../selection/variableEntities'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
-import { truncateText } from '../../utils/textUtils'
 
 export interface MetricScoreItem {
   rawScore: number
@@ -114,14 +115,6 @@ function MethodInfoTip({ methodKey, display, taskType }: {
       </span>
     </Tooltip>
   )
-}
-
-const METHOD_COLORS: Record<string, string> = {
-  relieff: '#1890ff',
-  mutualInfo: '#52c41a',
-  randomForest: '#722ed1',
-  fStatistic: '#fa8c16',
-  pcaDispersion: '#13c2c2',
 }
 
 export default function FeatureRankingPage() {
@@ -556,20 +549,8 @@ export default function FeatureRankingPage() {
               title={<span>MDI (Mean Decrease Impurity) <MethodInfoTip methodKey="mdi" display={{ displayName: 'MDI', formula: 'feature_importances_', scope: 'train', deprecatedAlias: '' }} taskType={result.taskType} /></span>}
               extra={<Tag>高カーディナリティ特徴にバイアス</Tag>}
             >
-              {(result.importance.mdi ?? []).map((item) => {
-                const max = Math.max(...result.importance!.mdi.map((i) => i.importance ?? 0), 1e-9)
-                return (
-                  <div key={item.featureName} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <ColumnQuestionTooltip nameOrId={item.featureName}>{item.featureName}</ColumnQuestionTooltip>
-                    </span>
-                    <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 2 }}>
-                      <div style={{ width: `${Math.round(((item.importance ?? 0) / max) * 100)}%`, height: '100%', background: '#722ed1', borderRadius: 2 }} />
-                    </div>
-                    <span style={{ width: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{(item.importance ?? 0).toFixed(3)}</span>
-                  </div>
-                )
-              })}
+              <EChart testId="ranking-mdi-chart" height={Math.max(180, (result.importance.mdi?.length ?? 0) * 34 + 70)}
+                ariaLabel="MDI importance" option={importanceBarsOption(result.importance.mdi ?? [], 'mdi')} />
             </Card>
           </Col>
           <Col xs={24} lg={12}>
@@ -581,23 +562,8 @@ export default function FeatureRankingPage() {
               {result.importanceMetadata?.permutation_train?.available === false ? (
                 <Typography.Text type="secondary">教師ありのみ</Typography.Text>
               ) : (
-                (result.importance.permutation_train ?? []).map((item) => {
-                  const vals = (result.importance!.permutation_train ?? []).map((i) => Math.abs(i.importanceMean ?? 0))
-                  const max = Math.max(...vals, 1e-9)
-                  return (
-                    <div key={item.featureName} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ width: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <ColumnQuestionTooltip nameOrId={item.featureName}>{item.featureName}</ColumnQuestionTooltip>
-                      </span>
-                      <div style={{ flex: 1, height: 10, background: '#f0f0f0', borderRadius: 2 }}>
-                        <div style={{ width: `${Math.round((Math.abs(item.importanceMean ?? 0) / max) * 100)}%`, height: '100%', background: '#1890ff', borderRadius: 2 }} />
-                      </div>
-                      <span style={{ width: 110, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {(item.importanceMean ?? 0).toFixed(3)} ± {(item.importanceStd ?? 0).toFixed(3)}
-                      </span>
-                    </div>
-                  )
-                })
+                <EChart testId="ranking-permutation-chart" height={Math.max(180, (result.importance.permutation_train?.length ?? 0) * 34 + 70)}
+                  ariaLabel="訓練データの符号付き permutation importance" option={importanceBarsOption(result.importance.permutation_train ?? [], 'permutation')} />
               )}
             </Card>
           </Col>
@@ -614,72 +580,15 @@ export default function FeatureRankingPage() {
               title="手法別スコア比較"
               available={Boolean(result && sortedRankings.length)}
               sizing="intrinsic"
-              intrinsicSize={{ width: 560, height: Math.max(300, 80 + sortedRankings.length * 48) }}
+              intrinsicSize={{ width: 620, height: Math.max(320, sortedRankings.length * 70) }}
+              controls={<Typography.Text type="secondary">正規化スコア [0, 1]</Typography.Text>}
             >
-            <Card
-              size="small"
-              title={
-                <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>正規化スコア [0, 1]</Typography.Text>
-                  <Space wrap size={8}>
-                    {Object.entries(METHOD_COLORS).map(([m, color]) => (
-                      <span key={m} style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ width: 10, height: 10, backgroundColor: color, borderRadius: 2 }} />
-                        {m}
-                      </span>
-                    ))}
-                  </Space>
-                </div>
-              }
-              data-testid="ranking-bar-card"
-            >
-              <div style={{ paddingRight: 8 }}>
-                {sortedRankings.map((item) => {
-                  const isHighlighted = highlightedVar === item.variable
-                  const isTopK = topKVariables.includes(item.variable)
-                  return (
-                    <div
-                      key={item.variable}
-                      style={{
-                        marginBottom: 10,
-                        padding: 6,
-                        borderRadius: 4,
-                        background: isHighlighted ? '#e6f7ff' : isTopK ? '#f6ffed' : 'transparent',
-                        border: isHighlighted ? '1px solid #91d5ff' : '1px solid transparent',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => setHighlightedVar(item.variable === highlightedVar ? null : item.variable)}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
-                        <span style={{ fontWeight: isTopK ? 600 : 400 }}>
-                          #{item.overallRank} <ColumnQuestionTooltip nameOrId={item.variable}>{item.variable}</ColumnQuestionTooltip>
-                        </span>
-                        <span style={{ color: '#666' }}>Borda: {item.bordaScore}</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {Object.entries(item.scores).map(([mKey, scoreItem]) => {
-                          const widthPct = Math.round((scoreItem?.normalizedScore ?? 0) * 100)
-                          return (
-                            <div key={mKey} style={{ display: 'flex', alignItems: 'center', height: 10, fontSize: 10 }}>
-                              <div
-                                style={{
-                                  width: `${widthPct}%`,
-                                  height: '100%',
-                                  backgroundColor: METHOD_COLORS[mKey] || '#888',
-                                  borderRadius: 2,
-                                  transition: 'width 0.3s ease',
-                                }}
-                                title={`${mKey}: raw=${scoreItem?.rawScore}, norm=${scoreItem?.normalizedScore}`}
-                              />
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
+            <div data-testid="ranking-bar-card">
+                <EChart testId="ranking-bars-chart" height={Math.max(320, sortedRankings.length * 70)}
+                  ariaLabel="手法別の変数スコア比較"
+                  option={rankingBarsOption(sortedRankings, highlightedVar, topKVariables)}
+                  onEvents={{ click: event => { if (event.data?.name) setHighlightedVar(event.data.name === highlightedVar ? null : event.data.name) } }} />
+            </div>
             </GraphPanel>
           </Col>
 
@@ -690,85 +599,14 @@ export default function FeatureRankingPage() {
               title="関連度 vs 冗長性プロット"
               available={Boolean(result && result.rankings.length)}
               sizing="intrinsic"
-              intrinsicSize={{ width: 400, height: 300 }}
+              intrinsicSize={{ width: 560, height: 340 }}
+              controls={<Typography.Text type="secondary">右下が最良（高重要度・低冗長性）</Typography.Text>}
             >
-            <Card
-              size="small"
-              title="mRMR"
-              extra={<Typography.Text type="secondary" style={{ fontSize: 11 }}>右下が最良（高重要度・低冗長性）</Typography.Text>}
-              data-testid="ranking-mrmr-card"
-            >
-              <svg
-                width="100%"
-                viewBox="0 0 400 300"
-                style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: '400 / 300', background: '#fafafa', borderRadius: 4 }}
-              >
-                {/* Axes */}
-                <line x1={50} y1={250} x2={380} y2={250} stroke="#999" strokeWidth={1} />
-                <line x1={50} y1={250} x2={50} y2={30} stroke="#999" strokeWidth={1} />
-                {/* Labels */}
-                <text x={215} y={285} fontSize={11} textAnchor="middle" fill="#666">
-                  統合重要度 (Relevance: Borda Score) →
-                </text>
-                <text x={-140} y={18} fontSize={11} textAnchor="middle" fill="#666" transform="rotate(-90)">
-                  動的冗長性 (mRMR vs Top-{topK}) →
-                </text>
-
-                {/* Gridlines */}
-                <line x1={50} y1={140} x2={380} y2={140} stroke="#e8e8e8" strokeDasharray="3 3" />
-                <line x1={215} y1={30} x2={215} y2={250} stroke="#e8e8e8" strokeDasharray="3 3" />
-
-                {/* Data points */}
-                {(() => {
-                  const maxBorda = Math.max(...result.rankings.map((r) => r.bordaScore), 1)
-                  const minBorda = Math.min(...result.rankings.map((r) => r.bordaScore), 0)
-                  const bordaRange = maxBorda - minBorda || 1
-
-                  return result.rankings.map((r) => {
-                    const normBorda = (r.bordaScore - minBorda) / bordaRange
-                    const dynRedundancy = getDynamicRedundancy(r.variable, r.meanRedundancy)
-                    const cx = 50 + normBorda * 310
-                    const cy = 250 - Math.min(1, Math.max(0, dynRedundancy)) * 200
-
-                    const isHighlighted = highlightedVar === r.variable
-                    const isTopK = topKVariables.includes(r.variable)
-                    const label = truncateText(r.variable, 18)
-                    const estimatedLabelWidth = Array.from(label).length * 6
-                    const labelOnRight = cx + 9 + estimatedLabelWidth <= 388
-
-                    return (
-                      <g
-                        key={r.variable}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setHighlightedVar(r.variable === highlightedVar ? null : r.variable)}
-                      >
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={isHighlighted ? 10 : isTopK ? 8 : 6}
-                          fill={isHighlighted ? '#ff4d4f' : isTopK ? '#2f54eb' : '#8c8c8c'}
-                          opacity={0.8}
-                          stroke="#fff"
-                          strokeWidth={1.5}
-                        >
-                          <title>{`${r.variable}\nBorda Score: ${r.bordaScore} (Rank #${r.overallRank})\nmRMR Redundancy vs Top-${topK}: ${dynRedundancy.toFixed(3)}\nStatic Mean Redundancy: ${r.meanRedundancy.toFixed(3)}`}</title>
-                        </circle>
-                        <ColumnQuestionTooltip nameOrId={r.variable} svg><text
-                          x={labelOnRight ? cx + 9 : cx - 9}
-                          y={cy + 4}
-                          textAnchor={labelOnRight ? 'start' : 'end'}
-                          fontSize={10}
-                          fontWeight={isTopK || isHighlighted ? 600 : 400}
-                          fill={isHighlighted ? '#cf1322' : '#333'}
-                        >
-                          {label}
-                        </text></ColumnQuestionTooltip>
-                      </g>
-                    )
-                  })
-                })()}
-              </svg>
-            </Card>
+            <div data-testid="ranking-mrmr-card">
+              <EChart testId="ranking-mrmr-chart" height={340} ariaLabel="関連度と動的冗長性"
+                option={rankingScatterOption(result.rankings, highlightedVar, topKVariables, getDynamicRedundancy, topK)}
+                onEvents={{ click: event => { if (event.data?.name) setHighlightedVar(event.data.name === highlightedVar ? null : event.data.name) } }} />
+            </div>
             </GraphPanel>
           </Col>
         </Row>

@@ -1,10 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
 import type { FAMDCategory } from './famdTypes'
+import EChart from '../charts/EChart'
+import ModelScatter from './ModelScatter'
 import { truncateText } from '../../utils/textUtils'
-
-const W = 560
-const H = 400
-const PAD = { top: 24, right: 24, bottom: 44, left: 56 }
 
 export function famdAxisLabel(rank: number, ratio: number[], axis: number): string {
   if (axis < 1 || axis > rank) return `第${axis}軸`
@@ -38,48 +35,22 @@ export function famdCategoryPoints(
   }))
 }
 
-export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank = 2 }: {
+export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank = 2, size = 420 }: {
   points: { id: string; label: string; x: number; y: number | null; title: string; color?: string }[]
-  testId: string
-  axisX?: number
-  axisY?: number
-  rank?: number
+  testId: string; axisX?: number; axisY?: number; rank?: number; size?: number
 }): JSX.Element {
-  const S = 340
-  const C = S / 2
-  const R = S / 2 - 30
-  const sx = (x: number): number => C + Math.max(-1, Math.min(1, x)) * R
-  const sy = (y: number): number => C - Math.max(-1, Math.min(1, y)) * R
-  return (
-    <svg data-testid={testId} viewBox={`0 0 ${S} ${S}`} width="100%" style={{ background: '#fafafa', borderRadius: 4, userSelect: 'none' }}>
-      <circle cx={C} cy={C} r={R} fill="none" stroke="#8c8c8c" />
-      <line x1={C - R} y1={C} x2={C + R} y2={C} stroke="#d9d9d9" />
-      <line x1={C} y1={C - R} x2={C} y2={C + R} stroke="#d9d9d9" />
-      {points.map((p) => {
-        const cx = sx(p.x)
-        const cy = sy(p.y ?? 0)
-        const label = truncateText(p.label, 14)
-        const labelWidth = Array.from(label).length * 7
-        const labelOnRight = cx + 7 + labelWidth <= S - 8
-        return (
-          <g key={p.id}>
-            <line x1={C} y1={C} x2={cx} y2={cy} stroke={p.color ?? '#1890ff'} strokeWidth={2} />
-            <circle cx={cx} cy={cy} r={5} fill={p.color ?? '#1890ff'} stroke="#fff">
-              <title>{p.title}</title>
-            </circle>
-            <text x={labelOnRight ? cx + 7 : cx - 7} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
-              <title>{p.title}</title>
-              {label}
-            </text>
-          </g>
-        )
-      })}
-      <text x={C} y={S - 6} textAnchor="middle" fontSize={11}>{`第${axisX}軸 相関 [-1,1]`}</text>
-      {rank >= 2 && (
-        <text x={10} y={C} fontSize={11} transform={`rotate(-90 10 ${C})`} textAnchor="middle">{`第${axisY}軸 相関 [-1,1]`}</text>
-      )}
-    </svg>
-  )
+  const circle = Array.from({ length: 129 }, (_, i) => [Math.cos(i * Math.PI / 64), Math.sin(i * Math.PI / 64)])
+  return <div style={{ maxWidth: size, aspectRatio: '1', width: '100%' }}><EChart height="100%" testId={testId} ariaLabel="相関円"
+    option={{ animation: false, backgroundColor: '#fafafa', grid: { left: 55, right: 55, top: 55, bottom: 55 },
+      tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.title ?? p.seriesName ?? '' },
+      xAxis: { type: 'value', min: -1.15, max: 1.15, name: `第${axisX}軸 相関`, nameLocation: 'middle', nameGap: 30 },
+      yAxis: { type: 'value', min: -1.15, max: 1.15, name: rank >= 2 ? `第${axisY}軸 相関` : '', nameLocation: 'middle', nameGap: 32 },
+      series: [{ type: 'line', data: circle, symbol: 'none', silent: true, lineStyle: { color: '#aaa', width: 1 } },
+        ...points.map(p => ({ type: 'line' as const, name: p.title, data: [[0, 0], [p.x, p.y ?? 0]],
+          symbol: 'none', lineStyle: { color: p.color ?? '#1890ff', width: 2 } })),
+        { type: 'scatter', labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' }, data: points.map(p => ({ value: [p.x, p.y ?? 0], title: p.title, name: p.label,
+          itemStyle: { color: p.color ?? '#1890ff' }, label: { show: true, formatter: () => truncateText(p.label, 14), position: p.x >= 0 ? 'left' : 'right', color: '#333' } })) }],
+    }} /></div>
 }
 
 export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio, selected, highlighted, getColor, onToggle, onBrush, onCategoryBrush, svgRef, testId, overlayNote }: {
@@ -100,148 +71,10 @@ export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio
   overlayNote?: string
 }): JSX.Element {
   const shown = dispRank ?? rank
-  const ext = useMemo(() => {
-    let xMin = Infinity
-    let xMax = -Infinity
-    let yMin = Infinity
-    let yMax = -Infinity
-    for (const p of points) {
-      if (p.x < xMin) xMin = p.x
-      if (p.x > xMax) xMax = p.x
-      if (shown >= 2 && p.y !== null) {
-        if (p.y < yMin) yMin = p.y
-        if (p.y > yMax) yMax = p.y
-      }
-    }
-    if (!Number.isFinite(xMin)) { xMin = -1; xMax = 1 }
-    if (xMax <= xMin) xMax = xMin + 1
-    if (shown < 2) { yMin = -1; yMax = 1 }
-    if (!Number.isFinite(yMin)) { yMin = -1; yMax = 1 }
-    if (yMax <= yMin) yMax = yMin + 1
-    const dx = (xMax - xMin) * 0.1 || 0.1
-    const dy = (yMax - yMin) * 0.1 || 0.1
-    return { xMin: xMin - dx, xMax: xMax + dx, yMin: yMin - dy, yMax: yMax + dy }
-  }, [points, shown])
-
-  const sx = (x: number): number => PAD.left + ((x - ext.xMin) / (ext.xMax - ext.xMin)) * (W - PAD.left - PAD.right)
-  const sy = (y: number): number => PAD.top + (1 - (y - ext.yMin) / (ext.yMax - ext.yMin)) * (H - PAD.top - PAD.bottom)
-  const invX = (px: number): number => ext.xMin + ((px - PAD.left) / (W - PAD.left - PAD.right)) * (ext.xMax - ext.xMin)
-  const invY = (py: number): number => ext.yMin + (1 - (py - PAD.top) / (H - PAD.top - PAD.bottom)) * (ext.yMax - ext.yMin)
-
-  const [drag, setDrag] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
-  const start = useRef<{ x: number; y: number } | null>(null)
-
-  const pos = (e: React.PointerEvent<SVGSVGElement>): { x: number; y: number } => {
-    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect()
-    const scaleX = W / rect.width
-    const scaleY = H / rect.height
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY }
-  }
-
-  return (
-    <svg
-      ref={svgRef}
-      data-testid={testId}
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      style={{ background: '#fafafa', borderRadius: 4, userSelect: 'none', touchAction: 'none' }}
-      onPointerDown={(e) => {
-        const t = e.target as Element | null
-        if (t && typeof (t as Element).closest === 'function' && (t as Element).closest('circle, rect[data-selectable]')) return
-        const p = pos(e)
-        start.current = p
-        setDrag({ x1: p.x, y1: p.y, x2: p.x, y2: p.y })
-        ;(e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
-      }}
-      onPointerMove={(e) => {
-        if (!start.current) return
-        const p = pos(e)
-        setDrag({ x1: start.current.x, y1: start.current.y, x2: p.x, y2: p.y })
-      }}
-      onPointerUp={(e) => {
-        if (!start.current || !drag) { start.current = null; return }
-        const p = pos(e)
-        const x1 = Math.min(start.current.x, p.x)
-        const x2 = Math.max(start.current.x, p.x)
-        const y1 = Math.min(start.current.y, p.y)
-        const y2 = Math.max(start.current.y, p.y)
-        start.current = null
-        setDrag(null)
-        if (Math.abs(x2 - x1) < 4 && (shown < 2 || Math.abs(y2 - y1) < 4)) return
-        if (onCategoryBrush) {
-          onCategoryBrush(shown >= 2
-            ? { x: [invX(x1), invX(x2)], y: [invY(y2), invY(y1)] }
-            : { x: [invX(x1), invX(x2)], y: null })
-          return
-        }
-        if (shown >= 2) {
-          const xb: [number, number] = [invX(x1), invX(x2)]
-          const yb: [number, number] = [invY(y2), invY(y1)]
-          onBrush?.([1, 2], [xb, yb])
-        } else {
-          onBrush?.([1], [[invX(x1), invX(x2)]])
-        }
-      }}
-    >
-      <line x1={sx(0)} y1={PAD.top} x2={sx(0)} y2={H - PAD.bottom} stroke="#d9d9d9" />
-      {shown >= 2 && <line x1={PAD.left} y1={sy(0)} x2={W - PAD.right} y2={sy(0)} stroke="#d9d9d9" />}
-      {points.map((p, i) => {
-        const cx = sx(p.x)
-        const cy = shown >= 2 && p.y !== null ? sy(p.y) : PAD.top + 40 + (i % 12) * 24
-        const isSel = selected.has(p.id)
-        const isLinked = highlighted.has(p.id)
-        const fill = p.color ?? (getColor && p.rowId ? getColor(p.rowId) : '#1890ff')
-        const label = truncateText(p.label, 16)
-        const labelWidth = Array.from(label).length * 7
-        const labelOnRight = cx + 8 + labelWidth <= W - PAD.right
-        return (
-          <g key={p.id} style={{ cursor: 'pointer' }}>
-            <circle
-              cx={cx}
-              cy={cy}
-              r={isSel ? 7 : 5}
-              fill={fill}
-              fillOpacity={isSel ? 1 : 0.75}
-              stroke={isSel ? '#2a78d6' : isLinked ? '#fa8c16' : '#fff'}
-              strokeWidth={isSel || isLinked ? 2.5 : 1}
-              data-selectable="true"
-              onClick={(ev) => { ev.stopPropagation(); onToggle(p.id) }}
-            >
-              <title>{p.title}</title>
-            </circle>
-            <circle cx={cx} cy={cy} r={12} fill="transparent" data-selectable="true" onClick={(ev) => { ev.stopPropagation(); onToggle(p.id) }}>
-              <title>{p.title}</title>
-            </circle>
-            <text x={labelOnRight ? cx + 8 : cx - 8} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
-              <title>{p.title}</title>
-              {label}
-            </text>
-          </g>
-        )
-      })}
-      {drag && (
-        <rect
-          x={Math.min(drag.x1, drag.x2)}
-          y={Math.min(drag.y1, drag.y2)}
-          width={Math.abs(drag.x2 - drag.x1)}
-          height={Math.abs(drag.y2 - drag.y1)}
-          fill="rgba(42,120,214,0.15)"
-          stroke="#2a78d6"
-          strokeWidth={1.5}
-          pointerEvents="none"
-        />
-      )}
-      <text x={(W - PAD.left - PAD.right) / 2 + PAD.left} y={H - 8} textAnchor="middle" fontSize={12}>
-        {famdAxisLabel(rank, ratio, xAxis ?? 1)}
-      </text>
-      {shown >= 2 && (
-        <text x={12} y={(H - PAD.top - PAD.bottom) / 2 + PAD.top} textAnchor="middle" fontSize={12} transform={`rotate(-90 12 ${(H - PAD.top - PAD.bottom) / 2 + PAD.top})`}>
-          {famdAxisLabel(rank, ratio, yAxis ?? 2)}
-        </text>
-      )}
-      {overlayNote && (
-        <text x={PAD.left} y={PAD.top - 6} fontSize={11} fill="#8c8c8c">{overlayNote}</text>
-      )}
-    </svg>
-  )
+  return <ModelScatter points={points.map(p => ({ ...p, selected: selected.has(p.id), highlighted: highlighted.has(p.id),
+    color: p.color ?? (getColor && p.rowId ? getColor(p.rowId) : '#1890ff') }))}
+    xLabel={famdAxisLabel(rank, ratio, xAxis ?? 1)} yLabel={famdAxisLabel(rank, ratio, yAxis ?? 2)}
+    oneDimensional={shown < 2} svgRef={svgRef} testId={testId} note={overlayNote} onToggle={onToggle}
+    onBrush={b => { if (onCategoryBrush) onCategoryBrush(b)
+      else onBrush?.(shown >= 2 ? [1, 2] : [1], b.y ? [b.x, b.y] : [b.x]) }} />
 }

@@ -157,6 +157,10 @@ export default function PcaPage() {
         />
       )}
 
+      {pcaData?.warnings?.map((warning) => (
+        <Alert key={warning.code} type="warning" message={warning.message} showIcon data-testid="pca-warning" />
+      ))}
+
       {/* Pane 1: Scree Plot & Variance Explained */}
         <ScreePlot
           pcaData={pcaData}

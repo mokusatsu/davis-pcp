@@ -1,3 +1,4 @@
+import { useGraphPopupContainer } from '../common/GraphPanel'
 import { Select as AntSelect } from 'antd'
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -40,6 +41,7 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
   extraContent?: React.ReactNode
   buttonSize?: 'small' | 'middle'
 }) {
+  const getPopupContainer=useGraphPopupContainer()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const [registryOp, setRegistryOp] = useState(currentBrushOp)
@@ -59,7 +61,7 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
       {extraContent}
       <div>
         <Typography.Text strong style={{ fontSize: 12 }}>集合演算</Typography.Text>
-        <AntSelect
+        <AntSelect getPopupContainer={getPopupContainer}
           data-testid="brush-operation"
           size="small"
           style={{ width: '100%', marginTop: 4 }}
@@ -76,7 +78,7 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
         <Button block data-testid="clear-selection" onClick={() => dispatch(selectionCleared())}>選択解除</Button>
         <Button block data-testid="focus-selection" disabled={!selection.selectedRowIds.length} onClick={() => dispatch(focusSelected())}>Focus</Button>
-        <Popconfirm title="選択行を作業集合から除外しますか？" onConfirm={() => dispatch(deleteSelected())}>
+        <Popconfirm getPopupContainer={getPopupContainer} title="選択行を作業集合から除外しますか？" onConfirm={() => dispatch(deleteSelected())}>
           <Button block danger data-testid="delete-selection" disabled={!selection.selectedRowIds.length}>Delete</Button>
         </Popconfirm>
         <Button block data-testid="reset-working-set" onClick={() => dispatch(resetWorkingSet())}>Reset to Base Data</Button>
@@ -85,7 +87,7 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
   )
 
   return (
-    <Dropdown popupRender={() => menu} trigger={['click']}>
+    <Dropdown getPopupContainer={getPopupContainer} popupRender={() => menu} trigger={['click']}>
       <Button size={buttonSize} data-testid={testId}>選択 <DownOutlined /></Button>
     </Dropdown>
   )

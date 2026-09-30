@@ -59,6 +59,7 @@ interface CrosstabResponse {
     method: string | null
     statisticType: string | null
     statistic: number | null
+    statisticStatus?: 'finite' | 'infinite' | 'undefined' | null
     numeratorDf: number | null
     denominatorDf: number | null
     pValue: number | null
@@ -254,6 +255,7 @@ export default function CrosstabPage() {
   ]), [datasetId, rowVariable, colVariable, weightColumn, scope, missingPolicy,
     selection.dataRevision, schemaRevision, inference, selection.activeRowIds,
     selection.selectedRowIds, scopeIds])
+  contextRef.current = inputContext
   const runCrosstab = useCallback(async () => {
     if (!datasetId || !rowVariable || !colVariable) return
     const version = ++requestVersion.current
@@ -271,6 +273,7 @@ export default function CrosstabPage() {
           activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
           selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
           sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+          weightMode: weightColumn ? 'column' : 'none',
           weightColumn,
           missingPolicy,
         },
@@ -346,6 +349,7 @@ export default function CrosstabPage() {
             selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
             sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
             rowIds: scope !== 'all' && scope !== 'active' && scope !== 'selected' && scope !== 'sampled' ? (scopeIds ?? undefined) : undefined,
+            weightMode: weightColumn ? 'column' : 'none',
             weightColumn: weightColumn ?? undefined,
             missingPolicy,
           },
@@ -414,7 +418,7 @@ export default function CrosstabPage() {
               placeholder="ウェイトなし"
               allowClear
               value={weightColumn}
-              onChange={(v) => setWeightColumn(v ?? null)}
+              onChange={(v) => { setWeightColumn(v ?? null); setResult(null); if (!v) setInference('auto') }}
               options={weightOptions}
             />
             <Select
@@ -585,10 +589,10 @@ export default function CrosstabPage() {
                 <Statistic
                   title={inferenceTitle(result.inference)}
                   value={result.inference.statistic === null
-                    ? '—'
+                    ? result.inference.statisticStatus === 'infinite' ? '∞' : '—'
                     : result.inference.statistic.toFixed(4)}
                   suffix={result.inference.numeratorDf !== null
-                    ? `df=${result.inference.numeratorDf.toFixed(2)}, ${result.inference.denominatorDf?.toFixed(2)}`
+                    ? `df=${result.inference.numeratorDf.toFixed(2)}${result.inference.denominatorDf != null ? `, ${result.inference.denominatorDf.toFixed(2)}` : ''}`
                     : undefined}
                 />
               </Col>

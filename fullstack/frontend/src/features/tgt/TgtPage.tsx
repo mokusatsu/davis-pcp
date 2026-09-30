@@ -28,8 +28,8 @@ export default function TgtPage() {
 
   const [chosen, setChosen] = useState<{ datasetId: string | null; names: string[] } | null>(null)
   const current = chosen?.datasetId === selection.datasetId ? chosen : null
-  const selectedColumns = (current?.names ?? numericColumns.slice(0, Math.min(Math.max(numericColumns.length, 0), 6)))
-    .filter((name) => numericColumns.includes(name))
+  const selectedColumns = useMemo(() => (current?.names ?? numericColumns.slice(0, 6))
+    .filter((name) => numericColumns.includes(name)), [current, numericColumns])
   const setSelectedColumns = (names: string[]) => setChosen({ datasetId: selection.datasetId, names })
   const [isPlaying, setIsPlaying] = useState(true)
   const [isTracking, setIsTracking] = useState(true)
@@ -47,7 +47,7 @@ export default function TgtPage() {
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const rowIds = useMemo(() => {
     if (!data) return []
-    return effectiveRowIds.length > 0 ? effectiveRowIds : data.rowIds
+    return effectiveRowIds
   }, [data, effectiveRowIds])
 
   // Compute standardized data matrix (N x p)

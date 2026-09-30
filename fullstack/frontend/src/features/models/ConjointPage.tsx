@@ -744,7 +744,7 @@ export default function ConjointPage(): JSX.Element {
   const rowsReady = !rowsLoading && !rowsError && rowsResultId !== null
     && result !== null && rowsResultId === result.resultId
   const selectedSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
-  const highlightedSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
+  const highlightedSet = useMemo(() => new Set(selection.hoveredRowId ? [selection.hoveredRowId] : []), [selection.hoveredRowId])
   const showSim = simResultId !== null && result !== null && simResultId === result.resultId ? simResult : null
   // CJ-GUI-06/G007-01: ranking の residual は未提供。ranking では
   // 第1位確率の1次元図（Y=行順）で点選択・範囲選択できる構成にする。
