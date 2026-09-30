@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import * as echarts from 'echarts'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { modelScatterOption, extent } from '../src/features/models/ModelScatter'
+import { modelScatterOption, extent, formatModelAxisValue } from '../src/features/models/ModelScatter'
 import { oddsForestOption, formatOdds } from '../src/features/models/OddsRatioForest'
 const rows = [
   {name:'x', coefficient:43.9444915467, stdError:1, zValue:1, pValue:.02, oddsRatio:1.2157665459e19,
@@ -29,6 +29,19 @@ describe('ECharts model semantics', () => {
   })
   it('handles empty and constant extents', () => {
     expect(extent([])).toEqual([-1,1]);expect(extent([4,4])).toEqual([3,5]);expect(extent([NaN,4])).toEqual([3,5])
+  })
+  it('formats compact model axes without rounding plotted coordinates or raw tooltips', () => {
+    const x = 0.728483948572, y = -0.77263637429
+    const option = modelScatterOption([{ id: 'exact', x, y, title: `${x} / ${y}` }], '第1軸', '第2軸', false, [-1, 1], [-1, 1]) as any
+    expect(option.xAxis.axisLabel.formatter(x)).toBe('0.728')
+    expect(option.yAxis.axisLabel.formatter(y)).toBe('-0.773')
+    expect(option.series[0].data[0].value).toEqual([x, y])
+    expect(option.tooltip.formatter({ data: option.series[0].data[0] })).toBe(`${x} / ${y}`)
+    expect(formatModelAxisValue(100000.001, [100000, 100000.01])).toBe('100000.001')
+    expect(formatModelAxisValue(100000.002, [100000, 100000.01])).toBe('100000.002')
+    expect(formatModelAxisValue(0.000000123456, [0, 0.000001])).toBe('1.23e-7')
+    expect(formatModelAxisValue(123456789, [0, 200000000])).toBe('1.23e+8')
+    expect(formatModelAxisValue(-0, [-1, 1])).toBe('0')
   })
   it('uses uncapped log CI coordinates for extreme odds ratios', () => {
     const option = oddsForestOption(rows), data = (option.series as any[])[0].data

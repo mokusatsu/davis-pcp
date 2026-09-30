@@ -1,4 +1,5 @@
-import type { FAMDCategory } from './famdTypes'
+import type { FAMDCategory, FAMDResponse } from './famdTypes'
+import type { EChartsOption } from 'echarts'
 import EChart from '../charts/EChart'
 import ModelScatter from './ModelScatter'
 import { truncateText } from '../../utils/textUtils'
@@ -41,7 +42,7 @@ export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank =
 }): JSX.Element {
   const circle = Array.from({ length: 129 }, (_, i) => [Math.cos(i * Math.PI / 64), Math.sin(i * Math.PI / 64)])
   return <div style={{ maxWidth: size, aspectRatio: '1', width: '100%' }}><EChart height="100%" testId={testId} ariaLabel="相関円"
-    option={{ animation: false, backgroundColor: '#fafafa', grid: { left: 55, right: 55, top: 55, bottom: 55 },
+    option={{ animation: false, backgroundColor: '#fafafa', grid: { left: 70, right: 70, top: 70, bottom: 70, outerBoundsMode: 'none' },
       tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.title ?? p.seriesName ?? '' },
       xAxis: { type: 'value', min: -1.15, max: 1.15, name: `第${axisX}軸 相関`, nameLocation: 'middle', nameGap: 30 },
       yAxis: { type: 'value', min: -1.15, max: 1.15, name: rank >= 2 ? `第${axisY}軸 相関` : '', nameLocation: 'middle', nameGap: 32 },
@@ -51,6 +52,20 @@ export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank =
         { type: 'scatter', labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' }, data: points.map(p => ({ value: [p.x, p.y ?? 0], title: p.title, name: p.label,
           itemStyle: { color: p.color ?? '#1890ff' }, label: { show: true, formatter: () => truncateText(p.label, 14), position: p.x >= 0 ? 'left' : 'right', color: '#333' } })) }],
     }} /></div>
+}
+
+/** Keep the legend above the plot; the ECharts default bottom legend overlaps X ticks. */
+export function famdRelationOption(
+  relations: FAMDResponse['details']['variableRelation'], axes: number[], names: ReadonlyMap<string, string>,
+): EChartsOption {
+  return { grid: { left: 150, right: 30, top: 40, bottom: 40 }, legend: { top: 4, left: 'center' },
+    tooltip: { trigger: 'axis', renderMode: 'richText' },
+    xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true,
+      axisLabel: { formatter: (name: string) => truncateText(name, 12) },
+      data: relations.map(v => `${names.get(v.variableId) ?? v.variableId}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`) },
+    series: axes.map((axis, i) => ({ type: 'bar' as const, name: `第${axis}軸`,
+      itemStyle: { color: i === 0 ? '#1890ff' : '#fa8c16' }, data: relations.map(v => v.relationStrength[axis - 1] ?? 0) })),
+  }
 }
 
 export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio, selected, highlighted, getColor, onToggle, onBrush, onCategoryBrush, svgRef, testId, overlayNote }: {

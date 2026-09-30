@@ -1,4 +1,5 @@
 import ModelScatter from './ModelScatter'
+import type { SeriesOption } from 'echarts'
 import OddsRatioForest, { formatOdds } from './OddsRatioForest'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
@@ -38,6 +39,13 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import L1Legend from '../common/L1Legend'
+
+/** Keep the threshold label inside the chart's fixed right margin. */
+export function logisticCurveSeries(curve: { x: number; probability: number }[], cutoff: number): SeriesOption[] {
+  return [{ type: 'line', data: curve.map(p => [p.x, p.probability]), symbol: 'none', silent: true,
+    lineStyle: { color: '#1890ff', width: 2.5 }, markLine: { symbol: 'none', data: [{ yAxis: cutoff }],
+      lineStyle: { color: '#faad14' }, label: { formatter: `Cutoff = ${cutoff.toFixed(2)}`, position: 'insideEndTop' } } }]
+}
 
 export interface CoefficientItem {
   name: string
@@ -540,9 +548,7 @@ export default function LogisticRegressionPage() {
                       misclassified: (p.predictedProb >= cutoff ? 1 : 0) !== p.actual,
                       title: `Row: ${p.rowId}\n${questionText(focusAxis)}: ${p.xVal}\nActual: ${p.actual} (${result.classes[p.actual]})\nProb: ${p.predictedProb}` }))}
                     xLabel={questionText(focusAxis)} yLabel="P(Y = 1 | X)" xExtent={[axisMinMax.min, axisMinMax.max]} yExtent={[0, 1]}
-                    extraSeries={[{ type: 'line', data: axisCurve.map(p => [p.x, p.probability]), symbol: 'none', silent: true,
-                      lineStyle: { color: '#1890ff', width: 2.5 }, markLine: { symbol: 'none', data: [{ yAxis: cutoff }],
-                        lineStyle: { color: '#faad14' }, label: { formatter: `Cutoff = ${cutoff.toFixed(2)}` } } }]}
+                    extraSeries={logisticCurveSeries(axisCurve, cutoff)}
                     onToggle={id => dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'ロジスティック回帰の点選択' }))}
                     onBrush={b => handleSelectRows(samplePointsWithCoord.filter(p => p.xVal >= b.x[0] && p.xVal <= b.x[1]
                       && (!b.y || p.jitterY >= b.y[0] && p.jitterY <= b.y[1])).map(p => p.rowId))} />

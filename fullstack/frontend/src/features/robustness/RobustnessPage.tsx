@@ -27,6 +27,14 @@ export interface PerturbationItem {
   flipped: boolean
 }
 
+/** Preserve the distinguishing bound instead of truncating both long CI labels
+ * to the same prefix. The full scenario label remains in the tooltip. */
+export function perturbationAxisLabel(item: Pick<PerturbationItem, 'strategy' | 'label'>): string {
+  if (item.strategy === 'bootstrap_ci_lower') return '95%CI 下限'
+  if (item.strategy === 'bootstrap_ci_upper') return '95%CI 上限'
+  return item.label
+}
+
 export interface SweepPoint {
   fraction: number
   pct_label: string
@@ -454,8 +462,8 @@ export default function RobustnessPage() {
                         各摂動シナリオ下での推定値ドリフト（%）。反転が起きた場合は赤色でハイライト。
                       </Typography.Text>
                       <CategoryBars axisName="推定値ドリフト (%)" testId="robustness-tornado-echart" items={currentConclusion.perturbations.map((p, index) => ({
-                        id: String(index), label: p.label, value: p.drift * 100, color: p.flipped ? '#ff4d4f' : '#1890ff',
-                        detail: `推定値: ${p.estimate}${p.flipped ? ' / 反転発生' : ''}`,
+                        id: String(index), label: perturbationAxisLabel(p), value: p.drift * 100, color: p.flipped ? '#ff4d4f' : '#1890ff',
+                        detail: `${p.label}\n推定値: ${p.estimate}${p.flipped ? ' / 反転発生' : ''}`,
                       }))} />
                     </Card>
                   </GraphPanel>

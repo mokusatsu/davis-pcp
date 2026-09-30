@@ -19,6 +19,19 @@ export function extent(values: number[]): [number, number] {
   const pad = lo === hi ? 1 : (hi - lo) * 0.1
   return [lo - pad, hi + pad]
 }
+/** Compact axis chrome only. Keep enough digits to distinguish a narrow
+ * range around a large offset; plotted values and tooltip data stay exact. */
+export function formatModelAxisValue(value: number, limits: readonly number[]): string {
+  if (!Number.isFinite(value)) return ''
+  if (value === 0) return '0'
+  const span = Math.abs(limits[1] - limits[0])
+  const magnitude = Math.max(Math.abs(limits[0]), Math.abs(limits[1]))
+  const digits = span > 0 && magnitude > 0
+    ? Math.min(14, Math.max(3, Math.ceil(Math.log10(magnitude / span)) + 3)) : 4
+  const rounded = Number(value.toPrecision(digits))
+  return Math.abs(rounded) >= 1e6 || Math.abs(rounded) < 1e-4 ? rounded.toExponential() : String(rounded)
+}
+
 export function modelScatterOption(points: ModelPoint[], xLabel: string, yLabel: string, oneDimensional = false,
   xExtent?: [number, number], yExtent?: [number, number], extraSeries: SeriesOption[] = [], note?: string): EChartsOption {
   const x = xExtent ?? extent(points.map(p => p.x))
@@ -29,8 +42,8 @@ export function modelScatterOption(points: ModelPoint[], xLabel: string, yLabel:
     grid: { left: 64, right: 32, top: note ? 42 : 24, bottom: 54 },
     title: note ? { text: note, textStyle: { fontSize: 11, fontWeight: 'normal', color: '#666' }, left: 64 } : undefined,
     tooltip: { trigger: 'item', renderMode: 'richText', formatter: (p: any) => p.data?.title ?? p.name ?? '' },
-    xAxis: { type: 'value', min: x[0], max: x[1], name: xLabel, nameLocation: 'middle', nameGap: 32, scale: true },
-    yAxis: { type: 'value', min: y[0], max: y[1], show: !oneDimensional, name: yLabel, nameLocation: 'middle', nameGap: 44, scale: true },
+    xAxis: { type: 'value', min: x[0], max: x[1], name: xLabel, nameLocation: 'middle', nameGap: 32, scale: true, axisLabel: { formatter: (value: number) => formatModelAxisValue(value, x) } },
+    yAxis: { type: 'value', min: y[0], max: y[1], show: !oneDimensional, name: yLabel, nameLocation: 'middle', nameGap: 44, scale: true, axisLabel: { formatter: (value: number) => formatModelAxisValue(value, y) } },
     series: [...extraSeries, ...(finite.some(p => p.misclassified) ? [{ id: 'misclassification-rings', type: 'scatter' as const, silent: true, z: 4,
       data: finite.flatMap((p,i) => p.misclassified ? [{value:[p.x,oneDimensional?((i%12)-5.5)/9:p.y],symbolSize:p.selected?20:16,
         itemStyle:{color:'transparent',borderColor:'#ff4d4f',borderWidth:1.5}}] : []) }] : []), { id: 'model-points', type: 'scatter', z: 5, labelLayout:{hideOverlap:true},

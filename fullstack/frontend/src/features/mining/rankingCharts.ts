@@ -9,10 +9,10 @@ export function rankingBarsOption(rankings: VariableRankItem[], highlighted: str
   topKVariables: string[]): EChartsOption {
   const methods = Object.keys(RANKING_METHOD_COLORS).filter(key => rankings.some(row => row.scores[key as keyof typeof row.scores]))
   return {
-    grid: { left: 155, right: 36, top: 40, bottom: 36 },
+    grid: { left: 155, right: 36, top: 40, bottom: 54 },
     legend: { top: 0 },
     tooltip: { trigger: 'item', renderMode: 'richText', formatter: (p: any) => p.data?.description ?? '' },
-    xAxis: { type: 'value', min: 0, max: 1, name: 'Normalized score' },
+    xAxis: { type: 'value', min: 0, max: 1, name: 'Normalized score', nameLocation: 'middle', nameGap: 30 },
     yAxis: { type: 'category', inverse: true, data: rankings.map(row => row.variable), axisLabel: { width: 140, overflow: 'truncate' } },
     series: methods.map(method => ({
       type: 'bar', name: method, barMaxWidth: 12,

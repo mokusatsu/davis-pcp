@@ -1,4 +1,3 @@
-import { truncateText } from '../../utils/textUtils'
 import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -17,7 +16,7 @@ import { useRowColorResolver } from '../../theme/useRowColor'
 import type { FAMDResponse } from './famdTypes'
 import { exportFamdTable, fetchFamdRows, runFamd, selectFamd, type FAMDContext } from './famdApi'
 import { downloadPng, downloadSvg } from './mcaApi'
-import FamdFigure, { CorrelationCircle, famdAxisLabel, famdCategoryPoints } from './FamdFigure'
+import FamdFigure, { CorrelationCircle, famdAxisLabel, famdCategoryPoints, famdRelationOption } from './FamdFigure'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -661,11 +660,7 @@ export default function FamdPage(): JSX.Element {
                         intrinsicSize={{ width: 560, height: Math.max(300, result.details.variableRelation.length * 38 + 90) }}
                       >
                       <EChart testId="famd-relation-svg" height={Math.max(300, result.details.variableRelation.length * 38 + 90)} ariaLabel="FAMD変数関係"
-                        option={{ grid: { left: 150, right: 30, top: 40, bottom: 40 }, legend: {}, tooltip: { trigger: 'axis', renderMode: 'richText' },
-                          xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true, axisLabel: { formatter: (name: string) => truncateText(name, 12) },
-                            data: result.details.variableRelation.map(v => `${nameById.get(v.variableId) ?? v.variableId}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`) },
-                          series: (rank >= 2 ? [axisX, effAxisY] : [axisX]).map((axis, i) => ({ type: 'bar' as const, name: `第${axis}軸`,
-                            itemStyle: { color: i === 0 ? '#1890ff' : '#fa8c16' }, data: result.details.variableRelation.map(v => v.relationStrength[axis - 1] ?? 0) })) }} />
+                        option={famdRelationOption(result.details.variableRelation, rank >= 2 ? [axisX, effAxisY] : [axisX], nameById)} />
                       </GraphPanel>
                       <Table
                         size="small"

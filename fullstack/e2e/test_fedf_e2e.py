@@ -62,7 +62,7 @@ def test_fedf_preset_and_propagation(page) -> None:
         page.wait_for_timeout(200)
 
     # Click IQR 25-75% preset button on first axis
-    iqr_btn = page.locator('[data-testid="fedf-select-iqr"]').first
+    iqr_btn = page.get_by_text('IQR 25–75%', exact=True).first
     expect(iqr_btn).to_be_visible()
     iqr_btn.click()
     page.wait_for_timeout(400)

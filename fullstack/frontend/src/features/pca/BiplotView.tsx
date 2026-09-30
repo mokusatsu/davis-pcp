@@ -71,7 +71,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
   }, [scoreBounds])
 
   const chartOption: EChartsOption = {
-    xAxis: { type: 'value', name: `PC${selectedX + 1}`, min: scoreBounds.minX, max: scoreBounds.maxX },
+    xAxis: { type: 'value', name: `PC${selectedX + 1}`, nameLocation: 'middle', nameGap: 32, min: scoreBounds.minX, max: scoreBounds.maxX },
     yAxis: { type: 'value', name: `PC${selectedY + 1}`, min: scoreBounds.minY, max: scoreBounds.maxY },
     series: showVectors && pcaData ? pcaData.columns.map(column => ({
       type: 'line' as const, name: column, data: [],

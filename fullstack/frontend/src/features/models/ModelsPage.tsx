@@ -35,6 +35,19 @@ interface TreeNode {
   children?: TreeNode[]
 }
 
+/** Intrinsic dimensions preserve readable leaf spacing instead of squashing graph symbols. */
+export function treeDiagramDimensions(root: TreeNode): { width: number; height: number } {
+  let leaves = 0, maxDepth = 0
+  const visit = (node: TreeNode, depth: number) => {
+    maxDepth = Math.max(maxDepth, depth)
+    if (node.isLeaf || !node.children?.length) leaves++
+    else node.children.forEach(child => visit(child, depth + 1))
+  }
+  visit(root, 0)
+  const rowHeight = Math.max(56, Math.min(92, Math.floor(520 / (maxDepth + 1))))
+  return { width: Math.max(760, leaves * 104 + 40), height: (maxDepth + 1) * rowHeight + 30 }
+}
+
 interface ModelResponse {
   scopeCount: number
   ordinaryMissingExcluded: number
@@ -329,7 +342,7 @@ export default function ModelsPage() {
             </GraphPanel>
           )}
           {result.treeStructures?.[0] && (
-            <GraphPanel graphId="models/tree" title="決定木ダイアグラム" available sizing="intrinsic" intrinsicSize={{ width: 760, height: 480 }}>
+            <GraphPanel graphId="models/tree" title="決定木ダイアグラム" available sizing="intrinsic" intrinsicSize={{ width: treeDiagramDimensions(result.treeStructures[0]).width + 28, height: treeDiagramDimensions(result.treeStructures[0]).height + 150 }}>
             <div style={{ maxWidth: '100%', overflow: 'visible', padding: 14, userSelect: 'none' }}>
             <TreeDiagram
               root={result.treeStructures[0]}
@@ -380,7 +393,7 @@ export default function ModelsPage() {
 /** Decision-tree diagram: split nodes show the rule + sample count,
  *  leaves are clickable and select their row cohort across all views.
  *  Leaf color = majority class (validated categorical palette). */
-function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSelect, headerNote }: {
+export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSelect, headerNote }: {
   root: TreeNode
   treeIndex: number
   leafMembership: LeafMembership[]
@@ -411,7 +424,7 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
   const colW = MIN_LEAF_W + 8
   const maxDepth = Math.max(...[...positions.values()].map((p) => p.y))
   const rowH = Math.max(56, Math.min(92, Math.floor(MAX_TREE_HEIGHT / (maxDepth + 1))))
-  const height = (maxDepth + 1) * rowH + 30
+  const { width, height } = treeDiagramDimensions(root)
   // The active leaf is the one whose membership equals the current selection.
   const selectedSet = new Set(selectedRowIds)
   let activeLeafNodeId: number | null = null
@@ -446,11 +459,13 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
         </Typography.Title>
       </Space>
       <div style={{ flex: 1, overflow: 'visible', minHeight: 0 }}>
-        <EChart height={height} ariaLabel="決定木構造"
-          option={{ tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.description ?? p.name },
-            series: [{ type: 'graph', layout: 'none', roam: false, edgeSymbol: ['none', 'none'],
-              left: 55, right: 55, top: 30, bottom: 30,
-              data: [...positions.values()].map(({x, y, node}) => ({ id: String(node.nodeId), x: px(x), y: py(y),
+        <EChart width={width} height={height} ariaLabel="決定木構造"
+          option={{ grid: { left: 0, right: 0, top: 0, bottom: 0, outerBoundsMode: 'none' },
+            xAxis: { type: 'value', min: 0, max: width, show: false },
+            yAxis: { type: 'value', min: 0, max: height, inverse: true, show: false },
+            tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.description ?? p.name },
+            series: [{ type: 'graph', coordinateSystem: 'cartesian2d', layout: 'none', roam: false, edgeSymbol: ['none', 'none'],
+              data: [...positions.values()].map(({x, y, node}) => ({ id: String(node.nodeId), value: [px(x), py(y)],
                 nodeId: node.nodeId, isLeaf: node.isLeaf, symbol: 'roundRect', symbolSize: node.isLeaf ? [84, 38] : [100, 38],
                 name: node.isLeaf ? `${truncateText(node.majority ?? 'leaf', 12)}${node.nodeId === activeLeafNodeId ? ' ✓' : ''}\nn=${node.count}${node.values?.[0] ? ` · ${Math.round(node.values[0].ratio * 100)}%` : ''}`
                   : `${truncateText(`${node.feature ?? ''} ≤ ${node.threshold}`, 14)}\nn=${node.count}`,

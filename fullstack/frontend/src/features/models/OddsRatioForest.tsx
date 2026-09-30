@@ -19,7 +19,7 @@ export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Reco
       return r ? `${labels[r.name] ?? r.name}\nOR=${formatOdds(r.oddsRatio, r.exponentiationStatus?.oddsRatio)} [${formatOdds(r.ciLower, r.exponentiationStatus?.ciLower)}, ${formatOdds(r.ciUpper, r.exponentiationStatus?.ciUpper)}]\np=${r.pValue}` : ''
     } },
     xAxis: { type: 'value', min: lo - pad, max: hi + pad, name: 'オッズ比（対数目盛）', nameLocation: 'middle', nameGap: 35,
-      axisLabel: { formatter: (v: number) => Math.abs(v) < 1e-10 ? '1' : `10^${Number(v.toPrecision(3))}` } },
+      axisLabel: { showMinLabel: false, showMaxLabel: false, hideOverlap: true, formatter: (v: number) => Math.abs(v) < 1e-10 ? '1' : `10^${Number(v.toPrecision(3))}` } },
     yAxis: { type: 'category', inverse: true, data: items.map(r => r.name), axisLabel: { formatter: (name: string) => truncateText(name, 16) } },
     series: [{ type: 'custom', data: items.map((r, i) => [r.logOddsRatio / Math.LN10, i, r.logCiLower / Math.LN10, r.logCiUpper / Math.LN10]),
       renderItem: (_params: any, api: any) => {
@@ -32,7 +32,7 @@ export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Reco
         }
         if (mid.every(Number.isFinite)) children.push({ type: 'circle', shape: { cx: mid[0], cy: mid[1], r: 5 }, style: { fill: color } })
         return { type: 'group', children }
-      } }, { type: 'scatter', data: [], markLine: { symbol: 'none', silent: true, data: [{ xAxis: 0 }], label: { formatter: 'OR = 1' } } }],
+      } }, { type: 'scatter', data: [], markLine: { symbol: 'none', silent: true, data: [{ xAxis: 0 }], label: { formatter: 'OR = 1', position: 'start' } } }],
   }
 }
 export default function OddsRatioForest({ items }: { items: CoefficientItem[] }) {

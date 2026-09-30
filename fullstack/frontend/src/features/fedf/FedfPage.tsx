@@ -149,7 +149,7 @@ export default function FedfPage() {
   // Layout calculations
   const AXIS_WIDTH = 120
   const AXIS_SPACING = selectedColumns.length <= 4 ? 190 : selectedColumns.length === 5 ? 155 : 150
-  const PLOT_TOP = 70
+  const PLOT_TOP = 100
   const PLOT_HEIGHT = 440
   const MARGIN_LEFT = 70
   const totalWidth = MARGIN_LEFT + (selectedColumns.length) * AXIS_SPACING + 30
@@ -348,7 +348,7 @@ export default function FedfPage() {
                       {/* Column Title and Presets */}
                       <ColumnQuestionTooltip nameOrId={col} svg><text
                         x={xBase + AXIS_WIDTH / 2}
-                        y={PLOT_TOP - 40}
+                        y={PLOT_TOP - 70}
                         textAnchor="middle"
                         style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                       >
@@ -356,37 +356,26 @@ export default function FedfPage() {
                         {truncateText(col, 14)}
                       </text></ColumnQuestionTooltip>
 
-                      {/* Quick Quantile Presets */}
-                      <g transform={`translate(${xBase - 15}, ${PLOT_TOP - 16})`}>
-                        <text
-                          className="fedf-preset-btn"
-                          x={0}
-                          y={0}
-                          style={{ fontSize: 10, fill: '#2a78d6', cursor: 'pointer', userSelect: 'none' }}
-                          onClick={() => applyQuantilePreset(col, 0.25, 0.75)}
-                          data-testid="fedf-select-iqr"
-                        >
-                          [IQR 25-75%]
+                      {/* Presets stay inside this axis, even when many columns
+                          use 150px spacing. Their former 190px row overlapped
+                          neighboring columns in both normal and expanded views. */}
+                      {[
+                        { key: 'iqr', label: 'IQR 25–75%', x: 0, y: 0, width: AXIS_WIDTH, min: 0.25, max: 0.75 },
+                        { key: 'top', label: 'Top 5%', x: 0, y: 28, width: 50, min: 0.95, max: 1 },
+                        { key: 'bottom', label: 'Bottom 5%', x: 54, y: 28, width: 66, min: 0, max: 0.05 },
+                      ].map(preset => <g key={preset.key}
+                        data-testid={`fedf-preset-${idx}-${preset.key}`}
+                        transform={`translate(${xBase + preset.x}, ${PLOT_TOP - 62 + preset.y})`}
+                        onClick={() => applyQuantilePreset(col, preset.min, preset.max)}
+                        style={{ cursor: 'pointer' }}>
+                        <title>{`${col}: ${preset.label}`}</title>
+                        <rect x={0} y={0} width={preset.width} height={24} rx={3}
+                          fill="#fff" stroke="#d1d5db" strokeWidth={0.8} />
+                        <text x={preset.width / 2} y={12} textAnchor="middle" dominantBaseline="middle"
+                          pointerEvents="none" style={{ fontSize: 10, fill: preset.key === 'iqr' ? '#2a78d6' : '#6b7280', userSelect: 'none' }}>
+                          {preset.label}
                         </text>
-                        <text
-                          className="fedf-preset-btn"
-                          x={75}
-                          y={0}
-                          style={{ fontSize: 10, fill: '#6b7280', cursor: 'pointer', userSelect: 'none' }}
-                          onClick={() => applyQuantilePreset(col, 0.95, 1.0)}
-                        >
-                          [Top 5%]
-                        </text>
-                        <text
-                          className="fedf-preset-btn"
-                          x={125}
-                          y={0}
-                          style={{ fontSize: 10, fill: '#6b7280', cursor: 'pointer', userSelect: 'none' }}
-                          onClick={() => applyQuantilePreset(col, 0.0, 0.05)}
-                        >
-                          [Bottom 5%]
-                        </text>
-                      </g>
+                      </g>)}
 
                       {/* Shaded Area Under FEDF Curve */}
                       <path d={areaPath} fill="rgba(42, 120, 214, 0.08)" />
@@ -416,7 +405,7 @@ export default function FedfPage() {
                       />
                       <text
                         x={xBase - 8}
-                        y={getY(stat.median) + 3}
+                        y={Math.max(PLOT_TOP + 18, Math.min(PLOT_TOP + PLOT_HEIGHT - 18, getY(stat.median) + 3))}
                         textAnchor="end"
                         style={{ fontSize: 10, fill: '#ef4444', fontWeight: 600 }}
                       >
