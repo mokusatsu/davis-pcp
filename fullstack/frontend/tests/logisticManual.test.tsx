@@ -97,7 +97,7 @@ it.each([0.5, 1, 2])('selects points and rectangles at display scale %s', async 
   const element = await view.findByTestId('logistic-sigmoid-svg')
   const chart = getInstanceByDom(element)!
   chart.resize({width:480,height:280})
-  const svg = element.parentElement!
+  const svg = element.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
   vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20, width: 480 * scale, height: 280 * scale } as DOMRect)
   const capture = vi.fn()
   Object.defineProperty(svg, 'setPointerCapture', { value: capture, configurable: true })

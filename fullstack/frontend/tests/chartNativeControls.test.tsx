@@ -18,33 +18,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); store.dispatch(selectionCleared()) })
 
 function toolboxHit(chart: ECharts) {
-  const icon = chart.getZr().storage.getDisplayList().find(item => (item as any).__title === 'SVGを保存')!
+  const icon = chart.getZr().storage.getDisplayList().find(item => (item as any).__title === 'リセット')!
   expect(icon).toBeDefined()
   const rect = icon.getBoundingRect().clone()
   if (icon.transform) rect.applyTransform(icon.transform)
-  const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2
-  expect(chart.getZr().findHover(x, y).target).toBe(icon)
-  return { icon, x, y }
+  return { icon, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
 }
 
-it.each([1, 1.425] as const)('leaves native SVG export pointer clicks uncaptured at display scale %s', scale => {
+it.each([1, 1.425] as const)('keeps SVG button clicks outside plot capture at display scale %s', scale => {
   const view = render(<Provider store={store}><RowScatter points={[{ rowId: 'r1', x: 1, y: 1 }]}
     xName="X" yName="Y" testId="scatter" /></Provider>)
-  const host = view.getByTestId('scatter'), wrapper = host.parentElement!, chart = getInstanceByDom(host)!
-  const rect = { left: 20, top: 100, width: 600 * scale, height: 420 * scale } as DOMRect
-  host.getBoundingClientRect = wrapper.getBoundingClientRect = () => rect
+  const host = view.getByTestId('scatter'), wrapper = view.getByRole('group'), chart = getInstanceByDom(host)!
+  host.getBoundingClientRect = wrapper.getBoundingClientRect = () => ({ left: 20, top: 100, width: 600 * scale, height: 420 * scale } as DOMRect)
   const capture = vi.fn()
   Object.defineProperty(wrapper, 'setPointerCapture', { value: capture })
-  const { x, y } = toolboxHit(chart)
-  fireEvent.pointerDown(host.querySelector('svg')!, { clientX: 20 + x * scale, clientY: 100 + y * scale, button: 0 })
+  fireEvent.pointerDown(view.getByRole('button', { name: 'X × Y：SVGを保存' }), { clientX: 580 * scale, clientY: 108 * scale, button: 0 })
   expect(capture).not.toHaveBeenCalled()
   expect(store.getState().selection.selectedRowIds).toEqual([])
+  expect(chart).toBeDefined()
 })
 
-it('keeps plot point capture and selection while exporting through the native toolbox', () => {
+it('keeps plot point capture and selection while exporting a real SVG Blob', () => {
   const view = render(<Provider store={store}><RowScatter points={[{ rowId: 'r1', x: 1, y: 1 }]}
     xName="X" yName="Y" testId="scatter" /></Provider>)
-  const host = view.getByTestId('scatter'), wrapper = host.parentElement!, chart = getInstanceByDom(host)!
+  const host = view.getByTestId('scatter'), wrapper = view.getByRole('group'), chart = getInstanceByDom(host)!
   host.getBoundingClientRect = wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 420 } as DOMRect)
   const capture = vi.fn()
   Object.defineProperty(wrapper, 'setPointerCapture', { value: capture })
@@ -54,40 +51,45 @@ it('keeps plot point capture and selection while exporting through the native to
   fireEvent.pointerUp(wrapper, { clientX: x, clientY: y, button: 0 })
   expect(store.getState().selection.selectedRowIds).toEqual(['r1'])
 
-  const anchor = document.createElement('a'), dispatch = vi.spyOn(anchor, 'dispatchEvent').mockReturnValue(true)
-  const create = document.createElement.bind(document)
-  vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) =>
-    tagName === 'a' ? anchor : create(tagName, options))
-  // Vitest's Window proxy is rejected as UIEvent.view by jsdom; browsers accept
-  // document.defaultView. Keep the real event while omitting that harness proxy.
-  const NativeMouseEvent = MouseEvent
-  vi.stubGlobal('MouseEvent', class extends NativeMouseEvent {
-    constructor(type: string, init?: MouseEventInit) { super(type, { ...init, view: null }) }
+  const create = vi.fn(() => 'blob:svg')
+  vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() })
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) {
+    expect(this.isConnected).toBe(true)
+    expect(this.download).toBe('X × Y.svg')
+    expect(this.target).toBe('')
   })
-  const toolbar = toolboxHit(chart), svg = host.querySelector('svg')!
+  const button = view.getByRole('button', { name: 'X × Y：SVGを保存' })
   capture.mockClear()
-  const event = { clientX: toolbar.x, clientY: toolbar.y, button: 0 }
-  fireEvent.pointerDown(svg, event)
-  fireEvent.mouseDown(svg, event)
-  // Model browser pointer capture retargeting: only the uncaptured path leaves
-  // the native up/click inside ECharts. No chart.trigger shortcut is used here.
-  const clickTarget = capture.mock.calls.length ? wrapper : svg
-  fireEvent.pointerUp(clickTarget, event)
-  fireEvent.mouseUp(clickTarget, event)
-  fireEvent.click(clickTarget, event)
-  expect(dispatch).toHaveBeenCalledTimes(1)
-  expect(anchor.download).toBe('X × Y.svg')
-  expect(anchor.href).toMatch(/^data:image\/svg\+xml/)
-  expect(decodeURIComponent(anchor.href)).toContain('<svg')
+  fireEvent.pointerDown(button, { button: 0 })
+  fireEvent.pointerUp(button, { button: 0 })
+  fireEvent.click(button)
+  expect(capture).not.toHaveBeenCalled()
+  expect(click).toHaveBeenCalledTimes(1)
+  expect((create.mock.calls[0][0] as Blob).type).toBe('image/svg+xml;charset=utf-8')
   expect(store.getState().selection.selectedRowIds).toEqual(['r1'])
 })
 
-it('also preserves native controls under legacy mouse-based selection wrappers', () => {
+it('preserves other native toolbox controls under legacy mouse selection wrappers', () => {
   const down = vi.fn()
-  const view = render(<div onMouseDown={down}><EChart testId="chart" option={{ series: [] }} /></div>)
+  const view = render(<div onMouseDown={down}><EChart testId="chart" option={{ series: [], toolbox: { feature: { restore: { title: 'リセット' } } } }} /></div>)
   const host = view.getByTestId('chart'), chart = getInstanceByDom(host)!
   host.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 420 } as DOMRect)
   const { x, y } = toolboxHit(chart)
   fireEvent.mouseDown(host.querySelector('svg')!, { clientX: x, clientY: y, button: 0 })
   expect(down).not.toHaveBeenCalled()
+})
+
+it('retains the same export button during frame refreshes between pointer down and up', () => {
+  vi.stubGlobal('URL', { createObjectURL: () => 'blob:svg', revokeObjectURL: vi.fn() })
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  const key = vi.fn(), view = render(<div onKeyDown={key}><EChart testId="moving-chart" option={{ series: [] }} /></div>)
+  const button = view.getByRole('button', { name: '統計グラフ：SVGを保存' })
+  fireEvent.pointerDown(button, { button: 0 })
+  view.rerender(<div onKeyDown={key}><EChart testId="moving-chart" option={{ series: [], backgroundColor: '#eee' }} /></div>)
+  expect(view.getByRole('button', { name: '統計グラフ：SVGを保存' })).toBe(button)
+  fireEvent.pointerUp(button, { button: 0 })
+  fireEvent.click(button)
+  expect(click).toHaveBeenCalledTimes(1)
+  fireEvent.keyDown(button, { key: 'Enter' })
+  expect(key).not.toHaveBeenCalled()
 })

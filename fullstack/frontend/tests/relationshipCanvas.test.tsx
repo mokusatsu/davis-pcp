@@ -18,7 +18,7 @@ it('uses the central selection operations for Canvas clicks and brushes and canc
   const chartDom = view.getByRole('img', { name: '焦点ペア散布図' })
   const chart = getInstanceByDom(chartDom)!
   act(() => { chart.resize({ width: 600, height: 420 }) })
-  const canvas = chartDom.parentElement!
+  const canvas = chartDom.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
   Object.defineProperty(canvas, 'setPointerCapture', { value: vi.fn() })
   canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 420 } as DOMRect)
   const click = (x: number, y: number) => { fireEvent.pointerDown(canvas, { clientX: x, clientY: y, button: 0 }); fireEvent.pointerUp(canvas, { clientX: x, clientY: y }) }
@@ -49,7 +49,7 @@ it('maps a compact rendered ECharts hit back to its logical coordinates', () => 
   const chartDom = view.getByRole('img', { name: '焦点ペア散布図' })
   const chart = getInstanceByDom(chartDom)!
   act(() => { chart.resize({ width: 600, height: 420 }) })
-  const canvas = chartDom.parentElement!
+  const canvas = chartDom.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
   Object.defineProperty(canvas, 'setPointerCapture', { value: vi.fn() })
   canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 210 } as DOMRect)
   const [x, y] = chart.convertToPixel({ gridIndex: 0 }, [1, 1]) as number[]

@@ -32,7 +32,7 @@ for (const plot of ['biplot', 'matrix']) {
           : <PcaMatrixPlot pcaData={pcaData} />}</GraphExpansionProvider></Provider>)
         const chartDom = view.getByTestId(plot === 'biplot' ? 'pca-biplot-canvas' : 'pca-matrix-canvas')
         const chart = getInstanceByDom(chartDom)!
-        const canvas = chartDom.parentElement!
+        const canvas = chartDom.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
         const width = plot === 'biplot' ? 720 : 640, height = plot === 'biplot' ? 480 : 640
         act(() => { chart.resize({ width, height }) })
         canvas.setPointerCapture = vi.fn()
@@ -76,7 +76,7 @@ for (const plot of ['biplot', 'matrix']) {
     const chart = getInstanceByDom(chartDom)!
     const width = plot === 'biplot' ? 720 : 640, height = plot === 'biplot' ? 480 : 640
     act(() => { chart.resize({ width, height }) })
-    const pointerHost = chartDom.parentElement!
+    const pointerHost = chartDom.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
     pointerHost.setPointerCapture = vi.fn()
     vi.spyOn(pointerHost, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width, height } as DOMRect)
     const gridIndex = plot === 'biplot' ? 0 : 1

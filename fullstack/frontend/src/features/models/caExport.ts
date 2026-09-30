@@ -91,10 +91,7 @@ export function categoriesToCsv(
   return lines.join('\n')
 }
 
-export function downloadSvg(svg: SVGSVGElement, fileName: string): void {
-  const text = new XMLSerializer().serializeToString(svg)
-  downloadBlob(new Blob([text], { type: 'image/svg+xml;charset=utf-8' }), fileName)
-}
+export { downloadSvg } from '../charts/chartExport'
 
 export function downloadPng(svg: SVGSVGElement, fileName: string): void {
   const text = new XMLSerializer().serializeToString(svg)

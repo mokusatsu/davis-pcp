@@ -1,7 +1,8 @@
 import { useGraphViewport } from '../common/GraphPanel'
-import { useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent, type MutableRefObject, type RefObject } from 'react'
+import { useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type MutableRefObject, type RefObject } from 'react'
 import * as echarts from 'echarts'
 import Eventful from 'zrender/lib/core/Eventful.js'
+import { downloadChartSvg } from './chartExport'
 import { ReactReduxContext } from 'react-redux'
 import type { ECharts, EChartsOption } from 'echarts'
 
@@ -24,6 +25,7 @@ export interface EChartProps {
  * without recreating a chart; hidden keep-alive/focus panels resize on re-entry. */
 export default function EChart({ option, height = 360, width = '100%', onEvents, onReady,
   chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style }: EChartProps) {
+  const [exportError, setExportError] = useState<string | null>(null)
   const graphViewport=useGraphViewport()
   const viewportKey=JSON.stringify(graphViewport)
   // SVG is resolution independent. ECharts Canvas fixes DPR at init, so renew
@@ -119,7 +121,9 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
       ...(legend ? { legend } : {}),
       ...(dataZoom ? { dataZoom } : {}),
       ...(series ? { series } : {}),
-      toolbox: option.toolbox === undefined || !Array.isArray(option.toolbox) ? { right: 8, ...option.toolbox, feature: { saveAsImage: { type: renderer === 'canvas' ? 'png' : 'svg', title: renderer === 'canvas' ? 'PNGを保存' : 'SVGを保存', name: ariaLabel }, ...(option.toolbox as any)?.feature } } : option.toolbox,
+      // Export is a stable DOM control: a native toolbox target is recreated
+      // on setOption (including every Grand Tour frame), losing in-flight clicks.
+      toolbox: option.toolbox,
     }, { notMerge: true, lazyUpdate: false })
     if (svgRef) (svgRef as MutableRefObject<SVGSVGElement | null>).current = container.current?.querySelector('svg') ?? null
     if (!readyCalled.current) { readyCalled.current = true; ready.current?.(chart) }
@@ -158,9 +162,24 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     }
   }
 
-  return <div ref={container} data-testid={testId} data-chart-renderer="echarts" role="img" aria-label={ariaLabel}
-    onPointerDown={retainNativeControl} onMouseDown={retainNativeControl}
-    style={{ width, height, minWidth: 0, minHeight: 100, userSelect: 'none', touchAction: 'none', ...style }} />
+  return <div data-chart-host="echarts" style={{ width, height, minWidth: 0, minHeight: 100, position: 'relative', ...style }}>
+    <div ref={container} data-testid={testId} data-chart-renderer="echarts" role="img" aria-label={ariaLabel}
+      onPointerDown={retainNativeControl} onMouseDown={retainNativeControl}
+      style={{ width: '100%', height: '100%', minWidth: 0, userSelect: 'none', touchAction: 'none' }} />
+    <button type="button" data-chart-export="svg" aria-label={`${ariaLabel}：SVGを保存`} title="SVGを保存"
+      onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation()}
+      onClick={event => {
+        event.stopPropagation()
+        const chart = instance.current
+        if (!chart || chart.isDisposed()) return
+        try { downloadChartSvg(chart, ariaLabel); setExportError(null) }
+        catch (error) { setExportError(`SVGを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`) }
+      }}
+      style={{ position: 'absolute', top: 4, right: 8, zIndex: 2, padding: '2px 6px', border: '1px solid #d9d9d9', borderRadius: 4,
+        background: '#fff', color: '#333', font: '12px sans-serif', cursor: 'pointer' }}>SVGを保存</button>
+    {exportError && <div role="alert" style={{ position: 'absolute', top: 32, right: 8, zIndex: 3, background: '#fff', color: '#b42318', padding: 6 }}>{exportError}</div>}
+  </div>
 }
 
 /** ECharts HTML tooltips accept markup: all labels from datasets must be escaped. */

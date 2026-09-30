@@ -121,7 +121,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   const element = await view.findByTestId('discriminant-map-svg')
   const chart = getInstanceByDom(element)!
   chart.resize({width:460,height:300})
-  const svg = element.parentElement!
+  const svg = element.closest<HTMLElement>('[data-chart-host="echarts"]')!.parentElement!
   vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20, width: 460 * scale, height: 300 * scale } as DOMRect)
   const capture = vi.fn()
   Object.defineProperty(svg, 'setPointerCapture', { value: capture, configurable: true })

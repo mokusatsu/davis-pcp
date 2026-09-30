@@ -30,7 +30,7 @@ it('keeps lifecycle, custom events, exports and external SVG reference on refres
   const chart = getInstanceByDom(view.getByTestId('host'))!
   expect(ref.current?.tagName.toLowerCase()).toBe('svg')
   expect(ready).toHaveBeenCalledTimes(1)
-  expect((chart.getOption().toolbox as any)[0].feature).toHaveProperty('saveAsImage')
+  expect(view.getByRole('button', { name: '統計グラフ：SVGを保存' })).toBeVisible()
   expect((chart.getOption().toolbox as any)[0].feature).toHaveProperty('restore')
   view.rerender(<EChart option={{ ...option, series: [{ type: 'scatter', data: [[2, 3]] }] }} svgRef={ref} onReady={ready} testId="host" />)
   expect(getInstanceByDom(view.getByTestId('host'))).toBe(chart)

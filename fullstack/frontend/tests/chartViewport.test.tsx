@@ -20,7 +20,7 @@ it('keeps a native SVG chart alive across display zoom changes',()=>{
 it('cancels a model brush when only GraphPanel zoom changes',()=>{
  const brush=vi.fn(), points=[{id:'r',x:1,y:1,title:'r'}]
  const props={points,xLabel:'X',yLabel:'Y',testId:'model',onBrush:brush}
- const view=render(<ModelScatter {...props} />),el=view.getByTestId('model'),host=el.parentElement!
+ const view=render(<ModelScatter {...props} />),el=view.getByTestId('model'),host=el.parentElement!.parentElement!
  const chart=getInstanceByDom(el)!
  act(()=>chart.resize({width:600,height:400}))
  host.getBoundingClientRect=()=>({left:0,top:0,width:600,height:400} as DOMRect)

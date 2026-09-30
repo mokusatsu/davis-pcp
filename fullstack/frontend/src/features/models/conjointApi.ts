@@ -284,17 +284,7 @@ export async function exportConjointTable(
   download(new Blob([parts.join('')], { type: 'text/csv;charset=utf-8' }), fileName)
 }
 
-export function downloadSvg(svg: SVGSVGElement, fileName: string): void {
-  const text = new XMLSerializer().serializeToString(svg)
-  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml;charset=utf-8' }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+export { downloadSvg } from '../charts/chartExport'
 
 export function downloadPng(svg: SVGSVGElement, fileName: string): void {
   const text = new XMLSerializer().serializeToString(svg)
