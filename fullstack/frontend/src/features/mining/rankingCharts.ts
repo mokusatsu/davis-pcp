@@ -16,6 +16,8 @@ export function rankingBarsOption(rankings: VariableRankItem[], highlighted: str
     yAxis: { type: 'category', inverse: true, data: rankings.map(row => row.variable), axisLabel: { width: 140, overflow: 'truncate' } },
     series: methods.map(method => ({
       type: 'bar', name: method, barMaxWidth: 12,
+      // Legends inherit the series visual, not per-row item styles.
+      itemStyle: { color: RANKING_METHOD_COLORS[method] },
       data: rankings.map(row => {
         const score = row.scores[method as keyof typeof row.scores]
         return { name: row.variable, value: score?.normalizedScore ?? null,

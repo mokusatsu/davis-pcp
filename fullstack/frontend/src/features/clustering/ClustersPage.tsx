@@ -24,6 +24,7 @@ import { getSvgPoint } from '../../utils/svgCoordinates'
 
 import CobwebTreeViewer from './CobwebTreeViewer'
 import DiscCategoryMatrix from './DiscCategoryMatrix'
+import { dendrogramLeafOrder } from './dendrogramLayout'
 
 /** Finite min/max over a coordinate array (NaN skipped), engine-parity helper. */
 function finiteRange(values: number[]): { min: number; max: number } {
@@ -785,7 +786,9 @@ function DendrogramPanel({ linkageMatrix, rowIds }: { linkageMatrix: number[][];
   const maxMerge = Math.max(...linkageMatrix.map((row) => row[2])) || 1
   const selectedSet = new Set(selection.selectedRowIds)
   const xOf = new Map<number, number>()
-  for (let i = 0; i < n; i += 1) xOf.set(i, 20 + (i / Math.max(1, n - 1)) * (width - 60))
+  dendrogramLeafOrder(linkageMatrix).forEach((leaf, position) => {
+    xOf.set(leaf, 20 + (position / Math.max(1, n - 1)) * (width - 60))
+  })
   linkageMatrix.forEach((merge, index) => {
     const node = n + index
     const x1 = xOf.get(merge[0]) ?? 0

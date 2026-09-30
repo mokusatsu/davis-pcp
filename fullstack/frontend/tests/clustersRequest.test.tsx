@@ -187,3 +187,28 @@ it('shows the actual input population, dropped columns and numeric imputation se
   expect(view.getByRole('row', { name: '定数・全欠損のため除外した列 constant、empty' })).toBeVisible()
   expect(view.getByRole('row', { name: '数値の欠損補完 x: 2件（対象行の有効値の平均）' })).toBeVisible()
 })
+
+it('orders dendrogram leaves topologically without changing distances or subtree selection IDs', async () => {
+  const linkageMatrix = [[0, 4, 1, 2], [1, 5, 1.2, 2], [2, 6, 1.3, 2], [3, 7, 1.4, 2],
+    [8, 9, 3, 4], [10, 11, 4, 4], [12, 13, 7, 8]]
+  vi.spyOn(api, 'post').mockResolvedValue({ ...result, method: 'agglomerative', k: 2,
+    rowIds: Array.from({ length: 8 }, (_, i) => `r${i}`), labels: [0, 0, 1, 1, 0, 0, 1, 1], linkageMatrix })
+  vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
+  const { view, dispatch } = setup(['r0', 'r4'])
+  fireEvent.click(view.getByTestId('run-clustering'))
+  const svg = await view.findByTestId('dendrogram-svg')
+  const merges = svg.querySelectorAll('g')
+  expect(merges).toHaveLength(7)
+  const first = merges[0].querySelectorAll('line')
+  const width = Number(svg.getAttribute('width'))
+  // Leaves 0 and 4 become neighbors, but node IDs and distance=1 stay intact.
+  expect(Number(first[0].getAttribute('x1'))).toBe(20)
+  expect(Number(first[1].getAttribute('x1'))).toBeCloseTo(20 + (width - 60) / 7)
+  expect(Number(first[0].getAttribute('y1'))).toBe(330)
+  expect(Number(first[0].getAttribute('y2'))).toBeCloseTo(330 - 300 / 7)
+  expect(first[2]).toHaveAttribute('stroke', '#123456')
+  expect(first[2]).toHaveAttribute('stroke-width', '2')
+  expect(merges[0]).toHaveTextContent('2行 (merge高さ 1.00)')
+  fireEvent.click(merges[0])
+  expect(dispatch).toHaveBeenLastCalledWith(selectionApplied({ rowIds: ['r0', 'r4'], operation: 'replace', label: 'Dendrogram部分木選択' }))
+})

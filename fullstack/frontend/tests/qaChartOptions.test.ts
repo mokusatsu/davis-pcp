@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { kanoOption, praImpactOption } from '../src/features/pra/praCharts'
-import { importanceBarsOption, rankingBarsOption, rankingScatterOption } from '../src/features/mining/rankingCharts'
+import { importanceBarsOption, rankingBarsOption, rankingScatterOption, RANKING_METHOD_COLORS } from '../src/features/mining/rankingCharts'
 import type { PraAttribute } from '../src/features/pra/PenaltyRewardPage'
 import type { VariableRankItem } from '../src/features/mining/FeatureRankingPage'
 
@@ -78,4 +78,38 @@ it('retains negative permutation importance and its received standard deviation'
   expect(option.series[0].data[0].description).toContain('-0.300 ± 0.040')
   expect(option.series[0].data[0].label.position).toBe('left')
   expect(option.series[0].markLine.data).toEqual([{ xAxis: 0 }])
+})
+
+
+it('uses each ranking method color for the rendered legend and bars, independently of selection opacity', async () => {
+  const { init } = await import('echarts')
+  const rows = ['selected', 'top-k', 'dimmed'].map((variable, index) => ({
+    variable, bordaScore: 10 - index, overallRank: index + 1, meanRedundancy: .2, recommendationTier: 'high',
+    scores: Object.fromEntries(Object.keys(RANKING_METHOD_COLORS).map(method => [method, { normalizedScore: .8 - index * .2, rawScore: 3 - index, rank: index + 1 }])),
+  })) as VariableRankItem[]
+  const chart = init(null, undefined, { renderer: 'svg', ssr: true, width: 1120, height: 480 })
+  try {
+    chart.setOption({ animation: false, ...rankingBarsOption(rows, 'selected', ['top-k']) })
+    const model = (chart as any).getModel()
+    const legendView = (chart as any).getViewOfComponentModel(model.getComponent('legend'))
+    const legendItems: any[] = []
+    legendView.group.traverse((element: any) => {
+      if (element.__legendDataIndex != null) legendItems[element.__legendDataIndex] = element
+    })
+    const methods = Object.keys(RANKING_METHOD_COLORS)
+    expect(legendItems).toHaveLength(methods.length)
+    methods.forEach((method, index) => {
+      const color = RANKING_METHOD_COLORS[method]
+      const icon = legendItems[index].children().find((child: any) => child.type !== 'text' && child.style?.fill === color)
+      expect(icon, `${method} legend icon`).toBeDefined()
+      const data = model.getSeriesByIndex(index).getData()
+      expect(data.getVisual('style').fill).toBe(color)
+      for (let row = 0; row < rows.length; row++) {
+        const style = data.getItemGraphicEl(row).style
+        expect(style.fill).toBe(color)
+        expect(style.opacity).toBe(row < 2 ? 1 : .6)
+        expect(style.lineWidth).toBe(row === 0 ? 2 : 0)
+      }
+    })
+  } finally { chart.dispose() }
 })
