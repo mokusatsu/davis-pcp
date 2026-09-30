@@ -1,0 +1,62 @@
+{
+  "run_id": "20260918-193807",
+  "base": "http://127.0.0.1:8420",
+  "cases": [
+    {
+      "name": "S0-前提条件",
+      "ok": true,
+      "expected": "visible/1440/CKY31PSW",
+      "actual": "visible/1440",
+      "detail": ""
+    },
+    {
+      "name": "S1-Iris dataset自動ロード",
+      "ok": true,
+      "expected": "Iris",
+      "actual": "Iris (built-in sample) (150行)",
+      "detail": ""
+    },
+    {
+      "name": "V08a-重回帰の実行結果表示",
+      "ok": true,
+      "expected": "結果表示あり",
+      "actual": "selects=62 result_like=True inputs={'sel': ['除外', '自動'], 'hasRun': False} titles=['重回帰分析']",
+      "detail": ""
+    },
+    {
+      "name": "V08b-重回帰へ戻り表示保持(KeepAlive・実Menu往復)",
+      "ok": true,
+      "expected": "同一テキスト+menu経路",
+      "actual": "before_len=177 after_len=177 equal=True paths=/models/factor-analysis//models/linear-regression",
+      "detail": ""
+    },
+    {
+      "name": "V08c-PCP描画が往復で維持",
+      "ok": true,
+      "expected": "svg>0+menu経路+軸要素",
+      "actual": "before_svg=39 after_svg=53 paths=/models/conjoint//pcp axes={'axes': ['axis-order-menu', 'axis-settings', 'axis-control-sepal_length_cm', 'axis-control-sepal_width_cm', 'axis-control-petal_length_cm', 'axis-control-petal_width_cm', 'axis-control-species', 'axis-control-petal_ratio'], 'title': 'sepal_length_cm — Imputation Guard Label\\nⓘ\\nsepal_width_cm — '} cj={'len': 464, 'head': 'コンジョイント分析\\n方式:\\n評点\\n選択\\n順位\\n対象:\\n全体\\nActive\\nSelected\\n標本\\n重み:\\nデータ設定（なし）\\nタスク全体へ拡張\\n選択\\n回答者ID列:\\n回答者ID列\\nタスク列:\\nタスク列\\n代替案列:\\n代替案列\\n応答列:\\n選択（'}",
+      "detail": ""
+    },
+    {
+      "name": "V09-選択行が分類往復で維持",
+      "ok": true,
+      "expected": "3件+三地点中央状態一致+ウェイト操作復元",
+      "actual": "table:3→pcp:3→table:3 checks=100 paths=/pcp//table mid_rowids=IRIS-001,IRIS-002,IRIS-003 w:未選択->未選択->未選択 central_match=True",
+      "detail": "選択行 3 / active 150 / 全150\n解除\nFocus\nDelete\n記述統計\n選択行CSV\nIRIS-001\nIRIS-002\nIRIS-003"
+    },
+    {
+      "name": "V10a-dataset一覧取得",
+      "ok": true,
+      "expected": "Iris含む",
+      "actual": "[\"b06c_rank\",\"f2\",\"s\",\"cj_e2e\",\"pca_empty\",\"アンケート\",\"Iris (PCA test 548839)\",\"impute_copy\",\"empty_row_ids\",\"subgroup_empty\",\"pca_empty\",\"parquet_export",
+      "detail": ""
+    },
+    {
+      "name": "V11-拡大開始でpopup閉鎖・終了後に操作復旧",
+      "ok": true,
+      "expected": "popup1→0+dialog開閉+復旧",
+      "actual": "popup_before=1 dlg=True popup_during=1 vis_popups=0 dlg_after=False popup_after=1 menu=True hdr=True sidebar=True export=True/True license=True/True",
+      "detail": ""
+    }
+  ]
+}

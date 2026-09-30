@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { FAMDCategory } from './famdTypes'
+import { truncateText } from '../../utils/textUtils'
 
 const W = 560
 const H = 400
@@ -54,15 +55,25 @@ export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank =
       <circle cx={C} cy={C} r={R} fill="none" stroke="#8c8c8c" />
       <line x1={C - R} y1={C} x2={C + R} y2={C} stroke="#d9d9d9" />
       <line x1={C} y1={C - R} x2={C} y2={C + R} stroke="#d9d9d9" />
-      {points.map((p) => (
-        <g key={p.id}>
-          <line x1={C} y1={C} x2={sx(p.x)} y2={sy(p.y ?? 0)} stroke={p.color ?? '#1890ff'} strokeWidth={2} />
-          <circle cx={sx(p.x)} cy={sy(p.y ?? 0)} r={5} fill={p.color ?? '#1890ff'} stroke="#fff">
-            <title>{p.title}</title>
-          </circle>
-          <text x={sx(p.x) + 7} y={sy(p.y ?? 0) + 4} fontSize={11} fill="#333">{p.label}</text>
-        </g>
-      ))}
+      {points.map((p) => {
+        const cx = sx(p.x)
+        const cy = sy(p.y ?? 0)
+        const label = truncateText(p.label, 14)
+        const labelWidth = Array.from(label).length * 7
+        const labelOnRight = cx + 7 + labelWidth <= S - 8
+        return (
+          <g key={p.id}>
+            <line x1={C} y1={C} x2={cx} y2={cy} stroke={p.color ?? '#1890ff'} strokeWidth={2} />
+            <circle cx={cx} cy={cy} r={5} fill={p.color ?? '#1890ff'} stroke="#fff">
+              <title>{p.title}</title>
+            </circle>
+            <text x={labelOnRight ? cx + 7 : cx - 7} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
+              <title>{p.title}</title>
+              {label}
+            </text>
+          </g>
+        )
+      })}
       <text x={C} y={S - 6} textAnchor="middle" fontSize={11}>{`第${axisX}軸 相関 [-1,1]`}</text>
       {rank >= 2 && (
         <text x={10} y={C} fontSize={11} transform={`rotate(-90 10 ${C})`} textAnchor="middle">{`第${axisY}軸 相関 [-1,1]`}</text>
@@ -180,6 +191,9 @@ export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio
         const isSel = selected.has(p.id)
         const isLinked = highlighted.has(p.id)
         const fill = p.color ?? (getColor && p.rowId ? getColor(p.rowId) : '#1890ff')
+        const label = truncateText(p.label, 16)
+        const labelWidth = Array.from(label).length * 7
+        const labelOnRight = cx + 8 + labelWidth <= W - PAD.right
         return (
           <g key={p.id} style={{ cursor: 'pointer' }}>
             <circle
@@ -198,7 +212,10 @@ export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio
             <circle cx={cx} cy={cy} r={12} fill="transparent" data-selectable="true" onClick={(ev) => { ev.stopPropagation(); onToggle(p.id) }}>
               <title>{p.title}</title>
             </circle>
-            <text x={cx + 8} y={cy + 4} fontSize={11} fill="#333">{p.label}</text>
+            <text x={labelOnRight ? cx + 8 : cx - 8} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
+              <title>{p.title}</title>
+              {label}
+            </text>
           </g>
         )
       })}

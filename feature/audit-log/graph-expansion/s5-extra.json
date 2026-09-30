@@ -1,0 +1,27 @@
+[
+  {
+    "name": "pca/scree after run",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/biplot after run",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/matrix after run+switch",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "clusters/pca after run",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "clusters/silhouette after run",
+    "ok": true,
+    "detail": ""
+  }
+]

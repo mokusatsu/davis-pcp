@@ -1,6 +1,6 @@
 import { useMemo, type FC } from 'react'
 import { Card, Space, Tag, Typography } from 'antd'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import type { PcaResponse } from './types'
 
 interface ScreePlotProps {
@@ -18,14 +18,13 @@ export const ScreePlot: FC<ScreePlotProps> = ({
   selectedY,
   onSelectComponent,
 }) => {
-  const { isTargetActive } = useFocusMode()
-  const active = isTargetActive('pca-scree')
 
   const width = 800
-  const height = 240
+  const chartHeight = 240
+  const panelHeight = chartHeight + 28
   const margin = { top: 30, right: 60, bottom: 40, left: 60 }
   const plotW = width - margin.left - margin.right
-  const plotH = height - margin.top - margin.bottom
+  const plotH = chartHeight - margin.top - margin.bottom
 
   const maxEigen = useMemo(() => {
     if (!pcaData || pcaData.eigenvalues.length === 0) return 4
@@ -81,28 +80,21 @@ export const ScreePlot: FC<ScreePlotProps> = ({
           </Space>
         </div>
       }
-      extra={<FocusEnterButton targetId="pca-scree" title="スクリープロット" />}
-      style={{
-        width: '100%',
-        height: active ? '100%' : undefined,
-        flex: active ? 1 : undefined,
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-      }}
-      bodyStyle={
-        active
-          ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }
-          : undefined
-      }
+      style={{ width: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
       loading={loading}
       data-testid="pca-scree-plot"
     >
-      <FocusTarget id="pca-scree" title="スクリープロット">
-        <div style={{ position: 'relative', width: '100%', height: active ? '100%' : undefined, flex: active ? 1 : undefined, display: 'flex', minHeight: 0 }}>
+      <GraphPanel
+        graphId="pca/scree"
+        title="スクリープロット"
+        available
+        sizing="intrinsic"
+        intrinsicSize={{ width, height: panelHeight }}
+      >
+        <div style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 0 }}>
         <svg
-          viewBox={`0 0 ${width} ${height}`}
-          style={{ width: '100%', height: active ? '100%' : 'auto', maxHeight: active ? 'none' : 260, display: 'block', background: '#fafafa', borderRadius: 4 }}
+          viewBox={`0 0 ${width} ${chartHeight}`}
+          style={{ width, height: chartHeight, maxWidth: '100%', display: 'block', background: '#fafafa', borderRadius: 4 }}
           data-testid="pca-scree-canvas"
         >
           {/* Grid lines */}
@@ -243,16 +235,16 @@ export const ScreePlot: FC<ScreePlotProps> = ({
           </text>
         </svg>
 
-        <div style={{ marginTop: 6, fontSize: 11, color: '#888', display: 'flex', justifyContent: 'space-between' }}>
-          <span>※ 棒をクリックしてX軸/Y軸に割り当て</span>
-          <span>
+        <div style={{ fontSize: 11, color: '#888', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px' }}>
+          <span style={{ marginRight: 'auto' }}>※ 棒をクリックしてX軸/Y軸に割り当て</span>
+          <span style={{ whiteSpace: 'nowrap' }}>
             <span style={{ color: '#1677ff' }}>■ PC(X)</span>{' '}
             <span style={{ color: '#722ed1' }}>■ PC(Y)</span>{' '}
             <span style={{ color: '#faad14' }}>● 累積寄与率</span>
           </span>
         </div>
       </div>
-      </FocusTarget>
+      </GraphPanel>
     </Card>
   )
 }

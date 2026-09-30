@@ -7,7 +7,7 @@ import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import type { CAResponse } from './caTypes'
@@ -25,7 +25,6 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 export default function CorrespondenceAnalysisPage(): JSX.Element {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
@@ -302,8 +301,8 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
 
   return (
     <div data-testid="correspondence-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {!focused && (
-        <Card size="small" title="コレスポンデンス分析 (CA)" extra={<FocusEnterButton targetId="ca" title="CA" />}>
+      {(
+        <Card size="small" title="コレスポンデンス分析 (CA)">
           <Space wrap align="center">
             <Radio.Group value={inputKind} onChange={(e) => setInputKind(e.target.value)}>
               <Radio.Button value="respondents">回答者データ</Radio.Button>
@@ -409,7 +408,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
       {error && <Alert type="error" message={error} />}
       {loading && <Spin tip="CAを計算中…" />}
       {result && (
-        <FocusTarget id="ca" title="CA結果">
+        <>
           <Card
             size="small"
             title={
@@ -423,6 +422,13 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
             }
           >
             <CaHelp />
+            <GraphPanel
+              graphId="ca/map"
+              title="行・列カテゴリ配置図"
+              available={Boolean(result)}
+              sizing="intrinsic"
+              intrinsicSize={{ width: 560, height: 420 }}
+            >
             <div style={{ marginTop: 8 }}>
               <CaFigure
                 rows={result.details.rowCategories}
@@ -436,6 +442,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 svgRef={svgRef}
               />
             </div>
+            </GraphPanel>
             <Space wrap style={{ marginTop: 8 }}>
               <Radio.Group value={between} onChange={(e) => setBetween(e.target.value)}>
                 <Radio.Button value="and">両側AND</Radio.Button>
@@ -524,7 +531,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               </div>
             </div>
           </Card>
-        </FocusTarget>
+        </>
       )}
     </div>
   )

@@ -3,6 +3,7 @@ import { Tooltip } from 'antd'
 import { useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
+import { useGraphPopupContainer } from './GraphPanel'
 
 /** Plain text for existing row popups and SVG titles, avoiding nested balloons. */
 export function useQuestionText() {
@@ -36,6 +37,9 @@ export default function ColumnQuestionTooltip(props: ColumnQuestionProps) {
 /** Also usable by standalone cards which already receive saved column metadata. */
 export function QuestionTooltip({ nameOrId, children, svg = false, tabIndex = 0, info = false, passive = false,
   question, columnName, datasetId }: ColumnQuestionProps & { question?: string; columnName?: string; datasetId?: string | null }) {
+  // GraphPanel の子では、拡大 dialog の top layer 内へ出す。body への portal は
+  // native dialog の背面に回るため、軸ラベルの設問文が見えなくなる。
+  const graphPopupContainer = useGraphPopupContainer()
   const [open, setOpen] = useState(false)
   const id = useId()
   const label = question?.trim() ? question : null
@@ -86,6 +90,7 @@ export function QuestionTooltip({ nameOrId, children, svg = false, tabIndex = 0,
     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpen(true) } }}
   >ⓘ</span> : <span {...props}>{content}</span>
   return <Tooltip open={open} onOpenChange={setOpen} trigger={['hover']} mouseEnterDelay={0.25} mouseLeaveDelay={0.1}
+    getPopupContainer={graphPopupContainer}
     autoAdjustOverflow title={<div id={id} style={{ maxHeight: '50vh', overflowY: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
       <strong>{columnName ?? nameOrId}</strong><div>{label}</div>
     </div>} styles={{ root: { maxWidth: 'min(420px, calc(100vw - 24px))' } }}>{trigger}</Tooltip>

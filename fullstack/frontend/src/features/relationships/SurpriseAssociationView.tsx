@@ -18,7 +18,8 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
+import { truncateText } from '../../utils/textUtils'
 
 function CorrectedVTip() {
   return (
@@ -72,7 +73,6 @@ export interface SurpriseResult {
 }
 
 export default function SurpriseAssociationView() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -136,6 +136,14 @@ export default function SurpriseAssociationView() {
     if (!result || !selectedPairId) return null
     return result.pairs.find((p) => p.id === selectedPairId) ?? result.pairs[0] ?? null
   }, [result, selectedPairId])
+  const heatmapColumnCount = result?.pair_matrix.columns.length ?? 0
+  const heatmapLabelWidth = 150
+  const heatmapCellWidth = 54
+  const heatmapCellHeight = 40
+  const heatmapHeaderHeight = 40
+  const heatmapWidth = Math.max(400, heatmapLabelWidth + heatmapColumnCount * heatmapCellWidth)
+  const heatmapHeight = Math.max(300, heatmapHeaderHeight + heatmapColumnCount * heatmapCellHeight)
+  const quadrant = { left: 40, right: 460, top: 28, bottom: 320 }
 
   const handleSelectLiftRowsInPcp = (pair: PairItem) => {
     if (pair.top_lift?.row_ids?.length) {
@@ -156,18 +164,10 @@ export default function SurpriseAssociationView() {
 
   return (
     <div
-      style={{
-        padding: focused ? 0 : 16,
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: focused ? 'hidden' : 'auto',
-        minHeight: 0,
-      }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', minWidth: 0 }}
       data-testid="surprise-association-view"
     >
       {/* Controls */}
-      {!focused && (
         <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
           <Space wrap style={{ marginBottom: 12 }}>
             <Select mode="multiple" aria-label="Surpriseの対象変数" placeholder="対象変数を選択" value={names} allowClear maxTagCount={3}
@@ -232,7 +232,6 @@ export default function SurpriseAssociationView() {
             </div>
           </div>
         </Card>
-      )}
 
       {error && <Alert type="error" showIcon message={error} />}
       {!result && !loading && <Alert type="info" message="対象変数を2つ以上指定して実行してください。同じMA設問内の選択肢同士は候補から除外します。" />}
@@ -244,59 +243,30 @@ export default function SurpriseAssociationView() {
       )}
 
       {result && (
-        <Row
-          gutter={focused ? [0, 0] : [16, 16]}
-          style={{
-            flex: focused ? 1 : undefined,
-            minHeight: 0,
-            height: focused ? '100%' : undefined,
-          }}
-        >
+        <Row gutter={[16, 16]} style={{ minHeight: 0 }}>
           {/* Main Visual: Quadrant or Heatmap or List */}
-          <Col
-            xs={24}
-            lg={focused ? 24 : 15}
-            style={{
-              height: focused ? '100%' : undefined,
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-            }}
-          >
+          <Col span={24} style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             {mode === 'quadrant' && (
-              <Card
-                size="small"
+              <GraphPanel
+                graphId="associations/quadrant"
                 title="強度 (Strength) × 意外性 (Unexpectedness) 象限散布図"
-                extra={<FocusEnterButton targetId="surprise-quadrant" title="意外性散布図" />}
-                data-testid="surprise-quadrant-plot"
-                style={{
-                  height: focused ? '100%' : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  flex: focused ? 1 : undefined,
-                  minHeight: 0,
-                }}
-                bodyStyle={{
-                  flex: focused ? 1 : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: 0,
-                }}
+                available={mode === 'quadrant' && Boolean(result)}
+                sizing="intrinsic"
+                intrinsicSize={{ width: 500, height: 400 }}
               >
-                <FocusTarget id="surprise-quadrant" title="意外性散布図">
-                  <div
-                    style={{
-                      position: 'relative',
-                      width: '100%',
-                      height: focused ? '100%' : 440,
-                      flex: focused ? 1 : undefined,
-                      minHeight: 0,
-                      background: '#fdfdfd',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 6,
-                      userSelect: 'none',
-                    }}
-                  >
+                <div
+                  data-testid="surprise-quadrant-plot"
+                  style={{
+                    position: 'relative',
+                    width: 500,
+                    height: 400,
+                    outline: '1px solid #e5e7eb',
+                    outlineOffset: -1,
+                    borderRadius: 6,
+                    background: '#fdfdfd',
+                    userSelect: 'none',
+                  }}
+                >
                     {/* Quadrant labels */}
                     <div style={{ position: 'absolute', top: 8, right: 12, maxWidth: '45%', textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#722ed1', zIndex: 1 }}>
                       💎 隠れた強相関 (高強度・高意外性)
@@ -304,33 +274,37 @@ export default function SurpriseAssociationView() {
                     <div style={{ position: 'absolute', top: 8, left: 12, maxWidth: '45%', fontSize: 11, fontWeight: 'bold', color: '#1677ff', zIndex: 1 }}>
                       📖 既知・当然の相関 (高強度・低意外性)
                     </div>
-                    <div style={{ position: 'absolute', bottom: 8, right: 12, maxWidth: '45%', textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#fa8c16', zIndex: 1 }}>
+                    <div style={{ position: 'absolute', bottom: 34, right: 12, maxWidth: '45%', textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#fa8c16', zIndex: 1 }}>
                       ⚡ 特異ニッチ関係 (低強度・高意外性)
                     </div>
-                    <div style={{ position: 'absolute', bottom: 8, left: 12, maxWidth: '45%', fontSize: 11, fontWeight: 'bold', color: '#8c8c8c', zIndex: 1 }}>
+                    <div style={{ position: 'absolute', bottom: 34, left: 12, maxWidth: '45%', fontSize: 11, fontWeight: 'bold', color: '#8c8c8c', zIndex: 1 }}>
                       💤 ノイズ・弱相関 (低強度・低意外性)
                     </div>
 
                     {/* SVG Plot of pairs with unified coordinate system */}
-                    <svg viewBox="0 0 500 400" style={{ width: '100%', height: '100%', display: 'block' }}>
+                    <svg width={500} height={400} viewBox="0 0 500 400" style={{ width: 500, height: 400, display: 'block' }}>
                       {/* Crosshairs */}
-                      <line x1={250} y1={25} x2={250} y2={375} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
-                      <line x1={25} y1={200} x2={475} y2={200} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
+                      <line x1={(quadrant.left + quadrant.right) / 2} y1={quadrant.top} x2={(quadrant.left + quadrant.right) / 2} y2={quadrant.bottom} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
+                      <line x1={quadrant.left} y1={(quadrant.top + quadrant.bottom) / 2} x2={quadrant.right} y2={(quadrant.top + quadrant.bottom) / 2} stroke="#d9d9d9" strokeDasharray="4 4" strokeWidth={1} />
 
                       {/* Axis labels */}
-                      <text x={250} y={395} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
+                      <text x={(quadrant.left + quadrant.right) / 2} y={392} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
                         意外性スコア (Unexpectedness) →
                       </text>
-                      <text x={12} y={200} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151" transform="rotate(-90 12 200)">
+                      <text x={14} y={(quadrant.top + quadrant.bottom) / 2} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151" transform={`rotate(-90 14 ${(quadrant.top + quadrant.bottom) / 2})`}>
                         関連強度 (|補正V|) →
                       </text>
 
                       {result.pairs.map((p) => {
-                        const cx = 40 + Math.min(Math.max(p.surprise.unexpectedness, 0), 1) * 420
-                        const cy = 360 - Math.min(Math.max(p.strength, 0), 1) * 320
+                        const cx = quadrant.left + Math.min(Math.max(p.surprise.unexpectedness, 0), 1) * (quadrant.right - quadrant.left)
+                        const cy = quadrant.bottom - Math.min(Math.max(p.strength, 0), 1) * (quadrant.bottom - quadrant.top)
                         const isSelected = p.id === selectedPairId
                         const r = isSelected ? 8 : 6
                         const fill = isSelected ? '#2a78d6' : (p.surprise.unexpectedness > 0.5 && p.strength > 0.5 ? '#722ed1' : '#1677ff')
+                        const fullLabel = `${p.x.name} × ${p.y.name}`
+                        const label = `${truncateText(p.x.name, 12)} × ${truncateText(p.y.name, 12)}`
+                        const labelWidth = Array.from(label).length * 6
+                        const labelOnRight = cx + 10 + labelWidth <= quadrant.right - 4
 
                         return (
                           <g key={p.id} onClick={() => setSelectedPairId(p.id)} style={{ cursor: 'pointer' }}>
@@ -345,9 +319,9 @@ export default function SurpriseAssociationView() {
                             />
                             {isSelected && (
                               <text
-                                x={cx > 380 ? cx - 10 : cx + 10}
+                                x={labelOnRight ? cx + 10 : cx - 10}
                                 y={cy + 4}
-                                textAnchor={cx > 380 ? 'end' : 'start'}
+                                textAnchor={labelOnRight ? 'start' : 'end'}
                                 fontSize={11}
                                 fontWeight="bold"
                                 fill="#1f1f1f"
@@ -355,47 +329,35 @@ export default function SurpriseAssociationView() {
                                 stroke="#ffffff"
                                 strokeWidth={3}
                               >
-                                <ColumnQuestionTooltip nameOrId={p.x.name} svg><tspan>{p.x.name}</tspan></ColumnQuestionTooltip>
-                                <tspan> × </tspan>
-                                <ColumnQuestionTooltip nameOrId={p.y.name} svg><tspan>{p.y.name}</tspan></ColumnQuestionTooltip>
+                                <title>{fullLabel}</title>
+                                {label}
                               </text>
                             )}
                           </g>
                         )
                       })}
                     </svg>
-                  </div>
-                </FocusTarget>
-              </Card>
+                </div>
+              </GraphPanel>
             )}
 
             {mode === 'heatmap' && (
-              <Card
-                size="small"
-                title={<span>クラスタリング済み 補正V 相関ヒートマップ<CorrectedVTip /></span>}
-                extra={<FocusEnterButton targetId="surprise-heatmap" title="相関ヒートマップ" />}
-                data-testid="surprise-heatmap"
-                style={{
-                  overflowX: 'auto',
-                  height: focused ? '100%' : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  flex: focused ? 1 : undefined,
-                  minHeight: 0,
-                }}
-                bodyStyle={{
-                  flex: focused ? 1 : undefined,
-                  overflow: 'auto',
-                  minHeight: 0,
-                }}
+              <GraphPanel
+                graphId="associations/heatmap"
+                title="クラスタリング済み 補正V 相関ヒートマップ"
+                available={mode === 'heatmap' && Boolean(result)}
+                sizing="intrinsic"
+                intrinsicSize={{ width: heatmapWidth, height: heatmapHeight }}
+                controls={<Typography.Text type="secondary" style={{ fontSize: 12 }}>補正V<CorrectedVTip /></Typography.Text>}
               >
-                <FocusTarget id="surprise-heatmap" title="相関ヒートマップ">
-                  <table style={{ borderCollapse: 'collapse', fontSize: 11, margin: 'auto', userSelect: 'none' }}>
+                <div data-testid="surprise-heatmap" style={{ width: heatmapWidth, height: heatmapHeight, overflow: 'hidden' }}>
+                  <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: heatmapWidth, fontSize: 11, userSelect: 'none' }}>
+                    <colgroup><col style={{ width: heatmapLabelWidth }} />{result.pair_matrix.columns.map((col) => <col key={col} style={{ width: heatmapCellWidth }} />)}</colgroup>
                     <thead>
-                      <tr>
-                        <th />
+                      <tr style={{ height: heatmapHeaderHeight }}>
+                        <th style={{ width: heatmapLabelWidth }} />
                         {result.pair_matrix.columns.map((col) => (
-                          <th key={col} style={{ padding: '4px 6px', transform: 'rotate(-30deg)', whiteSpace: 'nowrap' }}>
+                          <th key={col} title={col} style={{ width: heatmapCellWidth, maxWidth: heatmapCellWidth, height: heatmapHeaderHeight, padding: '4px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             <ColumnQuestionTooltip nameOrId={col}>{col}</ColumnQuestionTooltip>
                           </th>
                         ))}
@@ -403,8 +365,8 @@ export default function SurpriseAssociationView() {
                     </thead>
                     <tbody>
                       {result.pair_matrix.columns.map((rowCol, rIdx) => (
-                        <tr key={rowCol}>
-                          <td style={{ padding: '4px 8px', fontWeight: 500, whiteSpace: 'nowrap' }}><ColumnQuestionTooltip nameOrId={rowCol}>{rowCol}</ColumnQuestionTooltip></td>
+                        <tr key={rowCol} style={{ height: heatmapCellHeight }}>
+                          <th scope="row" title={rowCol} style={{ width: heatmapLabelWidth, maxWidth: heatmapLabelWidth, padding: '4px 8px', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500, textAlign: 'left', whiteSpace: 'nowrap' }}><ColumnQuestionTooltip nameOrId={rowCol}>{rowCol}</ColumnQuestionTooltip></th>
                           {result.pair_matrix.columns.map((colCol, cIdx) => {
                             const val = result.pair_matrix.matrix[rIdx][cIdx]
                             // Heatmap color from -1 (blue) to 0 (white) to 1 (red)
@@ -426,8 +388,9 @@ export default function SurpriseAssociationView() {
                                   if (matched) setSelectedPairId(matched.id)
                                 }}
                                 style={{
-                                  width: 34,
-                                  height: 34,
+                                  width: heatmapCellWidth,
+                                  height: heatmapCellHeight,
+                                  padding: 0,
                                   textAlign: 'center',
                                   background: bg,
                                   cursor: 'pointer',
@@ -444,8 +407,8 @@ export default function SurpriseAssociationView() {
                       ))}
                     </tbody>
                   </table>
-                </FocusTarget>
-              </Card>
+                </div>
+              </GraphPanel>
             )}
 
             {mode === 'list' && (
@@ -475,8 +438,7 @@ export default function SurpriseAssociationView() {
           </Col>
 
           {/* Right: Pair & Top Lift Detail Inspector */}
-          {!focused && (
-            <Col xs={24} lg={9}>
+            <Col span={24}>
               {currentPair ? (
                 <Card
                   size="small"
@@ -574,7 +536,6 @@ export default function SurpriseAssociationView() {
                 </Card>
               )}
             </Col>
-          )}
         </Row>
       )}
     </div>

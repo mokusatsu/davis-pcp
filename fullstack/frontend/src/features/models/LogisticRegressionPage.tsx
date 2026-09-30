@@ -1,6 +1,7 @@
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
+import GraphPanel from '../common/GraphPanel'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
@@ -330,7 +331,10 @@ export default function LogisticRegressionPage() {
     if (!svgRef.current) return null
     const rect = svgRef.current.getBoundingClientRect()
     if (!rect.width || !rect.height) return null
-    return { x: (e.clientX - rect.left) * chartWidth / rect.width, y: (e.clientY - rect.top) * chartHeight / rect.height, rect }
+    const x = (e.clientX - rect.left) * (chartWidth / rect.width)
+    const y = (e.clientY - rect.top) * (chartHeight / rect.height)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    return { x, y, rect }
   }
   const handleMouseDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return
@@ -597,12 +601,17 @@ export default function LogisticRegressionPage() {
           <Row gutter={[16, 16]}>
             {/* S-curve Plot */}
             <Col xs={24} lg={12}>
+              <GraphPanel
+                graphId="logistic/sigmoid"
+                title="予測確率・シグモイド曲線"
+                available={Boolean(result && focusAxis)}
+                sizing="intrinsic"
+                intrinsicSize={{ width: chartWidth, height: chartHeight }}
+              >
               <Card
                 size="small"
                 title={
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>▼ 予測確率・S字シグモイド曲線</span>
-                    <Space size={8}>
+                  <Space wrap size={8}>
                       <Typography.Text style={{ fontSize: 12 }}>着目軸:</Typography.Text>
                       <Select
                         size="small"
@@ -612,8 +621,7 @@ export default function LogisticRegressionPage() {
                         style={{ minWidth: 120 }}
                         data-testid="focus-axis-select"
                       />
-                    </Space>
-                  </div>
+                  </Space>
                 }
               >
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
@@ -764,12 +772,21 @@ export default function LogisticRegressionPage() {
                   ※ 矩形ドラッグで点を選択。赤枠点は誤分類サンプル。他変数は中央値に固定。
                 </Typography.Text>
               </Card>
+              </GraphPanel>
             </Col>
 
             {/* Forest Plot */}
             <Col xs={24} lg={12}>
-              <Card size="small" title="▼ オッズ比フォレストプロット (Odds Ratio Forest Plot)">
-                <div style={{ height: chartHeight, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <GraphPanel
+                graphId="logistic/forest"
+                title="オッズ比フォレストプロット"
+                available={Boolean(result && forestData.length)}
+                sizing="intrinsic"
+                intrinsicSize={{ width: 560, height: Math.max(280, 120 + forestData.length * 48) }}
+                normalWidth="viewport"
+              >
+              <Card size="small">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e8', paddingBottom: 4 }}>
                     <span style={{ width: 120, fontWeight: 'bold', fontSize: 12 }}>変数名</span>
                     <span style={{ width: 140, fontWeight: 'bold', fontSize: 12 }}>OR (95% CI)</span>
@@ -843,6 +860,7 @@ export default function LogisticRegressionPage() {
                   })}
                 </div>
               </Card>
+              </GraphPanel>
             </Col>
           </Row>
 

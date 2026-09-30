@@ -4,7 +4,7 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { message } from 'antd'
 import { store, globalObservationsSlice } from '../src/app/store'
-import { FocusModeProvider, useFocusMode } from '../src/features/common/FocusMode'
+import { GraphExpansionProvider, useGraphExpansion } from '../src/features/common/GraphExpansion'
 import { useBrushOp, type BrushOperation } from '../src/features/selection/SelectionMenu'
 import { api } from '../src/api/client'
 import DiscriminantAnalysisPage from '../src/features/models/DiscriminantAnalysisPage'
@@ -83,8 +83,8 @@ it('admits only explicitly added MA choices and prevents same-parent leakage', a
 })
 
 function FocusControls() {
-  const { exit, setZoom } = useFocusMode()
-  return <><button onClick={() => setZoom(1.25)}>test zoom</button><button onClick={() => setZoom(null)}>test fit</button><button onClick={exit}>test exit</button></>
+  const { close, setZoom } = useGraphExpansion()
+  return <><button onClick={() => setZoom(1.25)}>test zoom</button><button onClick={() => setZoom(null)}>test fit</button><button onClick={close}>test exit</button></>
 }
 
 function OperationPicker() {
@@ -112,7 +112,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   state.globalObservations = { ...base.globalObservations, totalRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2', 'r3'], selectedRowIds: ['r1', 'r2'] }
   const local = configureStore({ reducer: (current = state, action: any) => ({ ...current,
     globalObservations: globalObservationsSlice.reducer(current.globalObservations, action) }), middleware: get => get({ serializableCheck: false }) })
-  const view = render(<Provider store={local}><FocusModeProvider><FocusControls /><OperationPicker /><DiscriminantAnalysisPage /></FocusModeProvider></Provider>)
+  const view = render(<Provider store={local}><GraphExpansionProvider><FocusControls /><OperationPicker /><DiscriminantAnalysisPage /></GraphExpansionProvider></Provider>)
   fireEvent.change(view.getByTestId('discriminant-target-select'), { target: { value: 'y' } })
   fireEvent.change(view.getByTestId('discriminant-features-select'), { target: { value: 'x' } })
   fireEvent.click(view.getByRole('button', { name: /判別分析.*実行|分析実行|Run/ }))
@@ -166,15 +166,21 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   fireEvent.pointerUp(svg, point(x, y))
   expect(dispatch).not.toHaveBeenCalled()
   const callsBeforeFocus = vi.mocked(api.post).mock.calls.length
-  fireEvent.click(view.getByRole('button', { name: /拡大表示/ }))
-  expect(view.getByTestId('focus-target-active')).toHaveAttribute('data-focus-target', 'discriminant-map')
-  expect(view.queryByTestId('discriminant-target-select')).toBeNull()
-  expect(view.queryByText(/正準判別負荷量バイプロット/)).toBeNull()
+  // 新方式：GraphPanel の拡大入口で開き、同一 host・同一 svg のまま倍率が変わる
+  const host = view.getByTestId('graph-host-discriminant/map')
+  const svgBefore = view.getByTestId('discriminant-map-svg')
+  fireEvent.click(view.getByTestId('graph-expand-discriminant/map'))
+  expect(view.getByTestId('graph-expansion-dialog')).toBeInTheDocument()
+  expect(view.getByTestId('graph-expansion-dock')).toContainElement(host)
+  expect(host).toContainElement(view.getByTestId('discriminant-map-svg'))
   expect(view.getByTestId('discriminant-map-svg').querySelectorAll('[data-row-id]')).toHaveLength(3)
   fireEvent.click(view.getByText('test zoom'))
-  expect(view.getByTestId('focus-scaled')).toHaveStyle({ width: '125%', height: '125%' })
+  expect(view.getByTestId('graph-expansion-zoom-label')).toHaveTextContent('125%')
+  expect(view.getByTestId('graph-expansion-dock')).toContainElement(host)
+  expect(host).toContainElement(view.getByTestId('discriminant-map-svg'))
+  expect(svgBefore).toBe(view.getByTestId('discriminant-map-svg'))
   fireEvent.click(view.getByText('test fit'))
-  expect(view.queryByTestId('focus-scaled')).toBeNull()
+  expect(view.getByTestId('graph-expansion-zoom-label')).toHaveTextContent('フィット')
   fireEvent.click(view.getByText('test exit'))
   expect(view.getByTestId('discriminant-target-select')).toHaveValue('y')
   expect(view.getByTestId('discriminant-features-select')).toHaveValue(['x'])

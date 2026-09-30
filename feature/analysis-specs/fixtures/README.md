@@ -1,6 +1,6 @@
 # 合成fixture
 
-033b EFA／033c CFAの追加データとoracle条件は[拡張fixture仕様](FACTOR_EXTENSIONS_FIXTURES.md)を参照する。追加数値fixtureは未生成であり、既存ML期待値を順序相関・ロバストCFAの検証実績として扱わない。
+033 EFA／033c CFAの追加データとoracle条件は[拡張fixture仕様](FACTOR_EXTENSIONS_FIXTURES.md)を参照する。追加数値fixtureは未生成であり、既存ML期待値を順序相関・ロバストCFAの検証実績として扱わない。
 
 すべて個人を含まない人工データ。seed=20260912。数式の参照検証用であり、実際のアンケート結果やDAVIS-PCPのAPI応答ではない。
 

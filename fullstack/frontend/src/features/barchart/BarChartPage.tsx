@@ -9,9 +9,10 @@ import { BarChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { useBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { truncateText } from '../../utils/textUtils'
+import { useRowColorResolver } from '../../theme/useRowColor'
 import MultiResponseBarChart from './MultiResponseBarChart'
 
 interface BarItem {
@@ -23,7 +24,7 @@ interface BarItem {
 }
 
 export default function BarChartPage() {
-  const { focused } = useFocusMode()
+  const graphPopupContainer = useGraphPopupContainer('barchart/main')
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const activeRowIds = useSelector(selectEffectiveRowIds)
@@ -31,6 +32,7 @@ export default function BarChartPage() {
   const { formatValueLabel, columns: definitions } = useCodebook()
   const ordinary = useSelector(selectOrdinaryVariables)
   const [brushOp] = useBrushOp()
+  const { colorBy, getColor } = useRowColorResolver()
 
   const [requestedColumn, setSelectedColumn] = useState<string>('')
   const [requestedSubColumn, setSubColumn] = useState<string>('')
@@ -119,6 +121,19 @@ export default function BarChartPage() {
     return items
   }, [data, selectedColumn, subColumn, activeRowIds, selectedSet, sortOrder, formatValueLabel])
   const hoveredBar = barData.find(item => item.category === hoveredCategory)
+  const colorSegmentsByCategory = useMemo(() => {
+    const result = new Map<string, { color: string; count: number }[]>()
+    if (!colorBy) return result
+    for (const item of barData) {
+      const counts = new Map<string, number>()
+      for (const rowId of item.rowIds) {
+        const color = getColor(rowId)
+        counts.set(color, (counts.get(color) ?? 0) + 1)
+      }
+      result.set(item.category, [...counts.entries()].map(([color, count]) => ({ color, count })))
+    }
+    return result
+  }, [barData, colorBy, getColor])
 
   const totalActive = activeRowIds.length
   const maxBarCount = useMemo(() => {
@@ -143,30 +158,21 @@ export default function BarChartPage() {
 
   // Layout parameters
   const MARGIN_LEFT = 250
-  const MARGIN_RIGHT = 240
+  const MARGIN_RIGHT = 120
   const MARGIN_TOP = 40
   const BAR_HEIGHT = 34
   const BAR_GAP = 14
-  const PLOT_WIDTH = 500
+  const PLOT_WIDTH = 640
   const totalSvgHeight = Math.max(380, MARGIN_TOP + barData.length * (BAR_HEIGHT + BAR_GAP) + 60)
   const totalSvgWidth = MARGIN_LEFT + PLOT_WIDTH + MARGIN_RIGHT
 
   return (
     <div
       data-testid="barchart-page"
-      style={{
-        padding: focused ? 0 : 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       {/* Controls Card */}
       <MultiResponseBarChart />
-      {!focused && (
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -243,32 +249,35 @@ export default function BarChartPage() {
           </Space>
 
           <Space size={12}>
-            <FocusEnterButton targetId="barchart-container" title="対話型棒グラフ" />
           </Space>
         </div>
-      )}
 
       {/* Main Chart Card */}
-      <FocusTarget id="barchart-container" title="対話型棒グラフ">
-        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
+      <GraphPanel
+        graphId="barchart/main"
+        title="対話型棒グラフ"
+        available={barData.length > 0}
+        sizing="intrinsic"
+        intrinsicSize={{ width: totalSvgWidth, height: totalSvgHeight }}
+      >
+        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
           <div
             style={{
-              border: focused ? 'none' : '1px solid #e5e7eb',
-              borderRadius: focused ? 0 : 6,
+              border: '1px solid #e5e7eb',
+              borderRadius: 6,
               background: '#ffffff',
-              padding: focused ? 8 : 16,
+              padding: 16,
               position: 'relative',
-              overflow: focused ? 'visible' : 'auto',
+              overflow: 'visible',
               userSelect: 'none',
-              height: focused ? '100%' : undefined,
-              flex: focused ? 1 : undefined,
-              minHeight: focused ? 0 : 380,
-              flexShrink: focused ? undefined : 0,
+              minHeight: 380,
+              flexShrink: 0,
             }}
           >
             {/* Status bar */}
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Tag color="blue"><ColumnQuestionTooltip nameOrId={selectedColumn}>{selectedColumn}</ColumnQuestionTooltip></Tag>
+              {colorBy && <Tag color="default">L1色分け: <ColumnQuestionTooltip nameOrId={colorBy}>{colorBy}</ColumnQuestionTooltip></Tag>}
               <span style={{ fontSize: 12, color: '#6b7280' }}>
                 カテゴリ数: {barData.length} | 有効行: {totalActive}行 | 選択行: {selectedRowIds.length}行 (
                 {totalActive > 0 ? ((selectedRowIds.length / totalActive) * 100).toFixed(1) : 0}%)
@@ -279,7 +288,7 @@ export default function BarChartPage() {
               {selectedColumn && <div>対象変数: <ColumnQuestionText nameOrId={selectedColumn} /></div>}
               {subColumn && <div>内訳変数: <ColumnQuestionText nameOrId={subColumn} /></div>}
             </div>
-            <svg data-testid="barchart-svg" width={totalSvgWidth} height={totalSvgHeight} style={{ display: 'block' }}>
+            <svg data-testid="barchart-svg" width={totalSvgWidth} height={totalSvgHeight} viewBox={`0 0 ${totalSvgWidth} ${totalSvgHeight}`} style={{ display: 'block', width: '100%', height: 'auto' }}>
               {/* Background Grid Lines */}
               {[0, 0.25, 0.5, 0.75, 1.0].map((frac) => {
                 const gx = MARGIN_LEFT + frac * PLOT_WIDTH
@@ -306,6 +315,8 @@ export default function BarChartPage() {
                 // Selected fraction within this bar
                 const selFrac = item.totalCount > 0 ? item.selectedCount / item.totalCount : 0
                 const selBarWidth = barWidth * selFrac
+                const colorSegments = colorSegmentsByCategory.get(item.category) ?? []
+                let segmentOffset = 0
 
                 return (
                   <g
@@ -338,6 +349,21 @@ export default function BarChartPage() {
                       stroke="#cbd5e1"
                       strokeWidth={1}
                     />
+                    {colorSegments.length > 0 && (
+                      <g clipPath={`url(#barchart-color-clip-${idx})`}>
+                        <defs>
+                          <clipPath id={`barchart-color-clip-${idx}`}>
+                            <rect x={MARGIN_LEFT} y={y} width={barWidth} height={BAR_HEIGHT} rx={4} />
+                          </clipPath>
+                        </defs>
+                        {colorSegments.map(({ color, count }) => {
+                          const width = barWidth * count / item.totalCount
+                          const x = MARGIN_LEFT + segmentOffset
+                          segmentOffset += width
+                          return <rect key={color} x={x} y={y} width={width} height={BAR_HEIGHT} fill={color} opacity={0.78} />
+                        })}
+                      </g>
+                    )}
 
                     {/* Selected Highlight Overlay Bar */}
                     {selBarWidth > 0 && (
@@ -373,7 +399,7 @@ export default function BarChartPage() {
               {/* Hover Tooltip Overlay */}
             </svg>
             {hoveredBar && (
-              <div role="status" style={{ padding: 8, background: '#1e293b', color: '#fff', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              <div role="status" style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, maxWidth: 360, maxHeight: 'calc(100% - 32px)', overflowY: 'auto', padding: 8, background: '#1e293b', color: '#fff', pointerEvents: 'none', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                 {formatValueLabel(selectedColumn, hoveredBar.category)} ({hoveredBar.category}): 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択
                 {hoveredBar.subGroups && Object.entries(hoveredBar.subGroups).map(([code, group]) => <div key={code}>{formatValueLabel(subColumn, code)} ({code}): {group.total}行 / 選択 {group.selected}行</div>)}
               </div>
@@ -386,14 +412,12 @@ export default function BarChartPage() {
             )}
           </div>
         </Dropdown>
-      </FocusTarget>
+      </GraphPanel>
 
       {/* Guide Note */}
-      {!focused && (
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px', flexShrink: 0 }}>
           ※ 任意のカテゴリ変数・離散変数の度数分布と選択行の割合を対話的に可視化します。バーをクリックするとそのカテゴリに属する行を選択（集合演算メニューと連動）し、PCPや全ビューへ即座に伝播します。
         </div>
-      )}
     </div>
   )
 }

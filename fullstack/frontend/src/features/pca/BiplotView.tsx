@@ -1,12 +1,13 @@
 import { Select as AntSelect } from 'antd'
 import CanvasColumnQuestions, { type CanvasColumnRegion } from '../common/CanvasColumnQuestions'
-import { useEffect, useMemo, useRef, useState, type FC, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Checkbox, Dropdown, Space, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
+import { canvasBufferSize, clientToCanvas } from '../common/graphCoordinates'
 import { getBrushOp } from '../selection/SelectionMenu'
 import type { PcaResponse } from './types'
 import { truncateText } from '../../utils/textUtils'
@@ -19,6 +20,20 @@ interface BiplotViewProps {
   onSelectY: (val: number) => void
 }
 
+type CanvasViewport = Pick<ReturnType<typeof useGraphViewport>, 'scale' | 'dpr' | 'revision'>
+
+/**
+ * BiplotView 自体は GraphPanel の親なので、viewport context を直接読めない。
+ * 描画 host は再生成せず、GraphPanel の子で得た実表示倍率だけを親の描画 effect へ渡す。
+ */
+function BiplotViewportSync({ onViewportChange }: { onViewportChange: (viewport: CanvasViewport) => void }) {
+  const { scale, dpr, revision } = useGraphViewport()
+  useLayoutEffect(() => {
+    onViewportChange({ scale, dpr, revision })
+  }, [scale, dpr, revision, onViewportChange])
+  return null
+}
+
 export const BiplotView: FC<BiplotViewProps> = ({
 
   pcaData,
@@ -27,8 +42,18 @@ export const BiplotView: FC<BiplotViewProps> = ({
   onSelectX,
   onSelectY,
 }) => {
-  const { isTargetActive, focused, zoom } = useFocusMode()
-  const active = isTargetActive('pca-biplot')
+  const [canvasViewport, setCanvasViewport] = useState<CanvasViewport>(() => ({
+    scale: 1,
+    dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    revision: 0,
+  }))
+  const updateCanvasViewport = useCallback((next: CanvasViewport) => {
+    setCanvasViewport(current => current.scale === next.scale && current.dpr === next.dpr && current.revision === next.revision
+      ? current
+      : next)
+  }, [])
+  const { scale: viewportScale, dpr: viewportDpr, revision: viewportRevision } = canvasViewport
+  const graphPopupContainer = useGraphPopupContainer('pca/biplot')
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const [showVectors, setShowVectors] = useState(true)
@@ -91,12 +116,22 @@ export const BiplotView: FC<BiplotViewProps> = ({
     margin.top + plotH - ((val - scoreBounds.minY) / (scoreBounds.maxY - scoreBounds.minY)) * plotH
 
 
-  // Render canvas
+  // Render canvas: 表示倍率と DPR に応じた描画バッファ更新。
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const buffer = canvasBufferSize({ width, height }, viewportScale, viewportDpr)
+    if (canvas.width !== buffer.width || canvas.height !== buffer.height) {
+      // テスト環境等で getContext が null の場合、width/height 属性の書換えは
+      // 座標テストの前提（論理寸法）を壊すため行わない。
+      if (ctx) {
+        canvas.width = buffer.width
+        canvas.height = buffer.height
+      }
+    }
+    if (ctx) ctx.setTransform(buffer.width / width, 0, 0, buffer.height / height, 0, 0)
 
     ctx.clearRect(0, 0, width, height)
 
@@ -272,15 +307,17 @@ export const BiplotView: FC<BiplotViewProps> = ({
     ctx.restore()
 
     ctx.restore()
-  }, [focused, zoom, pcaData, selectedX, selectedY, scoreBounds, vectorScale, showVectors, isRowSelected, getColor, selectionColor, dragBox])
+  }, [pcaData, selectedX, selectedY, scoreBounds, vectorScale, showVectors, isRowSelected, getColor, selectionColor, dragBox, viewportScale, viewportDpr, viewportRevision])
 
-  // Mouse drag handlers
+  // Mouse drag handlers: Canvas 自体の表示矩形と論理寸法を基準に変換する。
+  const canvasPoint = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { x: NaN, y: NaN }
+    return clientToCanvas(canvasRef.current, e, { width, height })
+  }
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = (e.clientX - rect.left) * width / rect.width
-    const y = (e.clientY - rect.top) * height / rect.height
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     isDragging.current = true
     e.currentTarget.setPointerCapture(e.pointerId)
     dragStart.current = { x, y }
@@ -290,10 +327,8 @@ export const BiplotView: FC<BiplotViewProps> = ({
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!isDragging.current) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = (e.clientX - rect.left) * width / rect.width
-    const y = (e.clientY - rect.top) * height / rect.height
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     dragEnd.current = { x, y }
     setDragBox({
       x1: dragStart.current.x,
@@ -312,11 +347,8 @@ export const BiplotView: FC<BiplotViewProps> = ({
     isDragging.current = false
 
     if (e && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect()
-      dragEnd.current = {
-        x: (e.clientX - rect.left) * width / rect.width,
-        y: (e.clientY - rect.top) * height / rect.height,
-      }
+      const pt = canvasPoint(e)
+      if (Number.isFinite(pt.x) && Number.isFinite(pt.y)) dragEnd.current = pt
     }
 
     const bx1 = Math.min(dragStart.current.x, dragEnd.current.x)
@@ -398,16 +430,8 @@ export const BiplotView: FC<BiplotViewProps> = ({
   return (
     <div
       data-testid="pca-biplot-view"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: active ? 0 : 10,
-        height: active ? '100%' : undefined,
-        flex: active ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}
     >
-      {!active && (
         <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
           <Space wrap>
             <Typography.Text strong>X軸: </Typography.Text>
@@ -436,40 +460,37 @@ export const BiplotView: FC<BiplotViewProps> = ({
             </Checkbox>
           </Space>
           <Space wrap>
-            <FocusEnterButton targetId="pca-biplot" title="PCAバイプロット" />
           </Space>
         </Space>
-      )}
 
-      <FocusTarget id="pca-biplot" title="PCAバイプロット">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
+      <GraphPanel
+        graphId="pca/biplot"
+        title="PCAバイプロット"
+        available={Boolean(pcaData && pcaData.scores.length)}
+        sizing="intrinsic"
+        intrinsicSize={{ width, height }}
+      >
+        <BiplotViewportSync onViewportChange={updateCanvasViewport} />
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
           <div
             style={{
               position: 'relative',
-              border: '1px solid #e5e7eb',
+              boxShadow: 'inset 0 0 0 1px #e5e7eb',
               borderRadius: 6,
               background: '#ffffff',
               display: 'flex',
-              flex: active ? 1 : 'none',
-              height: active ? '100%' : undefined,
-              width: active ? '100%' : undefined,
               justifyContent: 'center',
               alignItems: 'center',
               userSelect: 'none',
               overflow: 'hidden',
-              minHeight: active ? 0 : 485,
+              minHeight: 485,
             }}
           >
             <canvas
               ref={canvasRef}
               title="PCAバイプロット"
-              width={width}
-              height={height}
               style={{
-                width: active ? 'auto' : width,
-                height: active ? '100%' : height,
-                maxHeight: active ? '100%' : undefined,
-                maxWidth: '100%',
+                width, height, maxWidth: '100%',
                 aspectRatio: `${width} / ${height}`,
                 cursor: 'crosshair',
                 touchAction: 'none',
@@ -485,7 +506,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
             <CanvasColumnQuestions canvasRef={canvasRef} regions={pcaData && showVectors ? questionRegions : []} width={width} height={height} />
           </div>
         </Dropdown>
-      </FocusTarget>
+      </GraphPanel>
     </div>
   )
 }

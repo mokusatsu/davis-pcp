@@ -9,7 +9,7 @@ import { AppstoreOutlined, ArrowRightOutlined, LineChartOutlined } from '@ant-de
 import type { RootState } from '../../app/store'
 import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { truncateText } from '../../utils/textUtils'
 
@@ -32,7 +32,6 @@ interface CovarianceResponse {
 }
 
 export default function CovariancePage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -170,31 +169,19 @@ export default function CovariancePage() {
     navigate('/loess')
   }
 
-  const colsCount = covData?.columns.length ?? 1
-  const CELL_SIZE = focused
-    ? Math.max(120, Math.min(220, Math.floor(1000 / Math.max(colsCount, 1))))
-    : 76
-  const CELL_HEIGHT = focused ? 64 : 48
-  const LABEL_WIDTH = focused ? 180 : 130
-  const FONT_SIZE = focused ? 14 : 11
-  const HEADER_FONT_SIZE = focused ? 13 : 12
+  const CELL_SIZE = 76
+  const CELL_HEIGHT = 48
+  const LABEL_WIDTH = 130
+  const FONT_SIZE = 11
+  const HEADER_FONT_SIZE = 12
 
   return (
     <div
       data-testid="covariance-page"
-      style={{
-        padding: focused ? 0 : 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       {error && <Alert type="error" message={error} />}
       {/* Controls Card */}
-      {!focused && (
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -237,13 +224,10 @@ export default function CovariancePage() {
               size="small"
             />
           </Space>
-
-          <FocusEnterButton targetId="covariance-container" />
         </div>
-      )}
 
       {/* Diagnostics Card */}
-      {!focused && covData && (
+      {covData && (
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -267,19 +251,26 @@ export default function CovariancePage() {
       )}
 
       {/* Main Heatmap Matrix */}
-      <FocusTarget id="covariance-container">
+      <GraphPanel
+        graphId="covariance/matrix"
+        title="分散共分散行列"
+        available={Boolean(!loading && covData && covData.columns.length >= 2)}
+        sizing="intrinsic"
+        intrinsicSize={{
+          width: Math.max(480, 32 + LABEL_WIDTH + 20 + (covData?.columns.length ?? 4) * (CELL_SIZE + 12)),
+          height: Math.max(360, 32 + 32 + (covData?.columns.length ?? 4) * CELL_HEIGHT),
+        }}
+      >
         <div
           style={{
-            border: focused ? 'none' : '1px solid #e5e7eb',
+            border: '1px solid #e5e7eb',
             borderRadius: 6,
             background: '#ffffff',
-            padding: focused ? 8 : 16,
+            padding: 16,
             position: 'relative',
-            overflow: 'auto',
+            overflow: 'visible',
             userSelect: 'none',
-            minHeight: focused ? undefined : 460,
-            height: focused ? '100%' : undefined,
-            flex: focused ? 1 : undefined,
+            boxSizing: 'border-box',
           }}
         >
           {loading && (
@@ -289,18 +280,18 @@ export default function CovariancePage() {
           )}
 
           {!loading && covData && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: focused ? 'center' : 'flex-start', width: '100%', minWidth: 'max-content' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
               <table data-testid="covariance-matrix" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: LABEL_WIDTH, padding: focused ? 10 : 6 }}></th>
+                    <th style={{ width: LABEL_WIDTH, padding: 6 }}></th>
                     {covData.columns.map((col) => (
                       <th
                         key={col}
                         title={col}
                         style={{
                           width: CELL_SIZE,
-                          padding: focused ? 10 : 6,
+                          padding: 6,
                           fontSize: HEADER_FONT_SIZE,
                           fontWeight: 600,
                           color: '#374151',
@@ -311,7 +302,7 @@ export default function CovariancePage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        <ColumnQuestionTooltip nameOrId={col}>{focused ? col : truncateText(col, 10)}</ColumnQuestionTooltip>
+                        <ColumnQuestionTooltip nameOrId={col}>{truncateText(col, 10)}</ColumnQuestionTooltip>
                       </th>
                     ))}
                   </tr>
@@ -323,7 +314,7 @@ export default function CovariancePage() {
                         title={rCol}
                         style={{
                           width: LABEL_WIDTH,
-                          padding: focused ? '8px 14px' : '6px 10px',
+                          padding: '6px 10px',
                           fontSize: HEADER_FONT_SIZE,
                           fontWeight: 600,
                           color: '#374151',
@@ -334,7 +325,7 @@ export default function CovariancePage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        <ColumnQuestionTooltip nameOrId={rCol}>{focused ? rCol : truncateText(rCol, 12)}</ColumnQuestionTooltip>
+                        <ColumnQuestionTooltip nameOrId={rCol}>{truncateText(rCol, 12)}</ColumnQuestionTooltip>
                       </td>
                       {covData.columns.map((cCol, cIdx) => {
                         const val = activeMatrix[rIdx]?.[cIdx] ?? 0
@@ -416,14 +407,12 @@ export default function CovariancePage() {
             </div>
           )}
         </div>
-      </FocusTarget>
+      </GraphPanel>
 
       {/* Guide Note */}
-      {!focused && (
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px' }}>
           ※ 共分散行列 Σ（スケール付き変動）、相関行列 R、および精度行列 Σ⁻¹（他の全変数を統制した偏相関）を包括表示します。セルクリックで2変数の詳細値を確認し、ワンクリックでPCPの隣接軸への射影やLoess散布図の起動が行えます。
         </div>
-      )}
     </div>
   )
 }

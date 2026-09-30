@@ -31,9 +31,10 @@ import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import L1Legend from '../common/L1Legend'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { getBrushOp } from '../selection/SelectionMenu'
 import DiscriminantDiagnostics, { type DiscriminantDiagnosticsData } from './DiscriminantDiagnostics'
+import { truncateText } from '../../utils/textUtils'
 
 export interface CanonicalAxisInfo {
   axisIndex: number
@@ -109,7 +110,6 @@ const CLASS_PALETTE = [
 ]
 
 export default function DiscriminantAnalysisPage() {
-  const { focused, zoom } = useFocusMode()
   const { getColor, selectionColor } = useRowColorResolver()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
@@ -160,7 +160,7 @@ export default function DiscriminantAnalysisPage() {
   const [brushBox, setBrushBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
 
   const brushStart = useRef<{ x: number; y: number; clientX: number; clientY: number } | null>(null)
-  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey, focused, zoom])
+  useEffect(() => { brushStart.current = null; setBrushBox(null) }, [inputKey])
 
   // Run analysis
   const handleRunAnalysis = async () => {
@@ -352,9 +352,9 @@ export default function DiscriminantAnalysisPage() {
   }, [result?.classes])
 
   return (
-    <div style={{ padding: focused ? 0 : 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
+    <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
       {/* Configuration Card */}
-      {!focused && <Card size="small" style={{ marginBottom: 16 }}>
+      {<Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 12]} align="middle">
           <Col xs={24} sm={12} md={6}>
             <Typography.Text strong>目的クラス Y (Target / Class):</Typography.Text>
@@ -501,7 +501,7 @@ export default function DiscriminantAnalysisPage() {
         )}
       </Card>}
 
-      {!focused && result?.diagnostics && <Card size="small" style={{ marginBottom: 16 }}><DiscriminantDiagnostics value={result.diagnostics} /></Card>}
+      {result?.diagnostics && <Card size="small" style={{ marginBottom: 16 }}><DiscriminantDiagnostics value={result.diagnostics} /></Card>}
       {/* Main Content */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -512,24 +512,16 @@ export default function DiscriminantAnalysisPage() {
           {/* Top Row: 2D Canonical Map + Loadings Biplot */}
           <Row gutter={[16, 16]}>
             {/* 2D Canonical Map */}
-            <Col xs={24} lg={focused ? 24 : 13}>
-              <FocusTarget id="discriminant-map" title="正準判別空間マップ">
-              <Card
-                extra={!focused && <FocusEnterButton targetId="discriminant-map" title="正準判別空間マップ" />}
-                size="small"
-                title={
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>▼ 正準判別空間マップ ({result.axes.length >= 2 ? 'LD1 vs LD2' : 'LD1 (1D Mode)'})</span>
-                    <Space size={6}>
-                      {result.axes.map((ax) => (
-                        <Tag key={ax.axisIndex} color="blue">
-                          LD{ax.axisIndex}: {(ax.explainedVarianceRatio * 100).toFixed(1)}% (ρ={ax.canonicalCorrelation.toFixed(2)})
-                        </Tag>
-                      ))}
-                    </Space>
-                  </div>
-                }
-              >
+            <Col xs={24} lg={13}>
+              <GraphPanel graphId="discriminant/map" title="正準判別空間マップ" available={Boolean(result)} sizing="intrinsic" intrinsicSize={{ width: mapWidth, height: mapHeight }}>
+              <Card size="small">
+                <Space wrap size={[6, 6]} style={{ width: '100%', marginBottom: 8 }}>
+                  {result.axes.map((ax) => (
+                    <Tag key={ax.axisIndex} color="blue" style={{ marginInlineEnd: 0, whiteSpace: 'nowrap' }}>
+                      LD{ax.axisIndex}: {(ax.explainedVarianceRatio * 100).toFixed(1)}% (ρ={ax.canonicalCorrelation.toFixed(2)})
+                    </Tag>
+                  ))}
+                </Space>
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
                   <svg
                     ref={svgRef}
@@ -696,12 +688,19 @@ export default function DiscriminantAnalysisPage() {
                   </Typography.Text>
                 </div>
               </Card>
-              </FocusTarget>
+              </GraphPanel>
             </Col>
 
-            {/* Loadings Biplot */}
-            {!focused && <Col xs={24} lg={11}>
-              <Card size="small" title="▼ 正準判別負荷量バイプロット (Canonical Loadings)">
+            {/* Loadings Biplot: G38 独立した図として拡大。表は分離 */}
+            {<Col xs={24} lg={11}>
+              <GraphPanel
+                graphId="discriminant/structure"
+                title="構造係数バイプロット"
+                available={Boolean(result)}
+                sizing="intrinsic"
+                intrinsicSize={{ width: biplotSize, height: biplotSize }}
+              >
+              <Card size="small">
                 {result.axes.length >= 2 ? (
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
                     <svg width={biplotSize} height={biplotSize} style={{ background: '#fafafa', borderRadius: 4 }}>
@@ -734,6 +733,12 @@ export default function DiscriminantAnalysisPage() {
                       {result.loadings.map((l) => {
                         const targetX = biplotCenter + l.ld1 * biplotRadius
                         const targetY = biplotCenter - (l.ld2 ?? 0) * biplotRadius
+                        const label = truncateText(l.variable, 16)
+                        const estimatedLabelWidth = Math.min(96, Array.from(label).length * 6)
+                        const canPlaceRight = targetX + 5 + estimatedLabelWidth <= biplotSize - 8
+                        const canPlaceLeft = targetX - 5 - estimatedLabelWidth >= 8
+                        const labelOnRight = l.ld1 >= 0 ? (canPlaceRight || !canPlaceLeft) : (!canPlaceLeft && canPlaceRight)
+                        const labelX = labelOnRight ? Math.min(biplotSize - 8, targetX + 5) : Math.max(8, targetX - 5)
 
                         return (
                           <g key={l.variable}>
@@ -747,14 +752,14 @@ export default function DiscriminantAnalysisPage() {
                             />
                             <circle cx={targetX} cy={targetY} r={3} fill="#722ed1" />
                             <ColumnQuestionTooltip nameOrId={l.variable} svg><text
-                              x={targetX + (l.ld1 >= 0 ? 5 : -5)}
+                              x={labelX}
                               y={targetY + (l.ld2 && l.ld2 >= 0 ? -4 : 10)}
-                              textAnchor={l.ld1 >= 0 ? 'start' : 'end'}
+                              textAnchor={labelOnRight ? 'start' : 'end'}
                               fontSize={10}
                               fontWeight="bold"
                               fill="#531dab"
                             >
-                              {l.variable}
+                              {label}
                             </text></ColumnQuestionTooltip>
                           </g>
                         )
@@ -765,7 +770,7 @@ export default function DiscriminantAnalysisPage() {
                     </svg>
                   </div>
                 ) : (
-                  <div style={{ height: biplotSize, overflowY: 'auto', padding: 8 }}>
+                  <div style={{ padding: 8 }}>
                     <Typography.Text strong style={{ fontSize: 12 }}>LD1 負荷量 (1D Mode)</Typography.Text>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
                       {result.loadings.map((l) => (
@@ -793,10 +798,11 @@ export default function DiscriminantAnalysisPage() {
                   </div>
                 )}
               </Card>
+              </GraphPanel>
             </Col>}
           </Row>
 
-          {!focused && <>
+          {<>
           {/* Diagnostics Bar */}
           <Card size="small">
             <Row gutter={[16, 8]} align="middle">

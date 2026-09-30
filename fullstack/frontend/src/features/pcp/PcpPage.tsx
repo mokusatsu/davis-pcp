@@ -5,8 +5,8 @@ import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuest
 import Table from '../common/ColumnTable'
 import Select from '../common/ColumnSelect'
 import { l1Index, useDatasetL1ColorDomains } from '../../theme/useL1ColorDomain'
-import L1Legend from '../common/L1Legend'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSelector, useDispatch } from 'react-redux'
 import {
   Alert, Button, Dropdown, InputNumber, Segmented, Slider, Space, Spin,
@@ -25,7 +25,8 @@ import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes } from '
 import { useColumnarData } from './useDatasetColumns'
 import { api } from '../../api/client'
 import { vizTheme, l1Palette } from '../../theme/viz'
-import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
+import PcpPlotViewport from './PcpPlotViewport'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 
@@ -123,6 +124,20 @@ export default function PcpPage() {
   const brushRectRef = useRef<SVGRectElement>(null)
   const frameNodeRef = useRef<HTMLDivElement | null>(null)
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
+  // F004-01: GraphPanel 子から受け取る実 viewport 情報（scale/dpr/revision）。
+  const [viewScaleState, setViewScaleState] = useState(1)
+  const [viewDprState, setViewDprState] = useState(() => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1))
+  const [viewRevisionState, setViewRevisionState] = useState(0)
+  const onViewportSize = useCallback((v: { width: number; height: number; scale: number; dpr: number; revision: number }) => {
+    setFrameSize(prev => (prev.width !== v.width || prev.height !== v.height ? { width: v.width, height: v.height } : prev))
+    setViewScaleState(v.scale > 0 ? v.scale : 1)
+    setViewDprState(v.dpr > 0 ? v.dpr : 1)
+    setViewRevisionState(v.revision)
+  }, [])
+  // F004-01: PcpPage 自体は GraphPanel の親であり、ここで useGraphViewport を
+  // 呼んでも GraphPanel 上の既定値しか返さない。実 viewport 情報は描画子の
+  // PcpPlotViewport が GraphPanel の子として受け取り、frameSize に反映する。
+  const graphPopupContainer = useGraphPopupContainer('pcp/main')
   const brushState = useRef<{ start: { x: number; y: number }; pointerId: number } | null>(null)
   const [diagnostics, setDiagnostics] = useState<OrderingDiagnostics | null>(null)
   const [orderError, setOrderError] = useState<{ message: string; suggestedActions: string[] } | null>(null)
@@ -350,7 +365,12 @@ export default function PcpPage() {
     // translates by -viewportX so lines land in viewport-local positions.
     const width = Math.max(1, frameSize.width)
     const height = Math.max(1, frameSize.height)
-    const dpr = Math.max(1, window.devicePixelRatio || 1)
+    // F005-01: 有効DPR = rawDpr × 表示scale。バッファ寸法・renderer変換は
+    // すべてこの値で統一する（rendererはspec.dprだけで変換するため）。
+    // 寸法変更だけで分析 API は再実行しない。
+    const viewScale = viewScaleState > 0 ? viewScaleState : 1
+    const rawDpr = viewDprState > 0 ? viewDprState : Math.max(1, window.devicePixelRatio || 1)
+    const dpr = rawDpr * viewScale
     const deviceW = Math.round(width * dpr)
     const deviceH = Math.round(height * dpr)
     // Resize (and only resize) clears the visible canvas; same-size repaints
@@ -360,10 +380,21 @@ export default function PcpPage() {
       canvas.height = deviceH
       offscreenRef.current = null
     }
+    // R035-01: Canvas は共通 surface の scale 変換内に置かれるため、
+    // 共通 viewport のスクロール量（CSS px）を論理座標へ換算して渡す。
+    // surface scale=s で表示されるため、論理上のスクロールは scroll/s となる。
+    // SVG 側は virtual 寸法のまま DOM スクロールする方式と原点を一致させる。
     canvas.style.width = `${width}px`
     canvas.style.height = `${height}px`
-    const scrollLeft = frameNodeRef.current?.scrollLeft ?? 0
-    const scrollTop = frameNodeRef.current?.scrollTop ?? 0
+    const surfaceScale = (() => {
+      const surface = canvas.closest('[data-testid^="graph-surface-"]') as HTMLElement | null
+      const s = surface ? Number(surface.getAttribute('data-graph-scale')) : NaN
+      return Number.isFinite(s) && s > 0 ? s : 1
+    })()
+    const rawLeft = frameNodeRef.current?.scrollLeft ?? 0
+    const rawTop = frameNodeRef.current?.scrollTop ?? 0
+    const scrollLeft = rawLeft / surfaceScale
+    const scrollTop = rawTop / surfaceScale
 
     const axesSpec = orderedVisibleAxes.map((a) => ({
       key: a.key,
@@ -454,24 +485,38 @@ export default function PcpPage() {
     renderPcp(ctx, spec)
     setFirstFrameRendered(true)
     }
-  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme])
+  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme, viewScaleState, viewDprState, viewRevisionState])
 
   useEffect(() => { void renderPlot() }, [renderPlot])
 
   const [measureNode, setMeasureNode] = useState<HTMLDivElement | null>(null)
+  // 共通 viewport を frame とみなす。plot-frame 自体はスクロールしないため、
+  // frameSize・スクロールオフセットは共通 viewport から取得する。
+  // 従来の frame 計測は GraphPanel 外の単体利用時のみ残す。
   useEffect(() => {
     const frame = measureNode
-    // The frame div mounts only after datasetId is set (the loading state
-    // early-returns before it), and FocusTarget's zoom wrapper can remount it.
-    // Re-run this effect whenever the frame node is (re)created — keying on
-    // the node via a ref callback keeps the observer/interval attached to the
-    // CURRENT frame; keying on datasetId alone left a dead closure when the
-    // node was replaced (frameSize froze at the pre-zoom size).
     if (!frame) return
+    const viewportEl = frame.closest('[data-testid^="graph-viewport-"]') as HTMLElement | null
+    if (viewportEl) {
+      frameNodeRef.current = viewportEl as unknown as HTMLDivElement
+      const measureViewport = () => {
+        const width = Math.max(1, viewportEl.clientWidth)
+        const height = Math.max(1, viewportEl.clientHeight)
+        setFrameSize(prev => (prev.width !== width || prev.height !== height ? { width, height } : prev))
+        return width > 1
+      }
+      if (!measureViewport()) {
+        const raf = requestAnimationFrame(function tick() {
+          if (!measureViewport()) requestAnimationFrame(tick)
+        })
+        return () => cancelAnimationFrame(raf)
+      }
+      const observer = new ResizeObserver(measureViewport)
+      observer.observe(viewportEl)
+      return () => observer.disconnect()
+    }
+    // GraphPanel 外のフォールバック（従来の frame 計測）
     const measure = () => {
-      // Read layout synchronously: a 0-width frame (hidden viewport at mount)
-      // must not stick — re-measure on the next frames until real size lands,
-      // because ResizeObserver may never fire in that state (audit #1).
       const width = Math.max(1, frame.clientWidth)
       const height = Math.max(1, frame.clientHeight)
       setFrameSize(prev => (prev.width !== width || prev.height !== height ? { width, height } : prev))
@@ -487,14 +532,6 @@ export default function PcpPage() {
       raf = requestAnimationFrame(tick)
     }
     if (!measure()) raf = requestAnimationFrame(tick)
-    // Hidden viewports throttle rAF (and even window resize events) to zero,
-    // so the frame-size poll can stall before layout lands. Keep a slow
-    // interval recheck running until a real size is measured — it self-stops
-    // once the frame has a size or after a bounded number of tries.
-    // Permanent low-frequency poll: ResizeObserver misses size changes inside
-    // transformed (zoom) wrappers, and rAF/resize events freeze in hidden
-    // viewports. Reading clientWidth twice a second is negligible CPU and
-    // keeps frameSize converging in every environment.
     const interval = setInterval(measure, 500)
     const recheck = () => { measure() }
     document.addEventListener('visibilitychange', recheck)
@@ -508,15 +545,15 @@ export default function PcpPage() {
       window.removeEventListener('resize', recheck)
       window.removeEventListener('focus', recheck)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureNode, selection.datasetId])
 
-  /** The frame-sized canvas shows the scrolled window of the virtual-width
-   *  plot; on scroll it repaints translated by -scrollLeft (sticky keeps it
-   *  pinned in the frame during native scrolling between frames). */
+  /** 共通 viewport のスクロールで再描画する。plot-frame 自体はスクロールしない。 */
   useEffect(() => {
     const frame = measureNode
     if (!frame) return
-    frameNodeRef.current = frame
+    const scroller = (frame.closest('[data-testid^="graph-viewport-"]') as HTMLDivElement | null) ?? frame
+    frameNodeRef.current = scroller
     let raf = 0
     const onScroll = () => {
       if (raf) return
@@ -525,9 +562,9 @@ export default function PcpPage() {
         renderPlotRef.current()
       })
     }
-    frame.addEventListener('scroll', onScroll, { passive: true })
+    scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      frame.removeEventListener('scroll', onScroll)
+      scroller.removeEventListener('scroll', onScroll)
       if (raf) cancelAnimationFrame(raf)
     }
   }, [measureNode])
@@ -584,11 +621,24 @@ export default function PcpPage() {
 
   const lastClientPoint = useRef({ x: 0, y: 0 })
 
+  // F005-02: 座標系が変わった進行中ドラッグは選択確定せず取消する。
+  // 倍率だけでなく画面リサイズ・DPR変更も対象とするため、viewport の
+  // 座標系世代（data-coord-gen：寸法・DPR・zoom）を開始時に記録し、
+  // up 時点で異なっていれば dispatch せず矩形・capture を掃除する。
+  const dragToken = useRef<{ gen: string | null } | null>(null)
+  const coordGenOf = (el: Element): string | null => {
+    try {
+      return el.closest('[data-testid^="graph-host-"]')
+        ?.querySelector('[data-testid^="graph-viewport-"]')?.getAttribute('data-coord-gen')
+        ?? null
+    } catch { return null }
+  }
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
     const point = eventPoint(event)
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return
     brushState.current = { start: point, pointerId: event.pointerId }
+    dragToken.current = { gen: coordGenOf(event.currentTarget as Element) }
     try { overlayRef.current?.setPointerCapture(event.pointerId) } catch { /* synthetic pointer */ }
     brushRectRef.current?.setAttribute('visibility', 'visible')
     brushRectRef.current?.setAttribute('x', String(point.x))
@@ -613,15 +663,49 @@ export default function PcpPage() {
     void updateHover(point)
   }
 
+  const cancelBrush = (pointerId?: number) => {
+    brushState.current = null
+    dragToken.current = null
+    brushRectRef.current?.setAttribute('visibility', 'hidden')
+    if (pointerId !== undefined) {
+      try { overlayRef.current?.releasePointerCapture(pointerId) } catch { /* already released */ }
+    }
+  }
+
+  // F005-02: Escape単独でも進行中ドラッグを取消す。拡大ダイアログの
+  // 二段階Escape（1回目は子popup、2回目は拡大終了）とは独立に、
+  // ここではブラシ矩形とcaptureの掃除だけを行い、選択dispatchしない。
+  // brushStateはrefのため再レンダーを起こさず、keydown到達時に判定する。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && brushState.current) {
+        cancelBrush(brushState.current.pointerId)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const onPointerUp = async (event: React.PointerEvent) => {
     if (!brushState.current || !geometryRef.current) return
+    // F005-02: 座標系世代が変わった進行中ドラッグは確定せず取消し、dispatch しない。
+    // 倍率変更・画面リサイズ・DPR変更・Escape相当のいずれもここで取消す。
+    try {
+      const nowGen = coordGenOf(event.currentTarget as Element)
+      if (dragToken.current && dragToken.current.gen !== nowGen) {
+        cancelBrush(brushState.current.pointerId)
+        return
+      }
+    } catch { /* 照合失敗時は従来通り確定する */ }
     const g = geometryRef.current
     const current = eventPoint(event)
     const rect = normalizedRect(brushState.current.start, current)
     const distance = Math.hypot(current.x - brushState.current.start.x, current.y - brushState.current.start.y)
+    const pointerId = brushState.current.pointerId
     brushRectRef.current?.setAttribute('visibility', 'hidden')
-    try { overlayRef.current?.releasePointerCapture(brushState.current.pointerId) } catch { /* already released */ }
+    try { overlayRef.current?.releasePointerCapture(pointerId) } catch { /* already released */ }
     brushState.current = null
+    dragToken.current = null
 
     // Under draw simplification a drawn line represents a whole cluster:
     // expand every hit to the full member set so selections retroactively
@@ -766,21 +850,6 @@ export default function PcpPage() {
 
   const renderSettingsMenu = (
     <div style={{ padding: 12, width: 280, background: '#fff', borderRadius: 8, boxShadow: '0 3px 12px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-      <div>
-        <Typography.Text strong style={{ fontSize: 12 }}>L1色分け：列の値で色分け</Typography.Text>
-        <Select
-          data-testid="color-by"
-          size="small"
-          allowClear
-          placeholder="なし（単色）"
-          style={{ width: '100%', marginTop: 4 }}
-          value={pcp.colorBy}
-          onChange={(value) => dispatch(pcpStateChanged({ colorBy: value ?? null }))}
-          options={l1Candidates.map((a) => ({ value: a.key, label: `${axes.find(axis => axis.key === a.key)?.label ?? a.key} (${a.codes.length}種類)` }))}
-        />
-      </div>
-      <Typography.Text type="secondary">欠損を除く値が20種類以下の列</Typography.Text>
-      <L1Legend />
       {imputedCells.size > 0 && (
         <Typography.Text type="secondary" aria-label="補完マーカーの説明">
           ◆紫マーカー・点線＝補完値（{imputedCells.size}行に補完あり）
@@ -920,7 +989,6 @@ export default function PcpPage() {
         <Dropdown popupRender={() => renderSettingsMenu} trigger={['click']} getPopupContainer={() => document.body}>
           <Button data-testid="axis-settings">描画設定 <DownOutlined /></Button>
         </Dropdown>
-        <FocusEnterButton targetId="pcp" title="平行座標プロット (PCP)" />
         {selection.selectedRowIds.length > 0 && (
           <Typography.Text type="secondary">選択 {selection.selectedRowIds.length}行</Typography.Text>
         )}
@@ -942,10 +1010,16 @@ export default function PcpPage() {
           />
         )}
 
-        <FocusTarget id="pcp" title="平行座標プロット (PCP)">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
-        <div ref={setMeasureNode} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', overflowX: isPlotLoading ? 'hidden' : (isVertical ? 'hidden' : 'auto'), overflowY: isPlotLoading ? 'hidden' : (isVertical ? 'auto' : 'hidden'), userSelect: 'none' }}>
-          <div data-testid="plot-canvas-area" style={{ position: 'relative', width: isPlotLoading ? '100%' : (isVertical ? '100%' : Math.max(virtualWidth, 1)), height: isPlotLoading ? '100%' : (isVertical ? Math.max(virtualHeight, 1) : '100%'), minWidth: '100%', minHeight: '100%' }}>
+        <GraphPanel
+          graphId="pcp/main"
+          title="平行座標プロット (PCP)"
+          available={orderedVisibleAxes.length >= 2}
+          sizing="responsive"
+        >
+        <PcpPlotViewport onSize={onViewportSize} />
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
+        <div ref={setMeasureNode} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', outline: '1px solid #e5e7eb', outlineOffset: -1, borderRadius: 6, background: '#ffffff', overflow: 'visible', userSelect: 'none' }}>
+          <div data-testid="plot-canvas-area" style={{ position: 'relative', width: isPlotLoading ? '100%' : (isVertical ? '100%' : Math.max(virtualWidth, 1)), height: isPlotLoading ? '100%' : (isVertical ? Math.max(virtualHeight, 1) : '100%'), minWidth: '100%', minHeight: '100%', overflow: 'visible' }}>
           {orderingLoading && (
             <div
               role="status"
@@ -990,6 +1064,8 @@ export default function PcpPage() {
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onPointerCancel={(e) => cancelBrush(e.pointerId)}
+            onLostPointerCapture={(e) => { if (brushState.current?.pointerId === e.pointerId) cancelBrush(e.pointerId) }}
             onPointerLeave={() => { dispatch(hoverAction(null)); setTooltip(null) }}
             onDoubleClick={() => dispatch(selectionCleared())}
           >
@@ -1030,6 +1106,9 @@ export default function PcpPage() {
             const top = vertical
               ? (geometry.axisPos[index] ?? 0)
               : 8
+            // 色分けアイコン付きの列は操作部を2列（アイコン行＋ボタン行）にし、
+            // 横幅をボタン3個分に抑えて隣の軸操作と重ならないようにする。
+            const isColored = pcp.colorBy === axis.key
             return (
               <div key={axis.key}>
                 <div
@@ -1038,19 +1117,21 @@ export default function PcpPage() {
                   style={{
                     position: 'absolute', left, top,
                     transform: vertical ? 'translateY(-50%)' : 'translateX(-50%)',
-                    display: 'flex', flexDirection: 'row',
+                    display: 'flex', flexDirection: 'column',
                     gap: 2, alignItems: 'center',
                     background: 'rgba(255,255,255,0.92)', border: '1px solid #d9d9d9', borderRadius: 6,
                     padding: '2px 4px', zIndex: 10,
+                    maxWidth: 76,
                   }}
                 >
-                {pcp.colorBy === axis.key && (
-                  <span title={`この軸（${axis.label}）で色分け中`} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                {isColored && (
+                  <span title={`この軸（${axis.label}）で色分け中`} style={{ display: 'inline-flex', alignItems: 'center', maxWidth: '100%', overflow: 'hidden' }}>
                     {theme.categorical.slice(1, 5).map((c) => (
-                      <span key={c} style={{ width: 5, height: 12, background: c, marginRight: 1, borderRadius: 1 }} />
+                      <span key={c} style={{ width: 5, height: 12, background: c, marginRight: 1, borderRadius: 1, flexShrink: 0 }} />
                     ))}
                   </span>
                 )}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                 {vertical ? (
                   <>
                     <Button size="small" type="text" style={{ padding: '0 4px', minWidth: 20, height: 20 }}
@@ -1076,19 +1157,21 @@ export default function PcpPage() {
                       aria-label={`${axis.label}を次へ移動`} onClick={() => moveAxis(axis.key, visibleIndex + 1)} />
                   </>
                 )}
+                </span>
               </div>
             </div>
           )
         })}
-          {tooltip && (
-            <div role="tooltip" style={{ position: 'fixed', left: tooltip.x + 14, top: tooltip.y + 14, zIndex: 100, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.15)', pointerEvents: 'none' }}>
+          {tooltip && createPortal(
+            <div data-testid="pcp-hover-tooltip" role="tooltip" style={{ position: 'fixed', left: tooltip.x + 14, top: tooltip.y + 14, zIndex: 100, background: '#fff', border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.15)', pointerEvents: 'none' }}>
               {tooltipContent}
-            </div>
+            </div>,
+            graphPopupContainer(),
           )}
           </div>
         </div>
         </Dropdown>
-        </FocusTarget>
+        </GraphPanel>
 
         {diagnostics && (
           <div data-testid="ordering-diagnostics">

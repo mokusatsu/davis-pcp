@@ -10,11 +10,10 @@ import { GeodesicEngine } from './geodesicEngine'
 import { TgtCanvas } from './TgtCanvas'
 import { ProjectionCircle } from './ProjectionCircle'
 import { TgtControlPanel } from './TgtControlPanel'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 
 export default function TgtPage() {
-  const { focused } = useFocusMode()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
   const activeVarIds = globalVars?.activeVariableIds
@@ -185,18 +184,9 @@ export default function TgtPage() {
   return (
     <div
       data-testid="tgt-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        padding: focused ? 0 : 4,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4, minHeight: 0 }}
     >
       {/* Control Toolbar */}
-      {!focused && (
         <TgtControlPanel
           columns={numericColumns}
           selectedColumns={selectedColumns}
@@ -212,33 +202,34 @@ export default function TgtPage() {
           trailLength={trailLength}
           onTrailLengthChange={setTrailLength}
         />
-      )}
 
       {/* Action Bar */}
-      {!focused && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 860 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             💡 ショートカット: <strong>Space</strong> (再生/一時停止) · <strong>.</strong> (1コマ送り) · <strong>R</strong> (視点リセット) · 一時停止中にドラッグで矩形選択
           </Typography.Text>
           <Space>
-            <FocusEnterButton targetId="tgt-canvas" title="Tracking Grand Tour" />
           </Space>
         </div>
-      )}
 
-      {/* Main Canvas & HUD Container */}
-      <FocusTarget id="tgt-canvas" title="Tracking Grand Tour">
+      {/* Main Canvas & HUD Container: 主図と軸寄与円は一つの対象 */}
+      <GraphPanel
+        graphId="touring/main"
+        title="Tracking Grand Tour"
+        available={Boolean(engine && dataMatrix.length > 0)}
+        sizing="intrinsic"
+        intrinsicSize={{ width: 860, height: 540 }}
+      >
         <div
           style={{
             position: 'relative',
             display: 'block',
             background: '#141414',
-            borderRadius: focused ? 0 : 8,
-            boxShadow: focused ? 'none' : '0 4px 16px rgba(0, 0, 0, 0.15)',
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
             overflow: 'hidden',
-            width: focused ? '100%' : 860,
-            height: focused ? '100%' : 540,
-            flex: focused ? 1 : undefined,
+            width: 860,
+            height: 540,
             userSelect: 'none',
           }}
         >
@@ -262,7 +253,7 @@ export default function TgtPage() {
             />
           </div>
         </div>
-      </FocusTarget>
+      </GraphPanel>
     </div>
   )
 }

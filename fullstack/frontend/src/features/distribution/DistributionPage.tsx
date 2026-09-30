@@ -13,8 +13,9 @@ import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { vizTheme, l1Color, signedNoiseViz } from '../../theme/viz'
 import { useBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import { truncateText } from '../../utils/textUtils'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import QQPlotView from '../qqplot/QQPlotView'
 import EmptyStatePanel from '../common/EmptyStatePanel'
@@ -58,7 +59,6 @@ export default function DistributionPage() {
   const globalVars = useSelector(selectOrdinaryVariables)
   const entitySelection = useSelector(selectVariableEntities)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const focused = useFocusMode().focused
   const svgRef = useRef<SVGSVGElement>(null)
   const [brushOp] = useBrushOp()
   const { columns: codebookColumns, getColumn, isLoading: isCodebookLoading, schemaRevision } = useCodebook()
@@ -455,7 +455,7 @@ export default function DistributionPage() {
       const rowSpacing = (panelHeight - 22) / Math.max(1, nGroups)
       return (
         <g key={panel.column}>
-          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{panel.column}</text></ColumnQuestionTooltip>
+          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{truncateText(panel.column, 24)}</text></ColumnQuestionTooltip>
           <line x1={innerLeft} y1={panelTop + panelHeight - 12} x2={innerRight} y2={panelTop + panelHeight - 12} stroke="#c3c2b7" strokeWidth={1} />
           {[panel.min, (panel.min + panel.max) / 2, panel.max].map((tick, ti) => (
             <g key={ti}>
@@ -470,7 +470,8 @@ export default function DistributionPage() {
               <g key={JSON.stringify([panel.column, group.code])}>
                 {group.key && (
                   <text x={112} y={centerY + 3} textAnchor="end" fontSize={10} fill="#52514e">
-                    {group.key.replace(/Iris-/, '')}
+                    <title>{group.key}</title>
+                    {truncateText(group.key.replace(/Iris-/, ''), 12)}
                   </text>
                 )}
                 {stats && (
@@ -523,10 +524,11 @@ export default function DistributionPage() {
       const slotLeft = plotLeft + slot * slotWidth
       const nGroups = panel.groups.length
       const colSpacing = (slotWidth - 16) / Math.max(1, nGroups)
+      const titleLength = Math.max(4, Math.floor((slotWidth - 16) / 10))
       return (
         <g key={panel.column}>
           <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={slotLeft + slotWidth / 2} y={18} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
-            {panel.column}
+            {truncateText(panel.column, titleLength)}
           </text></ColumnQuestionTooltip>
           <line x1={slotLeft + 8} y1={innerTop} x2={slotLeft + 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
           <line x1={slotLeft + 8} y1={innerBottom} x2={slotLeft + slotWidth - 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
@@ -586,9 +588,8 @@ export default function DistributionPage() {
     })
 
   return (
-    <div data-testid="distribution-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, height: focused ? '100%' : undefined, flex: focused ? 1 : 'none', minHeight: focused ? 0 : undefined }}>
+    <div data-testid="distribution-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Top Toolbar Card */}
-      {!focused && (
         <Card size="small" style={{ background: '#fafafa' }}>
           <Row gutter={[12, 8]} align="middle" justify="space-between">
             <Col>
@@ -618,7 +619,6 @@ export default function DistributionPage() {
                   />
                 )}
                 {viewMode === 'boxplot' && (
-                  <>
                     <Segmented
                       data-testid="dist-orientation"
                       size="small"
@@ -629,8 +629,6 @@ export default function DistributionPage() {
                       value={orientation}
                       onChange={(v) => setOrientation(v as 'horizontal' | 'vertical')}
                     />
-                    <FocusEnterButton targetId="distribution" title="分布・箱ひげ図" />
-                  </>
                 )}
               </Space>
             </Col>
@@ -646,10 +644,8 @@ export default function DistributionPage() {
             </Col>
           </Row>
         </Card>
-      )}
 
       {/* Summary KPI Cards */}
-      {!focused && (
         <Row gutter={[12, 12]}>
           <Col xs={12} sm={6}>
             <Card size="small">
@@ -693,7 +689,6 @@ export default function DistributionPage() {
             </Card>
           </Col>
         </Row>
-      )}
 
       {viewMode === 'qqplot' ? (
         <QQPlotView />
@@ -765,25 +760,36 @@ export default function DistributionPage() {
       ) : (
         <>
           {!domain && <Alert type="info" message="L1色分け列が未選択のため単色表示です。" />}
-          <FocusTarget id="distribution" title="分布・箱ひげ図">
+          <GraphPanel
+            graphId="distribution/boxplot"
+            title="分布・箱ひげ図"
+            available={viewMode === 'boxplot' && numericColumns.length > 0}
+            sizing="intrinsic"
+            intrinsicSize={{ width, height }}
+            controls={(
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <L1Legend />
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  ドラッグで範囲選択 · クリックで選択toggle · 右クリックでメニュー
+                </Typography.Text>
+              </div>
+            )}
+          >
             <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
               <div
                 data-testid="distribution-scroll"
                 style={{
                   position: 'relative',
-                  flex: focused ? 1 : 'none',
-                  height: focused ? '100%' : undefined,
                   minHeight: 380,
-                  overflowX: focused ? 'visible' : 'auto',
-                  overflowY: 'hidden',
-                  border: focused ? 'none' : '1px solid #e5e7eb',
-                  borderRadius: focused ? 0 : 6,
+                  overflow: 'visible',
+                  outline: '1px solid #e5e7eb',
+                  outlineOffset: -1,
+                  borderRadius: 6,
                   background: '#fff',
                   userSelect: 'none',
-                  boxShadow: focused ? 'none' : '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
                 }}
               >
-                <L1Legend />
       {loadingStats && (
                   <div
                     role="status"
@@ -810,7 +816,7 @@ export default function DistributionPage() {
                   viewBox={`0 0 ${width} ${height}`}
                   width={width}
                   height={height}
-                  style={{ display: 'block', width: '100%', maxWidth: focused ? 'none' : width, height: focused ? '100%' : 'auto', touchAction: 'none' }}
+                  style={{ display: 'block', width, height, maxWidth: width, touchAction: 'none' }}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
@@ -831,7 +837,7 @@ export default function DistributionPage() {
                 </svg>
               </div>
             </Dropdown>
-          </FocusTarget>
+          </GraphPanel>
         </>
       )}
     </div>

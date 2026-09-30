@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import GraphPanel from '../common/GraphPanel'
 import { Button, Card, Segmented, Space, Tag, Tooltip, Typography, theme, Progress } from 'antd'
 import Select from '../common/ColumnSelect'
 import type { MultiResponseSummary, MultiResponseWeight } from '../../api/client'
@@ -77,6 +78,29 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
   const onPageChange = (nextPage: number) => setPage(nextPage)
 
   return (
+    <GraphPanel
+      graphId={`distribution/ma/${summary.groupId}`}
+      title={summary.label}
+      available
+      sizing="intrinsic"
+      intrinsicSize={{ width: 560, height: 320 }}
+      normalWidth="viewport"
+      controls={(
+        <Segmented
+          size="small"
+          aria-label="選択ベース"
+          value={base}
+          disabled={loading}
+          onChange={(value) => {
+            setBase(value as 'respondent' | 'response')
+          }}
+          options={[
+            { label: '回答者ベース', value: 'respondent' },
+            { label: '延べ回答ベース', value: 'response' },
+          ]}
+        />
+      )}
+    >
     <Card
       size="small"
       data-testid={`ma-card-${summary.groupId}`}
@@ -96,21 +120,6 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
           ) : null}
           {summary.groupId !== summary.label ? <Text type="secondary">({summary.groupId})</Text> : null}
         </Space>
-      }
-      extra={
-        <Segmented
-          size="small"
-          aria-label="選択ベース"
-          value={base}
-          disabled={loading}
-          onChange={(value) => {
-            setBase(value as 'respondent' | 'response')
-          }}
-          options={[
-            { label: '回答者ベース', value: 'respondent' },
-            { label: '延べ回答ベース', value: 'response' },
-          ]}
-        />
       }
       style={{ marginBottom: 16, borderRadius: 6, border: `1px solid ${token.colorSplit}` }}
     >
@@ -368,6 +377,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
         </div>
       )}
     </Card>
+    </GraphPanel>
   )
 }
 

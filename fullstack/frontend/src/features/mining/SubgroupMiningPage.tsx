@@ -19,7 +19,6 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { useMiningTargets } from './useMiningTargets'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import ModernSubgroupMiningView from './ModernSubgroupMiningView'
 import {
   METHOD_LABEL, REPLICATION_COLOR, REPLICATION_LABEL, untestableReason, verificationFor,
@@ -97,7 +96,6 @@ export interface MiningResult {
 }
 
 export default function SubgroupMiningPage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -247,11 +245,11 @@ export default function SubgroupMiningPage() {
   return (
     <div
       style={{
-        padding: focused ? 0 : 16,
+        padding: 16,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: focused ? 'hidden' : 'auto',
+        overflow: 'auto',
         minHeight: 0,
       }}
       data-testid="subgroup-mining-page"
@@ -260,10 +258,9 @@ export default function SubgroupMiningPage() {
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'modern' | 'classic')}
         type="card"
-        tabBarStyle={focused ? { display: 'none' } : undefined}
+
         style={{
-          marginBottom: focused ? 0 : 12,
-          flex: focused ? 1 : undefined,
+          marginBottom: 12,
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
@@ -290,7 +287,7 @@ export default function SubgroupMiningPage() {
             children: (
               <>
                 {/* Control bar */}
-                {!focused && (
+                {(
                   <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
                     {targets.control}
                     <Row gutter={[12, 12]} align="middle">
@@ -350,7 +347,7 @@ export default function SubgroupMiningPage() {
                 )}
 
                 {/* Error Alert Display */}
-                {!focused && error && (
+                {error && (
                   <Alert
                     type="error"
                     showIcon
@@ -396,7 +393,7 @@ export default function SubgroupMiningPage() {
                 )}
 
                 {/* Exploration badge */}
-                {!focused && miningResult && inferenceMode === 'exploration' && (
+                {miningResult && inferenceMode === 'exploration' && (
                   <Alert
                     type="warning"
                     showIcon
@@ -406,7 +403,7 @@ export default function SubgroupMiningPage() {
                     data-testid="exploration-badge"
                   />
                 )}
-                {!focused && inferenceMode === 'verification' && verificationInfo && (
+                {inferenceMode === 'verification' && verificationInfo && (
                   <Alert
                     type="success"
                     showIcon
@@ -418,7 +415,7 @@ export default function SubgroupMiningPage() {
                 )}
 
                 {/* Summary KPI Cards */}
-                {!focused && miningResult && (
+                {miningResult && (
                   <Row gutter={[12, 12]} style={{ marginBottom: 12, flexShrink: 0 }}>
                     <Col span={4}>
                       <Card size="small">
@@ -467,15 +464,13 @@ export default function SubgroupMiningPage() {
                 {/* Split View: Ranking List (Left) & Evidence Drilldown (Right) */}
                 {miningResult && (
                   <Row
-                    gutter={focused ? [0, 0] : [16, 16]}
+                    gutter={[16, 16]}
                     style={{
-                      flex: focused ? 1 : undefined,
-                      minHeight: 0,
-                      height: focused ? '100%' : undefined,
-                    }}
+                                            minHeight: 0,
+                                          }}
                   >
                     {/* Left: Ranking Cards */}
-                    {!focused && (
+                    {(
                       <Col xs={24} md={10} style={{ maxHeight: 'calc(100vh - 270px)', overflowY: 'auto' }}>
                         <Typography.Title level={5} style={{ marginTop: 0 }}>
                           発見インサイト一覧 ({miningResult.insights.length} 件)
@@ -556,10 +551,9 @@ export default function SubgroupMiningPage() {
                     {/* Right: Evidence & Drilldown Inspector */}
                     <Col
                       xs={24}
-                      md={focused ? 24 : 14}
+                      md={14}
                       style={{
-                        height: focused ? '100%' : undefined,
-                        maxHeight: focused ? 'none' : 'calc(100vh - 270px)',
+                                                maxHeight: 'calc(100vh - 270px)',
                         overflowY: 'auto',
                         display: 'flex',
                         flexDirection: 'column',
@@ -567,7 +561,6 @@ export default function SubgroupMiningPage() {
                       }}
                     >
                       {currentInsight ? (
-                        <FocusTarget id="mining-detail" title="サブグループ詳細比較">
                           <Card
                             size="small"
                             title={
@@ -578,19 +571,9 @@ export default function SubgroupMiningPage() {
                                 <Tag color="blue">{currentInsight.test.method}</Tag>
                               </Space>
                             }
-                            extra={
-                              <FocusEnterButton targetId="mining-detail" title="サブグループ詳細比較" />
-                            }
                             style={{
-                              height: focused ? '100%' : undefined,
                               display: 'flex',
                               flexDirection: 'column',
-                              flex: focused ? 1 : undefined,
-                              minHeight: 0,
-                            }}
-                            bodyStyle={{
-                              flex: focused ? 1 : undefined,
-                              overflow: 'auto',
                               minHeight: 0,
                             }}
                           >
@@ -874,7 +857,6 @@ export default function SubgroupMiningPage() {
                   </Row>
                 )}
               </Card>
-              </FocusTarget>
             ) : (
               <Card style={{ textAlign: 'center', padding: 40 }}>
                 <Empty description="インサイトを選択してください" />

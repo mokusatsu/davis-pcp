@@ -1,6 +1,6 @@
 # 結果契約・データ辞書 v1.0
 
-033b EFA／033c CFAでは[拡張入力・結果契約](FACTOR_EXTENSIONS_CONTRACT.md)がmethod、状態、適合度variant、capabilities、export表を追加する。本書のML専用項目や「CA以外rows=true」は拡張機能へ自動適用しない。
+033 EFA／033c CFAでは[拡張入力・結果契約](FACTOR_EXTENSIONS_CONTRACT.md)がmethod、状態、適合度variant、capabilities、export表を追加する。本書の旧ML因子分析項目や「CA以外rows=true」は拡張機能へ自動適用しない。
 
 本書はFeature 029〜034のJSON出力名・単位・配列形状の正本。数式は各実装設計、入力型は`analysis_requests.py`。未提供値はnullと理由を返す。以下の型表記はTypeScript相当で、`Float`は有限JSON number、`Count`は0以上の整数、`Nullable<T>`はTまたはnullである。公開APIのcamelCaseとmaterialize用の固定sourceField識別子を混同しない。
 
@@ -120,7 +120,9 @@ summary.jointTest=`{kind:'classical_f'|'robust_wald_f'|null,statistic:Float|null
 
 vif=`[{designColumnId,value:Float|null,status:'available'|'constant'|'perfect_collinearity'}]`。大きさ∞はJSON数値にせずnull。summary.rSquaredType=`centered`/`uncentered`、rmseは重み和分母、residualStdErrorは残差自由度分母で区別する。
 
-### 5.5 最尤因子分析
+### 5.5 旧最尤因子分析資料
+
+この節は旧FactorAnalysisRequestに対応する参照検証資産であり、現行Feature 033 EFAの結果正本ではない。現行のEFA結果、得点能力、平行分析、感度比較は[拡張入力・結果契約](FACTOR_EXTENSIONS_CONTRACT.md)を参照する。
 
 pattern/structureはp×q、factorCorrelation/rotationTransformはq×q。sample/reproduced/residualCorrelationはp×p、uniqueness/communalityはp、ssLoadings/varianceRatiosはqまたはPromax時null。variables順とfactorLabels順が共通。
 

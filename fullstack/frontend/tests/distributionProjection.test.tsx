@@ -9,7 +9,6 @@ import DistributionPage from '../src/features/distribution/DistributionPage'
 
 const load = vi.hoisted(() => vi.fn(() => null))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: load }))
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); load.mockClear() })
 
 it('renders cards without Arrow data and uses canonical server matches for selection', async () => {

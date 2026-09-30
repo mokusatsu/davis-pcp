@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Card, Empty, Pagination, Progress, Radio, Select, Space, Spin, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Empty, Pagination, Progress, Radio, Space, Spin, Tooltip, Typography } from 'antd'
+import Select from '../common/ColumnSelect'
 import { useDispatch, useSelector } from 'react-redux'
 import { api, type MultiResponseSummary, type MultiResponseSummaryResponse, type MultiResponseWeight } from '../../api/client'
 import { selectEffectiveRowIds, selectVariableEntities, selectionApplied, type RootState } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 
 interface Comparison extends MultiResponseWeight {
@@ -27,7 +28,6 @@ const weightNote = (weight: Comparison | null, summary: MultiResponseSummary): s
 }
 
 export default function MultiResponseBarChart() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const entities = useSelector(selectVariableEntities)
@@ -36,9 +36,33 @@ export default function MultiResponseBarChart() {
   const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
   const weightName = columns.find(column => column.columnId === weightColumnId)?.name
   const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
+  const maGroups = useSelector((s: RootState) => s.codebook.datasetId === s.selection.datasetId ? s.codebook.multiResponseGroups : [])
   const [groupKey, setGroupKey] = useState('')
   const group = groups.find(item => item.key === groupKey) ?? groups[0]
   const groupId = group?.entity.kind === 'ma' ? group.entity.groupId : ''
+  const groupOptions = groups.map(item => {
+    const id = item.entity.kind === 'ma' ? item.entity.groupId : ''
+    const detail = maGroups?.find(g => g.groupId === id)
+    const members = columns.filter(col => col.multiResponseGroup === id)
+    const memberCount = detail?.optionOrder?.length || members.length
+    const memberLabels = members
+      .map(col => col.multiResponseOptionLabel?.trim() || col.label?.trim() || col.name)
+      .filter(label => label)
+    // 設問文は所属列のラベルから復元する。同一設問の選択肢は「共通の設問文＋【選択肢名】」
+    // 形式のため、最長共通接頭辞が設問文に相当する。
+    const prefixOf = (a: string, b: string) => {
+      let i = 0
+      while (i < a.length && i < b.length && a[i] === b[i]) i++
+      return a.slice(0, i)
+    }
+    const questionStem = memberLabels.length
+      ? memberLabels.reduce((prefix, label) => prefixOf(prefix, label)).replace(/【[^】]*$/, '').trim()
+      : ''
+    const questionText = item.label !== id
+      ? `${item.label}（${memberCount}件）`
+      : questionStem ? `${questionStem}（${memberCount}件）` : memberLabels.length ? `選択肢: ${memberLabels.join(' / ')}` : undefined
+    return { value: item.key, label: item.label, questionName: id, questionText }
+  })
   const attributes = columns.filter(col => col.role === 'attribute' && !col.multiResponseGroup && !['id', 'text'].includes(col.scaleType))
   const [attributeId, setAttributeId] = useState('')
   const attribute = attributes.find(col => col.columnId === attributeId)
@@ -105,17 +129,28 @@ export default function MultiResponseBarChart() {
     weighted ? item.selectedWeighted ?? 0 : item.selectedN
   const maxValue = value?.strata.reduce((maximum, stratum) =>
     stratum.summary.items.reduce((maximum, item) => Math.max(maximum, barValue(item)), maximum), 1) ?? 1
-  return <FocusTarget id="ma-barchart" title="複数回答の棒グラフ"><Card size="small" title="複数回答の棒グラフ" data-testid="ma-barchart"
-    extra={!focused && <FocusEnterButton targetId="ma-barchart" title="複数回答の棒グラフ" />}>
+  const maControls = (
     <Space wrap style={{ marginBottom: 12 }}>
       <span>対象設問:</span><Select size="small" aria-label="MA対象設問" style={{ width: 220 }} value={group?.key}
-        options={groups.map(item => ({ value: item.key, label: item.label }))} onChange={setGroupKey} />
+        options={groupOptions} onChange={setGroupKey} />
       <span>比較属性:</span><Select size="small" aria-label="MA比較属性" allowClear placeholder="なし（全体）" style={{ width: 180 }}
-        value={attribute?.columnId} options={attributes.map(col => ({ value: col.columnId, label: `${col.name} — ${col.label || col.name}` }))}
+        value={attribute?.columnId} options={attributes.map(col => ({ value: col.columnId }))}
         onChange={value => setAttributeId(value || '')} />
       <Radio.Group size="small" optionType="button" buttonStyle="solid" value={mode} onChange={event => setMode(event.target.value)}
         options={[{ label: '人数', value: 'count' }, { label: '選択率 (%)', value: 'percent' }]} />
     </Space>
+  )
+  return (
+  <GraphPanel
+    graphId="barchart/ma"
+    title="複数回答の棒グラフ"
+    available={Boolean(group)}
+    sizing="intrinsic"
+    intrinsicSize={{ width: 680, height: Math.max(300, 120 + visible.length * 60) }}
+    normalWidth="viewport"
+    controls={maControls}
+  >
+  <Card size="small" data-testid="ma-barchart">
     {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => setRetry(value => value + 1)}>再試行</Button>} />}
     {loading && <Spin />}
     <WeightUnsupportedAlert weightColumnName={value?.weightStatus === 'unsupported' ? value?.weightColumn : null} />
@@ -132,21 +167,23 @@ export default function MultiResponseBarChart() {
       <Typography.Text strong>{option.name} {option.label}</Typography.Text>
       {visibleStrata.map(stratum => {
         const item = stratum.summary.items.find(item => item.columnId === option.columnId)!
-        return <div key={stratum.code} style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
+        return <div key={stratum.code} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 4, minWidth: 0 }}>
           <Tooltip mouseEnterDelay={0.2} title={weightNote(value, stratum.summary)}>
-            <span style={{ width: 130, flexShrink: 0 }}>
+            <span style={{ flex: '0 1 180px', minWidth: 0, overflowWrap: 'anywhere' }}>
               {stratum.label}（有効{stratum.summary.denominators.valid}人{weighted ? `／加重N ${formatWeight(stratum.summary.weightedValidN ?? 0)}` : ''}）
             </span>
           </Tooltip>
           <button type="button" disabled={matching || loading || !item.selectedN} aria-label={`${option.name} ${stratum.label}の回答者を選択`}
-            onClick={() => void select(item.columnId, stratum.code)} style={{ flex: 1, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}>
+            onClick={() => void select(item.columnId, stratum.code)} style={{ flex: '1 1 120px', minWidth: 0, border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }}>
             <Progress percent={mode === 'percent' ? item.pctRespondent ?? 0 : barValue(item) / maxValue * 100} showInfo={false}
               strokeColor="#cbd5e1" success={{ percent: mode === 'percent' ? item.selectedInSelection / Math.max(1, stratum.summary.denominators.valid) * 100 : item.selectedInSelection / maxValue * 100, strokeColor: '#1677ff' }} />
           </button>
-          <span style={{ width: 265 }}>{weighted ? `加重${formatWeight(item.selectedWeighted ?? 0)} / ` : ''}{item.selectedN}人 / {item.pctRespondent == null ? '—（分母0）' : `${item.pctRespondent.toFixed(1)}%`}{weighted && item.pctRespondentUnweighted != null ? `（非加重 ${item.pctRespondentUnweighted.toFixed(1)}%）` : ''} ・ 選択中{item.selectedInSelection}人</span>
+          <span style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>{weighted ? `加重${formatWeight(item.selectedWeighted ?? 0)} / ` : ''}{item.selectedN}人 / {item.pctRespondent == null ? '—（分母0）' : `${item.pctRespondent.toFixed(1)}%`}{weighted && item.pctRespondentUnweighted != null ? `（非加重 ${item.pctRespondentUnweighted.toFixed(1)}%）` : ''} ・ 選択中{item.selectedInSelection}人</span>
         </div>
       })}
     </div>)}
     {options.length > 20 && <Pagination size="small" current={currentPage} pageSize={20} total={options.length} showSizeChanger={false} onChange={setPage} />}
-  </Card></FocusTarget>
+  </Card>
+  </GraphPanel>
+  )
 }

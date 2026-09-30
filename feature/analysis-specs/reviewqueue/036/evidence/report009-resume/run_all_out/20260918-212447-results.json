@@ -1,0 +1,42 @@
+{
+  "run_id": "20260918-212447",
+  "base": "http://127.0.0.1:8420",
+  "method": "cdp-setPageScaleFactor-2.0-headed-1280",
+  "cases": [
+    {
+      "name": "Z0-前提条件(可視・1280・bundle・DPR1)",
+      "ok": true,
+      "expected": "visible/1280/CKY31PSW/dpr1",
+      "actual": "visible/1280/dpr=1",
+      "detail": ""
+    },
+    {
+      "name": "Z1-拡大適用の事実(scale==2・DPR不変)",
+      "ok": true,
+      "expected": "cdp-scale2+vv-scale2+dpr1",
+      "actual": "cdp={'offsetX': 0, 'offsetY': 0, 'pageX': 0, 'pageY': 0, 'clientWidth': 640, 'clientHeight': 360, 'scale': 2, 'zoom': 1} vv={'scale': 2, 'w': 640, 'h': 360} dpr=1 (before={'offsetX': 0, 'offsetY': 0, 'pageX': 0, 'pageY': 0, 'clientWidth': 1280, 'clientHeight': 720, 'scale': 1, 'zoom': 1})",
+      "detail": ""
+    },
+    {
+      "name": "Z2-200%拡大状態で末尾葉へ到達",
+      "ok": true,
+      "expected": "/models/factor-analysis+可視",
+      "actual": "/models/factor-analysis 次元削減・因子分析 › 因子分析 vis=True",
+      "detail": ""
+    },
+    {
+      "name": "Z3-200%拡大で横スクロールなし・重なりなし",
+      "ok": true,
+      "expected": "bodySW<=docCW+重なりなし",
+      "actual": "bodySW=1280 docCW=1280 overlap=False menu=936/936 vv=2/640 dpr=1 vis=[データ・概要|可視化|関係・集計|パターン探索|予測・要因分析|次元削減・因子分析]",
+      "detail": ""
+    },
+    {
+      "name": "Z4-拡大解除後に操作復旧",
+      "ok": true,
+      "expected": "scale1+操作可",
+      "actual": "scale=1 operable=True",
+      "detail": ""
+    }
+  ]
+}

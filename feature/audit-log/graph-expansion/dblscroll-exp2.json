@@ -1,0 +1,82 @@
+[
+  {
+    "name": "wide pcp/main expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide pcp/main expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 4150, 'st': 2308, 'sw': 5532, 'sh': 3076, 'cw': 1382, 'ch': 768}"
+  },
+  {
+    "name": "wide relationships/heatmap expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide relationships/heatmap expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 4787, 'st': 2528, 'sw': 6169, 'sh': 3296, 'cw': 1382, 'ch': 768}"
+  },
+  {
+    "name": "wide barchart/main expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide barchart/main expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 4243, 'st': 1935, 'sw': 5625, 'sh': 2703, 'cw': 1382, 'ch': 768}"
+  },
+  {
+    "name": "wide fedf/main expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide fedf/main expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 3340, 'st': 2483, 'sw': 4722, 'sh': 3251, 'cw': 1382, 'ch': 768}"
+  },
+  {
+    "name": "wide covariance/matrix expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide covariance/matrix expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 3235, 'st': 2949, 'sw': 4617, 'sh': 3717, 'cw': 1382, 'ch': 768}"
+  },
+  {
+    "name": "narrow pcp/main expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow pcp/main expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 2836, 'st': 1480, 'sw': 3604, 'sh': 1972, 'cw': 768, 'ch': 492}"
+  },
+  {
+    "name": "narrow relationships/heatmap expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow relationships/heatmap expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 3183, 'st': 1619, 'sw': 3951, 'sh': 2111, 'cw': 768, 'ch': 492}"
+  },
+  {
+    "name": "narrow barchart/main expanded400 inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow barchart/main expanded400 edge-reach",
+    "ok": true,
+    "detail": "{'sl': 2357, 'st': 1010, 'sw': 3125, 'sh': 1502, 'cw': 768, 'ch': 492}"
+  }
+]

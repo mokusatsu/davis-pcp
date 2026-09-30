@@ -1,0 +1,123 @@
+[
+  {
+    "label": "nav-focused",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "UL",
+      "cls": "ant-menu-overflow ant-menu ant-menu-root ant-menu-horizontal ant-menu-light feat",
+      "text": "データ・概要可視化関係・集計パターン探索予測・要因分析次元削",
+      "menuId": null,
+      "label": null
+    },
+    "expanded": [],
+    "popupVisible": false
+  },
+  {
+    "label": "arrow-right-1",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "DIV",
+      "cls": "ant-menu-submenu-title",
+      "text": "データ・概要",
+      "menuId": "rc-menu-uuid-99139-1-group:data",
+      "label": null
+    },
+    "expanded": [],
+    "popupVisible": false
+  },
+  {
+    "label": "enter-open",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "LI",
+      "cls": "ant-menu-item ant-menu-item-active ant-menu-item-only-child",
+      "text": "データ表（Table）",
+      "menuId": "rc-menu-uuid-99139-1-/table",
+      "label": null
+    },
+    "expanded": [],
+    "popupVisible": true
+  },
+  {
+    "label": "arrow-down-1",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "LI",
+      "cls": "ant-menu-item ant-menu-item-active ant-menu-item-only-child",
+      "text": "データ概要（Overview）",
+      "menuId": "rc-menu-uuid-99139-1-/overview",
+      "label": null
+    },
+    "expanded": [],
+    "popupVisible": true
+  },
+  {
+    "label": "escape-1",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "DIV",
+      "cls": "ant-menu-submenu-title",
+      "text": "データ・概要",
+      "menuId": "rc-menu-uuid-99139-1-group:data",
+      "label": null
+    },
+    "expanded": [],
+    "popupVisible": false
+  },
+  {
+    "label": "reenter-open",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "LI",
+      "cls": "ant-menu-item ant-menu-item-active ant-menu-item-only-child",
+      "text": "データ表（Table）",
+      "menuId": "rc-menu-uuid-99139-1-/table",
+      "label": null
+    },
+    "expanded": [
+      "データ・概要"
+    ],
+    "popupVisible": true
+  },
+  {
+    "label": "arrow-down-2",
+    "url": "http://127.0.0.1:8420/",
+    "focus": {
+      "tag": "LI",
+      "cls": "ant-menu-item ant-menu-item-active ant-menu-item-only-child",
+      "text": "データ概要（Overview）",
+      "menuId": "rc-menu-uuid-99139-1-/overview",
+      "label": null
+    },
+    "expanded": [
+      "データ・概要"
+    ],
+    "popupVisible": true
+  },
+  {
+    "label": "enter-select",
+    "url": "http://127.0.0.1:8420/overview",
+    "focus": {
+      "tag": "DIV",
+      "cls": "",
+      "text": ".column-select-multi-wrap { di",
+      "menuId": null,
+      "label": "分析画面"
+    },
+    "expanded": [],
+    "popupVisible": false
+  },
+  {
+    "label": "enter-select-2",
+    "url": "http://127.0.0.1:8420/overview",
+    "focus": {
+      "tag": "DIV",
+      "cls": "",
+      "text": ".column-select-multi-wrap { di",
+      "menuId": null,
+      "label": "分析画面"
+    },
+    "expanded": [],
+    "popupVisible": false
+  }
+]

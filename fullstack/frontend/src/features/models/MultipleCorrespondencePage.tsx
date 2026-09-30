@@ -7,7 +7,7 @@ import { fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
@@ -25,7 +25,6 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 const VAR_COLORS = ['#1890ff', '#52c41a', '#fa8c16', '#722ed1', '#eb2f96', '#13c2c2', '#fadb14', '#2f54eb', '#a0d911', '#fa541c']
 
 export default function MultipleCorrespondencePage(): JSX.Element {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
@@ -320,8 +319,8 @@ export default function MultipleCorrespondencePage(): JSX.Element {
 
   return (
     <div data-testid="mca-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {!focused && (
-        <Card size="small" title="多重対応分析（MCA）" extra={<FocusEnterButton targetId="mca" title="MCA" />}>
+      {(
+        <Card size="small" title="多重対応分析（MCA）">
           <Space wrap align="center">
             <span>分析変数（2つ以上）</span>
             <SelectColumn
@@ -405,7 +404,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
       {error && <Alert type="error" message={error} />}
       {loading && <Spin tip="MCAを計算中…" />}
       {result && (
-        <FocusTarget id="mca" title="MCA結果">
+        <>
           <Card
             size="small"
             title={
@@ -440,6 +439,13 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                       {rowsMeta && (rowsMeta.resultId !== result.resultId || rowsMeta.axes.join(',') !== [axisX, effAxisY].slice(0, dispRank).join(',')) && (
                         <Alert type="warning" message="表示中の個体座標は取得中です。選択は取得完了後に行ってください。" />
                       )}
+                      <GraphPanel
+                        graphId="mca/individuals"
+                        title="MCA個体図"
+                        available={tab === 'individuals'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 560, height: 420 }}
+                      >
                       <McaFigure
                         points={overlay ? [...indPoints, ...catPoints.map((c) => ({ ...c, rowId: undefined }))] : indPoints}
                         rank={rank}
@@ -463,6 +469,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                         testId="mca-individual-svg"
                         overlayNote={overlay ? 'カテゴリ点を重ねて表示中（距離の解釈注意）' : undefined}
                       />
+                      </GraphPanel>
                       <Space wrap style={{ marginTop: 8 }}>
                         <span>X軸</span>
                         <Select value={axisX} onChange={setAxisX} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: axisLabel(rank, ratio, i + 1) }))} style={{ minWidth: 160 }} />
@@ -488,6 +495,13 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                           <Tag key={v.variableId} color={varColor(v.variableId)}>{v.label ?? nameById.get(v.variableId) ?? v.variableId}</Tag>
                         ))}
                       </Space>
+                      <GraphPanel
+                        graphId="mca/categories"
+                        title="MCAカテゴリ図"
+                        available={tab === 'categories'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 560, height: 420 }}
+                      >
                       <McaFigure
                         points={catPoints}
                         rank={rank}
@@ -519,6 +533,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                         svgRef={svgCatRef}
                         testId="mca-category-svg"
                       />
+                      </GraphPanel>
                       <Space wrap style={{ marginTop: 8 }}>
                         <Radio.Group value={between} onChange={(e) => setBetween(e.target.value)}>
                           <Radio.Button value="and">変数間AND</Radio.Button>
@@ -640,7 +655,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
             />
             {shownStale && <Alert type="warning" style={{ marginTop: 8 }} message="データ版が更新されました。表示は旧版のままです。選択・保存・予測はできません。" />}
           </Card>
-        </FocusTarget>
+        </>
       )}
     </div>
   )

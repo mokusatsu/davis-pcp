@@ -1,12 +1,12 @@
-# Feature 033b・033c：入力・結果契約
+# Feature 033 EFA・033c CFA：入力・結果契約
 
-版1.1／2026-09-13。対象はEFA/CFA拡張のみ。[共通結果契約](RESULT_CONTRACT.md)の行ID・保存・stale・有限JSON・CSV安全性を継承し、本書でmethodとcapabilities、診断を追加定義する。既存033契約の自動互換変換は行わない。
+版1.1／2026-09-13。対象は現行Feature 033 EFAと033c CFAのみ。[共通結果契約](RESULT_CONTRACT.md)の行ID・保存・stale・有限JSON・CSV安全性を継承し、本書でmethodとcapabilities、診断を追加定義する。旧FactorAnalysisRequestの自動互換変換は行わない。
 
 ## 1. 正本・入力
 
 実行可能な構文正本は[factor_extension_requests.py](factor_extension_requests.py)、生成Schemaは[efa.schema.json](schemas/efa.schema.json)と[cfa.schema.json](schemas/cfa.schema.json)。入力例は[efa.request.json](examples/efa.request.json)、[cfa.request.json](examples/cfa.request.json)。既存analysis_requests.pyのAnalysisContextV2とStrictModelを再利用する。データ依存検証・エンジン能力はSchema外でサービスが検査する。
 
-|入力|033b EFA|033c CFA|
+|入力|033 EFA|033c CFA|
 |---|---|---|
 |context|既存V2、missingPolicy=exclude|同左|
 |weightMode|none/dataset。dataset解決後にweightなしのみ|同左|
@@ -24,7 +24,7 @@ EFA qは1以上p未満、df≥0、比較候補も同条件。CFAは全項目が�
 
 生成JSON Schemaはフィールド型・enum・基本範囲を表し、Pydanticのmodel_validatorによる複数項目間の制約を自動では表現しない。JSON Schemaだけの合格を実行許可とせず、Python契約でtreatmentと推定器・因子割当・欠損・ウェイト設定等を再検証し、その後サービスがデータ依存条件を検証する。
 
-sensitivityAnalysisはenabled=false、approximationAcknowledged=falseがAPI既定。両者を同時にtrueにした場合だけ比較を実行する。全項目の元measurement=ordinal、parallelAnalysis.enabled=trueが必須。主treatmentは全ordinal／全continuous_approximationを許すが、その混在は禁止。alignment=signed_permutation、comparisonExtraction=minresを固定し、主のML指定は保持する。差分目安3種は(0,1]、割当閾値とmarginは[0,1]で、全て有限値。定義と既定値は033b詳細設計第9節を正本とする。CFARequestではこの比較指定を受け付けない。
+sensitivityAnalysisはenabled=false、approximationAcknowledged=falseがAPI既定。両者を同時にtrueにした場合だけ比較を実行する。全項目の元measurement=ordinal、parallelAnalysis.enabled=trueが必須。主treatmentは全ordinalまたは全continuous_approximationであり、その二つのtreatmentは混在させない。continuousとcontinuous_approximationだけの混在は主EFAで許可されるが、感度比較の対象ではない。alignment=signed_permutation、comparisonExtraction=minresを固定し、主のML指定は保持する。差分目安3種は(0,1]、割当閾値とmarginは[0,1]で、全て有限値。定義と既定値は[033 EFA設計の第7節](../tasks/DAVIS-FEAT-033-DESIGN.md#7-pearsonpolychoric感度分析)を正本とする。CFARequestではこの比較指定を受け付けない。
 
 ## 2. 共通エンベロープ拡張
 

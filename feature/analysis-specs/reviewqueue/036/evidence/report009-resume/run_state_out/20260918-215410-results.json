@@ -1,0 +1,114 @@
+{
+  "run_id": "20260918-215410",
+  "base": "http://127.0.0.1:8420",
+  "cases": [
+    {
+      "name": "S0-前提条件",
+      "ok": true,
+      "expected": "visible/1440/CKY31PSW",
+      "actual": "visible/1440",
+      "detail": ""
+    },
+    {
+      "name": "S1-Iris builtinへ切替",
+      "ok": true,
+      "expected": "Iris builtin",
+      "actual": "Iris (built-in sample) (150行)",
+      "detail": ""
+    },
+    {
+      "name": "V08a-記録のみ(成功数に含めない)",
+      "ok": false,
+      "expected": "記録のみ・ok:false固定",
+      "actual": "既定画面の記録 sel=['除外', '自動'] hasRun=False",
+      "detail": "Pyodide免除: 目的変数・説明変数未設定の既定画面であり解析成功の証拠ではない"
+    },
+    {
+      "name": "V08b1-重回帰の入力値を意図的に変更",
+      "ok": false,
+      "expected": "目的変数設定済み+重み=なし",
+      "actual": "before=[除外|自動] after_sel=['欠損カテゴリ', 'sepal_length_cm — Imputation Guard Label', '自動'] radios=['active', 'dataset']",
+      "detail": ""
+    },
+    {
+      "name": "V08b-変更した重回帰入力が実Menu往復で保持",
+      "ok": false,
+      "expected": "変更後テキスト完全一致+選択値一致+menu経路",
+      "actual": "sel_equal=True text_equal=False paths=/models/factor-analysis//models/linear-regression",
+      "detail": ""
+    },
+    {
+      "name": "V08c-コンジョイント入力変更が往復で保持・PCP描画維持",
+      "ok": true,
+      "expected": "入力変更+往復一致+svg>0",
+      "actual": "svg=39/53 paths=/models/conjoint//pcp//models/conjoint sel_equal=True changed=True",
+      "detail": ""
+    },
+    {
+      "name": "V09a-s datasetへ切替",
+      "ok": true,
+      "expected": "s (80行)",
+      "actual": "s (80行)",
+      "detail": ""
+    },
+    {
+      "name": "V09b-ウェイトを未選択→wへ変更(値が変わる)",
+      "ok": false,
+      "expected": "未選択と異なる値",
+      "actual": "before=未選択 after=未選択",
+      "detail": ""
+    },
+    {
+      "name": "V09c-変数を1つ外す(値が変わる)",
+      "ok": true,
+      "expected": "Variables表示が変化",
+      "actual": "before=[Variables: [ 80 / 80 項目選択中 (sepal_length_cm, sepal_width_cm.] mid=[Variables: [ 79 / 80 項目選択中 (sepal_width_cm, petal_length_cm.] boxes=80 unchecked=var-checkbox-{\"kind\":\"column\",\"columnId\":\"col-4024396c627f\"}",
+      "detail": ""
+    },
+    {
+      "name": "V09d-行範囲1-10を選択行へ適用",
+      "ok": true,
+      "expected": "選択:10行(ヘッダ正本)",
+      "actual": "header=[選択: 10行 ポインター選択 解除 F] sidebar=[選択行 0 / active 150 / 全150\n解除\nFocus\nDelete\n記述統計\n選択行CSV\nデータがあり]",
+      "detail": ""
+    },
+    {
+      "name": "V09e-変更状態が三地点で保持(選択・ウェイト・バー)",
+      "ok": false,
+      "expected": "rowId一致+ウェイト一致+バー一致",
+      "actual": "rows=[HDR:選択:10行ポインター選択解除F]/[選択: 10行 ポインター選択 解除 F]/[選択: 10行 ポインター選択 解除 F] w=[未選択]/[未選択]/[未選択] paths=/pcp//table bar_equal=True",
+      "detail": ""
+    },
+    {
+      "name": "V09f-元の値へ戻す(ウェイト未選択・変数全選択・選択解除)",
+      "ok": false,
+      "expected": "復元",
+      "actual": "w=未選択 var=[Variables: [ 78 / 80 項目選択中 (petal_length_cm, petal_width_cm.] sel=[選択行 0 / active 150 / 全150\n解除\nFocus\nDelet]",
+      "detail": ""
+    },
+    {
+      "name": "V10a-切替前の旧状態(選択2件・可視popup>=1)",
+      "ok": true,
+      "expected": "選択2+popup>=1",
+      "actual": "sel=選択行 2 / active 150 / 全150\n解除\nFocus\nDelete\n記述統計\n選択行CSV\nIRIS-0 popup=1",
+      "detail": ""
+    },
+    {
+      "name": "V10b-旧状態の消滅(選択0・可視popup0)+全NaN証明",
+      "ok": true,
+      "expected": "旧選択2→0+旧popup>=1→0+全NaN",
+      "actual": "ds=n007_allnan (3行) sidebar=[選択行 0 / active 3 / 全3\n解除\nFocus\nDelete\n記述統計\n選択行CSV\nデータがありません] visible=0 allnan={\"rows\":3,\"allnan\":[\"allnan\"]}",
+      "detail": ""
+    },
+    {
+      "name": "V11-拡大解除後に既存共通操作が起動可能",
+      "ok": true,
+      "expected": "Export開閉+Save開閉+Import存在+License開閉+復旧",
+      "actual": "dlg=True/False export=True/True items=['全行 CSV', '選択行 CSV (0行)', '選択行 CSV (値ラベル付き) (0行)', '全行 CSV (値ラベル付き)', '全行 Excel (値ラベル付き)', '全行 Parquet'] save=True/True [セッション保存\nキャンセル\n保 存] import_inputs=1 license=True/True menu=True",
+      "detail": ""
+    }
+  ],
+  "excluded_from_pass": [
+    "V08a-記録のみ(成功数に含めない)"
+  ]
+}

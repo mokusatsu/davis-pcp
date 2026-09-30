@@ -1,8 +1,8 @@
-# Feature 033b・033c：設計成果物の検証報告
+# Feature 033 EFA・033c CFA：設計成果物の検証報告
 
 対象日：2026-09-13。対象は設計文書、入力契約、Schema、入力例、文書間参照。EFA/CFAの本体数値エンジンの検証ではない。
 
-既存のartifact_qa.json、environment.json、pytest_output.txt、pytest_results.xmlは2026-09-12の参照検証記録として保持する。追加033b/033cの現在の検証範囲は本報告を参照する。
+既存のartifact_qa.json、environment.json、pytest_output.txt、pytest_results.xmlは2026-09-12の参照検証記録として保持する。追加033 EFA/033c CFAの現在の検証範囲は本報告を参照する。
 
 ## 1. 検証対象
 
@@ -44,3 +44,11 @@ python -m unittest discover -s feature/analysis-specs/validation -p test_factor_
 ```text
 python feature/analysis-specs/validation/publish_specifications.py
 ```
+
+## 5. 033／033b集約の文書検証
+
+2026-09-13に、旧033の連続ML資料と033b EFA資料を現行Feature 033 EFAへ集約した。ここでの記録は文書構造・生成物の検証であり、EFA/CFAの数値エンジン受入ではない。旧VALIDATION_REPORT.mdの42件を含む既存の歴史的検証記録は変更していない。
+
+バンドルPythonでpublish_specifications.pyを実行し、現行の一括閲覧対象29文書、HTML ID 41件、ローカルリンク205件、欠落0件を確認した。旧033、033b、033B設計は移動案内として残し、一括閲覧の正本文書集合から除外した。新033仕様・新033設計、033cからの033参照、EFARequest／efa.schema.json／入力例への入口、EFA-B01〜EFA-B22の所属を確認した。
+
+SHA256SUMSは現行86エントリを再計算し、全エントリの再照合で不一致0件を確認した。033cから新033への第2節・第6節参照、拡張契約から新033設計第7節への参照は、対象見出しと一致することを確認した。

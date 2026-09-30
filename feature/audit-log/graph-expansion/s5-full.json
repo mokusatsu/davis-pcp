@@ -1,0 +1,247 @@
+[
+  {
+    "id": "pcp/main",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "relationships/heatmap",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "relationships/pair",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "distribution/boxplot",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "distribution/qq",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "distribution/question/",
+    "status": "合格",
+    "detail": "hosts=12"
+  },
+  {
+    "id": "distribution/ma/",
+    "status": "N/A",
+    "detail": "インスタンスなし（データ条件未成立）"
+  },
+  {
+    "id": "barchart/main",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "barchart/ma",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "fedf/main",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "loess/main",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "covariance/matrix",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "pca/scree",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "pca/biplot",
+    "status": "N/A",
+    "detail": "available=falseのため入口なし（正しい）"
+  },
+  {
+    "id": "pca/matrix",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "touring/main",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "mosaic/main",
+    "status": "N/A",
+    "detail": "available=falseのため入口なし（正しい）"
+  },
+  {
+    "id": "clusters/pca",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "clusters/silhouette",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "clusters/dendrogram",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "clusters/cobweb",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "clusters/disc",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "models/importance",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "models/tree",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "ranking/metrics",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "ranking/mrmr",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "associations/quadrant",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "associations/heatmap",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "robustness/tornado",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "key-drivers/importance",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "penalty-reward/kano",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "penalty-reward/diverging",
+    "status": "合格",
+    "detail": "入口・拡大OK"
+  },
+  {
+    "id": "logistic/sigmoid",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "logistic/forest",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "discriminant/map",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "discriminant/structure",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "ca/map",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "mca/individuals",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "mca/categories",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "famd/individuals",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "famd/categories",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "famd/correlation",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "famd/relations",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "linear-regression/diagnostics",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "factor-analysis/scree",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "factor-analysis/scores",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "conjoint/diagnostics",
+    "status": "N/A",
+    "detail": "結果未生成・条件未成立"
+  },
+  {
+    "id": "statistics/histogram/",
+    "status": "N/A",
+    "detail": "インスタンスなし（データ条件未成立）"
+  },
+  {
+    "id": "likert/comparison",
+    "status": "N/A",
+    "detail": "available=falseのため入口なし（正しい）"
+  }
+]

@@ -81,6 +81,17 @@ export interface ModernInsight {
   narrative: string
 }
 
+export interface EmmDiagnostics {
+  status: string
+  requestedQuestions: string[]
+  eligibleQuestions: string[]
+  ineligibleQuestions: { column: string; reason: string }[]
+  pairsEvaluated: number
+  evaluationsAttempted: number
+  acceptedCandidates: number
+  rejectionCounts: Record<string, number>
+}
+
 export interface ModernMiningResult {
   run_id: string
   mode: string
@@ -88,6 +99,7 @@ export interface ModernMiningResult {
   algorithmMode?: string
   candidateSetHash?: string
   explorationNote?: string
+  emmDiagnostics?: EmmDiagnostics
   /** The candidates exploration pinned; some insights pin none and cannot be verified. */
   candidates?: PinnedCandidateSummary[]
   summary: {
@@ -299,6 +311,39 @@ export const ModernSubgroupMiningView: React.FC = () => {
     () => (selectedInsight ? verificationFor(verificationResult, selectedInsight.id) : null),
     [verificationResult, selectedInsight],
   )
+  const emmDiagnostics = result?.algorithmMode === 'emm_kendall'
+    ? result.emmDiagnostics ?? null
+    : null
+  const emmDiagnosticIssue = emmDiagnostics?.status !== 'results_found' ? emmDiagnostics : null
+  const emmDiagnosticMessage = (() => {
+    if (!emmDiagnosticIssue) return null
+    const rejectionLabels: Record<string, string> = {
+      insufficient_group_size: '群サイズ不足',
+      constant_value: '定数値',
+      undefined_tau: '未定義の Kendall τ',
+    }
+    const rejectionSummary = Object.entries(emmDiagnosticIssue.rejectionCounts)
+      .filter(([, count]) => count > 0)
+      .map(([reason, count]) => `${rejectionLabels[reason] ?? reason}: ${count}件`)
+      .join('、')
+
+    switch (emmDiagnosticIssue.status) {
+      case 'insufficient_rows':
+        return 'Kendall-EMMには少なくとも2行のデータが必要です。'
+      case 'requires_two_eligible_questions':
+        return `Kendall-EMMには二値ではない数値の質問変数が2つ必要です。現在の適格変数は${emmDiagnosticIssue.eligibleQuestions.length}件です。`
+      case 'selected_pair_ineligible':
+        return `選択した質問ペアにKendall-EMMで使えない変数が含まれます（${emmDiagnosticIssue.ineligibleQuestions.map(item => item.column).join('、') || '不明'}）。二値ではない数値の質問を2つ選択してください。`
+      case 'no_evaluable_rules':
+        return '選択した質問ペアは適格ですが、評価可能なサブグループ条件を作れませんでした。属性変数または最小グループ人数を見直してください。'
+      case 'no_valid_candidate':
+        return `評価可能な条件はありましたが、Kendall τを計算できる候補がありませんでした。${rejectionSummary || '欠損・群サイズ・値のばらつきを確認してください。'}`
+      case 'no_evaluable_pairs':
+        return 'Kendall-EMMで評価できる質問ペアを作れませんでした。二値ではない数値の質問を2つ選択してください。'
+      default:
+        return 'Kendall-EMMで表示可能な候補を作れませんでした。質問変数、属性変数、最小グループ人数を確認してください。'
+    }
+  })()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -528,6 +573,15 @@ export const ModernSubgroupMiningView: React.FC = () => {
           data-testid="modern-verification-badge"
         />
       )}
+      {emmDiagnosticIssue && !loading && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Kendall-EMM の結果を表示できません"
+          description={emmDiagnosticMessage}
+          data-testid="modern-emm-diagnostics"
+        />
+      )}
       {result && !loading && (
         <Row gutter={[16, 16]}>
           {/* Left: Insight Cards List */}
@@ -537,7 +591,9 @@ export const ModernSubgroupMiningView: React.FC = () => {
             </Typography.Title>
 
             {displayedInsights.length === 0 ? (
-              <Empty description="条件に合致するインサイトはありませんでした。" />
+              <Empty description={emmDiagnosticIssue
+                ? 'Kendall-EMMで表示可能なインサイトはありません。上の理由を確認してください。'
+                : '条件に合致するインサイトはありませんでした。'} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {displayedInsights.map((ins, idx) => {

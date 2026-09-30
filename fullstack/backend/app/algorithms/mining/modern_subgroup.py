@@ -376,8 +376,13 @@ def compute_kendall_emm_score(
     complexity: int = 1,
     lambda_penalty: float = 0.05,
     s_max: float = 50.0,
-) -> tuple[float, float, dict[str, Any], dict[str, Any], dict[str, Any]] | None:
-    """Compute Kendall tau-b EMM score comparing subgroup tau vs complement tau."""
+    include_reason: bool = False,
+) -> tuple[float, float, dict[str, Any], dict[str, Any], dict[str, Any]] | tuple[tuple[float, float, dict[str, Any], dict[str, Any], dict[str, Any]] | None, str | None] | None:
+    """Compute Kendall tau-b EMM score comparing subgroup tau vs complement tau.
+
+    ``include_reason`` is used by the mining pipeline to distinguish a rejected
+    candidate from a valid score without changing the normal public result.
+    """
     valid = (~np.isnan(x)) & (~np.isnan(y))
     sg_valid = subgroup_mask & valid
     comp_valid = (~subgroup_mask) & valid
@@ -386,14 +391,14 @@ def compute_kendall_emm_score(
     n_comp = int(np.sum(comp_valid))
 
     if n_R < min_group_size or n_comp < min_group_size:
-        return None
+        return (None, "insufficient_group_size") if include_reason else None
 
     N = n_R + n_comp
     x_R, y_R = x[sg_valid], y[sg_valid]
     x_comp, y_comp = x[comp_valid], y[comp_valid]
 
     if np.std(x_R) == 0 or np.std(y_R) == 0 or np.std(x_comp) == 0 or np.std(y_comp) == 0:
-        return None
+        return (None, "constant_value") if include_reason else None
 
     res_R = stats.kendalltau(x_R, y_R, variant="b")
     res_comp = stats.kendalltau(x_comp, y_comp, variant="b")
@@ -402,7 +407,7 @@ def compute_kendall_emm_score(
     tau_comp = float(res_comp.statistic) if not np.isnan(res_comp.statistic) else None
 
     if tau_R is None or tau_comp is None:
-        return None
+        return (None, "undefined_tau") if include_reason else None
 
     delta_tau = tau_R - tau_comp
     size_weight = math.sqrt((n_R * n_comp) / N)
@@ -430,7 +435,8 @@ def compute_kendall_emm_score(
         "description": f"補集合の順位相関 ({tau_comp:+.2f}) に対し、サブグループは ({tau_R:+.2f}) と乖離",
     }
 
-    return score, raw_score, target_stats, ranking_reason, emm_stats
+    result = (score, raw_score, target_stats, ranking_reason, emm_stats)
+    return (result, None) if include_reason else result
 
 
 def apply_effect_aware_diversity(
@@ -549,6 +555,7 @@ def run_modern_subgroup_mining(
     if df.height < 2:
         return {
             "run_id": str(uuid.uuid4()),
+            "mode": mode,
             "generated_at": datetime.datetime.now().isoformat(),
             "config": {
                 "max_depth": max_depth,
@@ -562,6 +569,20 @@ def run_modern_subgroup_mining(
                 "effective_min_group_size": min_group_size,
             },
             "insights": [],
+            "emmDiagnostics": {
+                "status": "insufficient_rows" if mode in ("auto", "emm_kendall") else "not_requested",
+                "requestedQuestions": list(target_questions or []),
+                "eligibleQuestions": [],
+                "ineligibleQuestions": [],
+                "pairsEvaluated": 0,
+                "evaluationsAttempted": 0,
+                "acceptedCandidates": 0,
+                "rejectionCounts": {
+                    "insufficient_group_size": 0,
+                    "constant_value": 0,
+                    "undefined_tau": 0,
+                },
+            },
         }
 
     adapter = CodebookAdapter(df, {"columns": column_meta or []})
@@ -762,6 +783,20 @@ def run_modern_subgroup_mining(
             question_arrays[q] = (arr, False, sd)
 
     candidate_pool: list[RuleCandidate] = []
+    emm_diagnostics: dict[str, Any] = {
+        "status": "not_requested",
+        "requestedQuestions": list(target_questions or []),
+        "eligibleQuestions": [],
+        "ineligibleQuestions": [],
+        "pairsEvaluated": 0,
+        "evaluationsAttempted": 0,
+        "acceptedCandidates": 0,
+        "rejectionCounts": {
+            "insufficient_group_size": 0,
+            "constant_value": 0,
+            "undefined_tau": 0,
+        },
+    }
 
     # 1. Standard Single Question Evaluation across all questions
     if mode in ("auto", "standard"):
@@ -827,57 +862,103 @@ def run_modern_subgroup_mining(
 
     # 2. Kendall-EMM Pairs Evaluation
     if mode in ("auto", "emm_kendall"):
-        # Pick valid numeric/continuous questions for Kendall-EMM (exclude binary)
+        # Kendall tau-b needs two non-binary, numeric question variables.
         emm_valid_questions = [
             q for q in eval_questions
             if q in question_arrays and not question_arrays[q][1]
         ]
-        if len(emm_valid_questions) >= 2:
-            # If mode is emm_kendall and target_questions specified, use exactly that pair if valid
-            if mode == "emm_kendall" and target_questions and len(target_questions) == 2:
-                if target_questions[0] in question_arrays and target_questions[1] in question_arrays:
-                    pairs_to_eval = [(target_questions[0], target_questions[1])]
-                else:
-                    pairs_to_eval = []
+        emm_diagnostics["status"] = "pending"
+        emm_diagnostics["eligibleQuestions"] = emm_valid_questions
+        pairs_to_eval: list[tuple[str, str]] = []
+
+        if mode == "emm_kendall" and target_questions and len(target_questions) == 2:
+            selected_pair = (target_questions[0], target_questions[1])
+            emm_diagnostics["selectedPair"] = list(selected_pair)
+            if selected_pair[0] == selected_pair[1]:
+                emm_diagnostics["status"] = "selected_pair_ineligible"
+                emm_diagnostics["ineligibleQuestions"] = [{
+                    "column": selected_pair[0],
+                    "reason": "duplicate_pair",
+                }]
             else:
-                # Pick top prominent pairs
-                all_possible_pairs = list(itertools.combinations(emm_valid_questions[:8], 2))
-                pairs_to_eval = all_possible_pairs[:15]
-
-            for q1, q2 in pairs_to_eval:
-                arr1, _, _ = question_arrays[q1]
-                arr2, _, _ = question_arrays[q2]
-
-                for conds, mask in generated_rules:
-                    if any(c.column in (q1, q2) for c in conds):
+                ineligible_questions = []
+                for question in selected_pair:
+                    if question in emm_valid_questions:
                         continue
-                    complexity = len(conds)
-                    res_emm = compute_kendall_emm_score(
-                        x=arr1,
-                        y=arr2,
-                        subgroup_mask=mask,
-                        min_group_size=effective_min_group_size,
-                        complexity=complexity,
-                        lambda_penalty=lambda_penalty,
-                        s_max=s_max,
-                    )
-                    if res_emm:
-                        sc, r_sc, t_stats, reason, emm_st = res_emm
-                        r_ids = [all_row_ids[i] for i, b in enumerate(mask) if b]
-                        candidate_pool.append(RuleCandidate(
-                            conditions=conds,
-                            attribute_cols=[c.column for c in conds],
-                            row_ids=r_ids,
-                            bitmask=mask,
-                            n_subgroup=int(np.sum(mask)),
-                            n_complement=int(np.sum(~mask)),
-                            score=round(sc, 2),
-                            raw_score=round(r_sc, 2),
-                            target_stats=t_stats,
-                            ranking_reason=reason,
-                            target_pair=[q1, q2],
-                            emm_stats=emm_st,
-                        ))
+                    if question in question_arrays and question_arrays[question][1]:
+                        reason = "binary_question"
+                    elif question in eval_questions:
+                        reason = "non_numeric_question"
+                    else:
+                        reason = "unsupported_target_type"
+                    ineligible_questions.append({"column": question, "reason": reason})
+                if ineligible_questions:
+                    emm_diagnostics["status"] = "selected_pair_ineligible"
+                    emm_diagnostics["ineligibleQuestions"] = ineligible_questions
+                else:
+                    pairs_to_eval = [selected_pair]
+        elif len(emm_valid_questions) < 2:
+            emm_diagnostics["status"] = "requires_two_eligible_questions"
+        else:
+            # Pick top prominent pairs for automatic EMM exploration.
+            all_possible_pairs = list(itertools.combinations(emm_valid_questions[:8], 2))
+            pairs_to_eval = all_possible_pairs[:15]
+
+        emm_diagnostics["pairsEvaluated"] = len(pairs_to_eval)
+        for q1, q2 in pairs_to_eval:
+            arr1, _, _ = question_arrays[q1]
+            arr2, _, _ = question_arrays[q2]
+
+            for conds, mask in generated_rules:
+                if any(c.column in (q1, q2) for c in conds):
+                    continue
+                complexity = len(conds)
+                result_with_reason = compute_kendall_emm_score(
+                    x=arr1,
+                    y=arr2,
+                    subgroup_mask=mask,
+                    min_group_size=effective_min_group_size,
+                    complexity=complexity,
+                    lambda_penalty=lambda_penalty,
+                    s_max=s_max,
+                    include_reason=True,
+                )
+                res_emm, rejection_reason = result_with_reason
+                emm_diagnostics["evaluationsAttempted"] += 1
+                if rejection_reason:
+                    rejection_counts = emm_diagnostics["rejectionCounts"]
+                    rejection_counts[rejection_reason] = rejection_counts.get(rejection_reason, 0) + 1
+                    continue
+                if not res_emm:
+                    continue
+
+                sc, r_sc, t_stats, reason, emm_st = res_emm
+                r_ids = [all_row_ids[i] for i, b in enumerate(mask) if b]
+                candidate_pool.append(RuleCandidate(
+                    conditions=conds,
+                    attribute_cols=[c.column for c in conds],
+                    row_ids=r_ids,
+                    bitmask=mask,
+                    n_subgroup=int(np.sum(mask)),
+                    n_complement=int(np.sum(~mask)),
+                    score=round(sc, 2),
+                    raw_score=round(r_sc, 2),
+                    target_stats=t_stats,
+                    ranking_reason=reason,
+                    target_pair=[q1, q2],
+                    emm_stats=emm_st,
+                ))
+                emm_diagnostics["acceptedCandidates"] += 1
+
+        if emm_diagnostics["status"] == "pending":
+            if not pairs_to_eval:
+                emm_diagnostics["status"] = "no_evaluable_pairs"
+            elif emm_diagnostics["evaluationsAttempted"] == 0:
+                emm_diagnostics["status"] = "no_evaluable_rules"
+            elif emm_diagnostics["acceptedCandidates"] == 0:
+                emm_diagnostics["status"] = "no_valid_candidate"
+            else:
+                emm_diagnostics["status"] = "results_found"
 
     # Cross-question diversity selection
     diverse_top_k = apply_effect_aware_diversity(
@@ -980,5 +1061,6 @@ def run_modern_subgroup_mining(
             "questions_requested_count": len(eval_questions),
             "skippedTargets": skipped_targets,
         },
+        "emmDiagnostics": emm_diagnostics,
         "insights": insights_out,
     }

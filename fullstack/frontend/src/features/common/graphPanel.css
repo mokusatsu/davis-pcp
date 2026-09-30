@@ -1,0 +1,105 @@
+/* Feature 035 GraphPanel 専用 CSS。
+ * slot・host・操作領域・viewport・スクロール範囲・scale面・popup領域のみを制御する。
+ * 旧 focus 用の SVG 子孫全体指定はここへ持ち込まない。
+ */
+
+.graph-panel-host {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+}
+
+/* 通常表示では図本体を縮めず、外側の main だけを縦スクロールさせる。
+ * 拡大 dialog 内では受け口いっぱいに広げる（下記）。
+ * PCP（responsive）は親領域を使うため個別に上書きする。 */
+.graph-panel-host {
+  flex: 0 0 auto;
+}
+
+.graph-panel-host[data-graph-host="pcp/main"] {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.graph-panel-host[data-graph-host="pcp/main"] .graph-panel-viewport {
+  flex: 1 1 auto;
+}
+
+.graph-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.graph-panel-controls {
+  flex-shrink: 0;
+}
+
+/* controls・popup には scale を適用しない。 */
+.graph-panel-controls,
+.graph-panel-popup {
+  transform: none !important;
+}
+
+.graph-panel-viewport {
+  /* intrinsic 図は extent の実寸で高さを決める。残り高さへ flex 縮小すると
+   * 図ごとの縦スクロールと ResizeObserver の再計測が発生する。 */
+  flex: 0 0 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* extent は倍率適用後の占有幅・高さを確保する。min 100% 設定はしない。 */
+.graph-panel-extent {
+  position: relative;
+}
+
+/* surface には共通部が一度だけ scale を適用する。 */
+.graph-panel-surface {
+  transform-origin: 0 0;
+  position: relative;
+}
+
+/* width:100% の SVG/Canvas に border を付けたとき、content-box の 2px が
+ * extent を越えて横スクロールを作らないよう、描画面の外枠を論理寸法へ含める。 */
+.graph-panel-surface :is(svg, canvas) {
+  box-sizing: border-box;
+}
+
+.graph-panel-popup {
+  position: relative;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+
+/* 拡大 dialog 内の host は dialog の受け口いっぱいに広げる。 */
+[data-testid="graph-expansion-dock"] .graph-panel-host {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+[data-testid="graph-expansion-dock"] .graph-panel-viewport {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 通常 slot は拡大直前の寸法を残し、レイアウトを保持する。
+ * F004-05: display:contents では host の高さ指定が親へ届かない配置がある。
+ * ただし block 化は intrinsic パネルの親チェーンを壊すため、contents を維持し、
+ * 代わりに host 側で内容高さを確保する（下記の intrinsic フォールバック）。 */
+.graph-panel-slot {
+  display: contents;
+}
+
+/* 拡大中は元の slot 位置に直前の寸法を残すための placeholder。 */
+.graph-panel-slot-placeholder {
+  width: 100%;
+}

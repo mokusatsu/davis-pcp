@@ -7,7 +7,6 @@ import {
   Popover,
   Input,
   Checkbox,
-  Select,
   Space,
   Radio,
   Typography,
@@ -35,7 +34,11 @@ import {
   focusSelected,
   deleteSelected,
   resetWorkingSet,
+  pcpStateChanged,
 } from '../../app/store'
+import Select from '../common/ColumnSelect'
+import L1Legend from '../common/L1Legend'
+import { useDatasetL1ColorDomains } from '../../theme/useL1ColorDomain'
 import VariableSelectionModal from './VariableSelectionModal'
 import ObservationModal from './ObservationModal'
 import PointerSelectionDropdown from './PointerSelectionDropdown'
@@ -58,6 +61,21 @@ export const GlobalHeaderControlBar: React.FC = () => {
     (c) => c.role === 'weight' && (c.scaleType === 'interval' || c.scaleType === 'ratio') && !c.multiResponseGroup
   )
   const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const colorBy = useSelector((s: RootState) => s.pcp.colorBy)
+  const l1Candidates = useDatasetL1ColorDomains(selection.datasetId)
+  const colorOptions = (l1Candidates ?? []).map((domain) => {
+    const column = codebookColumns.find((candidate) => candidate.name === domain.key)
+    const label = column?.label?.trim() || column?.name || domain.key
+    return { value: domain.key, label: `${label}（${domain.codes.length}種類）` }
+  })
+  const colorSelectionDisabled = !selection.datasetId || l1Candidates === null || colorOptions.length === 0
+  const colorStatus = !selection.datasetId
+    ? 'データセットを選択してください。'
+    : l1Candidates === null
+      ? '色分け候補を読み込んでいます。'
+      : colorOptions.length === 0
+        ? '色分けに使える列がありません。'
+        : '欠損を除く1〜20種類の値を持つ列を使用します。'
 
   const totalVarCount = globalVars.allVariables.length
   const activeVarCount = globalVars.activeVariableIds.length
@@ -183,6 +201,25 @@ export const GlobalHeaderControlBar: React.FC = () => {
 
   const activeVarPreview = globalVars.activeVariableIds.slice(0, 2).map(key => globalVars.variableMeta[key]?.name)
 
+  const colorPopoverContent = (
+    <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="global-color-popover">
+      <Typography.Text strong style={{ fontSize: 12 }}>L1色分け</Typography.Text>
+      <Select
+        size="small"
+        style={{ width: '100%' }}
+        placeholder="色分けしない"
+        allowClear
+        disabled={colorSelectionDisabled}
+        value={colorBy ?? undefined}
+        onChange={(value) => dispatch(pcpStateChanged({ colorBy: value ?? null }))}
+        options={colorOptions}
+        data-testid="global-color-by"
+      />
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{colorStatus}</Typography.Text>
+      <L1Legend />
+    </div>
+  )
+
   return (
     <div
       data-testid="global-header-control-bar"
@@ -235,6 +272,17 @@ export const GlobalHeaderControlBar: React.FC = () => {
             }))}
             data-testid="global-weight-select"
           />
+          <Popover
+            content={colorPopoverContent}
+            title="色分け"
+            trigger="click"
+            placement="bottomLeft"
+            getPopupContainer={() => document.body}
+          >
+            <Button size="small" data-testid="global-color-btn">
+              色分け <DownOutlined style={{ fontSize: 10 }} />
+            </Button>
+          </Popover>
         </Space>
       </div>
 

@@ -4,6 +4,8 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
 import ColumnQuestionTooltip from '../src/features/common/ColumnQuestionTooltip'
+import GraphPanel from '../src/features/common/GraphPanel'
+import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 import { codebookSlice, fetchCodebookThunk, draftColumnUpdated, saveCodebookThunk } from '../src/features/dataset/codebookSlice'
 import type { CodebookColumn } from '../src/api/client'
 
@@ -13,7 +15,11 @@ function setup(label = column.label, datasetId = 'ds') {
   const state = store.getState()
   const loaded = codebookSlice.reducer(state.codebook, fetchCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 1, columns: [] }, 'load', 'ds'))
   const cb = { ...loaded, datasetId: 'ds', columns: [{ ...column, label }], draftColumns: [{ ...column, label }] }
-  return configureStore({ reducer: { codebook: codebookSlice.reducer, selection: (s = { ...state.selection, datasetId }) => s }, preloadedState: { codebook: cb }, middleware: g => g({ serializableCheck: false }) })
+  return configureStore({ reducer: {
+    codebook: codebookSlice.reducer,
+    selection: (s = { ...state.selection, datasetId }) => s,
+    pcp: (s = state.pcp) => s,
+  }, preloadedState: { codebook: cb }, middleware: g => g({ serializableCheck: false }) })
 }
 afterEach(cleanup)
 describe('column question popup', () => {
@@ -62,5 +68,22 @@ describe('column question popup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Qの設問文を表示' }))
     await waitFor(() => expect(screen.getByText('設問です')).toBeVisible())
     expect(selected).toBe(false)
+  })
+  it('puts an expanded graph axis question popup inside the dialog popup root', async () => {
+    const testStore = setup()
+    render(
+      <Provider store={testStore}>
+        <GraphExpansionProvider>
+          <GraphPanel graphId="test/tooltip" title="設問付き図" sizing="intrinsic" intrinsicSize={{ width: 320, height: 180 }}>
+            <svg viewBox="0 0 320 180"><ColumnQuestionTooltip nameOrId="Q" svg><text x={20} y={40}>Q</text></ColumnQuestionTooltip></svg>
+          </GraphPanel>
+        </GraphExpansionProvider>
+      </Provider>,
+    )
+    fireEvent.click(screen.getByTestId('graph-expand-test/tooltip'))
+    await screen.findByTestId('graph-expansion-dialog')
+    fireEvent.focus(screen.getByText('Q'))
+    const popup = await screen.findByRole('tooltip')
+    expect(screen.getByTestId('graph-expansion-popup')).toContainElement(popup)
   })
 })

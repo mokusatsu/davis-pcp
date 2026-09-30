@@ -34,9 +34,12 @@ import CorrespondenceAnalysisPage from './features/models/CorrespondenceAnalysis
 import MultipleCorrespondencePage from './features/models/MultipleCorrespondencePage'
 import FamdPage from './features/models/FamdPage'
 import LinearRegressionPage from './features/models/LinearRegressionPage'
+import FactorAnalysisPage from './features/models/FactorAnalysisPage'
+import ConjointPage from './features/models/ConjointPage'
 import { store } from './app/store'
-import { FocusModeProvider } from './features/common/FocusMode'
+import { GraphExpansionProvider } from './features/common/GraphExpansion'
 import { IS_STATIC_BUILD } from './api/client'
+import './features/common/graphPanel.css'
 import { WasmLoadingScreen } from './app/WasmLoadingScreen'
 import { pyodideClient } from './engine/pyodideClient'
 import './theme/viz.css'
@@ -71,6 +74,8 @@ const routeChildren = [
   { path: 'models/mca', element: <MultipleCorrespondencePage /> },
   { path: 'models/famd', element: <FamdPage /> },
   { path: 'models/linear-regression', element: <LinearRegressionPage /> },
+  { path: 'models/factor-analysis', element: <FactorAnalysisPage /> },
+  { path: 'models/conjoint', element: <ConjointPage /> },
   { path: 'crosstab', element: <CrosstabPage /> },
 ]
 
@@ -108,9 +113,9 @@ const AppRoot: React.FC = () => {
   return (
     <Provider store={store}>
       <ConfigProvider locale={jaJP} theme={{ algorithm: antdTheme.defaultAlgorithm }}>
-        <FocusModeProvider>
+        <GraphExpansionProvider>
           <RouterProvider router={router} />
-        </FocusModeProvider>
+        </GraphExpansionProvider>
       </ConfigProvider>
     </Provider>
   )

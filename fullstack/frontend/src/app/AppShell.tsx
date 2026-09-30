@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Badge, Button, Dropdown, Input, Layout, List, Modal, Segmented,
-  Select, Space, Tag, Tooltip, Typography, Upload, notification,
+  Badge, Button, ConfigProvider, Dropdown, Grid, Input, Layout, List, Menu, Modal,
+  Select, Space, Tooltip, Typography, Upload, notification,
 } from 'antd'
+import type { MenuProps } from 'antd'
 import {
-  BarChartOutlined, ClearOutlined, DownloadOutlined, FileTextOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined,
+  BarChartOutlined, ClearOutlined, DownloadOutlined, FileTextOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch, VariableMetaItem } from './store'
 import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, statsScopeSet, variablesInitialized } from './store'
 import { api, downloadExport } from '../api/client'
-import { FocusBar, useFocusMode } from '../features/common/FocusMode'
+import { normalizePageKey, useGraphExpansion } from '../features/common/GraphExpansion'
 import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar'
 import LicenseModal from '../features/common/LicenseModal'
 import KeepAliveOutlet from './KeepAliveOutlet'
@@ -26,42 +27,185 @@ interface DatasetListItem {
   columnCount: number
 }
 
-export const VIS_NAV_ITEMS = [
-  { key: '/pcp', label: 'PCP' },
-  { key: '/table', label: 'Table' },
-  { key: '/distribution', label: 'Distribution' },
-  { key: '/likert', label: 'Likert' },
-  { key: '/relationships', label: 'Relationships' },
-  { key: '/associations', label: 'Surprise' },
-  { key: '/touring', label: 'Touring' },
-  { key: '/mosaic', label: 'Mosaic' },
-  { key: '/crosstab', label: 'Crosstab' },
-  { key: '/fedf', label: 'FEDF' },
-  { key: '/barchart', label: 'Bar Chart' },
-  { key: '/loess', label: 'Loess' },
-]
+export const NAV_GROUPS = [
+  { key: 'group:data', label: 'データ・概要', children: [
+    { key: '/table', label: 'データ表（Table）' },
+    { key: '/overview', label: 'データ概要（Overview）' },
+    { key: '/statistics', label: '記述統計（Statistics）' },
+    { key: '/covariance', label: '共分散（Covariance）' },
+  ] },
+  { key: 'group:visual', label: '可視化', children: [
+    { key: '/pcp', label: '平行座標（PCP）' },
+    { key: '/distribution', label: '分布（Distribution）' },
+    { key: '/likert', label: 'Likert' },
+    { key: '/touring', label: 'Touring' },
+    { key: '/fedf', label: 'FEDF' },
+    { key: '/barchart', label: '棒グラフ（Bar Chart）' },
+    { key: '/loess', label: 'Loess' },
+  ] },
+  { key: 'group:relations', label: '関係・集計', children: [
+    { key: '/relationships', label: '変数間の関係（Relationships）' },
+    { key: '/associations', label: 'Surprise' },
+    { key: '/mosaic', label: 'Mosaic' },
+    { key: '/crosstab', label: 'クロス集計（Crosstab）' },
+  ] },
+  { key: 'group:patterns', label: 'パターン探索', children: [
+    { key: '/ranking', label: '変数ランキング（Ranking）' },
+    { key: '/subgroups', label: 'Mining' },
+    { key: '/clusters', label: 'クラスタリング（Clusters）' },
+    { key: '/robustness', label: '頑健性（Robustness）' },
+  ] },
+  { key: 'group:prediction', label: '予測・要因分析', children: [
+    { key: '/models', label: '決定木・ランダムフォレスト（Models）' },
+    { key: '/logistic', label: 'ロジスティック回帰（Logistic）' },
+    { key: '/discriminant', label: '判別分析（Discriminant）' },
+    { key: '/models/linear-regression', label: '重回帰' },
+    { key: '/key-drivers', label: 'Key Drivers' },
+    { key: '/penalty-reward', label: 'Penalty-Reward' },
+    { key: '/models/conjoint', label: 'コンジョイント' },
+  ] },
+  { key: 'group:dimensions', label: '次元削減・因子分析', children: [
+    { key: '/pca', label: '主成分分析（PCA）' },
+    { key: '/models/ca', label: '対応分析（CA）' },
+    { key: '/models/mca', label: '多重対応分析（MCA）' },
+    { key: '/models/famd', label: '混合データ因子分析（FAMD）' },
+    { key: '/models/factor-analysis', label: '因子分析' },
+  ] },
+] satisfies MenuProps['items']
 
-export const ANALYSIS_NAV_ITEMS = [
-  { key: '/ranking', label: 'Ranking' },
-  { key: '/subgroups', label: 'Mining' },
-  { key: '/robustness', label: 'Robustness' },
-  { key: '/key-drivers', label: 'Key Drivers' },
-  { key: '/penalty-reward', label: 'Penalty-Reward' },
-  { key: '/clusters', label: 'Clusters' },
-  { key: '/models', label: 'Models' },
-  { key: '/logistic', label: 'Logistic' },
-  { key: '/discriminant', label: 'Discriminant' },
-  { key: '/models/ca', label: 'CA' },
-  { key: '/models/mca', label: 'MCA' },
-  { key: '/models/famd', label: 'FAMD' },
-  { key: '/models/linear-regression', label: '重回帰' },
-  { key: '/pca', label: 'PCA' },
-  { key: '/covariance', label: 'Covariance' },
-  { key: '/statistics', label: 'Statistics' },
-  { key: '/overview', label: 'Overview' },
-]
+export const NAV_ITEMS = NAV_GROUPS.flatMap(group => group.children)
 
-export const NAV_ITEMS = [...VIS_NAV_ITEMS, ...ANALYSIS_NAV_ITEMS]
+interface FeatureNavigationProps {
+  datasetId: string | null
+  expanded: boolean
+  onKeyboardNavigate: () => void
+}
+
+export function FeatureNavigation(props: FeatureNavigationProps) {
+  return (
+    <ConfigProvider theme={{ token: { screenLG: 1024, screenLGMin: 1024, screenMDMax: 1023 } }}>
+      <FeatureNavigationMenu {...props} />
+    </ConfigProvider>
+  )
+}
+
+function FeatureNavigationMenu({ datasetId, expanded, onKeyboardNavigate }: FeatureNavigationProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [openKeys, setOpenKeys] = useState<string[]>([])
+  const [listOpen, setListOpen] = useState(false)
+  const listButtonRef = useRef<HTMLButtonElement>(null)
+  const screens = Grid.useBreakpoint()
+  const isWide = screens.lg !== false
+  const pathname = normalizePageKey(location.pathname)
+  const current = NAV_ITEMS.find(item => item.key === pathname)
+  const currentGroup = NAV_GROUPS.find(item => item.children.some(child => child.key === pathname))
+  const currentLabel = current && currentGroup ? `${currentGroup.label} › ${current.label}` : '未登録の画面'
+
+  // URL・dataset・拡大表示・幅の変更で開いた popup／展開領域を閉じる。
+  useEffect(() => {
+    setOpenKeys([])
+    setListOpen(false)
+  }, [location.key, datasetId, expanded, isWide])
+
+  // 狭幅では現在地の分類を初期展開し、同時に開けるのは 1 分類だけ。
+  const toggleList = (open: boolean) => {
+    setListOpen(open)
+    if (open) {
+      setOpenKeys(currentGroup ? [currentGroup.key] : [])
+    } else if (document.activeElement && document.activeElement !== listButtonRef.current) {
+      listButtonRef.current?.focus()
+    }
+  }
+
+  const onInlineOpenChange = (keys: string[]) => {
+    if (keys.length === 0) { setOpenKeys([]); return }
+    setOpenKeys([keys[keys.length - 1]])
+  }
+
+  return (
+    <nav data-testid="main-nav" aria-label="機能ナビゲーション" className="feature-navigation">
+      {isWide ? (
+        <div
+          className="feature-navigation-row"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && openKeys.length > 0) setOpenKeys([])
+            // 葉のonClick後にrc-menuのEnter処理が走るため、その後で閉じる。
+            if (event.key === 'Enter' && event.target instanceof Element && event.target.closest('.ant-menu-item')) {
+              setOpenKeys([])
+            }
+          }}
+        >
+          <Menu
+            mode="horizontal"
+            className="feature-navigation-menu"
+            items={NAV_GROUPS.map(item => ({ ...item, popupClassName: 'feature-navigation-popup' }))}
+            selectedKeys={current ? [current.key] : []}
+            openKeys={openKeys}
+            onOpenChange={setOpenKeys}
+            triggerSubMenuAction="click"
+            overflowedIndicator="その他の分類"
+            overflowedIndicatorPopupClassName="feature-navigation-popup"
+            getPopupContainer={() => document.body}
+            onClick={({ key, domEvent }) => {
+              if (!NAV_ITEMS.some(item => item.key === key)) return
+              setOpenKeys([])
+              if (domEvent.type === 'keydown') onKeyboardNavigate()
+              if (key !== pathname) navigate(key)
+            }}
+          />
+          <span className="feature-navigation-current" title={currentLabel} aria-label={currentLabel} data-testid="navigation-current">
+            {currentLabel}
+          </span>
+        </div>
+      ) : (
+        <div className="feature-navigation-compact">
+          <Button
+            ref={listButtonRef}
+            data-testid="feature-list-button"
+            icon={<UnorderedListOutlined />}
+            aria-expanded={listOpen}
+            aria-controls="feature-list-panel"
+            onClick={() => toggleList(!listOpen)}
+          >
+            機能一覧
+          </Button>
+          <span className="feature-navigation-current" title={currentLabel} aria-label={currentLabel} data-testid="navigation-current">
+            {currentLabel}
+          </span>
+          {listOpen && (
+            <div
+              id="feature-list-panel"
+              className="feature-navigation-panel"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  toggleList(false)
+                }
+              }}
+            >
+              <Menu
+                mode="inline"
+                items={NAV_GROUPS}
+                selectedKeys={current ? [current.key] : []}
+                openKeys={openKeys}
+                onOpenChange={onInlineOpenChange}
+                triggerSubMenuAction="click"
+                getPopupContainer={(node) => node.parentElement ?? document.body}
+                onClick={({ key, domEvent }) => {
+                  if (!NAV_ITEMS.some(item => item.key === key)) return
+                  setListOpen(false)
+                  if (domEvent.type === 'keydown') onKeyboardNavigate()
+                  if (key !== pathname) navigate(key)
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </nav>
+  )
+}
 
 type ExportFormat = 'csv' | 'parquet' | 'arrow' | 'xlsx'
 type ExportScope = 'selected' | 'active' | 'all'
@@ -80,7 +224,13 @@ export default function AppShell() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   }, [location.pathname])
   const selection = useSelector((s: RootState) => s.selection)
-  const focused = useFocusMode().focused
+  const mainContentRef = useRef<HTMLDivElement>(null)
+  const { notifyRoute, session: graphSession } = useGraphExpansion()
+  // Router 内の AppShell から正規化 pageKey と datasetId を共通部へ通知する
+  // （Provider 自身は RouterProvider の外にあるため useLocation を呼ばない）。
+  useLayoutEffect(() => {
+    notifyRoute(normalizePageKey(location.pathname), selection.datasetId ?? null)
+  }, [location.pathname, selection.datasetId, notifyRoute])
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [saveModal, setSaveModal] = useState(false)
@@ -301,7 +451,6 @@ export default function AppShell() {
   return (
     <Layout style={{ height: '100vh', minHeight: '100vh', display: 'flex', flexDirection: 'column' }} data-testid="app-shell">
       {notificationHolder}
-      {!focused && (
       <Layout.Header style={{
         background: '#fff',
         borderBottom: '1px solid #e5e7eb',
@@ -418,40 +567,25 @@ export default function AppShell() {
             </Button>
           </div>
         </div>
+        <FeatureNavigation
+          datasetId={selection.datasetId ?? null}
+          expanded={Boolean(graphSession)}
+          onKeyboardNavigate={() => {
+            window.setTimeout(() => mainContentRef.current?.focus(), 0)
+          }}
+        />
         {selection.datasetId && <GlobalHeaderControlBar />}
-        <div data-testid="main-nav" style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto' }}>
-            <Tag color="blue" style={{ margin: 0, minWidth: 70, textAlign: 'center', fontSize: 11, fontWeight: 500 }}>可視化・探索</Tag>
-            <Segmented
-              size="small"
-              options={VIS_NAV_ITEMS.map((item) => ({ label: item.label, value: item.key }))}
-              value={VIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : ''}
-              onChange={(value) => navigate(String(value))}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto' }}>
-            <Tag color="purple" style={{ margin: 0, minWidth: 70, textAlign: 'center', fontSize: 11, fontWeight: 500 }}>分析・統計</Tag>
-            <Segmented
-              size="small"
-              options={ANALYSIS_NAV_ITEMS.map((item) => ({ label: item.label, value: item.key }))}
-              value={ANALYSIS_NAV_ITEMS.some((i) => i.key === location.pathname) ? location.pathname : ''}
-              onChange={(value) => navigate(String(value))}
-            />
-          </div>
-        </div>
       </Layout.Header>
-      )}
       <Layout.Content style={{
-        padding: focused ? 4 : 12,
+        padding: 12,
         display: 'flex', gap: 4,
         flex: 1,
         minHeight: 0,
         overflow: 'hidden',
       }}>
-        <div style={{ flex: 1, minWidth: 0, overflowX: 'hidden', overflowY: focused ? 'hidden' : 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div ref={mainContentRef} role="main" aria-label="分析画面" tabIndex={-1} style={{ flex: 1, minWidth: 0, overflowX: 'hidden', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <KeepAliveOutlet />
         </div>
-        {!focused && (
         <>
         {/* Collapse button rides on the sidebar's left edge, on every page. */}
         <Button
@@ -468,8 +602,6 @@ export default function AppShell() {
           </aside>
         ) : null}
         </>
-        )}
-        <FocusBar />
       </Layout.Content>
       <Modal
         title="セッション保存"

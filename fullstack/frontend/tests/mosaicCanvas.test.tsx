@@ -3,12 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { datasetLoaded, selectionCleared, store } from '../src/app/store'
-import { LineMosaicCanvas } from '../src/features/mosaic/LineMosaicCanvas'
+import { LineMosaicCanvas, lineMosaicDimensions } from '../src/features/mosaic/LineMosaicCanvas'
 import type { LineMosaicResponse } from '../src/features/mosaic/types'
 
 const operation = vi.hoisted(() => ({ value: 'replace' as string }))
 vi.mock('../src/features/selection/SelectionMenu', () => ({ getBrushOp: () => operation.value }))
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }) }))
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); operation.value = 'replace' })
 
@@ -29,6 +28,10 @@ function mosaicData(): LineMosaicResponse {
     ],
   }
 }
+
+it('reports the actual outer size including the drawing container padding and border', () => {
+  expect(lineMosaicDimensions(mosaicData())).toEqual({ width: 455, height: 176 })
+})
 
 function setup() {
   store.dispatch(datasetLoaded({ datasetId: 'mosaic-test', rowIds: ['r1', 'r2', 'r3'], name: 'Mosaic' }))

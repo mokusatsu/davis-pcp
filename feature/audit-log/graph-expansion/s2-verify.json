@@ -1,0 +1,142 @@
+[
+  {
+    "name": "distribution/boxplot host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "distribution/question/ hosts",
+    "ok": true,
+    "detail": "prefix match"
+  },
+  {
+    "name": "distribution/ma/ hosts",
+    "ok": true,
+    "detail": "N/A: no instances (data-gated)"
+  },
+  {
+    "name": "statistics/histogram/ hosts",
+    "ok": true,
+    "detail": "N/A: no instances (data-gated)"
+  },
+  {
+    "name": "likert/comparison host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "likert/comparison expand entry",
+    "ok": true,
+    "detail": "N/A: available=false のため入口なし（正しい）"
+  },
+  {
+    "name": "barchart/main host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "barchart/main expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "barchart/main zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "barchart/ma host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "fedf/main host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "fedf/main expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "fedf/main zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "loess/main host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "loess/main expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "loess/main zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "covariance/matrix host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "covariance/matrix expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "covariance/matrix zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "pca/scree host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "pca/biplot host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/biplot expand entry",
+    "ok": true,
+    "detail": "N/A: available=false のため入口なし（正しい）"
+  },
+  {
+    "name": "pca/matrix host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "touring/main host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "touring/main expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "touring/main zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "mosaic/main host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mosaic/main expand entry",
+    "ok": true,
+    "detail": "N/A: available=false のため入口なし（正しい）"
+  }
+]

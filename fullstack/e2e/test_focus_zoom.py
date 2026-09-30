@@ -1,18 +1,7 @@
-"""E2E: Thorough tests for PCP-like zoom and focus mode across ALL graphs.
+"""E2E: Feature 035 GraphPanel 拡大の入口・倍率・終了・状態保持。
 
-Tests focus enter, fit mode, zoom in, zoom out, zoom select, exit via button,
-exit via Escape key, fullscreen styling (headers/sidebars hidden), and interactions
-within focus mode for:
-1. PCP (Parallel Coordinates)
-2. Distribution (Boxplot & jittered scatter)
-3. Relationships - Pair Plot (Scatter plot matrix)
-4. Relationships - Correlation Heatmap
-5. Relationships - Facet Plot
-6. Clusters - PCA 2D Scatter
-7. Clusters - Silhouette Width Plot
-8. Clusters - Dendrogram
-9. Models - Decision Tree Diagram
-10. Statistics - Histograms Grid
+旧 FocusMode の pair-plot/facet 一覧ではなく台帳の現行対象へ対応付けた検証。
+selector の置換ではなく、実ブラウザでの入口・実寸法・スクロール・戻す・対象外撤去を確認する。
 """
 from __future__ import annotations
 
@@ -41,95 +30,75 @@ def page():
 
 
 @pytest.fixture(autouse=True)
-def ensure_unfocused(page):
-    """Ensure every test starts and ends in non-focused mode so navigation is visible."""
-    if page.locator('[data-testid="focus-bar"]').is_visible():
-        page.keyboard.press("Escape")
+def ensure_unexpanded(page):
+    """Ensure every test starts and ends with the expansion dialog closed."""
+    if page.locator('[data-testid="graph-expansion-bar"]').is_visible():
+        page.locator('[data-testid="graph-expansion-exit"]').click()
         page.wait_for_timeout(300)
     yield
-    if page.locator('[data-testid="focus-bar"]').is_visible():
-        page.keyboard.press("Escape")
+    if page.locator('[data-testid="graph-expansion-bar"]').is_visible():
+        page.locator('[data-testid="graph-expansion-exit"]').click()
         page.wait_for_timeout(300)
 
 
-def verify_focus_mode_active(page, expected_title_sub: str | None = None):
-    """Verify that focus mode is active and headers/sidebars are hidden."""
-    expect(page.locator('[data-testid="focus-bar"]')).to_be_visible()
-    expect(page.locator('.ant-layout-header')).not_to_be_visible()
-    expect(page.locator('[data-testid="selected-sidebar"]')).not_to_be_visible()
+def verify_expansion_active(page, expected_title_sub: str | None = None):
+    """Verify expansion dialog is open. Header/sidebar stay (dialog overlays)."""
+    expect(page.locator('[data-testid="graph-expansion-bar"]')).to_be_visible()
+    expect(page.locator('[data-testid="graph-expansion-dialog"]')).to_be_visible()
+    expect(page.locator('.ant-layout-header')).to_be_visible()
+    expect(page.locator('[data-testid="selected-sidebar"]')).to_be_visible()
     if expected_title_sub:
-        title_text = page.locator('[data-testid="focus-title"]').inner_text()
+        title_text = page.locator('[data-testid="graph-expansion-title"]').inner_text()
         assert expected_title_sub in title_text, f"Expected '{expected_title_sub}' in '{title_text}'"
 
 
-def verify_focus_mode_inactive(page):
-    """Verify that focus mode is exited and normal layout is restored."""
-    expect(page.locator('[data-testid="focus-bar"]')).not_to_be_visible()
+def verify_expansion_inactive(page):
+    """Verify expansion dialog is closed and host is back in slot."""
+    expect(page.locator('[data-testid="graph-expansion-bar"]')).not_to_be_visible()
     expect(page.locator('.ant-layout-header')).to_be_visible()
     expect(page.locator('[data-testid="selected-sidebar"]')).to_be_visible()
 
 
-def test_pcp_focus_and_zoom(page):
-    """1. PCP focus mode, zoom in/out, fit, escape, and canvas interaction while focused."""
+def expand_and_check(page, graph_id: str, title_sub: str):
+    host = page.locator(f'[data-testid="graph-host-{graph_id}"]')
+    expect(host).to_be_visible()
+    svg_or_canvas = host.locator('svg, canvas').first
+    page.locator(f'[data-testid="graph-expand-{graph_id}"]').click()
+    verify_expansion_active(page, title_sub)
+    # 同一 host が dialog 受け口へ移動する
+    expect(page.locator('[data-testid="graph-expansion-dock"]')).to_contain_text("")
+    dock_html = page.locator('[data-testid="graph-expansion-dock"]').inner_html()
+    assert f'graph-host-{graph_id}' in dock_html
+    return svg_or_canvas
+
+
+def test_pcp_expand_and_zoom(page):
+    """G01 PCP: 拡大・全倍率ラベル・fit/100%一致・Escape終了・canvas操作維持。"""
     page.locator('.ant-segmented-item:has-text("PCP")').click()
     page.wait_for_selector('[data-testid="pcp-canvas"]')
-
-    # Enter focus mode
-    page.locator('[data-testid="focus-enter-pcp"]').click()
-    verify_focus_mode_active(page, "PCP")
-
-    # Fit mode by default: no scaled container yet
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-    expect(page.locator('[data-testid="focus-scaled"]')).to_have_count(0)
-
-    # Zoom In -> 150% (stepIndex < 0 defaults to 1.5x)
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    page.wait_for_selector('[data-testid="focus-scaled"]')
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-
-    # Zoom In again -> 200%
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    page.wait_for_timeout(200)
-
-    # Zoom Out
-    page.locator('[data-testid="focus-zoom-out"]').click()
-    page.wait_for_timeout(200)
-
-    # Fit
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-    expect(page.locator('[data-testid="focus-scaled"]')).to_have_count(0)
-
-    # Exit via button
-    page.locator('[data-testid="focus-exit"]').click()
-    verify_focus_mode_inactive(page)
-
-    # Enter again and exit via Escape key
-    page.locator('[data-testid="focus-enter-pcp"]').click()
-    verify_focus_mode_active(page)
+    expand_and_check(page, "pcp/main", "PCP")
+    expect(page.locator('[data-testid="graph-expansion-zoom-label"]')).to_have_text("フィット")
+    for label in ["125%", "150%", "200%", "300%", "400%"]:
+        page.locator('[data-testid="graph-expansion-zoom-in"]').click()
+        expect(page.locator('[data-testid="graph-expansion-zoom-label"]')).to_have_text(label)
+    page.locator('[data-testid="graph-expansion-exit"]').click()
+    verify_expansion_inactive(page)
+    page.locator('[data-testid="graph-expand-pcp/main"]').click()
+    verify_expansion_active(page)
     page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
+    verify_expansion_inactive(page)
 
 
-def test_distribution_focus_and_zoom(page):
-    """2. Distribution focus mode, zoom, and range brush while focused."""
+def test_distribution_boxplot_expand(page):
+    """G04 箱ひげ図: boxplot タブへ切替後に拡大・矩形選択。"""
     page.locator('.ant-segmented-item:has-text("Distribution")').click()
+    page.wait_for_selector('[data-testid="dist-view-mode"]')
+    items = page.locator('[data-testid="dist-view-mode"] .ant-segmented-item')
+    items.nth(1).click()
     page.wait_for_selector('[data-testid="distribution-svg"]')
-
-    # Enter focus mode
-    page.locator('[data-testid="focus-enter-distribution"]').click()
-    verify_focus_mode_active(page, "分布")
-
-    # Test Zoom
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    page.wait_for_selector('[data-testid="focus-scaled"]')
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-
-    # Fit
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Range brush interaction while focused
+    expand_and_check(page, "distribution/boxplot", "箱ひげ")
+    page.locator('[data-testid="graph-expansion-zoom-in"]').click()
+    expect(page.locator('[data-testid="graph-expansion-zoom-label"]')).to_have_text("125%")
     svg = page.locator('[data-testid="distribution-svg"]').first
     box = svg.bounding_box()
     page.mouse.move(box["x"] + box["width"] * 0.3, box["y"] + box["height"] * 0.25)
@@ -138,213 +107,87 @@ def test_distribution_focus_and_zoom(page):
     page.mouse.up()
     page.wait_for_timeout(300)
     expect(svg).to_be_visible()
-
-    # Exit via Escape
     page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
+    verify_expansion_inactive(page)
 
 
-def test_relationships_pair_plot_focus(page):
-    """3. Pair Plot focus mode in Relationships page."""
+def test_relationships_pair_and_heatmap(page):
+    """G02/G03: ヒートマップと焦点ペアの拡大。非対象グラフは保持される。"""
     page.locator('.ant-segmented-item:has-text("Relationships")').click()
-    page.wait_for_selector('[data-testid="pair-plot"]')
-
-    # Enter focus mode for pair-plot
-    page.locator('[data-testid="focus-enter-pair-plot"]').first.click()
-    verify_focus_mode_active(page, "ペアプロット")
-
-    # Other charts should be hidden while pair-plot is focused
-    expect(page.locator('[data-testid="correlation-heatmap"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="facet-plot"]')).not_to_be_visible()
-
-    # Zoom In
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    page.wait_for_selector('[data-testid="focus-scaled"]')
-
-    # Fit
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Exit via button
-    page.locator('[data-testid="focus-exit"]').click()
-    verify_focus_mode_inactive(page)
-
-    # Heatmap and Facet are visible again
-    expect(page.locator('[data-testid="correlation-heatmap"]')).to_be_visible()
-    expect(page.locator('[data-testid="facet-plot"]')).to_be_visible()
+    page.wait_for_selector('[data-testid="graph-host-relationships/heatmap"]')
+    expand_and_check(page, "relationships/heatmap", "ヒートマップ")
+    page.locator('[data-testid="graph-expansion-zoom-in"]').click()
+    page.locator('[data-testid="graph-expansion-fit"]').click()
+    expect(page.locator('[data-testid="graph-expansion-zoom-label"]')).to_have_text("フィット")
+    page.locator('[data-testid="graph-expansion-exit"]').click()
+    verify_expansion_inactive(page)
+    # 焦点ペア側も拡大できる（他図はアンマウントされない）
+    expand_and_check(page, "relationships/pair", "焦点ペア")
+    page.locator('[data-testid="graph-expansion-exit"]').click()
+    verify_expansion_inactive(page)
 
 
-def test_relationships_heatmap_focus(page):
-    """4. Correlation Heatmap focus mode and cell click in Relationships page."""
-    page.locator('.ant-segmented-item:has-text("Relationships")').click()
-    page.wait_for_selector('[data-testid="correlation-heatmap"]')
-
-    # Enter focus mode for heatmap
-    page.locator('[data-testid="focus-enter-heatmap"]').click()
-    verify_focus_mode_active(page, "相関ヒートマップ")
-
-    # Pair plot and Facet should be hidden
-    expect(page.locator('[data-testid="pair-plot"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="facet-plot"]')).not_to_be_visible()
-
-    # Zoom In and Fit
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Heatmap cell click interaction while focused
-    cells = page.locator('[data-testid="correlation-heatmap"] rect[role="button"]')
-    cells.nth(3).click()
-    page.wait_for_timeout(300)
-
-    # Exit via Escape
-    page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
+def test_table_has_no_expansion(page):
+    """X01: データテーブルに拡大入口がない。通常の表操作は維持。"""
+    page.locator('.ant-segmented-item:has-text("Table")').click()
+    page.wait_for_selector('[data-testid="data-table"]')
+    expect(page.locator('[data-testid="graph-expand-table"]')).to_have_count(0)
+    expect(page.locator('[data-testid="focus-enter-table"]')).to_have_count(0)
+    expect(page.locator('[data-testid="data-table"]')).to_be_visible()
 
 
-def test_relationships_facet_plot_focus(page):
-    """5. Facet Plot focus mode in Relationships page."""
-    page.locator('.ant-segmented-item:has-text("Relationships")').click()
-    page.wait_for_selector('[data-testid="facet-plot"]')
-
-    # Enter focus mode for facet-plot
-    page.locator('[data-testid="focus-enter-facet-plot"]').click()
-    verify_focus_mode_active(page, "ファセットプロット")
-
-    # Pair plot and Heatmap hidden
-    expect(page.locator('[data-testid="pair-plot"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="correlation-heatmap"]')).not_to_be_visible()
-
-    # Zoom In and Fit
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Exit via button
-    page.locator('[data-testid="focus-exit"]').click()
-    verify_focus_mode_inactive(page)
+def test_crosstab_has_no_expansion(page):
+    """X03: クロス集計表に拡大入口がない。セル選択・設定・出力は維持。"""
+    page.locator('.ant-segmented-item:has-text("Crosstab")').click()
+    page.wait_for_selector('[data-testid="crosstab-page"]')
+    expect(page.locator('[data-testid="graph-expand-crosstab"]')).to_have_count(0)
+    expect(page.locator('[data-testid="focus-enter-crosstab"]')).to_have_count(0)
 
 
-def test_clusters_all_three_graphs_focus(page):
-    """6, 7, 8. Clusters page: PCA 2D scatter, Silhouette plot, Dendrogram focus and zoom."""
+def test_clusters_graphs_expand(page):
+    """G20/G21: クラスタ PCA・シルエットの拡大（実行後に到達）。"""
     page.locator('.ant-segmented-item:has-text("Clusters")').click()
-    # Run clustering if not yet run
     if not page.locator('[data-testid="pca-svg"]').is_visible():
         page.locator('[data-testid="run-clustering"]').click()
-        page.wait_for_selector('[data-testid="pca-svg"]', timeout=15000)
-
-    # --- 6. PCA Scatter Focus ---
-    page.locator('[data-testid="focus-enter-pca"]').first.click()
-    verify_focus_mode_active(page, "PCA")
-    # Silhouette and Dendrogram hidden
-    expect(page.locator('[data-testid="silhouette-svg"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="dendrogram-svg"]')).not_to_be_visible()
-
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Exit via Escape
+        page.wait_for_selector('[data-testid="pca-svg"]', timeout=60000)
+    expand_and_check(page, "clusters/pca", "PCA")
+    page.locator('[data-testid="graph-expansion-exit"]').click()
+    verify_expansion_inactive(page)
+    expand_and_check(page, "clusters/silhouette", "シルエット")
     page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
-
-    # --- 7. Silhouette Plot Focus ---
-    page.locator('[data-testid="focus-enter-silhouette"]').first.click()
-    verify_focus_mode_active(page, "シルエット")
-    expect(page.locator('[data-testid="pca-svg"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="dendrogram-svg"]')).not_to_be_visible()
-
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-
-    # Exit via button
-    page.locator('[data-testid="focus-exit"]').click()
-    verify_focus_mode_inactive(page)
-
-    # --- 8. Dendrogram Focus (run agglomerative clustering which produces linkageMatrix) ---
-    page.locator('.ant-segmented-item:has-text("階層的")').click()
-    page.locator('[data-testid="run-clustering"]').click()
-    page.wait_for_selector('[data-testid="dendrogram-svg"]', timeout=15000)
-
-    page.locator('[data-testid="focus-enter-dendrogram"]').first.click()
-    verify_focus_mode_active(page, "樹形図")
-    expect(page.locator('[data-testid="pca-svg"]')).not_to_be_visible()
-    expect(page.locator('[data-testid="silhouette-svg"]')).not_to_be_visible()
-
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-
-    # Exit via Escape
-    page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
+    verify_expansion_inactive(page)
 
 
-def test_models_decision_tree_focus(page):
-    """9. Decision Tree diagram focus and interaction in Models page."""
+def test_models_tree_expand(page):
+    """G26: 決定木の拡大と葉選択。重要度パネルは非対象として残る。"""
     page.locator('.ant-segmented-item:has-text("Models")').click()
     if not page.locator('[data-testid="tree-diagram-0"]').is_visible():
         page.locator('[data-testid="run-model"]').click()
-        page.wait_for_selector('[data-testid="tree-diagram-0"]', timeout=15000)
-
-    # Enter focus mode for tree
-    page.locator('[data-testid="focus-enter-tree"]').first.click()
-    verify_focus_mode_active(page, "決定木")
-
-    # Config form, metrics descriptions, feature importance hidden
-    expect(page.locator('[data-testid="feature-importance-panel"]')).not_to_be_visible()
-
-    # Zoom In and Fit
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Click a leaf while in focus mode
+        page.wait_for_selector('[data-testid="tree-diagram-0"]', timeout=60000)
+    expand_and_check(page, "models/tree", "決定木")
     leaves = page.locator('[data-testid^="tree-leaf-0-"]')
     expect(leaves.first).to_be_visible()
     leaves.first.click()
     page.wait_for_timeout(300)
-
-    # Exit via Escape
     page.keyboard.press("Escape")
-    verify_focus_mode_inactive(page)
+    verify_expansion_inactive(page)
     expect(page.locator('[data-testid="feature-importance-panel"]')).to_be_visible()
 
 
-def test_statistics_histograms_focus(page):
-    """10. Histograms grid focus and interaction in Statistics page."""
+def test_statistics_histogram_expand(page):
+    """G08: ヒストグラム＋点分布の拡大と棒クリック。"""
     page.locator('.ant-segmented-item:has-text("Statistics")').click()
-    page.wait_for_selector('[data-testid="statistics-page"] table')
-
-    # Enter focus mode for histograms
-    page.locator('[data-testid="focus-enter-histograms"]').first.click()
-    verify_focus_mode_active(page, "ヒストグラム")
-
-    # Descriptive statistics table hidden while focused
-    expect(page.locator('[data-testid="statistics-page"] table')).not_to_be_visible()
-
-    # Histograms still visible
-    expect(page.locator('[data-testid^="histogram-"]').first).to_be_visible()
-
-    # Zoom In and Fit
-    page.locator('[data-testid="focus-zoom-in"]').click()
-    expect(page.locator('.focus-target-zoomed')).to_be_visible()
-    page.locator('[data-testid="focus-fit"]').click()
-    expect(page.locator('.focus-target-fit')).to_be_visible()
-
-    # Click a bar in the histogram while in focus mode
-    bars = page.locator('[data-testid^="histogram-"] rect[data-selectable="true"]')
+    page.wait_for_selector('[data-testid="statistics-page"]')
+    first_expand = page.locator('[data-testid^="graph-expand-statistics/histogram/"]').first
+    expect(first_expand).to_be_visible()
+    first_expand.click()
+    verify_expansion_active(page, "ヒストグラム")
+    page.locator('[data-testid="graph-expansion-zoom-in"]').click()
+    expect(page.locator('[data-testid="graph-expansion-zoom-label"]')).to_have_text("125%")
+    bars = page.locator('[data-testid="graph-expansion-dock"] rect[data-selectable="true"]')
     if bars.count() > 0:
         bars.first.click()
         page.wait_for_timeout(300)
-
-    # Exit via button
-    page.locator('[data-testid="focus-exit"]').click()
-    verify_focus_mode_inactive(page)
-    # Summary table restored
+    page.locator('[data-testid="graph-expansion-exit"]').click()
+    verify_expansion_inactive(page)
     expect(page.locator('[data-testid="statistics-page"] table')).to_be_visible()

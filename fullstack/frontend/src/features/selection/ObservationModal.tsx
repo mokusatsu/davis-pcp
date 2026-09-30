@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Modal, Tabs, Radio, InputNumber, Button, Space, Typography, Alert, message } from 'antd'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState, AppDispatch } from '../../app/store'
-import { samplingApplied, samplingCleared, rangeSelectionApplied } from '../../app/store'
+import { samplingApplied, samplingCleared, rangeSelectionApplied, selectionApplied } from '../../app/store'
 import { api } from '../../api/client'
 
 interface ObservationModalProps {
@@ -111,6 +111,9 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
           asSelected: rangeTarget === 'selected',
         })
       )
+      if (rangeTarget === 'selected') {
+        dispatch(selectionApplied({ rowIds: res.rowIds, operation: 'replace', label: `行範囲${fromIndex}〜${toIndex}` }))
+      }
       message.success(
         `行範囲指定完了: 行${fromIndex}〜${toIndex}（${res.count}行）を${
           rangeTarget === 'selected' ? '選択行' : '有効行'

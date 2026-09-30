@@ -7,18 +7,16 @@ import { Alert, Button, Card, Empty, Progress, Space, Spin, Typography } from 'a
 import { ClearOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
-import SelectionMenu from '../selection/SelectionMenu'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
 import { MosaicControlPanel } from './MosaicControlPanel'
-import { LineMosaicCanvas } from './LineMosaicCanvas'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import { LineMosaicCanvas, lineMosaicDimensions } from './LineMosaicCanvas'
+import GraphPanel from '../common/GraphPanel'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
 import { mosaicPathLabel } from './types'
 
 export default function LineMosaicPage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
@@ -92,18 +90,10 @@ export default function LineMosaicPage() {
   return (
     <div
       data-testid="mosaic-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        padding: focused ? 0 : 4,
-        height: focused ? '100%' : 'auto',
-        minHeight: '100%',
-        overflow: focused ? 'hidden' : 'visible',
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4, height: 'auto', minHeight: '100%', overflow: 'visible' }}
     >
       {/* Top Controls */}
-      {!focused && <Space wrap>
+      <Space wrap>
         <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
           const byId = new Map(definitions.map(column => [column.columnId, column.name]))
           const names = axes.map(axis => (axis.columnId ? byId.get(axis.columnId) : undefined)).filter((name): name is string => Boolean(name))
@@ -111,8 +101,7 @@ export default function LineMosaicPage() {
           setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
         }} />
         <Typography.Text type="secondary">属性とMA選択肢の選択／非選択を比較できます。</Typography.Text>
-      </Space>}
-      {!focused && (
+      </Space>
         <MosaicControlPanel
           allColumns={allColumns}
           colVars={colVars}
@@ -125,9 +114,8 @@ export default function LineMosaicPage() {
           onNormalizationChange={setNormalization}
           targetInfo={mosaicData?.target ?? null}
         />
-      )}
 
-      {!focused && error && (
+      {error && (
         <Alert
           type="error"
           message="集計エラー"
@@ -138,13 +126,11 @@ export default function LineMosaicPage() {
       )}
 
       {/* Action Bar */}
-      {!focused && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             ドラッグで矩形範囲選択 · 右クリックで Focus/Delete
           </Typography.Text>
           <Space>
-            <SelectionMenu testId="selection-menu" />
             {resultKey === inputKey && mosaicData && (
               <Typography.Text
                 type="secondary"
@@ -156,38 +142,25 @@ export default function LineMosaicPage() {
                 / 除外{mosaicData.excludedRowCount ?? 0}行
               </Typography.Text>
             )}
-            <FocusEnterButton targetId="line-mosaic" title="Line Mosaic Plot" />
           </Space>
         </div>
-      )}
 
       {/* Main Layout: Canvas on Left, Details & Legend on Right */}
-      <div
-        style={{
-          display: 'flex',
-          gap: focused ? 0 : 12,
-          alignItems: 'stretch',
-          flex: focused ? 1 : undefined,
-          height: focused ? '100%' : undefined,
-          minHeight: 0,
-        }}
-      >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch', minHeight: 0 }}>
         {/* Canvas Plot */}
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
-            height: focused ? '100%' : undefined,
-            display: 'flex',
-            flexDirection: 'column',
-            background: '#fff',
-            padding: focused ? 4 : 10,
-            borderRadius: focused ? 0 : 8,
-            border: focused ? 'none' : '1px solid #f0f0f0',
-            minHeight: 0,
+            flex: '1 1 720px', minWidth: 0, display: 'flex', flexDirection: 'column',
+            background: '#fff', padding: 10, borderRadius: 8, border: '1px solid #f0f0f0', minHeight: 0,
           }}
         >
-          <FocusTarget id="line-mosaic" title="Line Mosaic Plot">
+          <GraphPanel
+            graphId="mosaic/main"
+            title="Line Mosaic Plot"
+            available={Boolean(!loading && resultKey === inputKey && mosaicData && mosaicData.cells.length > 0)}
+            sizing="intrinsic"
+            intrinsicSize={mosaicData ? lineMosaicDimensions(mosaicData) : { width: 720, height: 480 }}
+          >
             {loading ? (
               <div style={{ padding: 40, textAlign: 'center' }}>
                 <Spin tip="モザイククロス集計を計算中..." />
@@ -202,15 +175,14 @@ export default function LineMosaicPage() {
             ) : (
               <Empty description={mosaicData && resultKey === inputKey ? '対象範囲に表示可能な行がありません。' : '表示可能なセルがありません。変数を指定してください。'} />
             )}
-          </FocusTarget>
+          </GraphPanel>
         </div>
 
         {/* Right Details Card */}
-        {!focused && (
           <Card
             size="small"
             title="セル詳細 & アクション"
-            style={{ width: 310, flexShrink: 0, borderRadius: 8 }}
+            style={{ width: 310, maxWidth: '100%', flex: '0 1 310px', borderRadius: 8 }}
             data-testid="mosaic-cell-details"
           >
             {selectedCell ? (
@@ -312,14 +284,11 @@ export default function LineMosaicPage() {
               </Button>
             </div>
           </Card>
-        )}
       </div>
 
-      {!focused && (
         <div style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
           ※ Line Mosaic Plot: 面積ではなく整列された水平線の長さでセル度数を定量比較。ドラッグで矩形範囲選択、右クリックで Focus / Delete。
         </div>
-      )}
     </div>
   )
 }

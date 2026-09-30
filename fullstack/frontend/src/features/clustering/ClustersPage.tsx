@@ -18,7 +18,7 @@ import { useRowColorResolver } from '../../theme/useRowColor'
 import L1Legend from '../common/L1Legend'
 import { vizTheme, composedColor } from '../../theme/viz'
 import { getBrushOp, useBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 
 import CobwebTreeViewer from './CobwebTreeViewer'
@@ -61,7 +61,6 @@ export default function ClustersPage() {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const stored = selection.clusterResult
-  const { focused, isTargetActive } = useFocusMode()
   const activeRowIds = useSelector(selectEffectiveRowIds)
   const variables = useSelector(selectOrdinaryVariables)
   const entities = useSelector(selectVariableEntities)
@@ -178,17 +177,8 @@ export default function ClustersPage() {
   return (
     <div
       data-testid="clusters-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : 'none',
-        minHeight: focused ? 0 : undefined,
-        overflowX: 'hidden',
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowX: 'hidden' }}
     >
-      {!focused && (
         <Card size="small" style={{ background: '#fafafa' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -316,13 +306,12 @@ export default function ClustersPage() {
             {error && <Alert type="error" showIcon message={error.message} style={{ marginTop: 6 }} />}
           </Space>
         </Card>
-      )}
 
       {stored && !resultMatchesInput && <Alert type="info" showIcon data-testid="cluster-previous-result"
         message="表示中の結果は現在の入力と異なるか、入力条件を確認できません。現在の条件で分類するには再実行してください。" />}
 
       {/* Summary KPI Cards */}
-      {!focused && stored && (
+      {stored && (
         <Row gutter={[12, 12]}>
           <Col xs={12} sm={6}>
             <Card size="small">
@@ -386,29 +375,27 @@ export default function ClustersPage() {
 
       {stored && !running && (
         <>
-          {!focused && <ClusterSummaryPanel result={stored} onSelect={selectCluster} />}
-          {!focused && (
+          <ClusterSummaryPanel result={stored} onSelect={selectCluster} />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               クラスタボタン/凡例/シルエット/樹形図クリック=集合演算で反映
             </Typography.Text>
-          )}
-          {stored.pcaProjection && (!focused || isTargetActive('pca')) && (
-            <FocusTarget id="pca" title="主成分散布図 (PCA)">
+          {stored.pcaProjection && (
+            <GraphPanel graphId="clusters/pca" title="主成分散布図 (PCA)" available sizing="intrinsic" intrinsicSize={{ width: 560, height: 560 }} style={{ height: 'auto', flex: 'none' }}>
               <PcaScatterPlot result={stored} onSelect={selectCluster} />
-            </FocusTarget>
+            </GraphPanel>
           )}
-          {stored.silhouette && (!focused || isTargetActive('silhouette')) && (
-            <FocusTarget id="silhouette" title="シルエット図">
+          {stored.silhouette && (
+            <GraphPanel graphId="clusters/silhouette" title="シルエット図" available sizing="intrinsic" intrinsicSize={{ width: 760, height: 420 }} style={{ height: 'auto', flex: 'none' }}>
               <SilhouettePlot result={stored} onSelect={selectCluster} />
-            </FocusTarget>
+            </GraphPanel>
           )}
-          {stored.linkageMatrix && (!focused || isTargetActive('dendrogram')) && (
-            <FocusTarget id="dendrogram" title="樹形図 (デンドログラム)">
+          {stored.linkageMatrix && (
+            <GraphPanel graphId="clusters/dendrogram" title="樹形図 (デンドログラム)" available sizing="intrinsic" intrinsicSize={{ width: 800, height: 360 }} style={{ height: 'auto', flex: 'none' }}>
               <DendrogramPanel linkageMatrix={stored.linkageMatrix} rowIds={stored.rowIds} />
-            </FocusTarget>
+            </GraphPanel>
           )}
-          {stored.conceptTree && (!focused || isTargetActive('cobweb-tree')) && (
-            <FocusTarget id="cobweb-tree" title="Cobweb 概念木">
+          {stored.conceptTree && (
+            <GraphPanel graphId="clusters/cobweb" title="Cobweb 概念木" available sizing="intrinsic" intrinsicSize={{ width: 720, height: 480 }} style={{ height: 'auto', flex: 'none' }}>
               <CobwebTreeViewer
                 conceptTree={stored.conceptTree}
                 rowIds={stored.rowIds}
@@ -416,15 +403,15 @@ export default function ClustersPage() {
                   dispatch(selectionApplied({ rowIds: ids, operation: getBrushOp(), label: 'Cobweb概念選択' }))
                 }
               />
-            </FocusTarget>
+            </GraphPanel>
           )}
-          {stored.categoryMatrices && (!focused || isTargetActive('disc-matrix')) && (
-            <FocusTarget id="disc-matrix" title="DISC カテゴリ関係行列">
+          {stored.categoryMatrices && (
+            <GraphPanel graphId="clusters/disc" title="DISC カテゴリ関係行列" available sizing="intrinsic" intrinsicSize={{ width: 640, height: 420 }} style={{ height: 'auto', flex: 'none' }}>
               <DiscCategoryMatrix
                 categoryMatrices={stored.categoryMatrices}
                 clusterCount={stored.k}
               />
-            </FocusTarget>
+            </GraphPanel>
           )}
         </>
       )}
@@ -440,9 +427,9 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
   const selection = useSelector((s: RootState) => s.selection)
   const rowScope = useSelector(selectEffectiveRowIds)
   const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
-  const { focused, zoom } = useFocusMode()
+
   const context = useMemo(() => ({}), [selection.datasetId, selection.dataRevision, schemaRevision,
-    selection.activeRowIds, rowScope, result, focused, zoom])
+    selection.activeRowIds, rowScope, result])
   const currentContext = useRef(context)
   currentContext.current = context
   const selectionVersion = useRef(0)
@@ -564,15 +551,13 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
     },
   ]
 
-  const { isTargetActive } = useFocusMode()
   return (
-    <div data-testid="pca-panel" style={{ maxWidth: '100%', height: isTargetActive('pca') ? '100%' : undefined, flex: isTargetActive('pca') ? 1 : 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
+    <div data-testid="pca-panel" style={{ maxWidth: '100%', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap align="center">
           <Typography.Title level={5} style={{ margin: 0 }}>
             主成分散布図（PC1 {`${(pca.varianceRatio[0] * 100).toFixed(1)}%`} ／ PC2 {(pca.varianceRatio[1] * 100).toFixed(1)}% 分散）
           </Typography.Title>
-          <FocusEnterButton targetId="pca" title="主成分散布図 (PCA)" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>ドラッグ=矩形選択 · 点クリック=toggle · 右クリックで操作</Typography.Text>
       </div>
@@ -580,7 +565,7 @@ function PcaScatterPlot({ result, onSelect }: { result: ClusterResponse; onSelec
       <svg
         ref={svgRef}
         data-testid="pca-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-        style={{ width: '100%', maxWidth: isTargetActive('pca') ? 'none' : size, height: isTargetActive('pca') ? '100%' : 'auto', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', touchAction: 'none' }}
+        style={{ width: '100%', height: 'auto', aspectRatio: '1 / 1', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', touchAction: 'none' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -756,24 +741,22 @@ function SilhouettePlot({ result, onSelect }: { result: ClusterResponse; onSelec
     yCursor += 24
   }
 
-  const { isTargetActive } = useFocusMode()
-  const active = isTargetActive('silhouette')
+
   const zeroX = 100 + (width - 120) / 2
   const meanX = 100 + ((result.silhouette.mean + 1) / 2) * (width - 120)
   return (
-    <div data-testid="silhouette-panel" style={{ minWidth: 0, overflow: active ? 'hidden' : 'visible', height: active ? '100%' : undefined, flex: active ? 1 : 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
+    <div data-testid="silhouette-panel" style={{ minWidth: 0, overflow: 'visible', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap align="center">
           <Typography.Title level={5} style={{ margin: 0 }}>
             シルエット幅図（平均 {result.silhouette.mean.toFixed(3)}）
           </Typography.Title>
-          <FocusEnterButton targetId="silhouette" title="シルエット図" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>幅が広いほどそのクラスタへの所属確からしさが高い · クリックで選択</Typography.Text>
       </div>
       <L1Legend />
-      <div style={{ flex: active ? 1 : 'none', overflow: 'auto', minHeight: active ? 0 : 200, maxHeight: active ? undefined : 420 }}>
-        <svg data-testid="silhouette-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: active ? 'none' : width, height: active ? '100%' : height, display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+      <div style={{ overflow: 'visible', minHeight: 200 }}>
+        <svg data-testid="silhouette-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           {/* reference lines: -1, 0, mean, +1 */}
           <line x1={100} y1={20} x2={100} y2={height - 10} stroke="#e5e7eb" strokeWidth={1} />
           <text x={100} y={14} textAnchor="middle" fontSize={10} fill="#898781">s=-1</text>
@@ -826,19 +809,17 @@ function DendrogramPanel({ linkageMatrix, rowIds }: { linkageMatrix: number[][];
     dispatch(selectionApplied({ rowIds: ids, operation: getBrushOp(), label: 'Dendrogram部分木選択' }))
   }
 
-  const { isTargetActive } = useFocusMode()
-  const active = isTargetActive('dendrogram')
+
   return (
-    <div data-testid="dendrogram-panel" style={{ minWidth: 0, overflow: active ? 'hidden' : 'visible', height: active ? '100%' : undefined, flex: active ? 1 : 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
+    <div data-testid="dendrogram-panel" style={{ minWidth: 0, overflow: 'visible', flexShrink: 0, display: 'flex', flexDirection: 'column', border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, userSelect: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap align="center">
           <Typography.Title level={5} style={{ margin: 0 }}>Dendrogram（樹形図）</Typography.Title>
-          <FocusEnterButton targetId="dendrogram" title="樹形図 (デンドログラム)" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>部分木クリックで選択</Typography.Text>
       </div>
-      <div style={{ flex: active ? 1 : 'none', overflow: 'auto', minHeight: active ? 0 : 360, maxHeight: active ? undefined : 380 }}>
-        <svg data-testid="dendrogram-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: active ? 'none' : width, height: active ? '100%' : height, display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
+      <div style={{ overflow: 'visible', minHeight: 360 }}>
+        <svg data-testid="dendrogram-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
           {linkageMatrix.map((merge, index) => {
             const node = n + index
             const x1 = xOf.get(merge[0]) ?? 0

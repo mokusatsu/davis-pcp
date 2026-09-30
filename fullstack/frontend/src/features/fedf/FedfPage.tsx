@@ -10,7 +10,7 @@ import { selectOrdinaryVariables } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
 import { useBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { truncateText } from '../../utils/textUtils'
@@ -50,7 +50,6 @@ interface FedfResponse {
 
 export default function FedfPage() {
   const questionText = useQuestionText()
-  const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
@@ -69,6 +68,8 @@ export default function FedfPage() {
   const [dragAxis, setDragAxis] = useState<string | null>(null)
   const [dragRange, setDragRange] = useState<{ y1: number; y2: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const graphHostRef = useRef<HTMLDivElement>(null)
+  const [graphHostWidth, setGraphHostWidth] = useState(0)
 
   const globalVars = useSelector(selectOrdinaryVariables)
   // Numeric column list (follows the global active variables)
@@ -150,19 +151,45 @@ export default function FedfPage() {
   const MARGIN_LEFT = 70
   const totalWidth = MARGIN_LEFT + (selectedColumns.length) * AXIS_SPACING + 30
   const totalHeight = PLOT_TOP + PLOT_HEIGHT + 70
+  const displayWidth = Math.max(totalWidth, graphHostWidth)
+  const displayHeight = Math.round(totalHeight * displayWidth / totalWidth)
+
+  // 描画面の外側だけを計測する。surface/scrollbar の幅を再入力にしないので、
+  // 横幅に合わせても ResizeObserver とスクロールバーが相互に揺れない。
+  useEffect(() => {
+    const host = graphHostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    const updateWidth = (width: number) => {
+      const next = Math.floor(width)
+      if (next > 0) setGraphHostWidth((previous) => previous === next ? previous : next)
+    }
+    const observer = new ResizeObserver((entries) => updateWidth(entries[0]?.contentRect.width ?? 0))
+    observer.observe(host)
+    updateWidth(host.getBoundingClientRect().width)
+    return () => observer.disconnect()
+  }, [])
+
+  const svgLogicalY = (clientY: number): number => {
+    const svg = svgRef.current
+    if (!svg) return NaN
+    const rect = svg.getBoundingClientRect()
+    if (!rect.height || !totalHeight) return NaN
+    return ((clientY - rect.top) / rect.height) * totalHeight
+  }
 
   const handleMouseDown = (col: string, e: React.MouseEvent<SVGRectElement>) => {
     if (!svgRef.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const y = e.clientY - rect.top
+    const y = svgLogicalY(e.clientY)
+    if (!Number.isFinite(y)) return
     setDragAxis(col)
     setDragRange({ y1: y, y2: y })
   }
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!dragAxis || !dragRange || !svgRef.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const y = Math.max(PLOT_TOP, Math.min(PLOT_TOP + PLOT_HEIGHT, e.clientY - rect.top))
+    const yRaw = svgLogicalY(e.clientY)
+    if (!Number.isFinite(yRaw)) return
+    const y = Math.max(PLOT_TOP, Math.min(PLOT_TOP + PLOT_HEIGHT, yRaw))
     setDragRange((prev) => (prev ? { ...prev, y2: y } : null))
   }
 
@@ -202,18 +229,9 @@ export default function FedfPage() {
   return (
     <div
       data-testid="fedf-page"
-      style={{
-        padding: focused ? 0 : 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       {/* Top Controls Card */}
-      {!focused && (
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -257,28 +275,31 @@ export default function FedfPage() {
           </Space>
 
           <Space size={12}>
-            <FocusEnterButton targetId="fedf-container" />
           </Space>
         </div>
-      )}
 
       {/* Main Visualization Card */}
-      <FocusTarget id="fedf-container">
-        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']}>
-          <div
-            style={{
-              border: focused ? 'none' : '1px solid #e5e7eb',
-              borderRadius: 6,
-              background: '#ffffff',
-              padding: focused ? 8 : 16,
-              position: 'relative',
-              overflow: 'auto',
-              userSelect: 'none',
-              minHeight: focused ? undefined : 520,
-              height: focused ? '100%' : undefined,
-              flex: focused ? 1 : undefined,
-            }}
-          >
+      <div ref={graphHostRef} style={{ width: '100%', minWidth: 0 }}>
+        <GraphPanel
+          graphId="fedf/main"
+          title="平行FEDFプロット"
+          available={Boolean(!loading && fedfData)}
+          sizing="intrinsic"
+          intrinsicSize={{ width: displayWidth, height: displayHeight }}
+        >
+          <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']}>
+            <div
+              style={{
+                position: 'relative',
+                width: displayWidth,
+                height: displayHeight,
+                outline: '1px solid #e5e7eb',
+                outlineOffset: -1,
+                borderRadius: 6,
+                background: '#ffffff',
+                userSelect: 'none',
+              }}
+            >
             {loading && (
               <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
                 <Spin tip="FEDF曲線を計算中..." />
@@ -289,11 +310,12 @@ export default function FedfPage() {
               <svg
                 ref={svgRef}
                 data-testid="fedf-svg"
-                width={totalWidth}
-                height={totalHeight}
+                width={displayWidth}
+                height={displayHeight}
+                viewBox={`0 0 ${totalWidth} ${totalHeight}`}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                style={{ cursor: dragAxis ? 'ns-resize' : 'crosshair', display: 'block' }}
+                style={{ cursor: dragAxis ? 'ns-resize' : 'crosshair', display: 'block', width: displayWidth, height: displayHeight }}
               >
                 {/* Axis definitions */}
                 {fedfData.columns.map((col, idx) => {
@@ -518,16 +540,15 @@ export default function FedfPage() {
                 有効な数値列が選択されていません。
               </div>
             )}
-          </div>
-        </Dropdown>
-      </FocusTarget>
+            </div>
+          </Dropdown>
+        </GraphPanel>
+      </div>
 
       {/* Guide Note */}
-      {!focused && (
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px' }}>
           ※ 縦軸に変数の生値、横軸に経験累積確率（または中央値からの山型距離）を展開するFlipped Empirical Distribution Function (Huh 1995)です。軸上ドラッグで値／分位点範囲選択、プリセットボタンでIQRや外れ値の上位/下位5%を瞬時に選択しPCPへ伝播できます。
         </div>
-      )}
     </div>
   )
 }

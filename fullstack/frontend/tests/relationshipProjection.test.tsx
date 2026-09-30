@@ -9,7 +9,6 @@ import RelationshipsPage from '../src/features/relationships/RelationshipsPage'
 const load = vi.hoisted(() => vi.fn(() => null))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: load }))
 vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getColor: () => '#1677ff' }) }))
-vi.mock('../src/features/common/FocusMode', () => ({ FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/features/relationships/RelationshipCanvas', () => ({ default: ({ data }: any) => <div data-testid="pair-result">{data.rowIds.join(',')}</div> }))
 vi.mock('../src/features/pcp/MaAxisPicker', () => ({ default: ({ onAdd }: any) => <button onClick={() => onAdd([{ kind: 'maOption', groupId: 'q', columnId: 'a' }])}>Add A</button> }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); load.mockClear() })

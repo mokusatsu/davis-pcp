@@ -1,0 +1,61 @@
+---BEFORE---
+重回帰分析
+対象:
+全体
+Active
+Selected
+標本
+重み:
+データ設定
+なし
+欠損:
+欠損カテゴリ
+欠損カテゴリ
+目的変数:
+sepal_length_cm — Imputation Guard Label
+数値説明変数:
+数値を選択
+カテゴリ説明変数:
+カテゴリを選択
+交互作用:
+変数1
+×
+変数2
+追 加
+切片あり
+共分散:
+自動
+信頼水準:
+実 行
+目的変数1列・説明変数1つ以上（目的変数と重複不可）を選択してください。
+---AFTER---
+重回帰分析
+対象:
+全体
+Active
+Selected
+標本
+重み:
+データ設定
+なし
+欠損:
+欠損カテゴリ
+目的変数:
+sepal_length_cm — Imputation Guard Label
+数値説明変数:
+数値を選択
+カテゴリ説明変数:
+カテゴリを選択
+交互作用:
+変数1
+×
+変数2
+追 加
+切片あり
+共分散:
+自動
+信頼水準:
+実 行
+目的変数1列・説明変数1つ以上（目的変数と重複不可）を選択してください。
+SEL-BEFORE:欠損カテゴリ|sepal_length_cm — Imputation Guard Label|自動
+SEL-AFTER:欠損カテゴリ|sepal_length_cm — Imputation Guard Label|自動

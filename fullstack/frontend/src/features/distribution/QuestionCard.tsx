@@ -1,5 +1,6 @@
 import { QuestionTooltip } from '../common/ColumnQuestionTooltip'
 import React, { useState } from 'react'
+import GraphPanel from '../common/GraphPanel'
 import { Card, Tag, Typography, Segmented, Progress, Row, Col, Button, Space } from 'antd'
 import { SlidersOutlined } from '@ant-design/icons'
 import type { CodebookColumn } from '../../api/client'
@@ -119,6 +120,27 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   }
 
   return (
+    <GraphPanel
+      graphId={`distribution/question/${summary.columnId}`}
+      title={title}
+      available
+      sizing="intrinsic"
+      intrinsicSize={{ width: 560, height: 320 }}
+      normalWidth="viewport"
+      controls={(
+        <Segmented
+          size="small"
+          aria-label="分母"
+          data-testid="question-denominator-toggle"
+          options={[
+            { label: '有効回答ベース', value: 'valid' },
+            { label: '全対象者ベース', value: 'total' },
+          ]}
+          value={base}
+          onChange={(val) => setBase(val as 'valid' | 'total')}
+        />
+      )}
+    >
     <Card
       size="small"
       data-testid={`question-card-${summary.columnId}`}
@@ -138,19 +160,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           {summary.weight?.status === 'applied' && <Tag color="green">ウェイト適用中</Tag>}
           {summary.weight?.status === 'no_positive_weight' && <Tag color="warning">加重値なし</Tag>}
         </Space>
-      }
-      extra={
-        <Segmented
-          size="small"
-          aria-label="分母"
-          data-testid="question-denominator-toggle"
-          options={[
-            { label: '有効回答ベース', value: 'valid' },
-            { label: '全対象者ベース', value: 'total' },
-          ]}
-          value={base}
-          onChange={(val) => setBase(val as 'valid' | 'total')}
-        />
       }
       style={{ marginBottom: 16, borderRadius: 6, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
     >
@@ -350,6 +359,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
       )}
     </Card>
+    </GraphPanel>
   )
 }
 export default QuestionCard

@@ -92,7 +92,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
     <Select {...selectProps} ref={ref}
       getPopupContainer={selectProps.getPopupContainer ?? (() => document.body)}
       // 複数選択では検索入力を出さない（選択は🔍ダイアログで行う）
-      showSearch={isMultiple ? false : selectProps.showSearch}
+      showSearch={isMultiple ? false : (selectProps.showSearch ?? true)}
       filterOption={isMultiple ? undefined : (selectProps.filterOption ?? ((input: string, option: any) => `${option?.value ?? ''} ${option?.label ?? ''} ${presentation(option?.value)}`.toLocaleLowerCase().includes(input.toLocaleLowerCase())))}
       optionRender={selectProps.optionRender ?? ((option: any) => renderValue(option.value, option.label))}
       labelRender={selectProps.labelRender ?? ((option: any) => renderLabel(option.value, option.label))}

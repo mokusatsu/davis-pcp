@@ -1,0 +1,11 @@
+起動記録(N007-06/V12用)
+- 起動コマンド: run-production.bat (preview server davis-pcp-production-036)
+- 起動serverId: a48f8209-2cd7-4906-bb29-559b560aa98b
+- URL/port: http://127.0.0.1:8420
+- 起動確認日時(JST): 2026-09-18 (本セッション内でpreview_start→curl 200確認)
+- 読込JS: assets/index-CKY31PSW.js (distとcurl一致確認済み)
+- 読込CSS: assets/index-ln5rxMhz.css
+- run ID: run_all 20260918-194610 / run_state 20260918-194426 (各結果JSONに記録)
+- 期待値: distと配信bundleの一致、限定テスト24件、実ブラウザrun_all 34/34・run_state 9/9
+- 実測値: 上記のとおり(各結果JSON・REPORT-008参照)
+- 失敗run: C2の判定式誤り、V08bの部分一致誤到達、E2のTab到達不可、E3/E5のevaluate構文誤り、B0bのJS内False誤記等はスクリプト修正履歴として残る

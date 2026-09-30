@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { MCACategory } from './mcaTypes'
+import { truncateText } from '../../utils/textUtils'
 
 const W = 560
 const H = 400
@@ -120,6 +121,9 @@ export default function McaFigure({ points, rank, dispRank, xAxis, yAxis, ratio,
         const isSel = selected.has(p.id)
         const isLinked = highlighted.has(p.id)
         const fill = p.color ?? (getColor && p.rowId ? getColor(p.rowId) : '#1890ff')
+        const label = truncateText(p.label, 16)
+        const labelWidth = Array.from(label).length * 7
+        const labelOnRight = cx + 8 + labelWidth <= W - PAD.right
         return (
           <g key={p.id} style={{ cursor: 'pointer' }}>
             <circle
@@ -138,7 +142,10 @@ export default function McaFigure({ points, rank, dispRank, xAxis, yAxis, ratio,
             <circle cx={cx} cy={cy} r={12} fill="transparent" data-selectable="true" onClick={(ev) => { ev.stopPropagation(); onToggle(p.id) }}>
               <title>{p.title}</title>
             </circle>
-            <text x={cx + 8} y={cy + 4} fontSize={11} fill="#333">{p.label}</text>
+            <text x={labelOnRight ? cx + 8 : cx - 8} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
+              <title>{p.title}</title>
+              {label}
+            </text>
           </g>
         )
       })}

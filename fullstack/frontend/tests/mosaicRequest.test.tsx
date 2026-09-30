@@ -14,7 +14,10 @@ vi.mock('../src/features/mosaic/MosaicControlPanel', () => ({ MosaicControlPanel
   <button onClick={() => p.onRowVarsChange(['A'])}>MAを指定</button>
   <button onClick={() => { p.onColVarsChange([]) }}>列を解除</button>
 </> }))
-vi.mock('../src/features/mosaic/LineMosaicCanvas', () => ({ LineMosaicCanvas: ({ mosaicData }: any) => <div data-testid="mosaic-result">{mosaicData.evidenceClass}</div> }))
+vi.mock('../src/features/mosaic/LineMosaicCanvas', () => ({
+  LineMosaicCanvas: ({ mosaicData }: any) => <div data-testid="mosaic-result">{mosaicData.evidenceClass}</div>,
+  lineMosaicDimensions: () => ({ width: 720, height: 480 }),
+}))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 function setup() {

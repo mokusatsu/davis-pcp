@@ -2,7 +2,7 @@
 
 版1.0。これは実装タスクの完了条件であり、この成果物作成時の試験実績ではない。実績はvalidation/VALIDATION_REPORT.mdを参照。
 
-033b EFA／033c CFAは[拡張受入計画](FACTOR_EXTENSIONS_ACCEPTANCE.md)を適用する。旧ML専用の受入条件を順序EFAへそのまま適用しない。CFAはEFA完成後の独立段階で、ローカルlavaanと静的実行未対応の能力境界を個別に検証する。
+033 EFA／033c CFAは[拡張受入計画](FACTOR_EXTENSIONS_ACCEPTANCE.md)を適用する。現行033のEFA受入条件を適用し、旧ML専用資料の受入条件は使わない。CFAはEFA完成後の独立段階で、ローカルlavaanと静的実行未対応の能力境界を個別に検証する。
 
 ## 1. PR/タスク分割
 
@@ -12,7 +12,7 @@
 |B|CA kernel→表→回答者API→画面|A|解析解、カテゴリ選択、零質量、local/static一致|
 |C|MCAとFAMDを別kernel/画面で実装|A,BのSVD/カテゴリ基盤|m/K正規化、FAMD標準化、寄与・cos2・射影|
 |D|回帰core＋Taylor model_covariance|A|OLS/HC3/frequency複製、設計PSU、識別不能|
-|E|ML因子→回転→得点|A|ML目的関数、収束、回転不変性、得点規約|
+|E|EFA（Pearson ML／MINRES、Polychoric MINRES）→平行分析→回転→得点・感度比較|A|EFA-B01〜B22、ML目的関数、相関・回転不変性、得点能力規約|
 |F|CJデータ検証→ratings→choice→ranking→simulate|A,D|タスク完全性、回答者SE、分離、効用・WTP|
 |G|共通保存/export/PCP/E2E/配布統合|B〜F|原子的保存・idempotency・stale・KeepAlive・静的版|
 

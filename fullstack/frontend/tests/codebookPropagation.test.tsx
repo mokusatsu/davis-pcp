@@ -17,7 +17,6 @@ const fixture = vi.hoisted(() => ({
   minMax: { Q: { min: 1, max: 99 } }, categories: {},
 }))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: () => fixture }))
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 
 const spec: CodebookColumn = { columnId: 'q', name: 'Q', label: '満足度', role: 'question', scaleType: 'ordinal', categoryOrder: ['3', '2', '1'], valueLabels: { '1': '満足', '3': '不満' }, missingCodes: ['99'], missingReasons: { '99': '無回答' }, isReversed: true, multiResponseGroup: null }
 function testStore() {

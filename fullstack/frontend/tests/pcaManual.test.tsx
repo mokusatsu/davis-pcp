@@ -7,7 +7,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import PcaPage from '../src/features/pca/PcaPage'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false, isTargetActive: () => false }) }))
 vi.mock('../src/features/pca/BiplotView', () => ({ BiplotView: () => null }))
 vi.mock('../src/features/pca/PcaMatrixPlot', () => ({ PcaMatrixPlot: () => null }))
 vi.mock('../src/features/pca/ScreePlot', () => ({ ScreePlot: () => null }))

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "X01 no expand",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "X01 table visible",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "X02 no expand",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "X03 no expand",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "X10 stats tables remain",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "no focus-bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "no focus-enter",
+    "ok": true,
+    "detail": ""
+  }
+]

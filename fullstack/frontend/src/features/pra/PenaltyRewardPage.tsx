@@ -14,7 +14,7 @@ import {
 import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { truncateText } from '../../utils/textUtils'
 
 export interface PraAttribute {
@@ -41,7 +41,6 @@ export interface PraResponse {
 }
 
 export default function PenaltyRewardPage() {
-  const { focused, isTargetActive } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -175,9 +174,8 @@ export default function PenaltyRewardPage() {
   return (
     <div
       style={{
-        padding: focused ? 0 : 16,
+        padding: 16,
         height: '100%',
-        flex: focused ? 1 : undefined,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'auto',
@@ -186,7 +184,7 @@ export default function PenaltyRewardPage() {
       data-testid="penalty-reward-page"
     >
       {/* Header controls */}
-      {!focused && (
+      {(
         <Card size="small" style={{ marginBottom: 12 }}>
           <Row gutter={[16, 12]} align="middle">
             <Col xs={24} md={8}>
@@ -243,7 +241,7 @@ export default function PenaltyRewardPage() {
       {result && (
         <>
           {/* Summary KPIs */}
-          {!focused && (
+          {(
             <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
               <Col xs={12} sm={6}>
                 <Card size="small">
@@ -286,41 +284,38 @@ export default function PenaltyRewardPage() {
           )}
 
           <Row
-            gutter={focused ? [0, 0] : [16, 16]}
+            gutter={[16, 16]}
             style={{
-              flex: focused ? 1 : undefined,
-              height: focused ? '100%' : undefined,
-              minHeight: 0,
+                            minHeight: 0,
             }}
           >
             {/* Left: 4-Quadrant Kano Strategy Board (SVG) */}
-            {(!focused || isTargetActive('pra-kano') || isTargetActive('pra-diverging')) && (
+            {(
               <Col
                 xs={24}
-                lg={focused ? 24 : 13}
+                lg={13}
                 style={{
-                  height: focused ? '100%' : undefined,
-                  flex: focused ? 1 : undefined,
-                  display: 'flex',
+                                    display: 'flex',
                   flexDirection: 'column',
                   minHeight: 0,
                 }}
               >
-                {(!focused || isTargetActive('pra-kano')) && (
-                  <FocusTarget id="pra-kano" title="Kano 4象限戦略マトリクス">
+                {(
+                  <GraphPanel
+                    graphId="penalty-reward/kano"
+                    title="Kano 4象限戦略マトリクス"
+                    available={Boolean(result?.attributes?.length)}
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: 500, height: 400 }}
+                  >
                     <Card
                       size="small"
-                      title="Kano 4象限戦略マトリクス (Penalty vs Reward)"
-                      extra={<FocusEnterButton targetId="pra-kano" title="Kano 4象限戦略マトリクス" />}
                       data-testid="kano-quadrant-board"
                       style={{
-                        height: focused ? '100%' : undefined,
-                        flex: focused ? 1 : undefined,
-                        display: 'flex',
+                                                display: 'flex',
                         flexDirection: 'column',
                         minHeight: 0,
                       }}
-                      bodyStyle={focused ? { flex: 1, overflow: 'auto' } : undefined}
                     >
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                         <Button
@@ -344,7 +339,7 @@ export default function PenaltyRewardPage() {
                       </div>
 
                       {/* 4 Quadrants Graphic Area */}
-                      <div style={{ position: 'relative', width: '100%', height: focused ? '100%' : 440, minHeight: 380, background: '#fdfdfd', border: '1px solid #e5e7eb', borderRadius: 6, userSelect: 'none' }}>
+                      <div style={{ position: 'relative', width: '100%', aspectRatio: '500 / 400', background: '#fdfdfd', border: '1px solid #e5e7eb', borderRadius: 6, userSelect: 'none' }}>
                         {/* Quadrant background badges */}
                         <div style={{ position: 'absolute', top: 8, right: 12, textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#1677ff' }}>
                           一元的品質 (Performance) ↗
@@ -418,29 +413,31 @@ export default function PenaltyRewardPage() {
                         </svg>
                       </div>
                     </Card>
-                  </FocusTarget>
+                  </GraphPanel>
                 )}
 
                 {/* Diverging Impact Bars */}
-                {(!focused || isTargetActive('pra-diverging')) && (
-                  <FocusTarget id="pra-diverging" title="非対称インパクト対比">
+                {(
+                  <GraphPanel
+                    graphId="penalty-reward/diverging"
+                    title="非対称インパクト対比"
+                    available={Boolean(result?.attributes?.length)}
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: 560, height: Math.max(300, 120 + (result?.attributes?.length ?? 4) * 64) }}
+                    normalWidth="viewport"
+                  >
                     <Card
                       size="small"
-                      title="非対称インパクト対比棒グラフ (Diverging Impact Bars)"
-                      extra={<FocusEnterButton targetId="pra-diverging" title="非対称インパクト対比" />}
                       data-testid="diverging-impact-bars"
                       style={{
-                        marginTop: focused ? 0 : 16,
-                        height: focused ? '100%' : undefined,
-                        flex: focused ? 1 : undefined,
-                        display: 'flex',
+                        marginTop: 16,
+                                                display: 'flex',
                         flexDirection: 'column',
                         minHeight: 0,
                       }}
-                      bodyStyle={focused ? { flex: 1, overflow: 'auto' } : undefined}
                     >
                       <div style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 4, fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>
                           <span style={{ color: '#cf1322' }}>◀ Penalty Impact (低評価時の満足度低下 β_low)</span>
                           <span style={{ color: '#3f8600' }}>Reward Impact (高評価時の満足度向上 β_high) ▶</span>
                         </div>
@@ -484,13 +481,13 @@ export default function PenaltyRewardPage() {
                         })}
                       </div>
                     </Card>
-                  </FocusTarget>
+                  </GraphPanel>
                 )}
               </Col>
             )}
 
             {/* Right: Asymmetry Test Table & Action Strategy Board */}
-            {!focused && (
+            {(
               <Col xs={24} lg={11}>
                 {currentAttr ? (
                   <Card

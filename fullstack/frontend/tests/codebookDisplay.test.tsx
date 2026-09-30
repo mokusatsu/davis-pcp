@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
 import ColumnSelect from '../src/features/common/ColumnSelect'
+import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 import StatisticsPage from '../src/features/dataset/StatisticsPage'
 import BarChartPage from '../src/features/barchart/BarChartPage'
 import { graphEngine } from '../src/engine/graphClient'
@@ -18,7 +19,6 @@ const fixture = vi.hoisted(() => ({
   minMax: { Q: { min: 1, max: 99 } }, categories: {},
 }))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: vi.fn(() => fixture) }))
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false, isTargetActive: () => false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/engine/graphClient', () => ({ graphEngine: { describeNumeric: vi.fn(async () => [2, 2, 1.5, .5, 1, 1, 1.5, 2, 2]) } }))
 const spec: CodebookColumn = { columnId: 'q', name: 'Q', label: '普段の生活についての長い設問全文', role: 'question', scaleType: 'ordinal', categoryOrder: ['2', '1'], valueLabels: { '1': '同じ表示', '2': '同じ表示', '99': '無回答' }, missingCodes: ['99'], missingReasons: {}, isReversed: false, multiResponseGroup: null }
 function setup(scale: CodebookColumn['scaleType'] = 'ordinal') {
@@ -83,6 +83,30 @@ describe('saved codebook display', () => {
     await screen.findByTestId('question-card-Q')
     expect(screen.queryByTestId('histogram-Q')).toBeNull()
   })
+  it('opens a histogram in the shared expansion dialog and removes the temporary host when closed', async () => {
+    const testStore = setup('ratio')
+    render(
+      <Provider store={testStore}>
+        <MemoryRouter>
+          <GraphExpansionProvider>
+            <StatisticsPage />
+          </GraphExpansionProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+
+    await screen.findByTestId('histogram-Q')
+    fireEvent.click(screen.getByRole('button', { name: '拡大表示' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-expansion-zoom-label')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('graph-expansion-dock')).toContainElement(screen.getByTestId('graph-host-statistics/histogram/Q'))
+
+    fireEvent.click(screen.getByTestId('graph-expansion-exit'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('graph-host-statistics/histogram/Q')).toBeNull()
+    })
+  })
   it('labels bars without merging codes that share a label and shows the full question', async () => {
     render(<Provider store={setup()}><BarChartPage /></Provider>)
     const bars = await screen.findAllByTestId(/^barchart-bar-/)
@@ -91,7 +115,9 @@ describe('saved codebook display', () => {
     expect(bars[1]).toHaveTextContent('同じ表示')
     expect(screen.getByTestId('barchart-questions')).toHaveTextContent(spec.label)
     fireEvent.mouseEnter(bars[0])
-    expect(screen.getByRole('status')).toHaveTextContent('同じ表示 (1)')
+    const tooltip = screen.getByRole('status')
+    expect(tooltip).toHaveTextContent('同じ表示 (1)')
+    expect(tooltip).toHaveStyle({ position: 'absolute' })
   })
 
   it('projects only ordinary chart inputs, follows the shared scope and keeps no variables empty', async () => {

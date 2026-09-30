@@ -4,8 +4,7 @@ import { Alert, Card, Empty, Radio, Segmented, Space, Spin, Tooltip, Typography 
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
-import SelectionMenu from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import { api } from '../../api/client'
 import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
 import { neutralIndex, sortLikertRows, toLikertRow, type LikertRow, type LikertSort } from './likertTransform'
@@ -20,7 +19,6 @@ interface LikertColumnPayload {
 type Basis = 'unweighted' | 'weighted'
 
 export default function LikertComparisonPage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
@@ -125,8 +123,7 @@ export default function LikertComparisonPage() {
   if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
   return (
-    <div data-testid="likert-page" style={{ display: 'flex', flexDirection: 'column', gap: focused ? 0 : 12, padding: focused ? 0 : 4 }}>
-      {!focused && (
+    <div data-testid="likert-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4 }}>
         <Space wrap>
           <Typography.Text strong>Likert Comparison</Typography.Text>
           <Segmented
@@ -148,19 +145,22 @@ export default function LikertComparisonPage() {
             <Radio.Button value="unweighted">非加重</Radio.Button>
             <Radio.Button value="weighted" disabled={!weightName}>加重</Radio.Button>
           </Radio.Group>
-          <SelectionMenu testId="selection-menu" />
-          <FocusEnterButton targetId="likert" title="Likert Comparison" />
         </Space>
-      )}
-      {!focused && weightMeta && weightMeta.status !== 'omitted' && (
+      {weightMeta && weightMeta.status !== 'omitted' && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="likert-weight-meta">
           表示基準: {basis === 'weighted' ? `加重（${weightMeta.columnName}）` : '非加重'}
           （非加重n={weightMeta.unweightedN ?? '—'} / 加重Σw={weightMeta.weightedN ?? '—'}）· 検定p値は加重しません
         </Typography.Text>
       )}
-      {!focused && matchError && <Alert type="error" message={matchError} showIcon />}
-      {!focused && error && <Alert type="error" message="集計エラー" description={error} showIcon />}
-      <FocusTarget id="likert" title="Likert Comparison">
+      {matchError && <Alert type="error" message={matchError} showIcon />}
+      {error && <Alert type="error" message="集計エラー" description={error} showIcon />}
+      <GraphPanel
+        graphId="likert/comparison"
+        title="Likert Comparison"
+        available={rows.length > 0}
+        sizing="intrinsic"
+        intrinsicSize={{ width: 900, height: Math.max(300, 60 + rows.length * 110) }}
+      >
         {loading ? <div style={{ padding: 40, textAlign: 'center' }}><Spin tip="Likert集計を計算中..." /></div>
           : !rows.length ? <Empty description={ordinalColumns.length ? '表示可能な行がありません。' : '順序尺度の質問列がありません。'} />
           : (
@@ -230,12 +230,10 @@ export default function LikertComparisonPage() {
               ))}
             </div>
           )}
-      </FocusTarget>
-      {!focused && (
+      </GraphPanel>
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
           セグメントをクリックすると該当回答者を中央Selectionへ送ります。* 中立の意味は原票で確認してください。
         </Typography.Text>
-      )}
     </div>
   )
 }

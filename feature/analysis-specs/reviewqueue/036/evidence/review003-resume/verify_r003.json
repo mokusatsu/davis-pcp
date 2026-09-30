@@ -1,0 +1,88 @@
+{
+  "base": "http://127.0.0.1:8420",
+  "meta": {
+    "startedAt": "2026-09-17T16:21:39.301553+00:00",
+    "base": "http://127.0.0.1:8420",
+    "finishedAt": "2026-09-17T16:23:03.499306+00:00"
+  },
+  "results": [
+    {
+      "step": "N001-04 Tabでナビへ到達",
+      "ok": true,
+      "detail": "{\"tag\": \"UL\", \"cls\": \"ant-menu-overflow ant-menu ant-menu-root ant-menu-horizontal ant-menu-light feature-navigation-menu css-azkwgk\", \"text\": \"データ・概要可視化関係・集計パターン探索予測・要因分析次元削減・因子分析その他の\"}",
+      "at": "2026-09-17T16:21:41.137964+00:00"
+    },
+    {
+      "step": "N001-04 Escapeで開いた分類タイトルへ復帰（本文へ飛ばない）",
+      "ok": false,
+      "detail": "opened=データ・概要 leaf=データ・概要可視化関係・集計パターン探索予測・要因分析次元削減・因子分析その他の分類 after={\"expanded\": null, \"focus\": {\"tag\": \"BODY\", \"cls\": \"\", \"text\": \"DAVIS-PCPIris (built-in sample) (150行)Im\", \"menuId\": null, \"inNav\": false}}",
+      "at": "2026-09-17T16:21:42.086758+00:00"
+    },
+    {
+      "step": "N001-04 キーボード",
+      "ok": false,
+      "detail": "Traceback (most recent call last): |   File \"C:\\dev\\davis-pcp\\.temp\\header-navigation\\verify_r003.py\", line 37, in section |     fn(page) |     ~~^^^^^^ |   File \"C:\\dev\\davis-pcp\\.temp\\header-navigation\\verify_r003.py\", line 143, in check_keyboard |     page.wait_for_function(\"() => location.pathname === '/overview'\", timeout=10000) |     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ |   File \"C:\\Users\\lain\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\playwright\\sync_api\\_generated.py\", line 12761, in wait_for_function |     self._sync( |     ~~~~~~~~~~^ |         self._impl_obj.wait_for_function( |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ |     ...<4 lines>... |         ) |         ^ |     ) |     ^ |   File \"C:\\Users\\lain\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\playwright\\_impl\\_sync_base.py\", line 115, in _sync |     return task.result() |            ~~~~~~~~~~~^^ | playwright._impl._errors.TimeoutError: Page.wait_for_function: Timeout 10000ms exceeded. | ",
+      "at": "2026-09-17T16:21:53.022707+00:00"
+    },
+    {
+      "step": "N001-01 狭幅パネルがmax-heightで縦スクロール可能",
+      "ok": true,
+      "detail": "{\"h\": 132, \"maxH\": \"132px\", \"scrollable\": true, \"overflowY\": \"auto\"}",
+      "at": "2026-09-17T16:21:57.456205+00:00"
+    },
+    {
+      "step": "N001-01 狭幅パネルの末尾機能が画面内に到達",
+      "ok": true,
+      "detail": "last=次元削減・因子分析 box={'x': 21, 'y': 227, 'width': 254, 'height': 40}",
+      "at": "2026-09-17T16:21:57.713294+00:00"
+    },
+    {
+      "step": "V08 重回帰: 実行ボタン有効化",
+      "ok": false,
+      "detail": "変数選択後に実行ボタンがdisabledのまま",
+      "at": "2026-09-17T16:22:10.866807+00:00"
+    },
+    {
+      "step": "V08 分析往復",
+      "ok": false,
+      "detail": "Traceback (most recent call last): |   File \"C:\\dev\\davis-pcp\\.temp\\header-navigation\\verify_r003.py\", line 37, in section |     fn(page) |     ~~^^^^^^ |   File \"C:\\dev\\davis-pcp\\.temp\\header-navigation\\verify_r003.py\", line 314, in check_v08 |     page.wait_for_selector(\"main .ant-select\", state=\"visible\", timeout=20000) |     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ |   File \"C:\\Users\\lain\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\playwright\\sync_api\\_generated.py\", line 9033, in wait_for_selector |     self._sync( |     ~~~~~~~~~~^ |         self._impl_obj.wait_for_selector( |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ |     ...<4 lines>... |         ) |         ^ |     ) |     ^ |   File \"C:\\Users\\lain\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\site-packages\\playwright\\_impl\\_sync_base.py\", line 115, in _sync |     return task.result() |            ~~~~~~~~~~~^^ | playwright._impl._errors.TimeoutError: Page.wait_for_selector: Timeout 20000ms exceeded. | Call log: |   - waiting for locator(\"main .ant-select\") to be visible |     43 × locator resolved to 8 elements. Proceeding with the first one: <div aria-label=\"PCPの表示軸\" class=\"ant-select ant-select-outlined column-select-multi-fix  css-mncuj7 ant-select-multiple ant-select-allow-clear ant-select-show-arrow\">…</div> |  | ",
+      "at": "2026-09-17T16:22:36.091766+00:00"
+    },
+    {
+      "step": "V09 複数分類往復後も選択rowId集合が維持",
+      "ok": true,
+      "detail": "before=['IRIS-002'] after=['IRIS-002'] pcp={'selected': 1}",
+      "at": "2026-09-17T16:22:43.202382+00:00"
+    },
+    {
+      "step": "V09 往復後にヘッダ共通状態（Variables/ウェイト）が表示維持",
+      "ok": true,
+      "detail": "{\"variables\": \"80 / 80 項目選択中 (sepal_length_cm, sepal_width_cm...) \", \"weight\": true}",
+      "at": "2026-09-17T16:22:43.204814+00:00"
+    },
+    {
+      "step": "V10 dataset切替後に旧結果が残らない",
+      "ok": true,
+      "detail": "before='ラベル生値全active行選択のみ (0)全行補完あり (0)補完なし表示 150 / 総 150 行 · 右クリックで操作表示項目1234567選択Imputation Guard Label (sepal_length_cm)sepa after='ラベル生値全active行選択のみ (0)全行補完あり (0)補完なし表示 4 / 総 4 行 · 右クリックで操作選択gender (gender)score (score)選択gender (gender)score (score)M switched_to=subgroup_empty (4行)",
+      "at": "2026-09-17T16:22:54.328530+00:00"
+    },
+    {
+      "step": "V11 拡大中: dialogが最前面でnavは操作不可・popup非残存",
+      "ok": true,
+      "detail": "dialogOpen=True navReachable=False popups=True",
+      "at": "2026-09-17T16:23:01.871254+00:00"
+    },
+    {
+      "step": "V11 解除後: dialogが閉じnavとExportが操作可能",
+      "ok": true,
+      "detail": "dialogClosed=True navBack=True exportVisible=True",
+      "at": "2026-09-17T16:23:02.603936+00:00"
+    },
+    {
+      "step": "V11 解除後にナビで遷移可能",
+      "ok": true,
+      "detail": "http://127.0.0.1:8420/table",
+      "at": "2026-09-17T16:23:03.439854+00:00"
+    }
+  ]
+}

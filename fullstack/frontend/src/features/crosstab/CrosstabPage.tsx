@@ -11,7 +11,7 @@ import type { WeightType } from '../../api/client'
 import SelectColumn from '../common/ColumnSelect'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { saveWeightConfigThunk } from '../dataset/codebookSlice'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import { useGraphExpansion } from '../common/GraphExpansion'
 import CrosstabTable, { type CrosstabCell, type DisplayMode } from './CrosstabTable'
 
 interface CrosstabMeta {
@@ -150,7 +150,8 @@ function inferenceTitle(inference: CrosstabResponse['inference']): string {
 }
 
 export default function CrosstabPage() {
-  const { focused } = useFocusMode()
+  const { session } = useGraphExpansion()
+  const focused = session !== null
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
@@ -387,7 +388,6 @@ export default function CrosstabPage() {
         <Card
           size="small"
           title="クロス集計 (Crosstab)"
-          extra={<FocusEnterButton targetId="crosstab" title="クロス集計" />}
         >
           <Space wrap align="center">
             <span>表側</span>
@@ -518,7 +518,7 @@ export default function CrosstabPage() {
       )}
       {error && <Alert type="error" message={error} />}
       {result && (
-        <FocusTarget id="crosstab" title="クロス集計表">
+        <>
           <Card
             size="small"
             title={
@@ -655,7 +655,7 @@ export default function CrosstabPage() {
               </Space>
             </Space>
           </Card>
-        </FocusTarget>
+        </>
       )}
     </div>
   )

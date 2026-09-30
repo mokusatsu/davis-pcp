@@ -121,6 +121,65 @@ def test_kendall_emm_score():
     assert score > 5.0
 
 
+def test_kendall_emm_reports_ineligible_selected_pair():
+    """A selected binary question must explain why Kendall-EMM cannot run."""
+    n = 80
+    df = pl.DataFrame({
+        "segment": ["A"] * (n // 2) + ["B"] * (n // 2),
+        "binary": [0, 1] * (n // 2),
+        "numeric": np.linspace(1.0, 5.0, n),
+    })
+    result = run_modern_subgroup_mining(
+        df=df,
+        target_questions=["binary", "numeric"],
+        mode="emm_kendall",
+        attribute_cols=["segment"],
+        column_meta=[
+            {"columnId": "segment", "role": "attribute", "semanticType": "categorical"},
+            {"columnId": "binary", "role": "question", "semanticType": "binary"},
+            {"columnId": "numeric", "role": "question", "semanticType": "numeric"},
+        ],
+        max_depth=1,
+        min_group_size=20,
+    )
+
+    diagnostics = result["emmDiagnostics"]
+    assert diagnostics["status"] == "selected_pair_ineligible"
+    assert diagnostics["eligibleQuestions"] == ["numeric"]
+    assert diagnostics["ineligibleQuestions"] == [{"column": "binary", "reason": "binary_question"}]
+    assert diagnostics["pairsEvaluated"] == 0
+
+
+def test_kendall_emm_reports_constant_value_rejections():
+    """Empty Kendall-EMM output records the failed numeric-pair evaluations."""
+    n = 80
+    df = pl.DataFrame({
+        "segment": ["A"] * (n // 2) + ["B"] * (n // 2),
+        "constant": [1.0] * n,
+        "numeric": np.linspace(1.0, 5.0, n),
+    })
+    result = run_modern_subgroup_mining(
+        df=df,
+        target_questions=["constant", "numeric"],
+        mode="emm_kendall",
+        attribute_cols=["segment"],
+        column_meta=[
+            {"columnId": "segment", "role": "attribute", "semanticType": "categorical"},
+            {"columnId": "constant", "role": "question", "semanticType": "numeric"},
+            {"columnId": "numeric", "role": "question", "semanticType": "numeric"},
+        ],
+        max_depth=1,
+        min_group_size=20,
+    )
+
+    diagnostics = result["emmDiagnostics"]
+    assert diagnostics["status"] == "no_valid_candidate"
+    assert diagnostics["pairsEvaluated"] == 1
+    assert diagnostics["evaluationsAttempted"] > 0
+    assert diagnostics["rejectionCounts"]["constant_value"] > 0
+    assert result["insights"] == []
+
+
 def test_descriptor_generation_and_canonical_intervals():
     """Test pre-generation of descriptors including one-sided and intervals."""
     df = pl.DataFrame({

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Checkbox, InputNumber, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
+import { useGraphExpansion } from '../common/GraphExpansion'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
@@ -26,7 +27,7 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 export default function LinearRegressionPage(): JSX.Element {
-  useFocusMode()
+  const { openWhenAvailable } = useGraphExpansion()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
@@ -105,6 +106,17 @@ export default function LinearRegressionPage(): JSX.Element {
   const [predictId, setPredictId] = useState<string | null>(null)
   const [matSource, setMatSource] = useState('fit')
   const [matField, setMatField] = useState('fitted')
+  const matFieldsFor = (source: string): string[] => {
+    if (!result) return []
+    return source === 'fit'
+      ? result.capabilities.materializeFitFields
+      : result.capabilities.materializePredictionFields
+  }
+  const handleMatSourceChange = (v: string): void => {
+    setMatSource(v)
+    const fields = matFieldsFor(v)
+    setMatField((f) => (fields.includes(f) ? f : (fields[0] ?? '')))
+  }
   const [matName, setMatName] = useState('LR_FITTED')
   const [saving, setSaving] = useState(false)
   const runSequence = useRef(0)
@@ -135,6 +147,10 @@ export default function LinearRegressionPage(): JSX.Element {
     setPredictInfo(null)
     setPredictError(null)
     setMatSource('fit')
+    setMatField((f) => {
+      const fitFields = ['fitted', 'residual', 'leverage_total', 'leverage_per_replica']
+      return fitFields.includes(f) ? f : 'fitted'
+    })
   }, [datasetId])
 
   const selectionRef = useRef(selection)
@@ -190,6 +206,10 @@ export default function LinearRegressionPage(): JSX.Element {
       setPredictInfo(null)
       setPredictError(null)
       setMatSource('fit')
+      setMatField((f) => {
+        const fields = res.capabilities.materializeFitFields
+        return fields.includes(f) ? f : (fields[0] ?? '')
+      })
       void fetchRows(res.resultId)
     } catch (err) {
       if (runSequence.current !== seq) return
@@ -245,13 +265,24 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
     }
+    if (selection.dataRevision !== result.meta.dataRevision
+      || schemaRevision !== result.meta.schemaRevision) {
+      setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
+      return
+    }
     const seq = runSequence.current
+    const startedDataset = datasetId
+    const startedDataRevision = selection.dataRevision
+    const startedSchemaRevision = schemaRevision
     setSelecting(true)
     try {
       const res = await selectLinearRegression(result.resultId, buildContext(), {
         kind: 'row_ids', rowIds: [rowId],
       })
-      if (runSequence.current !== seq) return
+      if (runSequence.current !== seq
+        || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision
+        || schemaRef.current !== startedSchemaRevision) return
       dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || '重回帰 図の点選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
     } catch (err) {
@@ -268,13 +299,15 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
     }
-    if (result.meta.resultState === 'stale'
-      || selection.dataRevision !== result.meta.dataRevision
+    if (selection.dataRevision !== result.meta.dataRevision
       || schemaRevision !== result.meta.schemaRevision) {
       setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
       return
     }
     const seq = runSequence.current
+    const startedDataset = datasetId
+    const startedDataRevision = selection.dataRevision
+    const startedSchemaRevision = schemaRevision
     setSelecting(true)
     setSelectInfo(null)
     try {
@@ -284,7 +317,10 @@ export default function LinearRegressionPage(): JSX.Element {
         yField: 'residual',
         xBounds: bounds.x, yBounds: bounds.y,
       })
-      if (runSequence.current !== seq) return
+      if (runSequence.current !== seq
+        || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision
+        || schemaRef.current !== startedSchemaRevision) return
       dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || '重回帰 診断図の選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
     } catch (err) {
@@ -330,6 +366,10 @@ export default function LinearRegressionPage(): JSX.Element {
       const ev = res.summary.evaluation
       setPredictInfo(`成功${res.summary.successfulPredictions}/${res.summary.requestedCount}` + (ev && ev.metrics ? ` RMSE=${ev.metrics.rmse === null ? '—' : ev.metrics.rmse.toFixed(4)}` : ''))
       setMatSource(res.predictionId)
+      setMatField((f) => {
+        const fields = result.capabilities.materializePredictionFields
+        return fields.includes(f) ? f : (fields[0] ?? '')
+      })
     } catch (err) {
       if (runSequence.current !== seq) return
       setPredictError(apiErrorMessage(err, '予測に失敗しました。'))
@@ -366,13 +406,15 @@ export default function LinearRegressionPage(): JSX.Element {
   ]
 
   const s = result?.summary
-  const stale = result?.meta.resultState === 'stale'
+  const stale = result !== null && (result.meta.resultState === 'stale'
+    || selection.dataRevision !== result.meta.dataRevision
+    || schemaRevision !== result.meta.schemaRevision)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Card title="重回帰分析" size="small">
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Space wrap>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '8px 16px', alignItems: 'start' }}>
+          <Space wrap style={{ gridColumn: '1 / -1' }}>
             <span>対象:</span>
             <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
               <Radio.Button value="all">全体</Radio.Button>
@@ -386,35 +428,35 @@ export default function LinearRegressionPage(): JSX.Element {
               <Radio.Button value="none">なし</Radio.Button>
             </Radio.Group>
             <span>欠損:</span>
-            <Select value={missingPolicy} onChange={setMissingPolicy} style={{ width: 160 }} options={[
+            <SelectSetting value={missingPolicy} onChange={setMissingPolicy} style={{ width: 160 }} options={[
               { value: 'exclude', label: '除外' },
               { value: 'include_missing', label: '欠損カテゴリ' },
               { value: 'separate_not_applicable', label: '非該当を分離' },
             ]} />
           </Space>
-          <Space wrap>
+          <Space wrap style={{ minWidth: 0 }}>
             <span>目的変数:</span>
             <SelectColumn value={target} onChange={setTarget} options={targetOptions} placeholder="目的変数を選択" style={{ width: 280 }} />
           </Space>
-          <Space wrap>
+          <Space wrap style={{ minWidth: 0 }}>
             <span>数値説明変数:</span>
-            <Select mode="multiple" value={numSel} onChange={setNumSel} style={{ width: 320 }} options={numericOptions} placeholder="数値を選択" />
+            <SelectColumn mode="multiple" value={numSel} onChange={setNumSel} style={{ width: 320 }} options={numericOptions} placeholder="数値を選択" />
           </Space>
           {numSel.filter((id) => colById.get(id)?.scaleType === 'ordinal').map((id) => (
-            <Space key={id}>
+            <Space key={id} style={{ minWidth: 0 }}>
               <Checkbox checked={Boolean(ordinalAck[id])} onChange={(e) => setOrdinalAck({ ...ordinalAck, [id]: e.target.checked })}>
                 {colById.get(id)?.label ?? id} を順序得点として使用（等間隔仮定）
               </Checkbox>
             </Space>
           ))}
-          <Space wrap>
+          <Space wrap style={{ minWidth: 0 }}>
             <span>カテゴリ説明変数:</span>
-            <Select mode="multiple" value={catSel} onChange={setCatSel} style={{ width: 320 }} options={categoricalOptions} placeholder="カテゴリを選択" />
+            <SelectColumn mode="multiple" value={catSel} onChange={setCatSel} style={{ width: 320 }} options={categoricalOptions} placeholder="カテゴリを選択" />
           </Space>
           {catSel.map((id) => (
-            <Space key={id}>
+            <Space key={id} style={{ minWidth: 0 }}>
               <span>{colById.get(id)?.label ?? id} の基準:</span>
-              <Select
+              <SelectSetting
                 value={references[id] ?? null}
                 onChange={(v) => setReferences({ ...references, [id]: v ?? undefined })}
                 style={{ width: 240 }}
@@ -424,11 +466,11 @@ export default function LinearRegressionPage(): JSX.Element {
               />
             </Space>
           ))}
-          <Space wrap>
+          <Space wrap style={{ gridColumn: '1 / -1' }}>
             <span>交互作用:</span>
-            <Select value={interDraft[0]} onChange={(v) => setInterDraft([v, interDraft[1]])} style={{ width: 200 }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+            <SelectColumn value={interDraft[0]} onChange={(v) => setInterDraft([v, interDraft[1]])} style={{ width: 200 }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
             <span>×</span>
-            <Select value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: 200 }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+            <SelectColumn value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: 200 }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
             <Button onClick={() => {
               if (interDraft[0] && interDraft[1] && interDraft[0] !== interDraft[1]) {
                 setInteractions([...interactions, [interDraft[0], interDraft[1]]])
@@ -439,10 +481,10 @@ export default function LinearRegressionPage(): JSX.Element {
               <Tag key={i} closable onClose={() => setInteractions(interactions.filter((_, j) => j !== i))}>{pair.join(' × ')}</Tag>
             ))}
           </Space>
-          <Space wrap>
+          <Space wrap style={{ gridColumn: '1 / -1' }}>
             <Checkbox checked={intercept} onChange={(e) => setIntercept(e.target.checked)}>切片あり</Checkbox>
             <span>共分散:</span>
-            <Select value={covariance} onChange={setCovariance} style={{ width: 160 }} options={[
+            <SelectSetting value={covariance} onChange={setCovariance} style={{ width: 160 }} options={[
               { value: 'auto', label: '自動' },
               { value: 'hc3', label: 'HC3' },
               { value: 'classical', label: 'classical' },
@@ -454,7 +496,7 @@ export default function LinearRegressionPage(): JSX.Element {
             {dirty && <Tag color="orange">設定が変更されています。結果は前回実行分です</Tag>}
           </Space>
           {!canRun && <Typography.Text type="secondary">目的変数1列・説明変数1つ以上（目的変数と重複不可）を選択してください。</Typography.Text>}
-        </Space>
+        </div>
       </Card>
 
       {error && <Alert type="error" message={error} showIcon />}
@@ -488,23 +530,31 @@ export default function LinearRegressionPage(): JSX.Element {
                 key: 'figure', label: '診断図',
                 children: (
                   <Space direction="vertical" style={{ width: '100%' }} size="small">
-                    <Space wrap>
-                      <span>X軸:</span>
-                      <Radio.Group value={diagField} onChange={(e) => setDiagField(e.target.value)}>
-                        <Radio.Button value="fitted">適合値</Radio.Button>
-                        <Radio.Button value="residual">残差</Radio.Button>
-                        <Radio.Button value="leverage">leverage</Radio.Button>
-                      </Radio.Group>
-                      <SelectionMenu />
-                      {selecting && <Spin size="small" />}
-                      {selectInfo && <Typography.Text>{selectInfo}</Typography.Text>}
-                      {rowsLoading && <Typography.Text type="secondary">行を取得中…</Typography.Text>}
-                      {rowsError && <Alert type="error" message={rowsError} showIcon />}
-                      {result && !rowsReady && !rowsLoading && (
-                        <Typography.Text type="warning">行の取得が完了していないため選択できません。</Typography.Text>
+                    <GraphPanel
+                      graphId="linear-regression/diagnostics"
+                      title="残差診断散布図"
+                      available={tab === 'figure'}
+                      sizing="intrinsic"
+                      intrinsicSize={{ width: 560, height: 400 }}
+                      controls={(
+                        <Space wrap>
+                          <span>X軸:</span>
+                          <Radio.Group value={diagField} onChange={(e) => setDiagField(e.target.value)}>
+                            <Radio.Button value="fitted">適合値</Radio.Button>
+                            <Radio.Button value="residual">残差</Radio.Button>
+                            <Radio.Button value="leverage">leverage</Radio.Button>
+                          </Radio.Group>
+                          <SelectionMenu />
+                          {selecting && <Spin size="small" />}
+                          {selectInfo && <Typography.Text>{selectInfo}</Typography.Text>}
+                          {rowsLoading && <Typography.Text type="secondary">行を取得中…</Typography.Text>}
+                          {rowsError && <Alert type="error" message={rowsError} showIcon />}
+                          {result && !rowsReady && !rowsLoading && (
+                            <Typography.Text type="warning">行の取得が完了していないため選択できません。</Typography.Text>
+                          )}
+                        </Space>
                       )}
-                    </Space>
-                    <FocusTarget id="lr-figure">
+                    >
                       <LinearRegressionFigure
                         points={figurePoints}
                         xLabel={diagField === 'fitted' ? '適合値' : diagField === 'residual' ? '残差' : 'leverage'}
@@ -517,7 +567,7 @@ export default function LinearRegressionPage(): JSX.Element {
                         svgRef={svgRef}
                         testId="lr-figure"
                       />
-                    </FocusTarget>
+                    </GraphPanel>
                     <L1Legend />
                     <Space wrap>
                       <Button onClick={() => svgRef.current && downloadSvg(svgRef.current, `${result.resultId}-lr.svg`)}>SVG保存</Button>
@@ -561,7 +611,7 @@ export default function LinearRegressionPage(): JSX.Element {
                         <Radio.Button value="sampled">標本</Radio.Button>
                       </Radio.Group>
                       <span>区間:</span>
-                      <Select value={predictInterval} onChange={setPredictInterval} style={{ width: 200 }} options={[
+                      <SelectSetting value={predictInterval} onChange={setPredictInterval} style={{ width: 200 }} options={[
                         { value: 'none', label: '点予測のみ' },
                         { value: 'mean_ci', label: '平均CI' },
                         { value: 'individual_pi', label: '個別PI' },
@@ -594,9 +644,9 @@ export default function LinearRegressionPage(): JSX.Element {
                   <Space direction="vertical" style={{ width: '100%' }} size="small">
                     <Space wrap>
                       <span>保存元:</span>
-                      <Select
+                      <SelectSetting
                         value={matSource}
-                        onChange={setMatSource}
+                        onChange={handleMatSourceChange}
                         style={{ width: 200 }}
                         options={[
                           { value: 'fit', label: 'fit' },
@@ -606,18 +656,20 @@ export default function LinearRegressionPage(): JSX.Element {
                         ]}
                       />
                       <span>項目:</span>
-                      <Select value={matField} onChange={setMatField} style={{ width: 220 }} options={(matSource === 'fit' ? result.capabilities.materializeFitFields : result.capabilities.materializePredictionFields).map((f) => ({ value: f, label: f }))} />
+                      <SelectSetting value={matField} onChange={setMatField} style={{ width: 220 }} options={(matSource === 'fit' ? result.capabilities.materializeFitFields : result.capabilities.materializePredictionFields).map((f) => ({ value: f, label: f }))} />
                       <span>列名:</span>
-                      <Select
+                      <Input
                         value={matName}
-                        onChange={(v) => setMatName(Array.isArray(v) ? String(v[v.length - 1] ?? '') : String(v ?? ''))}
+                        onChange={(e) => setMatName(e.target.value)}
                         style={{ width: 200 }}
-                        options={[{ value: matName, label: matName }]}
-                        mode="tags"
-                        maxCount={1}
+                        placeholder="LR_FITTED"
                       />
                       <Button onClick={() => void handleSave()} loading={saving}>表示結果の列へ保存</Button>
-                      <FocusEnterButton targetId="lr-figure" label="図へ移動" />
+                      <Button
+                        onClick={() => { setTab('figure'); openWhenAvailable('linear-regression/diagnostics') }}
+                      >
+                        図へ移動
+                      </Button>
                     </Space>
                     <Space wrap>
                       {(['coefficients', 'diagnostics', 'rows'] as const).map((t) => (

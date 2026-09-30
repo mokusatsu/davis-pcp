@@ -1,0 +1,17 @@
+[
+  {
+    "name": "R035-01 canvas tracks scroll",
+    "ok": true,
+    "detail": "box=1080x730"
+  },
+  {
+    "name": "R035-01 axes reachable after scroll",
+    "ok": true,
+    "detail": "axes=10/10"
+  },
+  {
+    "name": "R035-01 done",
+    "ok": true,
+    "detail": "left-click ids=1"
+  }
+]

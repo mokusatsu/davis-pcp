@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 import pytest
 
 from app.algorithms.distribution.fedf import compute_fedf
@@ -40,3 +41,21 @@ def test_fedf_iris():
     vals = [pt["val"] for pt in curve]
     for i in range(len(vals) - 1):
         assert vals[i] <= vals[i + 1]
+
+
+def test_fedf_curve_includes_exact_endpoints():
+    result = compute_fedf(
+        pl.DataFrame({"score": [1.0, 2.0, 3.0, 4.0]}),
+        columns=["score"],
+        grid_size=4,
+    )
+
+    curve = result["profiles"]["score"]["curve"]
+    statistics = result["statistics"]["score"]
+
+    assert curve[0]["quantile"] == 0.0
+    assert curve[0]["val"] == statistics["min"]
+    assert curve[0]["folded"] == 0.0
+    assert curve[-1]["quantile"] == 1.0
+    assert curve[-1]["val"] == statistics["max"]
+    assert curve[-1]["folded"] == 0.0

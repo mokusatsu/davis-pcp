@@ -31,6 +31,8 @@ import CorrespondenceAnalysisPage from '../features/models/CorrespondenceAnalysi
 import MultipleCorrespondencePage from '../features/models/MultipleCorrespondencePage'
 import FamdPage from '../features/models/FamdPage'
 import LinearRegressionPage from '../features/models/LinearRegressionPage'
+import FactorAnalysisPage from '../features/models/FactorAnalysisPage'
+import ConjointPage from '../features/models/ConjointPage'
 import CrosstabPage from '../features/crosstab/CrosstabPage'
 
 /**
@@ -65,6 +67,8 @@ const ROUTE_COMPONENTS: Record<string, React.ComponentType> = {
   '/models/mca': MultipleCorrespondencePage,
   '/models/famd': FamdPage,
   '/models/linear-regression': LinearRegressionPage,
+  '/models/factor-analysis': FactorAnalysisPage,
+  '/models/conjoint': ConjointPage,
   '/crosstab': CrosstabPage,
 }
 

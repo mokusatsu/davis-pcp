@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { hovered, selectionApplied, type RootState } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
+import { useGraphViewport } from '../common/GraphPanel'
+import { canvasBufferSize, clientToCanvas } from '../common/graphCoordinates'
 
 export interface RelationshipPoints { rowIds: string[]; x: number[]; y: number[] }
 
@@ -27,14 +29,26 @@ export default function RelationshipCanvas({ data, labels, colorOf }: {
   const drag = useRef<{ x: number; y: number } | null>(null)
   const [rectangle, setRectangle] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const points = useMemo(() => projectRelationshipPoints(data), [data])
+  // GraphPanel 配下では論理寸法・scale・DPR・revision を受け、表示倍率と DPR に
+  // 応じて再描画する。寸法変更だけで分析 API は再実行しない。
+  let viewportScale = 1
+  let viewportDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  let viewportRevision = 0
+  try {
+    const viewport = useGraphViewport()
+    viewportScale = viewport.scale
+    viewportDpr = viewport.dpr
+    viewportRevision = viewport.revision
+  } catch { /* GraphPanel 外の単体利用では既定値 */ }
   useEffect(() => { drag.current = null; setRectangle(null) }, [data])
   useEffect(() => {
     const element = canvas.current
     const ctx = element?.getContext('2d')
     if (!element || !ctx) return
-    const ratio = window.devicePixelRatio || 1
-    element.width = 600 * ratio; element.height = 420 * ratio
-    ctx.scale(ratio, ratio)
+    const ratio = Math.max(1, viewportDpr)
+    const buffer = canvasBufferSize({ width: 600, height: 420 }, viewportScale, ratio)
+    element.width = buffer.width; element.height = buffer.height
+    ctx.setTransform(buffer.width / 600, 0, 0, buffer.height / 420, 0, 0)
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 600, 420)
     ctx.strokeStyle = '#d9d9d9'; ctx.beginPath(); ctx.moveTo(50, 30); ctx.lineTo(50, 370); ctx.lineTo(580, 370); ctx.stroke()
     ctx.fillStyle = '#595959'; ctx.font = '12px sans-serif'
@@ -61,10 +75,12 @@ export default function RelationshipCanvas({ data, labels, colorOf }: {
       ctx.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height)
       ctx.strokeRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height)
     }
-  }, [points, selected, hover, colorOf, labels[0], labels[1], rectangle])
+  }, [points, selected, hover, colorOf, labels[0], labels[1], rectangle, viewportScale, viewportDpr, viewportRevision])
   const position = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const box = event.currentTarget.getBoundingClientRect()
-    return { x: (event.clientX - box.left) * 600 / box.width, y: (event.clientY - box.top) * 420 / box.height }
+    // Canvas 自体の表示矩形と論理寸法を基準に変換する。scroll・DPR は二重適用しない。
+    const logical = clientToCanvas(event.currentTarget, event, { width: 600, height: 420 })
+    if (!Number.isFinite(logical.x) || !Number.isFinite(logical.y)) return { x: NaN, y: NaN }
+    return logical
   }
   const nearest = (location: { x: number; y: number }) => {
     let best: string | null = null, distance = 49
@@ -76,9 +92,17 @@ export default function RelationshipCanvas({ data, labels, colorOf }: {
   }
   return <canvas ref={canvas} role="img" aria-label="焦点ペア散布図" data-testid="relationship-canvas"
     style={{ width: '100%', aspectRatio: '600 / 420', display: 'block', touchAction: 'none' }}
-    onPointerDown={event => { if (event.button !== 0) return; drag.current = position(event); event.currentTarget.setPointerCapture(event.pointerId) }}
+    onPointerDown={event => {
+      if (event.button !== 0) return
+      const start = position(event)
+      if (!Number.isFinite(start.x) || !Number.isFinite(start.y)) return
+      drag.current = start
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }}
     onPointerMove={event => {
-      const location = position(event), start = drag.current
+      const location = position(event)
+      if (!Number.isFinite(location.x) || !Number.isFinite(location.y)) return
+      const start = drag.current
       if (!start) { dispatch(hovered(nearest(location))); return }
       setRectangle({ x: Math.min(start.x, location.x), y: Math.min(start.y, location.y), width: Math.abs(start.x - location.x), height: Math.abs(start.y - location.y) })
     }}
@@ -86,6 +110,7 @@ export default function RelationshipCanvas({ data, labels, colorOf }: {
       const start = drag.current; drag.current = null; setRectangle(null)
       if (!start) return
       const end = position(event)
+      if (!Number.isFinite(end.x) || !Number.isFinite(end.y)) return
       const point = nearest(end)
       const ids = Math.abs(start.x - end.x) < 5 && Math.abs(start.y - end.y) < 5 ? (point ? [point] : [])
         : points.filter(point => point.x >= Math.min(start.x, end.x) && point.x <= Math.max(start.x, end.x)

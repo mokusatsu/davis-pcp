@@ -127,7 +127,7 @@ def compute_fedf(
         }
 
         # Generate smooth sampled profile points for SVG drawing
-        eval_p = np.linspace(0.001, 0.999, num=min(grid_size, n_valid))
+        eval_p = np.linspace(0.0, 1.0, num=min(grid_size, n_valid))
         sampled_vals = np.percentile(sorted_vals, eval_p * 100)
         eval_m = 1.0 - 2.0 * np.abs(eval_p - 0.5)
 

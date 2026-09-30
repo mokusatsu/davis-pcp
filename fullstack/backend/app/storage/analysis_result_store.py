@@ -37,6 +37,34 @@ def _hash_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _write_frame_parquet(frame: pl.DataFrame, buf) -> None:
+    """Write a frame, falling back to pyarrow when polars lacks parquet.
+
+    The Pyodide-bundled polars exposes a PyDataFrame without write_parquet;
+    dataset_store already carries the same pyarrow fallback for datasets.
+    """
+    try:
+        frame.write_parquet(buf)
+        return
+    except Exception:
+        pass
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    table = pa.Table.from_pydict(frame.to_dict(as_series=False))
+    pq.write_table(table, buf)
+
+
+def _read_frame_parquet(path: Path, **kwargs) -> pl.DataFrame:
+    try:
+        return pl.read_parquet(path, **kwargs)
+    except Exception:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(path, columns=kwargs.get("columns"))
+        return pl.DataFrame(table.to_pydict())
+
+
 def save_result(
     result_id: str,
     manifest: dict[str, Any],
@@ -59,22 +87,22 @@ def save_result(
         member_bytes = None
         if members is not None:
             mbuf = _io.BytesIO()
-            members.write_parquet(mbuf)
+            _write_frame_parquet(members, mbuf)
             member_bytes = mbuf.getvalue()
         excl_bytes = None
         if exclusions is not None:
             ebuf = _io.BytesIO()
-            exclusions.write_parquet(ebuf)
+            _write_frame_parquet(exclusions, ebuf)
             excl_bytes = ebuf.getvalue()
         rows_bytes = None
         if rows is not None:
             rbuf = _io.BytesIO()
-            rows.write_parquet(rbuf)
+            _write_frame_parquet(rows, rbuf)
             rows_bytes = rbuf.getvalue()
         pred_bytes: dict[str, bytes] = {}
         for pid, pdf in (predictions or {}).items():
             pbuf = _io.BytesIO()
-            pdf.write_parquet(pbuf)
+            _write_frame_parquet(pdf, pbuf)
             pred_bytes[str(pid)] = pbuf.getvalue()
         files = {
             "model.npz": model_bytes,
@@ -133,7 +161,7 @@ def load_members(result_id: str) -> pl.DataFrame | None:
     if not path.exists():
         return None
     try:
-        return pl.read_parquet(path)
+        return _read_frame_parquet(path)
     except Exception:
         raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。", status_code=404)
 
@@ -143,7 +171,7 @@ def load_rows(result_id: str) -> pl.DataFrame | None:
     if not path.exists():
         return None
     try:
-        return pl.read_parquet(path)
+        return _read_frame_parquet(path)
     except Exception:
         raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。", status_code=404)
 
@@ -154,7 +182,7 @@ def load_prediction_rows(result_id: str, prediction_id: str) -> pl.DataFrame | N
         path = result_dir(result_id) / name
         if path.exists():
             try:
-                return pl.read_parquet(path)
+                return _read_frame_parquet(path)
             except Exception:
                 raise BizError("ANALYSIS_RESULT_NOT_FOUND", "結果を読み込めません。",
                                status_code=404)
@@ -167,7 +195,7 @@ def save_prediction_rows(result_id: str, prediction_id: str, frame: pl.DataFrame
     safe = "".join(c for c in str(prediction_id) if c.isalnum() or c in ("-", "_"))
     path = result_dir(result_id) / f"prediction-{safe or 'p'}.parquet"
     buf = _io.BytesIO()
-    frame.write_parquet(buf)
+    _write_frame_parquet(frame, buf)
     tmp = path.with_suffix(".tmp")
     tmp.write_bytes(buf.getvalue())
     os.replace(tmp, path)
@@ -178,3 +206,67 @@ def delete_result(result_id: str) -> None:
     if not path.exists():
         return
     shutil.rmtree(path, ignore_errors=True)
+
+
+# --- E011: persistent EFA attempt/comparison artifacts ---------------------
+# Attempts and comparisons live next to analysis-results so they survive
+# process restarts and stay addressable from the saved main result's
+# comparisonId. Layout (atomic publish via temp dir + rename, same as
+# save_result):
+#   workspace/analysis-attempts/{attemptId}/attempt.json
+#   workspace/analysis-comparisons/{comparisonId}/comparison.json
+# (+ optional diagnostics.json / payload.json sidecars).
+
+def _artifact_root(kind: str) -> Path:
+    root = settings.workspace_dir / kind
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _artifact_dir(kind: str, artifact_id: str) -> Path:
+    if (not artifact_id or "/" in artifact_id or "\\" in artifact_id
+            or ".." in artifact_id):
+        raise BizError("ANALYSIS_RESULT_NOT_FOUND", "記録が見つかりません。",
+                       status_code=404)
+    return _artifact_root(kind) / artifact_id
+
+
+def _write_artifact_file(dest_dir: Path, name: str, data: bytes) -> None:
+    """Atomically replace one artifact file, keeping the rest intact.
+
+    Writes to a temp sibling and renames over the target, so a failed or
+    concurrent update never deletes the previous record (E011 2nd round).
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tmp = dest_dir / f".{name}.tmp"
+    tmp.write_bytes(data)
+    os.replace(tmp, dest_dir / name)
+
+
+def save_artifact(kind: str, artifact_id: str, payload: dict[str, Any]) -> None:
+    dest = _artifact_dir(kind, artifact_id)
+    name = "attempt.json" if kind == "analysis-attempts" else "comparison.json"
+    body = json.dumps(payload, ensure_ascii=False, indent=2,
+                      allow_nan=False).encode("utf-8")
+    _write_artifact_file(dest, name,
+                         json.dumps({**payload,
+                                     "files": {name: _hash_bytes(body)}},
+                                    ensure_ascii=False, indent=2,
+                                    allow_nan=False).encode("utf-8"))
+
+
+def load_artifact(kind: str, artifact_id: str) -> dict[str, Any]:
+    name = "attempt.json" if kind == "analysis-attempts" else "comparison.json"
+    path = _artifact_dir(kind, artifact_id) / name
+    if not path.exists():
+        raise BizError("ANALYSIS_RESULT_NOT_FOUND", "記録が見つかりません。",
+                       status_code=404)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        raise BizError("ANALYSIS_RESULT_NOT_FOUND", "記録を読み込めません。",
+                       status_code=404)
+    if not isinstance(payload, dict):
+        raise BizError("ANALYSIS_RESULT_NOT_FOUND", "記録を読み込めません。",
+                       status_code=404)
+    return payload

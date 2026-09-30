@@ -7,7 +7,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import SurpriseAssociationView from '../src/features/relationships/SurpriseAssociationView'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/features/pcp/MaAxisPicker', () => ({ default: ({ onAdd }: any) => <button onClick={() => onAdd(['a', 'b'].map(columnId => ({ kind: 'maOption', groupId: 'q', columnId })))}>Choose options</button> }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 

@@ -1,0 +1,15 @@
+{
+  "runAt": "2026-09-17",
+  "base": "http://127.0.0.1:8420（既存run-production起動プロセスに本スレッドから接続）",
+  "viewport": "pane responsive, ~1022px幅＝compactナビ",
+  "selection": "因子分析→TableでIRIS-001をcheckbox選択→可視化(メニュー操作)→PCP→因子分析へ戻る",
+  "steps": [
+    {"at": "factor-analysis", "url": "/models/factor-analysis", "current": "次元削減・因子分析 › 因子分析"},
+    {"at": "table-selected", "sidebar": "選択行 1 / active 150 / 全150 ... IRIS-001"},
+    {"at": "pcp", "url": "/pcp", "sidebar": "選択行 1 / active 150 / 全150 ... IRIS-001"},
+    {"at": "back-to-factor", "url": "/models/factor-analysis", "sidebar": "選択行 1 / active 150 / 全150 ... IRIS-001"}
+  ],
+  "pass": true,
+  "scope": "compactナビ・メニュー操作1往復のみ。複数分類往復・変数・ウェイト・行範囲照合は未実施",
+  "caveat": "preview_eval転記。ページリロードを挟まないSPA遷移。checkboxはIRIS-001（旧verify_n001のIRIS-002とは別run・別条件"
+}

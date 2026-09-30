@@ -1,0 +1,82 @@
+[
+  {
+    "name": "pcp page load",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "G01 normal host+canvas",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "G01 expand same host in dock",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "G01 zoom step 1 -> 125%",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "G01 zoom step 2 -> 150%",
+    "ok": true,
+    "detail": "got=150%"
+  },
+  {
+    "name": "G01 zoom step 3 -> 200%",
+    "ok": true,
+    "detail": "got=200%"
+  },
+  {
+    "name": "G01 zoom step 4 -> 300%",
+    "ok": true,
+    "detail": "got=300%"
+  },
+  {
+    "name": "G01 zoom step 5 -> 400%",
+    "ok": true,
+    "detail": "got=400%"
+  },
+  {
+    "name": "G01 surface scale set",
+    "ok": false,
+    "detail": "scale=1"
+  },
+  {
+    "name": "G01 exit restores",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "G02 normal host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "G03 host present",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "G02 expand",
+    "ok": true,
+    "detail": "title=相関ヒートマップ"
+  },
+  {
+    "name": "G03 canvas click no crash",
+    "ok": true,
+    "detail": "box=566x396"
+  },
+  {
+    "name": "G03 expand+zoom",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "G46 host present",
+    "ok": true,
+    "detail": "N/A: 結果未生成のため入口なし（available=false が正しい）"
+  }
+]

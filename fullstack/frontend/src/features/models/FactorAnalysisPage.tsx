@@ -1,0 +1,714 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
+import type { AppDispatch, RootState } from '../../app/store'
+import { datasetValuesUpdated, selectionApplied } from '../../app/store'
+import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { fetchProvenanceThunk } from '../dataset/provenanceSlice'
+import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import SelectColumn from '../common/ColumnSelect'
+import GraphPanel from '../common/GraphPanel'
+import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import type { EFAContext, EFAResponse } from './efaApi'
+import { cancelEFAComparison, exportEFATable, fetchAllEFARows, fetchEFAComparison, materializeEFA, predictEFA, runEFA, selectEFA } from './efaApi'
+import EfaScoreFigure from './EfaScoreFigure'
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
+  if (typeof msg !== 'string' || !msg) return fallback
+  return typeof code === 'string' && code ? msg + '(' + code + ')' : msg
+}
+
+type Treat = 'ordinal' | 'continuous_approximation' | 'continuous'
+
+export default function FactorAnalysisPage(): JSX.Element {
+  const dispatch = useDispatch<AppDispatch>()
+  const selection = useSelector((s: RootState) => s.selection)
+  const codebook = useCodebook()
+  const { columns, schemaRevision } = codebook
+  const datasetId = selection.datasetId
+
+  const colById = useMemo(() => {
+    const m = new Map<string, { name: string; label: string; scaleType: string; categoryOrder?: string[] }>()
+    for (const c of columns) m.set(c.columnId, c as never)
+    return m
+  }, [columns])
+  const itemOptions = useMemo(
+    () => columns
+      .filter((c) => ['ordinal', 'interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup)
+      .map((c) => ({ value: c.columnId, label: c.label ? c.label + ' (' + c.name + ')' : c.name })),
+    [columns],
+  )
+
+  const [items, setItems] = useState<string[]>([])
+  const [treat, setTreat] = useState<Record<string, Treat>>({})
+  const [reverse, setReverse] = useState<Record<string, boolean>>({})
+  const [ack, setAck] = useState<Record<string, boolean>>({})
+  const [correlation, setCorrelation] = useState<'pearson' | 'polychoric'>('polychoric')
+  const [extraction, setExtraction] = useState<'minres' | 'ml'>('minres')
+  const [nFactors, setNFactors] = useState<number>(2)
+  const [compareText, setCompareText] = useState<string>('')
+  const [rotation, setRotation] = useState<'promax' | 'varimax' | 'none'>('promax')
+  const [scoreMethod, setScoreMethod] = useState<'none' | 'regression' | 'bartlett'>('none')
+  const [paEnabled, setPaEnabled] = useState<boolean>(true)
+  const [paIter, setPaIter] = useState<number>(500)
+  const [sensEnabled, setSensEnabled] = useState<boolean>(false)
+  const [sensAck, setSensAck] = useState<boolean>(false)
+  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('all')
+  // E013 2nd round: default to the dataset setting so a configured
+  // weight is refused (FA_WEIGHT_UNSUPPORTED) before the user explicitly
+  // opts into an unweighted run; an explicit none is a separate trial.
+  const [weightMode, setWeightMode] = useState<'dataset' | 'none'>('dataset')
+  const [tab, setTab] = useState<string>('loadings')
+
+  const [result, setResult] = useState<EFAResponse | null>(null)
+  const [submittedKey, setSubmittedKey] = useState<string>('')
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string | null>(null)
+  const [inputErrors, setInputErrors] = useState<string[]>([])
+  const [comparison, setComparison] = useState<Record<string, unknown> | null>(null)
+  const [rows, setRows] = useState<{ rowId: string; scores: (number | null)[] }[]>([])
+  const [rowsTotal, setRowsTotal] = useState<number>(0)
+  const [rowsResultId, setRowsResultId] = useState<string | null>(null)
+  const rowsReady = result !== null && rowsResultId === result.resultId
+  const [selecting, setSelecting] = useState<boolean>(false)
+  const [selectInfo, setSelectInfo] = useState<string | null>(null)
+  const [saving, setSaving] = useState<boolean>(false)
+  const [matFactor, setMatFactor] = useState<number>(1)
+  const [matName, setMatName] = useState<string>('efa_f1')
+  const [figX, setFigX] = useState<number>(1)
+  const [figY, setFigY] = useState<number>(2)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const runSequence = useRef(0)
+  const selectionRef = useRef(selection)
+  selectionRef.current = selection
+  const schemaRef = useRef(schemaRevision)
+  schemaRef.current = schemaRevision
+  const obs = useSelector((s: RootState) => s.globalObservations)
+
+  const draftKey = JSON.stringify([datasetId, items, treat, reverse, ack, correlation, extraction, nFactors, compareText, rotation, scoreMethod, paEnabled, paIter, sensEnabled, sensAck, scope, weightMode, selection.dataRevision, schemaRevision])
+  const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
+
+  useEffect(() => {
+    runSequence.current += 1
+    setResult(null)
+    setSubmittedKey('')
+    setError(null)
+    setInputErrors([])
+    setComparison(null)
+    setRows([])
+    setRowsTotal(0)
+    setRowsResultId(null)
+    setSelectInfo(null)
+    setItems([])
+    setLoading(false)
+  }, [datasetId])
+
+  const buildContext = (): EFAContext => {
+    const base: EFAContext = {
+      datasetId: datasetId ?? '', expectedDataRevision: selection.dataRevision ?? 1,
+      expectedSchemaRevision: schemaRevision ?? 1, scope,
+      weightMode, missingPolicy: 'exclude',
+    }
+    if (scope === 'active') base.activeRowIds = [...selection.activeRowIds]
+    if (scope === 'selected') base.selectedRowIds = [...selection.selectedRowIds]
+    if (scope === 'sampled') base.sampledRowIds = [...obs.sampling.sampledRowIds]
+    return base
+  }
+
+  const variables = useMemo(() => items.map((id) => {
+    const c = colById.get(id)
+    const isOrd = c?.scaleType === 'ordinal'
+    const t: Treat = treat[id] ?? (isOrd ? 'ordinal' : 'continuous')
+    return {
+      columnId: id,
+      measurement: (isOrd ? 'ordinal' : 'continuous') as 'ordinal' | 'continuous',
+      treatment: t,
+      categoryOrder: isOrd ? (c?.categoryOrder ?? null) : null,
+      reverse: isOrd ? Boolean(reverse[id]) : false,
+      approximationAcknowledged: t === 'continuous_approximation' ? Boolean(ack[id]) : false,
+    }
+  }), [items, treat, reverse, ack, colById])
+
+  const compareFactors = useMemo(() => compareText.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v >= 1).map((v) => Math.floor(v)), [compareText])
+  const canRun = items.length >= 3 && Boolean(datasetId)
+
+  const handleRun = async (): Promise<void> => {
+    if (!datasetId) return
+    const errs: string[] = []
+    if (items.length < 3) errs.push('項目を3つ以上選択してください。')
+    for (const v of variables) {
+      const label = colById.get(v.columnId)?.label ?? v.columnId
+      if (v.measurement === 'ordinal' && (!v.categoryOrder || v.categoryOrder.length < 2)) errs.push('順序項目 ' + label + ' のcategoryOrderが不足しています。')
+      if (v.treatment === 'continuous_approximation' && !v.approximationAcknowledged) errs.push('連続近似 ' + label + ' には項目ごとの明示同意が必要です。')
+    }
+    setInputErrors(errs)
+    if (errs.length) return
+    const seq = ++runSequence.current
+    setLoading(true)
+    setError(null)
+    setComparison(null)
+    try {
+      const res = await runEFA({
+        method: 'efa', schemaVersion: 'factor_extensions.1',
+        context: buildContext(), variables, correlation, extraction,
+        nFactors, compareFactors, rotation, scoreMethod,
+        parallelAnalysis: { enabled: paEnabled, iterations: paIter, quantile: 0.95, seed: 42 },
+        sensitivityAnalysis: { enabled: sensEnabled, approximationAcknowledged: sensAck },
+        uniquenessLower: 0.005, nStarts: 5, maxIterations: 2000, seed: 42,
+      })
+      if (runSequence.current !== seq) return
+      // E009: clear stale rows BEFORE fetching the new result's rows, so a
+      // failed fetch never leaves the previous figure on screen. Clamp the
+      // figure axes and the save factor into the new factor range (1-factor
+      // results reset Y to F1).
+      setRows([])
+      setRowsTotal(0)
+      setRowsResultId(null)
+      setResult(res)
+      setSubmittedKey(draftKey)
+      const nq = res.summary.nFactors ?? 1
+      setFigX((x) => (x >= 1 && x <= nq ? x : 1))
+      setFigY((y) => (y >= 1 && y <= nq ? y : 1))
+      setMatFactor((m) => (m >= 1 && m <= nq ? m : 1))
+      const sens = res.details.sensitivityAnalysis
+      if (sens && sens.comparisonId) {
+        // E011 3rd round: the comparison runs in the background after the
+        // main result publishes. Poll until it leaves running state so
+        // progress, completion, failure, and cancel are visible
+        // independently of the main result.
+        const cid = sens.comparisonId as string
+        setComparison({ comparisonId: cid, status: 'running' })
+        void (async () => {
+          for (let i = 0; i < 120; i++) {
+            await new Promise((r) => setTimeout(r, 2000))
+            if (runSequence.current !== seq) return
+            try {
+              const c = await fetchEFAComparison(cid) as Record<string, unknown>
+              setComparison(c)
+              if (c.status !== 'running' && c.status !== 'queued') return
+            } catch {
+              return
+            }
+          }
+        })()
+      }
+      if (res.capabilities.rows) {
+        const all = await fetchAllEFARows(res.resultId)
+        if (runSequence.current !== seq) return
+        setRows(all)
+        setRowsTotal(all.length)
+        setRowsResultId(res.resultId)
+      } else {
+        setRows([])
+        setRowsTotal(0)
+        setRowsResultId(res.resultId)
+      }
+    } catch (err) {
+      if (runSequence.current !== seq) return
+      setError(apiErrorMessage(err, '実行に失敗しました。'))
+    } finally {
+      if (runSequence.current === seq) setLoading(false)
+    }
+  }
+
+  const handleBrush = async (bounds: { x: [number, number]; y: [number, number] }): Promise<void> => {
+    if (!result || !datasetId) return
+    if (!rowsReady) {
+      setSelectInfo('行の取得が完了してから選択してください。')
+      return
+    }
+    if (selection.dataRevision !== result.meta.dataRevision
+      || schemaRevision !== result.meta.schemaRevision) {
+      setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
+      return
+    }
+    const seq = runSequence.current
+    const startedDataset = datasetId
+    const startedDataRevision = selection.dataRevision
+    const startedSchemaRevision = schemaRevision
+    const startedResultId = result.resultId
+    setSelecting(true)
+    setSelectInfo(null)
+    try {
+      // E009 3rd round: same-factor brushes send ONE axis whose range is
+      // the INTERSECTION of the X and Y brush ranges (points lie on y=x,
+      // so both conditions must hold). An empty intersection selects
+      // nothing instead of ignoring the Y range.
+      const sameAxis = figX === figY
+      const axes = sameAxis ? [figX] : [figX, figY]
+      const bb: [number, number][] = sameAxis
+        ? [[Math.max(bounds.x[0], bounds.y[0]), Math.min(bounds.x[1], bounds.y[1])]]
+        : [bounds.x, bounds.y]
+      if (sameAxis && bb[0][0] > bb[0][1]) {
+        setSelectInfo('一致0（X/Y範囲の共通部分が空です）')
+        if (runSequence.current === seq) setSelecting(false)
+        return
+      }
+      const res = await selectEFA(result.resultId, buildContext(), {
+        kind: 'rectangle', axes, bounds: bb,
+      })
+      if (runSequence.current !== seq
+        || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision
+        || schemaRef.current !== startedSchemaRevision) return
+      if (result.resultId !== startedResultId) return
+      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: 'EFA因子得点の選択' }))
+      setSelectInfo(`一致${res.matchedCount}`)
+    } catch (err) {
+      if (runSequence.current !== seq) return
+      setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
+    } finally {
+      if (runSequence.current === seq) setSelecting(false)
+    }
+  }
+
+  const handleToggleScore = async (rowId: string): Promise<void> => {
+    if (!result || !datasetId || !rowsReady) return
+    const seq = runSequence.current
+    const startedDataset = datasetId
+    const startedDataRevision = selection.dataRevision
+    const startedSchemaRevision = schemaRevision
+    try {
+      const res = await selectEFA(result.resultId, buildContext(), { kind: 'row_ids', rowIds: [rowId] })
+      if (runSequence.current !== seq
+        || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision
+        || schemaRef.current !== startedSchemaRevision) return
+      dispatch(selectionApplied({ rowIds: res.rowIds, operation: 'toggle', label: 'EFA因子得点の選択' }))
+    } catch (err) {
+      message.error(apiErrorMessage(err, '選択に失敗しました。'))
+    }
+  }
+
+  const handlePredict = async (): Promise<void> => {
+    if (!result) return
+    try {
+      const res = await predictEFA(result.resultId, buildContext())
+      message.success('予測を作成しました: ' + (res as { predictionId: string }).predictionId)
+    } catch (err) {
+      message.error(apiErrorMessage(err, '予測に失敗しました。'))
+    }
+  }
+
+  const handleSave = async (): Promise<void> => {
+    if (!result || !datasetId) return
+    setSaving(true)
+    try {
+      // E010: the saved factor and the output column name are chosen
+      // separately; renaming the column never changes which scores persist.
+      const field = 'score:' + matFactor
+      const res = await materializeEFA(result.resultId, buildContext(), 'fit', [{ source: field, name: matName }], 'efa-' + result.resultId + '-' + field)
+      message.success('保存しました: ' + matName)
+      invalidateColumnarCache()
+      const r = res as { dataRevision?: number }
+      dispatch(datasetValuesUpdated({ datasetId, dataRevision: typeof r.dataRevision === 'number' ? r.dataRevision : (selection.dataRevision ?? 1) + 1 }))
+      await dispatch(fetchCodebookThunk(datasetId))
+    } catch (err) {
+      message.error(apiErrorMessage(err, '保存に失敗しました。'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const s = result?.summary
+  // E012: stale is judged against the live central revisions (data/schema),
+  // not only the response's stored resultState.
+  const stale = result !== null && (
+    (result.meta.resultState as string) === 'stale'
+    || selection.dataRevision !== result.meta.dataRevision
+    || schemaRevision !== result.meta.schemaRevision)
+  const liveMaskRev = useSelector((s: RootState) => s.provenance.maskRevision)
+  const fitMaskRev = (result?.meta as { maskRevision?: number | null } | undefined)?.maskRevision ?? null
+  const maskStale = result !== null && fitMaskRev !== null && liveMaskRev !== fitMaskRev
+  useEffect(() => {
+    if (datasetId) void dispatch(fetchProvenanceThunk(datasetId))
+  }, [datasetId, dispatch])
+  const q = result?.summary.nFactors ?? 0
+  const figPoints = useMemo(() => rows.map((r) => ({
+    rowId: r.rowId,
+    x: r.scores[figX - 1] ?? null,
+    y: r.scores[figY - 1] ?? null,
+    title: r.rowId + ' F' + figX + '=' + (r.scores[figX - 1] === null || r.scores[figX - 1] === undefined ? 'x' : Number(r.scores[figX - 1]).toFixed(3))
+      + ' F' + figY + '=' + (r.scores[figY - 1] === null || r.scores[figY - 1] === undefined ? 'x' : Number(r.scores[figY - 1]).toFixed(3)),
+  })), [rows, figX, figY])
+  const selectedSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
+  const pattern = result?.details.pattern ?? []
+  const varLabels = result?.details.variables.map((v) => v.label) ?? []
+  const factorIds = result?.details.factorIds ?? []
+  const loadingRows = pattern.map((row, j) => {
+    const rec: Record<string, unknown> = { key: String(j), item: varLabels[j] ?? String(j) }
+    row.forEach((v, a) => { rec['f' + a] = typeof v === 'number' ? v.toFixed(3) : 'x' })
+    rec.communality = result ? Number(result.details.communality[j]).toFixed(3) : 'x'
+    return rec
+  })
+  const loadingCols = [
+    { title: '項目', dataIndex: 'item', key: 'item' },
+    ...factorIds.map((f, a) => ({ title: f, dataIndex: 'f' + a, key: 'f' + a })),
+    { title: '共通性', dataIndex: 'communality', key: 'h2' },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card title="探索的因子分析（EFA）" size="small">
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Space wrap>
+            <span>対象:</span>
+            <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
+              <Radio.Button value="all">全体</Radio.Button>
+              <Radio.Button value="active">Active</Radio.Button>
+              <Radio.Button value="selected">Selected</Radio.Button>
+              <Radio.Button value="sampled">標本</Radio.Button>
+            </Radio.Group>
+            <Tag>非加重・完全ケースのみ</Tag>
+          </Space>
+          <Space wrap>
+            <span>重み:</span>
+            <Radio.Group value={weightMode} onChange={(e) => setWeightMode(e.target.value)}>
+              <Radio.Button value="dataset">データ設定</Radio.Button>
+              <Radio.Button value="none">なし（明示）</Radio.Button>
+            </Radio.Group>
+            {weightMode === 'dataset' && (
+              <Typography.Text type="secondary">dataset重みが有効な場合はFA_WEIGHT_UNSUPPORTEDで拒否されます。明示noneは別試行です。</Typography.Text>
+            )}
+          </Space>
+          <Space wrap align="start">
+            <span>項目（3つ以上）:</span>
+            <SelectColumn mode="multiple" value={items} onChange={setItems} style={{ minWidth: 360 }} options={itemOptions} placeholder="項目を選択" />
+          </Space>
+          {items.map((id) => {
+            const c = colById.get(id)
+            const isOrd = c?.scaleType === 'ordinal'
+            return (
+              <Space key={id} wrap>
+                <span>{c?.label ?? id}:</span>
+                {isOrd ? (
+                  <>
+                    <SelectSetting value={treat[id] ?? 'ordinal'} onChange={(v) => setTreat({ ...treat, [id]: v })} style={{ width: 180 }} options={[
+                      { value: 'ordinal', label: '順序モデル' },
+                      { value: 'continuous_approximation', label: '連続近似' },
+                    ]} />
+                    <Checkbox checked={Boolean(reverse[id])} onChange={(e) => setReverse({ ...reverse, [id]: e.target.checked })}>逆転</Checkbox>
+                    {(treat[id] ?? 'ordinal') === 'continuous_approximation' && (
+                      <Checkbox checked={Boolean(ack[id])} onChange={(e) => setAck({ ...ack, [id]: e.target.checked })}>等間隔の明示同意</Checkbox>
+                    )}
+                  </>
+                ) : (<Tag>連続</Tag>)}
+              </Space>
+            )
+          })}
+          <Space wrap>
+            <span>相関:</span>
+            <SelectSetting value={correlation} onChange={setCorrelation} style={{ width: 150 }} options={[
+              { value: 'polychoric', label: 'Polychoric' },
+              { value: 'pearson', label: 'Pearson' },
+            ]} />
+            <span>抽出:</span>
+            <SelectSetting value={extraction} onChange={setExtraction} style={{ width: 180 }} options={[
+              { value: 'minres', label: 'MINRES／ULS系' },
+              { value: 'ml', label: 'ML' },
+            ]} />
+            <span>因子数:</span>
+            <InputNumber value={nFactors} onChange={(v) => setNFactors(typeof v === 'number' ? v : 2)} min={1} />
+            <span>候補比較:</span>
+            <Input value={compareText} onChange={(e) => setCompareText(e.target.value)} style={{ width: 140 }} placeholder="例: 1,3" />
+            <span>回転:</span>
+            <SelectSetting value={rotation} onChange={setRotation} style={{ width: 130 }} options={[
+              { value: 'promax', label: 'Promax' },
+              { value: 'varimax', label: 'Varimax' },
+              { value: 'none', label: '無回転' },
+            ]} />
+            <span>得点:</span>
+            <SelectSetting value={scoreMethod} onChange={setScoreMethod} style={{ width: 150 }} options={[
+              { value: 'none', label: 'なし' },
+              { value: 'regression', label: 'regression' },
+              { value: 'bartlett', label: 'bartlett' },
+            ]} />
+          </Space>
+          <Space wrap>
+            <Checkbox checked={paEnabled} onChange={(e) => setPaEnabled(e.target.checked)}>平行分析</Checkbox>
+            {paEnabled && (<span>反復: <InputNumber value={paIter} onChange={(v) => setPaIter(typeof v === 'number' ? v : 500)} min={100} max={10000} /></span>)}
+            <Checkbox checked={sensEnabled} onChange={(e) => setSensEnabled(e.target.checked)}>感度比較</Checkbox>
+            {sensEnabled && (<Checkbox checked={sensAck} onChange={(e) => setSensAck(e.target.checked)}>連続近似の独立同意</Checkbox>)}
+            <Button type="primary" onClick={() => void handleRun()} disabled={!canRun} loading={loading}>実行</Button>
+            {dirty && <Tag color="orange">設定が変更されています。結果は前回実行分です</Tag>}
+          </Space>
+          {!canRun && <Typography.Text type="secondary">項目を3つ以上選択してください。旧入力の自動変換はありません。</Typography.Text>}
+        </Space>
+      </Card>
+
+      {inputErrors.length > 0 && (<Alert type="error" message="入力エラー" description={inputErrors.join(' / ')} showIcon />)}
+      {error && <Alert type="error" message={error} showIcon />}
+      {loading && <Spin tip="計算中" />}
+
+      {result && (
+        <Card size="small" title={'結果: ' + result.resultId} extra={<span>解={s?.solutionStatus} 推論={s?.inferenceStatus}</span>}>
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            {stale && <Alert type="warning" message="古い版の結果です。保存・予測・選択はできません。" showIcon />}
+            {maskStale && <Alert type="warning" message={'補完マスクが更新されています（結果mask ' + String(fitMaskRev) + ' / 現在 ' + String(liveMaskRev) + '）。再実行してください。'} showIcon />}
+            <Space wrap>
+              <Tag>目的値 {s?.objective.id}: {s?.objective.value === null || s?.objective.value === undefined ? 'x' : Number(s.objective.value).toFixed(6)}</Tag>
+              <Tag>RMSR: {s?.rmsr === null || s?.rmsr === undefined ? 'x' : Number(s.rmsr).toFixed(4)}</Tag>
+              <Tag>PA候補: {result.details.parallelAnalysis.suggestedFactors ?? 'x'}（{result.details.parallelAnalysis.status}）</Tag>
+              {result.details.sensitivityAnalysis && (<Tag>感度比較: {String((comparison as Record<string, unknown> | null)?.assessment ?? result.details.sensitivityAnalysis.status)}</Tag>)}
+            </Space>
+            <Tabs activeKey={tab} onChange={setTab} items={[
+              { key: 'loadings', label: '負荷量・残差', children: (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Table columns={loadingCols} dataSource={loadingRows} size="small" pagination={false} scroll={{ x: true }} />
+                  <Typography.Text type="secondary">強調目安は表示のみ。斜交pattern二乗和は加算寄与率にしません。</Typography.Text>
+                  <Table
+                    columns={[{ title: '項目', dataIndex: 'item', key: 'item' }, ...factorIds.map((f, a) => ({ title: f + '(structure)', dataIndex: 's' + a, key: 's' + a })), { title: '独自性', dataIndex: 'psi', key: 'psi' }]}
+                    dataSource={(result.details.structure ?? []).map((row, j) => {
+                      const rec: Record<string, unknown> = { key: 's' + String(j), item: varLabels[j] ?? String(j) }
+                      row.forEach((v, a) => { rec['s' + a] = typeof v === 'number' ? v.toFixed(3) : 'x' })
+                      rec.psi = Number(result.details.uniqueness[j]).toFixed(3)
+                      return rec
+                    })}
+                    size="small" pagination={false} scroll={{ x: true }} />
+                  <Table
+                    columns={[{ title: '', dataIndex: 'r', key: 'r' }, ...factorIds.map((f, a) => ({ title: f, dataIndex: 'c' + a, key: 'c' + a }))]}
+                    dataSource={(result.details.factorCorrelation ?? []).map((row, j) => {
+                      const rec: Record<string, unknown> = { key: 'p' + String(j), r: factorIds[j] ?? String(j) }
+                      row.forEach((v, a) => { rec['c' + a] = typeof v === 'number' ? v.toFixed(3) : 'x' })
+                      return rec
+                    })}
+                    size="small" pagination={false} title={() => '因子間相関Φ'} />
+                  <Table
+                    columns={[{ title: '行', dataIndex: 'r', key: 'r' }, { title: '列', dataIndex: 'c', key: 'c' }, { title: '観測', dataIndex: 'o', key: 'o' }, { title: '再現', dataIndex: 'rp', key: 'rp' }, { title: '残差', dataIndex: 'rs', key: 'rs' }]}
+                    dataSource={(result.details.sampleCorrelation ?? []).flatMap((rrow, i) => rrow.map((v, j) => ({
+                      key: i + '-' + j, r: varLabels[i] ?? i, c: varLabels[j] ?? j,
+                      o: typeof v === 'number' ? v.toFixed(3) : 'x',
+                      rp: typeof result.details.reproducedCorrelation?.[i]?.[j] === 'number' ? Number(result.details.reproducedCorrelation?.[i]?.[j]).toFixed(3) : 'x',
+                      rs: typeof result.details.residualCorrelation?.[i]?.[j] === 'number' ? Number(result.details.residualCorrelation?.[i]?.[j]).toFixed(3) : 'x',
+                    })))}
+                    size="small" pagination={{ pageSize: 20 }} scroll={{ x: true, y: 320 }} />
+                </Space>
+              ) },
+              { key: 'pa', label: '平行分析・候補比較', children: (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <GraphPanel
+                    graphId="factor-analysis/scree"
+                    title="固有値・平行分析スクリープロット"
+                    available={tab === 'pa'}
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: 560, height: 220 }}
+                  >
+                  <svg viewBox="0 0 560 220" width="560" height="220" style={{ background: '#fafafa', borderRadius: 4 }} data-testid="efa-scree">
+                    {(() => {
+                      const obs = result.details.parallelAnalysis.observedEigenvalues ?? []
+                      const ref = result.details.parallelAnalysis.referenceQuantiles ?? []
+                      const all = [...obs, ...ref.filter((v): v is number => typeof v === 'number')]
+                      const mx = all.length ? Math.max(...all) : 1
+                      const X = (i: number, n: number): number => 46 + (i / Math.max(1, n - 1)) * 490
+                      const Y = (v: number): number => 190 - (v / (mx > 0 ? mx : 1)) * 160
+                      const line = (vs: (number | null)[]): string =>
+                        vs.map((v, i) => (typeof v === 'number' ? (i === 0 ? 'M' : 'L') + X(i, vs.length).toFixed(1) + ' ' + Y(v).toFixed(1) : '')).join(' ')
+                      return (
+                        <>
+                          {obs.map((v, i) => (
+                            <circle key={'o' + i} cx={X(i, obs.length)} cy={Y(v)} r={4} fill="#1890ff">
+                              <title>{'順位' + (i + 1) + ' 観測' + Number(v).toFixed(3)}</title>
+                            </circle>
+                          ))}
+                          {ref.map((v, i) => (typeof v === 'number' ? (
+                            <circle key={'r' + i} cx={X(i, ref.length)} cy={Y(v)} r={3} fill="none" stroke="#fa8c16" strokeWidth={1.5}>
+                              <title>{'順位' + (i + 1) + ' 参照' + Number(v).toFixed(3)}</title>
+                            </circle>
+                          ) : null))}
+                          <path d={line(obs)} fill="none" stroke="#1890ff" strokeWidth={1.5} />
+                          <path d={line(ref)} fill="none" stroke="#fa8c16" strokeWidth={1.5} strokeDasharray="5 4" />
+                          <text x={8} y={16} fontSize={11}>●観測 ○参照分位（候補 {result.details.parallelAnalysis.suggestedFactors ?? 'x'}）</text>
+                        </>
+                      )
+                    })()}
+                  </svg>
+                  </GraphPanel>
+                  <Table
+                    columns={[{ title: '順位', dataIndex: 'rank', key: 'rank' }, { title: '観測', dataIndex: 'obs', key: 'obs' }, { title: '参照分位', dataIndex: 'ref', key: 'ref' }]}
+                    dataSource={(result.details.parallelAnalysis.observedEigenvalues ?? []).map((v, i) => ({
+                      key: String(i), rank: i + 1, obs: Number(v).toFixed(3),
+                      ref: result.details.parallelAnalysis.referenceQuantiles?.[i] === null || result.details.parallelAnalysis.referenceQuantiles?.[i] === undefined ? 'x' : Number(result.details.parallelAnalysis.referenceQuantiles?.[i]).toFixed(3),
+                    }))}
+                    size="small" pagination={false}
+                  />
+                  <Table
+                    columns={[{ title: 'q', dataIndex: 'q', key: 'q' }, { title: '状態', dataIndex: 'status', key: 'status' }]}
+                    dataSource={result.details.factorComparisons.map((c, i) => ({ key: String(i), q: c.q, status: c.status }))}
+                    size="small" pagination={false}
+                  />
+                </Space>
+              ) },
+              { key: 'diag', label: '診断・推論', children: (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Table
+                    columns={[
+                      { title: '項目', dataIndex: 'item', key: 'item' },
+                      { title: '分布', dataIndex: 'dist', key: 'dist' },
+                      { title: 'カテゴリ件数', dataIndex: 'cc', key: 'cc' },
+                      { title: '割合', dataIndex: 'cp', key: 'cp' },
+                      { title: '最小件数', dataIndex: 'mn', key: 'mn' },
+                      { title: '最大割合', dataIndex: 'mx', key: 'mx' },
+                      { title: '床/天井', dataIndex: 'fc', key: 'fc' },
+                      { title: '歪度', dataIndex: 'sk', key: 'sk' },
+                      { title: '欠損', dataIndex: 'mis', key: 'mis' },
+                      { title: '非該当', dataIndex: 'na', key: 'na' },
+                      { title: '不正', dataIndex: 'inv', key: 'inv' },
+                    ]}
+                    dataSource={(result.details.distributionProfiles ?? []).map((d, i) => {
+                      const r = d as Record<string, unknown>
+                      const fmt = (v: unknown): string => (typeof v === 'number' ? String(v) : 'x')
+                      const f3 = (v: unknown): string => (typeof v === 'number' ? Number(v).toFixed(3) : 'x')
+                      const arr = (v: unknown): string => (Array.isArray(v) ? v.map((x) => (typeof x === 'number' ? Number(x).toFixed(3) : String(x))).join(', ') : 'x')
+                      return {
+                        key: 'd' + i, item: varLabels[i] ?? String(r.columnId ?? i), dist: (r.kind as string) ?? 'x',
+                        cc: Array.isArray(r.categoryCounts) ? (r.categoryCounts as unknown[]).join('/') : '—',
+                        cp: arr(r.categoryProportions),
+                        mn: fmt(r.minCategoryCount), mx: f3(r.maxCategoryProportion),
+                        fc: f3(r.floorProportion) + '/' + f3(r.ceilingProportion),
+                        sk: f3(r.rankSkewness),
+                        mis: fmt(r.missing), na: fmt(r.notApplicable), inv: fmt(r.invalid),
+                      }
+                    })}
+                    size="small" pagination={false} scroll={{ x: true }} />
+                  <Typography.Text type="secondary">連続近似の判断材料: カテゴリ別件数・割合、床／天井集中、歪度、欠損／非該当／不正の内訳。目安（少数・集中・歪度）は表示のみで実行経路を強制しません。</Typography.Text>
+                  <Table
+                    columns={[{ title: '対', dataIndex: 'pair', key: 'pair' }, { title: 'ρ', dataIndex: 'rho', key: 'rho' }, { title: '状態', dataIndex: 'st', key: 'st' }, { title: '0セル', dataIndex: 'z', key: 'z' }, { title: '少数', dataIndex: 'sm', key: 'sm' }, { title: '境界', dataIndex: 'bd', key: 'bd' }]}
+                    dataSource={(result.details.correlationPairs ?? []).map((p, i) => ({
+                      key: 'c' + i,
+                      pair: (varLabels[p.pair?.[0] ?? 0] ?? '?') + '–' + (varLabels[p.pair?.[1] ?? 0] ?? '?'),
+                      rho: p.rho === null || p.rho === undefined ? 'x' : Number(p.rho).toFixed(4),
+                      st: p.status + (p.reasonCode ? '(' + p.reasonCode + ')' : ''),
+                      z: p.zeroCells, sm: p.smallCells, bd: p.boundary ? '境界' : '—',
+                    }))}
+                    size="small" pagination={{ pageSize: 15 }} scroll={{ y: 300 }} />
+                  <Table
+                    columns={[{ title: 'start', dataIndex: 'si', key: 'si' }, { title: '状態', dataIndex: 'st', key: 'st' }, { title: '反復', dataIndex: 'it', key: 'it' }, { title: '目的値', dataIndex: 'ob', key: 'ob' }, { title: '射影勾配', dataIndex: 'pg', key: 'pg' }]}
+                    dataSource={(result.details.optimizerStarts ?? []).map((t) => ({
+                      key: 't' + t.startIndex, si: t.startIndex, st: t.status, it: t.iterations,
+                      ob: t.objective === null || t.objective === undefined ? 'x' : Number(t.objective).toFixed(6),
+                      pg: t.projectedGradientNorm === null || t.projectedGradientNorm === undefined ? 'x' : Number(t.projectedGradientNorm).toExponential(2),
+                    }))}
+                    size="small" pagination={false} />
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    <Typography.Text>参考推論（{result.details.referenceInference?.status ?? 'x'}）: ML Pearson経路のみ提供、ULS系は非対応。</Typography.Text>
+                    {result.details.referenceInference?.fit && (
+                      <Typography.Text>
+                        χ²={result.details.referenceInference.fit.statistic === null || result.details.referenceInference.fit.statistic === undefined ? 'x' : Number(result.details.referenceInference.fit.statistic).toFixed(3)}
+                        （df {result.details.referenceInference.fit.df}）
+                        p={result.details.referenceInference.fit.pValue === null || result.details.referenceInference.fit.pValue === undefined ? 'x' : Number(result.details.referenceInference.fit.pValue).toExponential(2)}
+                        RMSEA={result.details.referenceInference.fit.rmsea === null || result.details.referenceInference.fit.rmsea === undefined ? 'x' : Number(result.details.referenceInference.fit.rmsea).toFixed(4)}
+                        {result.details.referenceInference.fit.reasonCode ? '(' + result.details.referenceInference.fit.reasonCode + ')' : ''}
+                      </Typography.Text>
+                    )}
+                    <Typography.Text>
+                      KMO={result.details.referenceInference?.kmo === null || result.details.referenceInference?.kmo === undefined ? 'x' : Number(result.details.referenceInference.kmo).toFixed(3)}
+                      / Bartlett χ²={result.details.referenceInference?.bartlett?.statistic === null || result.details.referenceInference?.bartlett?.statistic === undefined ? 'x' : Number(result.details.referenceInference?.bartlett?.statistic).toFixed(2)}
+                      （df {result.details.referenceInference?.bartlett?.df ?? 'x'}）
+                      p={result.details.referenceInference?.bartlett?.pValue === null || result.details.referenceInference?.bartlett?.pValue === undefined ? 'x' : Number(result.details.referenceInference?.bartlett?.pValue).toExponential(2)}
+                      {result.details.referenceInference?.bartlett?.reasonCode ? '(' + result.details.referenceInference.bartlett.reasonCode + ')' : ''}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">解診断: {(result.details.solutionDiagnostics ?? []).map((d) => d.code + '(' + d.severity + '/' + d.stage + ')').join(' / ') || 'なし'}</Typography.Text>
+                  </Space>
+                </Space>
+              ) },
+              { key: 'sens', label: '感度比較', children: (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  {comparison
+                    ? (<Space direction="vertical" style={{ width: '100%' }} size="small">
+                      <Space wrap>
+                        <Typography.Text>状態: {String((comparison as Record<string, unknown>).status ?? 'x')}</Typography.Text>
+                        {typeof (comparison as Record<string, unknown>).progress === 'number' && (
+                          <Typography.Text type="secondary">
+                            進捗 {String((comparison as Record<string, unknown>).completedIterations ?? '?')}/{String((comparison as Record<string, unknown>).totalIterations ?? '?')}
+                            （{Math.round(Number((comparison as Record<string, unknown>).progress) * 100)}%・{(comparison as Record<string, unknown>).stage as string})
+                          </Typography.Text>
+                        )}
+                        {((comparison as Record<string, unknown>).status === 'running' || (comparison as Record<string, unknown>).status === 'queued') && (
+                          <Button size="small" onClick={() => {
+                            const cid = (comparison as Record<string, unknown>).comparisonId as string
+                            if (cid) void cancelEFAComparison(cid).then((c) => setComparison({ ...(comparison as Record<string, unknown>), ...(c as Record<string, unknown>) })).catch(() => undefined)
+                          }}>比較を中断</Button>
+                        )}
+                      </Space>
+                      <Typography.Text>判定: {String((comparison as Record<string, unknown>).assessment ?? 'x')}</Typography.Text>
+                      <Table
+                        columns={[{ title: '指標', dataIndex: 'm', key: 'm' }, { title: '最大差', dataIndex: 'mx', key: 'mx' }, { title: '中央値差', dataIndex: 'md', key: 'md' }]}
+                        dataSource={(() => {
+                          const met = (comparison as Record<string, { max: number | null; median: number | null }>).metrics as unknown as Record<string, { max: number | null; median: number | null }> | undefined
+                          if (!met) return []
+                          const fmt = (v: number | null | undefined): string => (v === null || v === undefined ? 'x' : Number(v).toFixed(4))
+                          return [
+                            { key: 'c', m: '相関', mx: fmt(met.correlationDifference?.max), md: fmt(met.correlationDifference?.median) },
+                            { key: 'l', m: '負荷量', mx: fmt(met.loadingDifference?.max), md: fmt(met.loadingDifference?.median) },
+                            { key: 'h', m: '共通性', mx: fmt(met.communalityDifference?.max), md: fmt(met.communalityDifference?.median) },
+                            { key: 'p', m: 'Φ', mx: fmt(met.factorCorrelationDifference?.max), md: fmt(met.factorCorrelationDifference?.median) },
+                          ]
+                        })()}
+                        size="small" pagination={false} />
+                      <Typography.Text type="secondary">割当変更: {String((comparison as Record<string, unknown>).assignmentChanges ?? 'x')} / PA差: {JSON.stringify((comparison as Record<string, unknown>).factorCountComparison ?? null)}</Typography.Text>
+                    </Space>)
+                    : (<Typography.Text type="secondary">感度比較は主結果と独立に保持されます。一致は同等性証明ではありません。</Typography.Text>)}
+                </Space>
+              ) },
+              { key: 'scores', label: '得点操作', children: (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  {!result.capabilities.rows && (<Alert type="info" message="得点操作は適切なPearson解の明示選択時のみ有効です。" showIcon />)}
+                  <SelectionMenu />
+                  <Space wrap>
+                    <span>X軸:</span>
+                    <SelectSetting value={figX} onChange={setFigX} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
+                    <span>Y軸:</span>
+                    <SelectSetting value={figY} onChange={setFigY} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
+                    <span>全{rowsTotal}行{q >= 2 ? '' : '（1因子のため単軸選択）'}</span>
+                  </Space>
+                  {selectInfo && <Alert type={selectInfo.startsWith('一致') ? 'success' : 'warning'} message={selectInfo} showIcon />}
+                  {selecting && <Spin size="small" tip="選択中" />}
+                  {result.capabilities.rows && q >= 1 && rowsReady && (
+                    <GraphPanel
+                      graphId="factor-analysis/scores"
+                      title="因子得点散布図"
+                      available={tab === 'scores'}
+                      sizing="intrinsic"
+                      intrinsicSize={{ width: 560, height: 400 }}
+                    >
+                    <EfaScoreFigure
+                      points={figPoints}
+                      xLabel={factorIds[figX - 1] ?? ('F' + figX)}
+                      yLabel={factorIds[figY - 1] ?? ('F' + figY)}
+                      selected={selectedSet}
+                      hovered={selection.hoveredRowId ?? null}
+                      onToggle={(id) => void handleToggleScore(id)}
+                      onBrush={(b) => void handleBrush(b)}
+                      svgRef={svgRef}
+                      testId="efa-score-figure"
+                    />
+                    </GraphPanel>
+                  )}
+                  <Space wrap>
+                    <Button disabled={!result.capabilities.rows} onClick={() => void handlePredict()}>予測</Button>
+                    <span>保存する因子:</span>
+                    <SelectSetting value={matFactor} onChange={setMatFactor} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
+                    <Input value={matName} onChange={(e) => setMatName(e.target.value)} style={{ width: 160 }} placeholder="保存列名" />
+                    <Button disabled={!result.capabilities.rows} loading={saving} onClick={() => void handleSave()}>派生列保存</Button>
+                  </Space>
+                  <Table
+                    columns={[{ title: 'rowId', dataIndex: 'rowId', key: 'rowId' }, { title: '得点', dataIndex: 'scores', key: 'scores' }]}
+                    dataSource={rows.slice(0, 50).map((r) => ({ key: r.rowId, rowId: r.rowId, scores: r.scores.map((v) => v === null ? 'x' : Number(v).toFixed(3)).join(', ') }))}
+                    size="small" pagination={false}
+                  />
+                  <Space>
+                    <Button onClick={() => void exportEFATable(result.resultId, 'variables', 'csv')}>変数CSV</Button>
+                    <Button onClick={() => void exportEFATable(result.resultId, 'diagnostics', 'csv')}>診断CSV</Button>
+                    <Button onClick={() => void exportEFATable(result.resultId, 'parallel_analysis', 'csv')}>PA CSV</Button>
+                  </Space>
+                </Space>
+              ) },
+            ]} />
+          </Space>
+        </Card>
+      )}
+    </div>
+  )
+}

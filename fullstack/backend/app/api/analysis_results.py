@@ -124,6 +124,34 @@ def select_result(result_id: str, payload: dict = Body(...)):
     if sel.kind not in allowed_kinds:
         _err("ANALYSIS_SELECTOR_UNSUPPORTED", "この結果では未対応のselectorです。", 422,
              details={"allowedKinds": sorted(allowed_kinds)})
+    if manifest.get("method") == "efa":
+        from ..api.factor_analysis import efa_select_ids as _efa_select
+
+        wanted = _efa_select(result_id, manifest, sel)
+        pool = list(wanted)
+        matched = len(set(pool))
+        df = store.get_dataframe(manifest.get("ownerDatasetId"), columns=["__rowId__"])
+        all_ids = [str(v) for v in df["__rowId__"].to_list()]
+        legacy = AnalysisContext(datasetId=manifest.get("ownerDatasetId"), expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
+        scope_ids = set(resolve_scope(all_ids, legacy))
+        inter = sorted(set(wanted) & scope_ids)
+        out = {"status": "success", "resultId": result_id, "rowIds": inter, "matchedCount": matched, "fitMatchedCount": matched, "contextIntersectionCount": len(inter), "selectionLabel": "EFA 因子得点の選択"}
+        check_json_finite(out)
+        return out
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_select_ids as _cj_select
+
+        wanted = _cj_select(result_id, manifest, sel)
+        pool = list(wanted)
+        matched = len(set(pool))
+        df = store.get_dataframe(manifest.get("ownerDatasetId"), columns=["__rowId__"])
+        all_ids = [str(v) for v in df["__rowId__"].to_list()]
+        legacy = AnalysisContext(datasetId=manifest.get("ownerDatasetId"), expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
+        scope_ids = set(resolve_scope(all_ids, legacy))
+        inter = sorted(set(wanted) & scope_ids)
+        out = {"status": "success", "resultId": result_id, "rowIds": inter, "matchedCount": matched, "fitMatchedCount": matched, "contextIntersectionCount": len(inter), "selectionLabel": "コンジョイントの選択"}
+        check_json_finite(out)
+        return out
     if manifest.get("method") == "linear_regression":
         from ..api.linear_regression import lr_select_ids as _lr_select
 
@@ -258,6 +286,14 @@ def get_result_rows(result_id: str, offset: int = 0, limit: int = 5000, axes: st
     meta, stale, cur = _stale_state(manifest)
     if manifest.get("method") == "linear_regression":
         return _lr_rows(result_id, manifest, meta, offset, limit, axes)
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_rows as _cj_rows
+
+        return _cj_rows(result_id, manifest, meta, offset, limit, axes)
+    if manifest.get("method") == "efa":
+        from ..api.factor_analysis import efa_rows as _efa_rows
+
+        return _efa_rows(result_id, manifest, meta, offset, limit, axes)
     if manifest.get("method") not in ("mca", "famd"):
         _err("ANALYSIS_OPERATION_UNSUPPORTED", "rows unsupported", 422)
     if limit < 1 or limit > 10000 or offset < 0:
@@ -333,6 +369,14 @@ def predict_result(result_id: str, payload: dict = Body(...)):
         from ..api.linear_regression import lr_predict as _lr_predict
 
         return _lr_predict(result_id, manifest, req)
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_predict as _cj_predict
+
+        return _cj_predict(result_id, manifest, req)
+    if manifest.get("method") == "efa":
+        from ..api.factor_analysis import efa_predict as _efa_predict
+
+        return _efa_predict(result_id, manifest, req)
     _err("ANALYSIS_OPERATION_UNSUPPORTED", "CA predict unsupported", 422)
 
 
@@ -353,6 +397,14 @@ def materialize_result(result_id: str, payload: dict = Body(...)):
         from ..api.linear_regression import lr_materialize as _lr_materialize
 
         return _lr_materialize(result_id, manifest, req)
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_materialize as _cj_materialize
+
+        return _cj_materialize(result_id, manifest, req)
+    if manifest.get("method") == "efa":
+        from ..api.factor_analysis import efa_materialize as _efa_materialize
+
+        return _efa_materialize(result_id, manifest, req)
     _err("ANALYSIS_OPERATION_UNSUPPORTED", "CA materialize unsupported", 422)
 
 
@@ -583,6 +635,11 @@ def get_prediction_rows(result_id: str, prediction_id: str, offset: int = 0, lim
 
         return _lr_rows(result_id, manifest, meta, prediction_id, offset,
                         limit, axes)
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_prediction_rows as _cj_rows
+
+        return _cj_rows(result_id, manifest, meta, prediction_id, offset,
+                        limit, axes)
     if manifest.get("method") not in ("mca", "famd"):
         _err("ANALYSIS_OPERATION_UNSUPPORTED", "rows unsupported", 422)
     if limit < 1 or limit > 10000 or offset < 0:
@@ -810,6 +867,12 @@ def export_result(result_id: str, payload: dict = Body(...)):
     allowed = set((manifest.get("capabilities") or {}).get("exportTables", [])) | {"members"}
     if req.table not in allowed:
         _err("ANALYSIS_EXPORT_UNSUPPORTED", "bad table", 422)
+    if manifest.get("method") == "efa" and req.table in (
+            "variables", "diagnostics", "parallel_analysis", "factor_comparisons",
+            "rows"):
+        from ..api.factor_analysis import efa_export_table as _efa_export
+
+        return _efa_export(manifest, meta, result_id, req)
     arrays = result_store.load_arrays(result_id)
     members = result_store.load_members(result_id)
     limit = int(req.limit)
@@ -859,6 +922,10 @@ def export_result(result_id: str, payload: dict = Body(...)):
         from ..api.linear_regression import lr_export_table as _lr_export
 
         return _lr_export(manifest, meta, result_id, req)
+    if manifest.get("method") == "conjoint":
+        from ..api.conjoint import conjoint_export_table as _cj_export
+
+        return _cj_export(manifest, meta, result_id, req)
     details = manifest.get("details") or {}
     if manifest.get("method") in ("mca", "famd"):
         cat_rows = list(details.get("categories") or [])

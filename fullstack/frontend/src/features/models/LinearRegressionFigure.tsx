@@ -53,18 +53,33 @@ export default function LinearRegressionFigure({ points, xLabel, yLabel, selecte
   const invY = (py: number): number => ext.y[0] + ((H - PAD.bottom - py) / (H - PAD.top - PAD.bottom)) * (ext.y[1] - ext.y[0])
 
   const toLocal = (e: React.PointerEvent): { x: number; y: number } => {
-    const box = wrapRef.current?.getBoundingClientRect()
+    // 実際の描画座標系の逆 CTM で変換する（ラッパー矩形への依存を除去）。
+    // 拡大 surface の scale は CTM に含まれるため二重適用しない。
     const svg = svgRef.current
-    if (!box || !svg) return { x: 0, y: 0 }
-    const rx = (e.clientX - box.left) * (W / Math.max(1, box.width))
-    const ry = (e.clientY - box.top) * (H / Math.max(1, box.height))
-    return { x: rx, y: ry }
+    if (!svg) return { x: NaN, y: NaN }
+    try {
+      if (typeof svg.getScreenCTM === 'function') {
+        const ctm = svg.getScreenCTM()
+        if (ctm) {
+          const inv = ctm.inverse()
+          if (typeof svg.createSVGPoint === 'function') {
+            const pt = svg.createSVGPoint()
+            pt.x = e.clientX
+            pt.y = e.clientY
+            const res = pt.matrixTransform(inv)
+            if (Number.isFinite(res.x) && Number.isFinite(res.y)) return { x: res.x, y: res.y }
+          }
+        }
+      }
+    } catch { /* CTM が得られない場合は操作を無視する */ }
+    return { x: NaN, y: NaN }
   }
 
   const onPointerDown = (e: React.PointerEvent): void => {
     const t = e.target as Element | null
     if (t && typeof (t as Element).closest === 'function' && (t as Element).closest('circle')) return
     const p = toLocal(e)
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return
     startRef.current = p
     setRect({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })
     ;(e.currentTarget as Element).setPointerCapture?.(e.pointerId)
@@ -72,6 +87,7 @@ export default function LinearRegressionFigure({ points, xLabel, yLabel, selecte
   const onPointerMove = (e: React.PointerEvent): void => {
     if (!startRef.current) return
     const p = toLocal(e)
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return
     setRect({ x0: startRef.current.x, y0: startRef.current.y, x1: p.x, y1: p.y })
   }
   const onPointerUp = (e: React.PointerEvent): void => {
@@ -80,6 +96,11 @@ export default function LinearRegressionFigure({ points, xLabel, yLabel, selecte
       return
     }
     const p = toLocal(e)
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      startRef.current = null
+      setRect(null)
+      return
+    }
     const x0 = Math.min(startRef.current.x, p.x)
     const x1 = Math.max(startRef.current.x, p.x)
     const y0 = Math.min(startRef.current.y, p.y)

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "F004-05 G16 nonempty match",
+    "ok": true,
+    "detail": "n=136/136"
+  },
+  {
+    "name": "F004-05 G20 full-brush match",
+    "ok": false,
+    "detail": "n=0/150"
+  }
+]

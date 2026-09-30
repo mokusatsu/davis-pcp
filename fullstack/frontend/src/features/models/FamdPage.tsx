@@ -7,7 +7,7 @@ import { fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
@@ -16,6 +16,7 @@ import type { FAMDResponse } from './famdTypes'
 import { exportFamdTable, fetchFamdRows, runFamd, selectFamd, type FAMDContext } from './famdApi'
 import { downloadPng, downloadSvg } from './mcaApi'
 import FamdFigure, { CorrelationCircle, famdAxisLabel, famdCategoryPoints } from './FamdFigure'
+import { truncateText } from '../../utils/textUtils'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -27,7 +28,6 @@ const VAR_COLORS = ['#1890ff', '#52c41a', '#fa8c16', '#722ed1', '#eb2f96', '#13c
 const NUMERIC_COLOR = '#fa8c16'
 
 export default function FamdPage(): JSX.Element {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
@@ -414,8 +414,8 @@ export default function FamdPage(): JSX.Element {
 
   return (
     <div data-testid="famd-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {!focused && (
-        <Card size="small" title="混合データ因子分析（FAMD）" extra={<FocusEnterButton targetId="famd" title="FAMD" />}>
+      {(
+        <Card size="small" title="混合データ因子分析（FAMD）">
           <Space wrap align="center">
             <span>数値列</span>
             <SelectColumn
@@ -487,7 +487,7 @@ export default function FamdPage(): JSX.Element {
       {error && <Alert type="error" message={error} />}
       {loading && <Spin tip="FAMDを計算中…" />}
       {result && (
-        <FocusTarget id="famd" title="FAMD結果">
+        <>
           <Card
             size="small"
             title={
@@ -521,6 +521,13 @@ export default function FamdPage(): JSX.Element {
                       {rowsMeta && (rowsMeta.resultId !== result.resultId || rowsMeta.axes.join(',') !== [axisX, effAxisY].slice(0, dispRank).join(',')) && (
                         <Alert type="warning" message="表示中の個体座標は取得中です。選択は取得完了後に行ってください。" />
                       )}
+                      <GraphPanel
+                        graphId="famd/individuals"
+                        title="FAMD個体図"
+                        available={tab === 'individuals'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 560, height: 420 }}
+                      >
                       <FamdFigure
                         points={overlay ? [...indPoints, ...catPoints.map((c) => ({ ...c, rowId: undefined }))] : indPoints}
                         rank={rank}
@@ -544,6 +551,7 @@ export default function FamdPage(): JSX.Element {
                         testId="famd-individual-svg"
                         overlayNote={overlay ? 'カテゴリ点を重ねて表示中（距離の解釈注意）' : undefined}
                       />
+                      </GraphPanel>
                       <Space wrap style={{ marginTop: 8 }}>
                         <span>X軸</span>
                         <Select value={axisX} onChange={setAxisX} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: famdAxisLabel(rank, ratio, i + 1) }))} style={{ minWidth: 160 }} />
@@ -569,6 +577,13 @@ export default function FamdPage(): JSX.Element {
                           <Tag key={v.variableId} color={varColor(v.variableId)}>{v.label ?? nameById.get(v.variableId) ?? v.variableId}</Tag>
                         ))}
                       </Space>
+                      <GraphPanel
+                        graphId="famd/categories"
+                        title="FAMDカテゴリ重心図"
+                        available={tab === 'categories'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 560, height: 420 }}
+                      >
                       <FamdFigure
                         points={catPoints}
                         rank={rank}
@@ -599,6 +614,7 @@ export default function FamdPage(): JSX.Element {
                         svgRef={svgCatRef as React.RefObject<SVGSVGElement>}
                         testId="famd-category-svg"
                       />
+                      </GraphPanel>
                       <Space wrap style={{ marginTop: 8 }}>
                         <Radio.Group value={between} onChange={(e) => setBetween(e.target.value)}>
                           <Radio.Button value="and">変数間AND</Radio.Button>
@@ -618,7 +634,15 @@ export default function FamdPage(): JSX.Element {
                   children: (
                     <div>
                       <Typography.Text type="secondary">相関円は[-1,1]同一縮尺。個体空間と重ねません。</Typography.Text>
+                      <GraphPanel
+                        graphId="famd/correlation"
+                        title="FAMD相関円"
+                        available={tab === 'correlation'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 420, height: 420 }}
+                      >
                       <CorrelationCircle points={corrPoints} testId="famd-correlation-svg" axisX={axisX} axisY={effAxisY} rank={rank} />
+                      </GraphPanel>
                     </div>
                   ),
                 },
@@ -628,7 +652,14 @@ export default function FamdPage(): JSX.Element {
                   children: (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <Typography.Text type="secondary">数値はr²、カテゴリはη²。因果的重要度ではありません。寄与ランキングは別列。</Typography.Text>
-                      <svg data-testid="famd-relation-svg" viewBox="0 0 560 300" width="100%" style={{ background: '#fafafa', borderRadius: 4, userSelect: 'none' }}>
+                      <GraphPanel
+                        graphId="famd/relations"
+                        title="FAMD変数関係図"
+                        available={tab === 'relation'}
+                        sizing="intrinsic"
+                        intrinsicSize={{ width: 560, height: 300 }}
+                      >
+                      <svg data-testid="famd-relation-svg" viewBox="0 0 560 300" width="560" height="300" style={{ background: '#fafafa', borderRadius: 4, userSelect: 'none' }}>
                         {(() => {
                           const rows = result.details.variableRelation
                           const W = 560
@@ -653,10 +684,11 @@ export default function FamdPage(): JSX.Element {
                                 const wX = relX * (W - PAD.left - PAD.right)
                                 const wY = relY === null ? 0 : relY * (W - PAD.left - PAD.right)
                                 const label = nameById.get(v.variableId) ?? v.variableId
+                                const relationLabel = `${label}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`
                                 return (
                                   <g key={v.variableId}>
                                     <text x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize={11} fill="#333">
-                                      {`${label}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`}
+                                      {truncateText(relationLabel, 12)}
                                       <title>{`${label} kind=${v.kind} 第${axisX}軸=${(v.relationStrength[axisX - 1] ?? 0).toFixed(4)}`}</title>
                                     </text>
                                     <rect x={PAD.left} y={y - 8} width={W - PAD.left - PAD.right} height={7} fill="#f0f0f0" />
@@ -679,6 +711,7 @@ export default function FamdPage(): JSX.Element {
                           )
                         })()}
                       </svg>
+                      </GraphPanel>
                       <Table
                         size="small"
                         dataSource={result.details.variableRelation.map((v) => ({ ...v, key: v.variableId }))}
@@ -865,7 +898,7 @@ export default function FamdPage(): JSX.Element {
             />
             {shownStale && <Alert type="warning" style={{ marginTop: 8 }} message="データ版が更新されました。表示は旧版のままです。選択・保存・予測はできません。" />}
           </Card>
-        </FocusTarget>
+        </>
       )}
     </div>
   )

@@ -1,15 +1,16 @@
-# Feature 033b・033c：既存構成・接続箇所の確認
+# Feature 033 EFA・033c CFA：既存構成・接続箇所の確認
 
 確認日：2026-09-13。現ワークスペースの文書構成と接続先を静的に確認した。過去の添付ZIPに対する[source_audit.md](source_audit.md)のhashは更新せず、今回の確認とは区別する。
 
 ## 1. 文書配置と優先関係
 
-既存analysis-specsはfeature/、tasks/、contracts/、fixtures/、validation/、references/、README、Markdown/HTML一括閲覧、SHA256SUMSからなる。033bと033cも同じ配置を使う。
+既存analysis-specsはfeature/、tasks/、contracts/、fixtures/、validation/、references/、README、Markdown/HTML一括閲覧、SHA256SUMSからなる。033 EFAと033c CFAも同じ配置を使う。
 
-|既存文書|033b/033cでの扱い|
+|文書|033 EFA/033cでの扱い|
 |---|---|
-|33_maximum_likelihood_factor_analysis.md|連続MLの基礎資料として保持。033bは対象を順序EFAへ拡張|
-|DAVIS-FEAT-033-DESIGN.md|ML目的・回転・連続得点を明示参照。ML専用・PAなし・frequency対応は033bでは個別規約優先|
+|33_exploratory_factor_analysis.md|現行033 EFAの機能仕様正本。連続MLと順序EFAの範囲を集約|
+|DAVIS-FEAT-033-DESIGN.md|現行033 EFAの実装設計正本。ML目的・回転・連続得点、MINRES、PA、感度比較を自己完結して定義|
+|33_maximum_likelihood_factor_analysis.md／33b_exploratory_factor_analysis.md／DAVIS-FEAT-033B-DESIGN.md|移動案内。現行契約として参照しない|
 |00_common_analysis_contract.md / COMMON-DESIGN|scope、版、欠損分類、選択、保存、KeepAliveを継承|
 |RESULT_CONTRACT.md|efa/cfa method、状態・結果・exportは拡張契約で追加|
 |analysis_requests.py|既存型を変更せず新factor_extension_requests.pyが共通contextを再利用|

@@ -1,0 +1,17 @@
+{
+  "at": "2026-09-17T16:34:27.777338+00:00",
+  "sha256": {
+    "fullstack/frontend/src/app/AppShell.tsx": "61c12d3653fec4e0f545015408b1e447c18b865a83c7ab14e3c3acec3dfd8f3a",
+    "fullstack/frontend/src/theme/viz.css": "1545f863af6ca3ddeca7239f09f5087440665017d7a511eb410b1ce133fa58db",
+    "fullstack/frontend/tests/appNavigation.test.tsx": "968b902b74eac4a5b78f85e143faff09f8bddf799a6cd98e05e8b16cb7c70aa4",
+    "fullstack/frontend/dist/index.html": "8770fbe931c53f2abb55aee6951cc65ac79c0fbfef669afc080338612f499292",
+    "fullstack/frontend/dist/assets/index-CKY31PSW.js": "02781a79b145c01224d2c374ce80b9c7e1ecd647dad5615a768777cee32a0784",
+    "fullstack/frontend/dist/assets/index-ln5rxMhz.css": "d0c199dc0be0016e315437985b11e4254f925e0fafcb3c0d39b576bbd806ab05"
+  },
+  "acceptance": "incomplete; verify_r003 pass counts are not acceptance results",
+  "servedIndexMatches": true,
+  "servedAssets": {
+    "fullstack/frontend/dist/assets/index-CKY31PSW.js": "02781a79b145c01224d2c374ce80b9c7e1ecd647dad5615a768777cee32a0784",
+    "fullstack/frontend/dist/assets/index-ln5rxMhz.css": "d0c199dc0be0016e315437985b11e4254f925e0fafcb3c0d39b576bbd806ab05"
+  }
+}

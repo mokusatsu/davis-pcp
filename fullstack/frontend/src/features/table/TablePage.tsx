@@ -10,14 +10,12 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { maskFilterChanged } from '../dataset/provenanceSlice'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 
 type Entity = { kind: 'column' | 'ma' | 'maOption' | 'maCount'; columnId?: string; groupId?: string }
 type Cell = { value?: unknown; text?: string; isMissing?: boolean; status?: string; selectedCount?: number; labels?: string[] }
 type TableResult = { rows: { rowId: string; cells: Cell[] }[]; total: number; entities: (Entity & { label: string; sortable: boolean })[] }
 
 export default function TablePage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
@@ -215,16 +213,8 @@ export default function TablePage() {
   return (
     <div
       data-testid="table-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
-      {!focused && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, flexShrink: 0 }}>
           <Space wrap align="center">
             <Input.Search
@@ -257,7 +247,6 @@ export default function TablePage() {
               value={maskFilter}
               onChange={(v) => dispatch(maskFilterChanged(v as 'all' | 'hasImputed' | 'noImputed'))}
             />
-            <FocusEnterButton targetId="table" title="データテーブル" />
           </Space>
           <Space wrap align="center">
             {selection.selectedRowIds.length > 0 && (
@@ -270,19 +259,15 @@ export default function TablePage() {
             </Typography.Text>
           </Space>
         </div>
-      )}
       {error && <Alert type="error" message={error} />}
       {entities.length > 12 && <Space><Typography.Text>表示項目</Typography.Text><Pagination size="small" current={currentEntityPage} pageSize={12} total={entities.length} showSizeChanger={false} onChange={setEntityPage} /></Space>}
-      <FocusTarget id="table" title="データテーブル">
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
           <div
             style={{
-              border: focused ? 'none' : '1px solid #e5e7eb',
+              border: '1px solid #e5e7eb',
               borderRadius: 6,
               background: '#ffffff',
-              padding: focused ? 4 : 14,
-              height: focused ? '100%' : undefined,
-              flex: focused ? 1 : undefined,
+              padding: 14,
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
@@ -302,7 +287,7 @@ export default function TablePage() {
                 const item = Array.isArray(sorter) ? sorter[0] : sorter
                 setSort(item.order ? { entityIndex: item.columnKey === '__weight__' ? -1 : Number(item.columnKey), order: item.order } : undefined)
               }}
-              scroll={{ x: true, y: focused ? 'calc(100vh - 120px)' : undefined }}
+              scroll={{ x: true }}
               rowClassName={(row) => (selection.selectedRowIds.includes(row.__rowId__ as string) ? 'ant-table-row-selected' : '')}
               onRow={(row) => ({
                 onMouseEnter: () => dispatch(hoverAction(row.__rowId__ as string)),
@@ -311,7 +296,6 @@ export default function TablePage() {
             />
           </div>
         </Dropdown>
-      </FocusTarget>
     </div>
   )
 }

@@ -1,0 +1,127 @@
+[
+  {
+    "name": "wide /pcp normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /relationships normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /distribution normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /barchart normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /fedf normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /loess normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /covariance normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /mosaic normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /models normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /ranking normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /penalty-reward normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "wide /clusters normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /pcp normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /relationships normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /distribution normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /barchart normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /fedf normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /loess normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /covariance normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /mosaic normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /models normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /ranking normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /penalty-reward normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "narrow /clusters normal inner-scroll=0",
+    "ok": true,
+    "detail": "inner=0"
+  },
+  {
+    "name": "G03 rowId normal vs expanded",
+    "ok": true,
+    "detail": "選択行 150 / active 150 / 全150解除F vs 選択行 150 / active 150 / 全150解除F"
+  }
+]

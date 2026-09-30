@@ -1,0 +1,27 @@
+[
+  {
+    "name": "PCA executed",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/matrix host after run+switch",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/matrix expand entry",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/matrix opens",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pca/matrix scroll",
+    "ok": true,
+    "detail": "{'sl': 0, 'sw': 1382}"
+  }
+]

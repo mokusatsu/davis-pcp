@@ -1,0 +1,22 @@
+[
+  {
+    "name": "F005-01 DPR1 400% buffer",
+    "ok": true,
+    "detail": "buf=[4915, 2408] exp=[4916, 2408]"
+  },
+  {
+    "name": "F005-01 DPR1 canvas/svg origin",
+    "ok": true,
+    "detail": "{'canvas': [-1816, -813], 'svg': [-1816, -813]}"
+  },
+  {
+    "name": "F005-01 DPR2 400% buffer",
+    "ok": true,
+    "detail": "buf=[9830, 4816] exp=[9832, 4816]"
+  },
+  {
+    "name": "F005-01 DPR2 canvas/svg origin",
+    "ok": true,
+    "detail": "{'canvas': [-1816, -813], 'svg': [-1816, -813]}"
+  }
+]

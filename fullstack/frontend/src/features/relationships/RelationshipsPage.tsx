@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Col, Dropdown, Row, Space, Spin, Typography } from 'antd'
-import { Select as AntSelect } from 'antd'
 import Select from '../common/ColumnSelect'
 import { api } from '../../api/client'
 import { deleteSelected, focusSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables,
@@ -10,7 +9,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import { useRowColorResolver } from '../../theme/useRowColor'
-import { FocusEnterButton, FocusTarget } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import RelationshipCanvas, { type RelationshipPoints } from './RelationshipCanvas'
 
@@ -79,6 +78,13 @@ export default function RelationshipsPage() {
     { key: 'clear', label: 'Clear Selection', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(selectionCleared()) },
     { key: 'reset', label: 'Reset to Base Data', onClick: () => dispatch(resetWorkingSet()) },
   ]
+  const heatmapColumnCount = matrix.value?.columns.length ?? names.length
+  const heatmapLabelWidth = 140
+  const heatmapCellWidth = 62
+  const heatmapHeaderHeight = 60
+  const heatmapCellHeight = 48
+  const heatmapWidth = Math.max(320, heatmapLabelWidth + heatmapColumnCount * heatmapCellWidth)
+  const heatmapHeight = Math.max(200, heatmapHeaderHeight + heatmapColumnCount * heatmapCellHeight)
   if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
   return <div data-testid="relationships-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
     <Card size="small" style={{ background: '#fafafa' }}><Space wrap>
@@ -95,37 +101,57 @@ export default function RelationshipsPage() {
     {names.length < 2 && <Alert type="info" message="通常変数またはMA選択肢を2つ以上選択してください。" />}
     <WeightUnsupportedAlert weightColumnName={matrix.value?.weightStatus === 'unsupported' ? matrix.value?.weightColumn : null} />
     <Row gutter={[12, 12]}>
-      <Col xs={24} xl={12}><FocusTarget id="relationships-heatmap" title="相関ヒートマップ">
-        <Card size="small" title="相関ヒートマップ" extra={<FocusEnterButton targetId="relationships-heatmap" title="相関ヒートマップ" />}>
-          <Spin spinning={matrix.loading}><div style={{ overflow: 'auto' }}>
-            {matrix.value && <table aria-label="相関行列" style={{ borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead><tr><th />{matrix.value.columns.map(name => <th key={name} title={title(name)} style={{ maxWidth: 110, padding: 4 }}>{title(name)}</th>)}</tr></thead>
-              <tbody>{matrix.value.columns.map((left, i) => <tr key={left}><th title={title(left)} style={{ maxWidth: 140, padding: 4 }}>{title(left)}</th>
-                {matrix.value!.columns.map((right, j) => {
-                  const value = matrix.value!.matrix[i][j]
-                  return <td key={right}><Button size="small" type="text" aria-label={`${left}と${right}の関係`}
-                    disabled={i === j} onClick={() => setFocusPair([left, right])}
-                    title={`r=${value?.toFixed(3) ?? '計算不可'} / n=${matrix.value!.counts[i][j]}`}
-                    style={{ minWidth: 54, height: 40, borderRadius: 0, background: value === null ? '#fafafa' : value >= 0 ? `rgba(22,119,255,${Math.abs(value) * .65})` : `rgba(245,34,45,${Math.abs(value) * .65})` }}>
-                    {value?.toFixed(2) ?? '—'}
-                  </Button></td>
-                })}</tr>)}</tbody>
-            </table>}
-          </div></Spin>
-          <Typography.Text type="secondary">Pearson相関・ペアごとに欠損を除外。セルを選ぶと焦点ペアを表示します。</Typography.Text>
-        </Card>
-      </FocusTarget></Col>
-      <Col xs={24} xl={12}><FocusTarget id="relationships-facet" title="焦点ペア">
-        <Card size="small" title="焦点ペア" extra={<FocusEnterButton targetId="relationships-facet" title="焦点ペア" />}>
-          {pair && <Space wrap>{[0, 1].map(index => <AntSelect key={index} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
-            style={{ minWidth: 150 }} options={names.filter(name => name !== pair[1 - index]).map(name => ({ value: name, label: title(name) }))}
-            onChange={value => setFocusPair(index === 0 ? [value, pair[1]] : [pair[0], value])} />)}</Space>}
+      <Col xs={24} xl={12}>
+        <GraphPanel
+          graphId="relationships/heatmap"
+          title="相関ヒートマップ"
+          available={names.length >= 2}
+          sizing="intrinsic"
+          intrinsicSize={{ width: heatmapWidth, height: heatmapHeight }}
+        >
+          <Spin spinning={matrix.loading}>
+            <div style={{ width: heatmapWidth, height: heatmapHeight }}>
+              {matrix.value && <table aria-label="相関行列" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: heatmapWidth, height: heatmapHeight, fontSize: 12 }}>
+                <colgroup><col style={{ width: heatmapLabelWidth }} />{matrix.value.columns.map(name => <col key={name} style={{ width: heatmapCellWidth }} />)}</colgroup>
+                <thead><tr style={{ height: heatmapHeaderHeight }}><th style={{ width: heatmapLabelWidth }} />{matrix.value.columns.map(name => <th key={name} title={title(name)} style={{ width: heatmapCellWidth, maxWidth: heatmapCellWidth, padding: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title(name)}</th>)}</tr></thead>
+                <tbody>{matrix.value.columns.map((left, i) => <tr key={left} style={{ height: heatmapCellHeight }}><th title={title(left)} style={{ width: heatmapLabelWidth, maxWidth: heatmapLabelWidth, padding: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title(left)}</th>
+                  {matrix.value!.columns.map((right, j) => {
+                    const value = matrix.value!.matrix[i][j]
+                    return <td key={right} style={{ width: heatmapCellWidth, height: heatmapCellHeight, padding: 0, textAlign: 'center' }}><Button size="small" type="text" aria-label={`${left}と${right}の関係`}
+                      disabled={i === j} onClick={() => setFocusPair([left, right])}
+                      title={`r=${value?.toFixed(3) ?? '計算不可'} / n=${matrix.value!.counts[i][j]}`}
+                      style={{ width: 54, minWidth: 54, height: 40, borderRadius: 0, background: value === null ? '#fafafa' : value >= 0 ? `rgba(22,119,255,${Math.abs(value) * .65})` : `rgba(245,34,45,${Math.abs(value) * .65})` }}>
+                      {value?.toFixed(2) ?? '—'}
+                    </Button></td>
+                  })}</tr>)}</tbody>
+              </table>}
+            </div>
+          </Spin>
+        </GraphPanel>
+        <Typography.Text type="secondary">Pearson相関・ペアごとに欠損を除外。セルを選ぶと焦点ペアを表示します。</Typography.Text>
+      </Col>
+      <Col xs={24} xl={12}>
+        <GraphPanel
+          graphId="relationships/pair"
+          title="焦点ペア"
+          available={Boolean(pair && points.value)}
+          sizing="intrinsic"
+          intrinsicSize={{ width: 600, height: 420 }}
+          normalWidth="viewport"
+          controls={pair ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: '100%', minWidth: 0 }}>
+              {[0, 1].map(index => <Select key={index} aria-label={index === 0 ? '焦点ペアX' : '焦点ペアY'} value={pair[index]}
+                style={{ width: 280, maxWidth: '100%', minWidth: 0 }} options={names.filter(name => name !== pair[1 - index]).map(name => ({ value: name, label: title(name) }))}
+                onChange={value => setFocusPair(index === 0 ? [value, pair[1]] : [pair[0], value])} />)}
+            </div>
+          ) : undefined}
+        >
           <Spin spinning={points.loading}><Dropdown menu={{ items }} trigger={['contextMenu']}>
             <div>{points.value && pair && <RelationshipCanvas data={points.value} labels={[title(pair[0]), title(pair[1])]} colorOf={getColor} />}</div>
           </Dropdown></Spin>
-          <Typography.Text type="secondary">{points.value?.rowIds.length ?? 0}行。点クリック・矩形選択は全ページに連動します。</Typography.Text>
-        </Card>
-      </FocusTarget></Col>
+        </GraphPanel>
+        <Typography.Text type="secondary">{points.value?.rowIds.length ?? 0}行。点クリック・矩形選択は全ページに連動します。</Typography.Text>
+      </Col>
     </Row>
   </div>
 }

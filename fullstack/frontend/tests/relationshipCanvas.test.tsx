@@ -36,3 +36,19 @@ it('uses the central selection operations for Canvas clicks and brushes and canc
   fireEvent.pointerUp(canvas, { clientX: 600, clientY: 420 })
   expect(store.getState().selection.selectedRowIds).toEqual(['r1', 'r2', 'r3'])
 })
+
+it('maps a compact rendered Canvas hit back to its logical coordinates', () => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+  store.dispatch(datasetLoaded({ datasetId: 'canvas-compact-test', rowIds: ['r1', 'r2', 'r3'], name: 'Canvas' }))
+  const data = { rowIds: ['r1', 'r2', 'r3'], x: [0, 1, 2], y: [0, 1, 2] }
+  const view = render(<Provider store={store}><RelationshipCanvas data={data} labels={['X', 'Y']} colorOf={() => '#1677ff'} /></Provider>)
+  const canvas = view.getByRole('img', { name: '焦点ペア散布図' })
+  Object.defineProperty(canvas, 'setPointerCapture', { value: vi.fn() })
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 210 } as DOMRect)
+
+  fireEvent.pointerDown(canvas, { clientX: 157.5, clientY: 100, button: 0 })
+  fireEvent.pointerUp(canvas, { clientX: 157.5, clientY: 100 })
+
+  expect(store.getState().selection.selectedRowIds).toEqual(['r2'])
+})

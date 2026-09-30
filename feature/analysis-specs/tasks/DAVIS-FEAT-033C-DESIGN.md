@@ -4,7 +4,7 @@
 
 ## 1. 接続と実行エンジン
 
-route `/models/cfa`、POST `/api/v1/models/cfa`、結果method=`cfa`、schemaVersion=`factor_extensions.1`。入力は[CFARequest](../contracts/factor_extension_requests.py)。既存のML-EFA APIと分離する。予定ファイルはfullstack/backend/app/api/cfa.py、services/cfa_service.py、algorithms/models/cfa_engine.py、algorithms/models/cfa_runner.R、frontend/src/features/models/ConfirmatoryFactorAnalysisPage.tsx。
+route `/models/cfa`、POST `/api/v1/models/cfa`、結果method=`cfa`、schemaVersion=`factor_extensions.1`。入力は[CFARequest](../contracts/factor_extension_requests.py)。既存のEFA APIと分離する。予定ファイルはfullstack/backend/app/api/cfa.py、services/cfa_service.py、algorithms/models/cfa_engine.py、algorithms/models/cfa_runner.R、frontend/src/features/models/ConfirmatoryFactorAnalysisPage.tsx。
 
 初期ローカルエンジンはR lavaanを採用し、推定・SE・検定・適合度を同じfitから取り出す。WLSMV/MLRを必須、MLを通常版の照合対象、ULSMVを独立した追加受入対象とする。実装時にR/lavaan/BLAS版とソースhashを固定し、全オプションを解決したengine manifestを作成する。最新版への無条件追従はしない。
 
@@ -24,7 +24,7 @@ Rscriptは設定済み絶対パスから引数配列で起動し、ユーザー�
 
 ## 3. 前処理・識別性
 
-scope・版・欠損・重み・categoryOrder・逆転は033b第2節の前処理を再利用し、完全ケースのみ。同節のEFA専用n>p・q・自由度条件はCFAへ引き継がず、以下のCFAモデルで検査する。raw相関のユーザー持込モードは初期版なし。連続項目は元の分析単位の値を渡し、EFAのddof1相関への標準化を勝手に適用しない。連続近似は確認済み等間隔順位値を渡す。
+scope・版・欠損・重み・categoryOrder・逆転は[033 EFA設計第2節](DAVIS-FEAT-033-DESIGN.md#2-入力前処理識別可能性)の前処理を再利用し、完全ケースのみとする。同節のEFA専用n>p・q・自由度条件はCFAへ引き継がず、以下のCFAモデルで検査する。raw相関のユーザー持込モードは初期版なし。連続項目は元の分析単位の値を渡し、EFAのddof1相関への標準化を勝手に適用しない。連続近似は確認済み等間隔順位値を渡す。
 
 識別は事前構造検証、自由度、推定後Jacobianの列rank、情報行列のrankと条件数で判定。連続の標本統計量数はp+p(p+1)/2、順序はΣ(Kj−1)+p(p−1)/2。自由度は当該統計量数と制約を適用した独立自由パラメータ数から求め、エンジン値と照合する。冗長制約やデータ依存特異をdf≥0だけで許可しない。
 

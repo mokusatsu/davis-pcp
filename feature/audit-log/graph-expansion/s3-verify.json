@@ -1,0 +1,192 @@
+[
+  {
+    "name": "clusters/pca host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "clusters/silhouette host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "clusters/dendrogram host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "clusters/cobweb host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "clusters/disc host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "models/importance host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "models/tree host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "ranking/metrics host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "ranking/mrmr host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "associations/quadrant host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "associations/heatmap host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "robustness/tornado host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "robustness/tornado expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "robustness/tornado zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "key-drivers/importance host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "key-drivers/importance expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "key-drivers/importance zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "penalty-reward/kano host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "penalty-reward/kano expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "penalty-reward/kano zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "penalty-reward/diverging host",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "penalty-reward/diverging expand opens",
+    "ok": true,
+    "detail": "label=フィット"
+  },
+  {
+    "name": "penalty-reward/diverging zoom step",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "logistic/sigmoid host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "logistic/forest host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "discriminant/map host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "discriminant/structure host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "ca/map host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "mca/individuals host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "mca/categories host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "famd/individuals host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "famd/categories host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "famd/correlation host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "famd/relations host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "linear-regression/diagnostics host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "factor-analysis/scree host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "factor-analysis/scores host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  },
+  {
+    "name": "conjoint/diagnostics host",
+    "ok": true,
+    "detail": "N/A: 結果未生成・条件未成立のため入口なし"
+  }
+]

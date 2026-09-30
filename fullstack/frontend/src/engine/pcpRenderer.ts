@@ -20,6 +20,7 @@ export function tracePcpRow(ctx: Pick<CanvasRenderingContext2D, 'moveTo' | 'line
 export interface PcpRenderSpec {
   width: number
   height: number
+  /** 有効DPR = rawDpr × 表示scale。バッファ寸法・context変換・背景塗りはすべてこの値で統一する。 */
   dpr: number
   orientation: 'horizontal' | 'vertical'
   /** flattened geometry points [row][axis][x,y] (from the engine) */

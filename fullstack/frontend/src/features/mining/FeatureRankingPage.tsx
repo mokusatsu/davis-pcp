@@ -31,6 +31,8 @@ import { activeEntitiesSet, variableOrderReordered, selectEffectiveRowIds, selec
 import MaAxisPicker from '../pcp/MaAxisPicker'
 import type { VariableEntity } from '../selection/variableEntities'
 import { api } from '../../api/client'
+import GraphPanel from '../common/GraphPanel'
+import { truncateText } from '../../utils/textUtils'
 
 export interface MetricScoreItem {
   rawScore: number
@@ -607,11 +609,18 @@ export default function FeatureRankingPage() {
         <Row gutter={[16, 16]}>
           {/* Multi-Metric Bar Chart */}
           <Col xs={24} lg={12}>
+            <GraphPanel
+              graphId="ranking/metrics"
+              title="手法別スコア比較"
+              available={Boolean(result && sortedRankings.length)}
+              sizing="intrinsic"
+              intrinsicSize={{ width: 560, height: Math.max(300, 80 + sortedRankings.length * 48) }}
+            >
             <Card
               size="small"
               title={
                 <div style={{ whiteSpace: 'normal', display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
-                  <span>手法別スコア比較 (Normalized Scores [0, 1])</span>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>正規化スコア [0, 1]</Typography.Text>
                   <Space wrap size={8}>
                     {Object.entries(METHOD_COLORS).map(([m, color]) => (
                       <span key={m} style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -624,7 +633,7 @@ export default function FeatureRankingPage() {
               }
               data-testid="ranking-bar-card"
             >
-              <div style={{ overflowY: 'auto', maxHeight: 360, paddingRight: 8 }}>
+              <div style={{ paddingRight: 8 }}>
                 {sortedRankings.map((item) => {
                   const isHighlighted = highlightedVar === item.variable
                   const isTopK = topKVariables.includes(item.variable)
@@ -671,17 +680,29 @@ export default function FeatureRankingPage() {
                 })}
               </div>
             </Card>
+            </GraphPanel>
           </Col>
 
           {/* Relevance vs Redundancy Plot (mRMR) */}
           <Col xs={24} lg={12}>
+            <GraphPanel
+              graphId="ranking/mrmr"
+              title="関連度 vs 冗長性プロット"
+              available={Boolean(result && result.rankings.length)}
+              sizing="intrinsic"
+              intrinsicSize={{ width: 400, height: 300 }}
+            >
             <Card
               size="small"
-              title="関連度 vs 冗長性プロット (mRMR: Relevance vs Redundancy)"
+              title="mRMR"
               extra={<Typography.Text type="secondary" style={{ fontSize: 11 }}>右下が最良（高重要度・低冗長性）</Typography.Text>}
               data-testid="ranking-mrmr-card"
             >
-              <svg width="100%" height={320} viewBox="0 0 400 300" style={{ background: '#fafafa', borderRadius: 4 }}>
+              <svg
+                width="100%"
+                viewBox="0 0 400 300"
+                style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: '400 / 300', background: '#fafafa', borderRadius: 4 }}
+              >
                 {/* Axes */}
                 <line x1={50} y1={250} x2={380} y2={250} stroke="#999" strokeWidth={1} />
                 <line x1={50} y1={250} x2={50} y2={30} stroke="#999" strokeWidth={1} />
@@ -711,6 +732,9 @@ export default function FeatureRankingPage() {
 
                     const isHighlighted = highlightedVar === r.variable
                     const isTopK = topKVariables.includes(r.variable)
+                    const label = truncateText(r.variable, 18)
+                    const estimatedLabelWidth = Array.from(label).length * 6
+                    const labelOnRight = cx + 9 + estimatedLabelWidth <= 388
 
                     return (
                       <g
@@ -730,13 +754,14 @@ export default function FeatureRankingPage() {
                           <title>{`${r.variable}\nBorda Score: ${r.bordaScore} (Rank #${r.overallRank})\nmRMR Redundancy vs Top-${topK}: ${dynRedundancy.toFixed(3)}\nStatic Mean Redundancy: ${r.meanRedundancy.toFixed(3)}`}</title>
                         </circle>
                         <ColumnQuestionTooltip nameOrId={r.variable} svg><text
-                          x={cx + 9}
+                          x={labelOnRight ? cx + 9 : cx - 9}
                           y={cy + 4}
+                          textAnchor={labelOnRight ? 'start' : 'end'}
                           fontSize={10}
                           fontWeight={isTopK || isHighlighted ? 600 : 400}
                           fill={isHighlighted ? '#cf1322' : '#333'}
                         >
-                          {r.variable}
+                          {label}
                         </text></ColumnQuestionTooltip>
                       </g>
                     )
@@ -744,6 +769,7 @@ export default function FeatureRankingPage() {
                 })()}
               </svg>
             </Card>
+            </GraphPanel>
           </Col>
         </Row>
       )}

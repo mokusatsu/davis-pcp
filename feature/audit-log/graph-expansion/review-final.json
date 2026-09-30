@@ -1,0 +1,57 @@
+[
+  {
+    "name": "zoom out -> 75%",
+    "ok": true,
+    "detail": "got=75%"
+  },
+  {
+    "name": "zoom out -> 50%",
+    "ok": true,
+    "detail": "got=50%"
+  },
+  {
+    "name": "zoom in -> 125%",
+    "ok": true,
+    "detail": "got=125%"
+  },
+  {
+    "name": "zoom in -> 150%",
+    "ok": true,
+    "detail": "got=150%"
+  },
+  {
+    "name": "zoom in -> 200%",
+    "ok": true,
+    "detail": "got=200%"
+  },
+  {
+    "name": "zoom in -> 300%",
+    "ok": true,
+    "detail": "got=300%"
+  },
+  {
+    "name": "zoom in -> 400%",
+    "ok": true,
+    "detail": "got=400%"
+  },
+  {
+    "name": "50% smaller than fit",
+    "ok": true,
+    "detail": "fit=[1229, 602] 50=[('50%', [614, 301])]"
+  },
+  {
+    "name": "KeepAlive route change closes dialog",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "KeepAlive back to PCP",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "narrow viewport PCP ok",
+    "ok": true,
+    "detail": ""
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "F004-01 DPR2 400% buffer matches",
+    "ok": true,
+    "detail": "dpr=2 vp=[1229, 602] buf=[9830, 4816] exp=[9832, 4816]"
+  },
+  {
+    "name": "F004-02 normal popup in body",
+    "ok": true,
+    "detail": "menu=body-visible"
+  },
+  {
+    "name": "F004-03 refit returns to origin",
+    "ok": true,
+    "detail": "before=[1, 1] after=[0, 0]"
+  },
+  {
+    "name": "F004-03 logical center kept",
+    "ok": true,
+    "detail": "c0=[615.5, 302] c1=[615.6, 302.4]"
+  },
+  {
+    "name": "F004-04 zoom-during-drag no dispatch",
+    "ok": true,
+    "detail": "before=選択行 0 / active 150 / after=選択行 0 / active 150 /"
+  },
+  {
+    "name": "F004-04 next op works",
+    "ok": true,
+    "detail": "選択行 1 / active 150 /"
+  }
+]

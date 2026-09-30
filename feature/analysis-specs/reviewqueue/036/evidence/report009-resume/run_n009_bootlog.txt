@@ -1,0 +1,28 @@
+起動記録(N008-05/V12用・完全版)
+- 起動コマンド列(完全):
+    cd C:\dev\davis-pcp\fullstack
+    nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8420 --app-dir backend > /tmp/davis8420.log 2>&1 &
+  (run-production.ps1 と同等の直接起動。frontend/dist は事前ビルド済みのため再ビルドなし)
+- 起動確認日時(JST): 2026-09-18 22:21 (本セッション内で uvicorn 起動→curl 200確認)
+- URL/port: http://127.0.0.1:8420
+- 起動出力(/tmp/davis8420.log 先頭):
+    INFO: Started server process [25964]
+    INFO: Waiting for application startup.
+    INFO: Application startup complete.
+    INFO: Uvicorn running on http://127.0.0.1:8420 (Press CTRL+C to quit)
+- curl応答:
+    GET / → HTTP 200 bytes=394
+    GET / が参照するbundle: assets/index-CKY31PSW.js / assets/index-ln5rxMhz.css
+    GET /assets/index-CKY31PSW.js のSHA256: 02781a79b145c01224d2c374ce80b9c7e1ecd647dad5615a768777cee32a0784 (ローカルdistと一致)
+- JS/CSSのSHA256実測値:
+    AppShell.tsx: 61c12d3653fec4e0f545015408b1e447c18b865a83c7ab14e3c3acec3dfd8f3a
+    viz.css: 378aff2eb7921ae75b2449e2cf8777dd9c61868df006d4f41382e985b5997acd
+    dist index-CKY31PSW.js: 02781a79b145c01224d2c374ce80b9c7e1ecd647dad5615a768777cee32a0784
+    dist index-ln5rxMhz.css: d0c199dc0be0016e315437985b11e4254f925e0fafcb3c0d39b576bbd806ab05
+- run ID(各結果JSONに記録):
+    run_zoom (CDP拡大): 20260918-212447 (5/5)
+    run_zoom_viewport (640相当): 20260918-212339 (4/4)
+    run_n009_state: 20260918-221755 (14/14・V08a除外)
+- 期待値: distと配信bundleの一致、限定テスト24件、実ブラウザ zoom 5/5・viewport 4/4・state 14/14
+- 実測値: 上記のとおり(各結果JSON・REPORT-009参照)
+- 製品コードの変更なし(REPORT-008から同一)。`git diff --check` exit 0(後述REPORT-009で記録)。

@@ -15,7 +15,7 @@ import {
 import type { RootState, AppDispatch } from '../../app/store'
 import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
 
 export interface PerturbationItem {
   strategy: string
@@ -83,7 +83,6 @@ export default function RobustnessPage() {
   const questionText = useQuestionText()
   const conclusionQuestions = (c: { target_col?: string; group_col?: string }) =>
     [c.target_col, c.group_col].filter((name): name is string => Boolean(name)).map(questionText).join('\n')
-  const { focused, isTargetActive } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const location = useLocation()
@@ -241,19 +240,11 @@ export default function RobustnessPage() {
 
   return (
     <div
-      style={{
-        padding: focused ? 0 : 16,
-        height: '100%',
-        flex: focused ? 1 : undefined,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'auto',
-        minHeight: 0,
-      }}
+      style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}
       data-testid="robustness-page"
     >
       {/* Inherited conclusion banner */}
-      {!focused && customConclusion && (
+      {customConclusion && (
         <Alert
           type="info"
           showIcon
@@ -283,15 +274,15 @@ export default function RobustnessPage() {
       )}
 
       {/* Top Bar */}
-      {!focused && (
+      {(
         <Card size="small" style={{ marginBottom: 12 }}>
           <Row gutter={[16, 12]} align="middle">
             <Col xs={24} md={12}>
-              <Space>
-                <Typography.Text strong>診断対象結論 (Conclusion):</Typography.Text>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <Typography.Text strong style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>診断対象結論 (Conclusion):</Typography.Text>
                 <Select
                   data-testid="conclusion-selector"
-                  style={{ minWidth: 320 }}
+                  style={{ flex: '1 1 320px', minWidth: 0, width: 'min(100%, 360px)' }}
                   value={selectedConclusionId ?? undefined}
                   onChange={setSelectedConclusionId}
                   options={(visibleConclusions.length ? visibleConclusions : data?.conclusions ?? []).map((c) => ({
@@ -301,7 +292,7 @@ export default function RobustnessPage() {
                     value: c.id,
                   }))}
                 />
-              </Space>
+              </div>
             </Col>
             <Col xs={24} md={12} style={{ textAlign: 'right' }}>
               <Button
@@ -324,7 +315,7 @@ export default function RobustnessPage() {
         </div>
       )}
 
-      {!focused && (
+      {(
         <Card size="small" style={{ marginBottom: 16 }} data-testid="sensitivity-comparison-panel">
           <Typography.Text strong style={{ fontSize: 14 }}>数値的外れ度に基づく感度分析</Typography.Text>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: '4px 0 12px' }}>
@@ -386,7 +377,7 @@ export default function RobustnessPage() {
       {currentConclusion && (
         <>
           {/* Robustness Scorecard */}
-          {!focused && (
+          {(
             <Card size="small" style={{ marginBottom: 16 }} data-testid="robustness-scorecard">
               <Row gutter={[16, 16]} align="middle">
                 <Col xs={24} sm={6}>
@@ -431,7 +422,7 @@ export default function RobustnessPage() {
           )}
 
           {/* Warning Banner for Fragile conclusions */}
-          {!focused && currentConclusion.robustness.grade === 'fragile' && (
+          { currentConclusion.robustness.grade === 'fragile' && (
             <Alert
               message="結論の脆弱性警告"
               description="この結論は回答者サンプルの軽微な摂動（外れ回答者の除外やリサンプリング）によって反転・大幅変動する可能性が高い脆い結論です。意思決定に利用する際は慎重に検証してください。"
@@ -441,44 +432,22 @@ export default function RobustnessPage() {
             />
           )}
 
-          <Row
-            gutter={focused ? [0, 0] : [16, 16]}
-            style={{
-              flex: focused ? 1 : undefined,
-              height: focused ? '100%' : undefined,
-              minHeight: 0,
-            }}
-          >
+          <Row gutter={[16, 16]} style={{ minHeight: 0 }}>
             {/* Left: Tornado Plot & Quality Removal Curve */}
-            {(!focused || isTargetActive('robustness-tornado') || isTargetActive('robustness-sweep')) && (
-              <Col
-                xs={24}
-                lg={focused ? 24 : 13}
-                style={{
-                  height: focused ? '100%' : undefined,
-                  flex: focused ? 1 : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: 0,
-                }}
-              >
-                {/* Tornado Plot */}
-                {(!focused || isTargetActive('robustness-tornado')) && (
-                  <FocusTarget id="robustness-tornado" title="摂動トルネード分析">
+              <Col xs={24} lg={13} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {/* Tornado Plot: G31。スイープ数値表は対象外（X05） */}
+                  <GraphPanel
+                    graphId="robustness/tornado"
+                    title="摂動トルネード分析"
+                    available={Boolean(currentConclusion?.perturbations?.length)}
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: 560, height: Math.max(280, 120 + (currentConclusion?.perturbations?.length ?? 4) * 48) }}
+                    normalWidth="viewport"
+                  >
                     <Card
                       size="small"
-                      title="摂動トルネード分析 (Perturbation Tornado Plot)"
-                      extra={<FocusEnterButton targetId="robustness-tornado" title="摂動トルネード分析" />}
                       data-testid="perturbation-tornado-plot"
-                      style={{
-                        marginBottom: focused ? 0 : 16,
-                        height: focused ? '100%' : undefined,
-                        flex: focused ? 1 : undefined,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minHeight: 0,
-                      }}
-                      bodyStyle={focused ? { flex: 1, overflow: 'auto' } : undefined}
+                      style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', minHeight: 0 }}
                     >
                       <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
                         各摂動シナリオ下での推定値ドリフト（%）。反転が起きた場合は赤色でハイライト。
@@ -506,25 +475,14 @@ export default function RobustnessPage() {
                         })}
                       </Space>
                     </Card>
-                  </FocusTarget>
-                )}
+                  </GraphPanel>
 
-                {/* Quality Sweep Curve Table / View */}
-                {(!focused || isTargetActive('robustness-sweep')) && (
-                  <FocusTarget id="robustness-sweep" title="数値的外れ度除外スイープ曲線">
+                {/* Quality Sweep Curve Table / View: X05 対象外。拡大なし・表操作維持 */}
                     <Card
                       size="small"
                       title="数値的外れ度に基づく感度スイープ曲線 (Sensitivity Sweep Curve)"
-                      extra={<FocusEnterButton targetId="robustness-sweep" title="数値的外れ度除外スイープ曲線" />}
                       data-testid="quality-sweep-curve"
-                      style={{
-                        height: focused ? '100%' : undefined,
-                        flex: focused ? 1 : undefined,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minHeight: 0,
-                      }}
-                      bodyStyle={focused ? { flex: 1, overflow: 'auto' } : undefined}
+                      style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
                     >
                       <Table
                         size="small"
@@ -543,13 +501,9 @@ export default function RobustnessPage() {
                         ]}
                       />
                     </Card>
-                  </FocusTarget>
-                )}
               </Col>
-            )}
 
             {/* Right: Top-Influence Respondents Table */}
-            {!focused && (
               <Col xs={24} lg={11}>
                 <Card
                   size="small"
@@ -607,7 +561,6 @@ export default function RobustnessPage() {
                   />
                 </Card>
               </Col>
-            )}
           </Row>
         </>
       )}

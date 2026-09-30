@@ -1,0 +1,32 @@
+[
+  {
+    "name": "V07 drag-cancel no rect left",
+    "ok": true,
+    "detail": "before=選択行 0 / active 150 / after=選択行 123 / active 150 rect=None"
+  },
+  {
+    "name": "V10 expansion bar operable",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "V10 focus return",
+    "ok": true,
+    "detail": "focused=BODY"
+  },
+  {
+    "name": "V11 imputation preview panel",
+    "ok": false,
+    "detail": ""
+  },
+  {
+    "name": "V12 DPR2 400% buffer",
+    "ok": true,
+    "detail": "buf=[1229, 602]"
+  },
+  {
+    "name": "V08 no fetch on expand/zoom/exit",
+    "ok": false,
+    "detail": "fetch=1"
+  }
+]

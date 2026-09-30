@@ -1,4 +1,5 @@
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import GraphPanel from '../common/GraphPanel'
 import Table from '../common/ColumnTable'
 import { useEffect, useState } from 'react'
 import { Input, Modal, Radio, Slider, Space, Typography, notification } from 'antd'
@@ -152,8 +153,15 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
           </div>
         )}
 
-        {/* Mini Histogram SVG */}
+        {/* Mini Histogram SVG: 図だけを拡大。終了で外側 Modal の編集中入力へ戻る */}
         {preview && preview.histogram.counts.length > 0 && (
+          <GraphPanel
+            graphId={`preprocess/binning/${columnName}`}
+            title="ビニング分布プレビュー"
+            available={open}
+            sizing="intrinsic"
+            intrinsicSize={{ width: 600, height: 120 }}
+          >
           <div style={{ background: '#fafafa', padding: 8, borderRadius: 4 }}>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>度数分布ヒストグラム &amp; ビン境界線</Typography.Text>
             <div style={{ height: 60, width: '100%', position: 'relative', marginTop: 4 }}>
@@ -205,6 +213,7 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
               <span>Max: {preview.max.toFixed(2)}</span>
             </div>
           </div>
+          </GraphPanel>
         )}
 
         {/* Preview Table */}

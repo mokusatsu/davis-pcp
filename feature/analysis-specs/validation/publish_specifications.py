@@ -26,16 +26,17 @@ for number, slug in [
     ("30", "multiple_correspondence_analysis"),
     ("31", "famd"),
     ("32", "multiple_linear_regression"),
-    ("33", "maximum_likelihood_factor_analysis"),
-    ("33b", "exploratory_factor_analysis"),
-    ("33c", "confirmatory_factor_analysis"),
     ("34", "conjoint_analysis"),
 ]:
     DOCUMENTS.extend([
         f"feature/{number}_{slug}.md",
-        f"tasks/DAVIS-FEAT-{number.upper().zfill(3) if number.isdigit() else '0' + number.upper()}-DESIGN.md",
+        f"tasks/DAVIS-FEAT-{number.upper().zfill(3)}-DESIGN.md",
     ])
 DOCUMENTS.extend([
+    "feature/33_exploratory_factor_analysis.md",
+    "tasks/DAVIS-FEAT-033-DESIGN.md",
+    "feature/33c_confirmatory_factor_analysis.md",
+    "tasks/DAVIS-FEAT-033C-DESIGN.md",
     "contracts/RESULT_CONTRACT.md",
     "contracts/FACTOR_EXTENSIONS_CONTRACT.md",
     "tasks/ACCEPTANCE_AND_HANDOFF.md",
@@ -113,8 +114,8 @@ process.stdout.write(JSON.stringify(docs.map(body => marked.parse(body, {gfm:tru
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f'<title>DAVIS-PCP 追加分析設計｜EFA・CFA拡張</title><style>{style}</style></head><body>'
         '<header><h1>DAVIS-PCP｜追加分析機能設計</h1>'
-        '<p>CA・MCA・FAMD・重回帰・ML因子分析・EFA・CFA・コンジョイント分析<br>'
-        '033b・033c追加版 · 2026-09-13／機能仕様・詳細設計・契約・受入条件・検証記録</p></header>'
+        '<p>CA・MCA・FAMD・重回帰・探索的因子分析（EFA）・CFA・コンジョイント分析<br>'
+        '033 EFA・033c CFA 追加版 · 2026-09-13／機能仕様・詳細設計・契約・受入条件・検証記録</p></header>'
         '<div class="layout"><nav aria-label="文書目次">' + ''.join(toc) + '</nav><main>'
         + ''.join(sections) + '</main></div></body></html>'
     )
@@ -136,7 +137,7 @@ process.stdout.write(JSON.stringify(docs.map(body => marked.parse(body, {gfm:tru
     (ROOT / "index.html").write_text(output + "\n", encoding="utf-8")
     (ROOT / "ALL_SPECIFICATIONS.md").write_text(
         '# DAVIS-PCP追加分析仕様・実装設計：一括閲覧版\n\n'
-        '更新日：2026-09-13。正本は各分割ファイル。033b EFA・033c CFAを含む。\n\n'
+        '更新日：2026-09-13。正本は各分割ファイル。探索的因子分析（EFA）・033c CFAを含む。\n\n'
         + '\n\n'.join(joined), encoding="utf-8",
     )
     print(json.dumps({"documents": len(DOCUMENTS), "html_ids": len(check.ids),

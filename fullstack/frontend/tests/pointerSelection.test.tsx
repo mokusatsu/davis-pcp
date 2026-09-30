@@ -38,6 +38,35 @@ describe('PointerSelectionDropdown', () => {
     })
   })
 
+  it('can put global selection actions in a supplied graph popup without PCP-only controls', async () => {
+    const popupRoot = document.createElement('div')
+    popupRoot.dataset.testid = 'selection-popup-root'
+    document.body.appendChild(popupRoot)
+    try {
+      renderWithStore(
+        <PointerSelectionDropdown
+          testId="expanded-selection"
+          getPopupContainer={() => popupRoot}
+          includeSelectionActions
+          showPcpHitMode={false}
+          showSelectionCount
+        />,
+      )
+      expect(screen.getByTestId('expanded-selection-count')).toHaveTextContent('選択: 0行')
+      fireEvent.click(screen.getByTestId('expanded-selection'))
+      await waitFor(() => {
+        expect(popupRoot).toContainElement(screen.getByTestId('pointer-selection-menu-content'))
+        expect(screen.getByTestId('expanded-selection-clear')).toBeDisabled()
+        expect(screen.getByTestId('expanded-selection-focus')).toBeDisabled()
+        expect(screen.getByTestId('expanded-selection-delete')).toBeDisabled()
+        expect(screen.getByTestId('expanded-selection-reset')).toBeEnabled()
+        expect(screen.queryByTestId('pcp-hit-mode-select')).toBeNull()
+      })
+    } finally {
+      popupRoot.remove()
+    }
+  })
+
   it('updates Redux pcp.hitMode when PCPヒット判定 is changed', async () => {
     const { store } = renderWithStore(<PointerSelectionDropdown testId="test-pointer-btn" />)
     expect(store.getState().pcp.hitMode).toBe('legacyVertex')
@@ -95,119 +124,44 @@ describe('PointerSelectionDropdown', () => {
     expect(store.getState().pcp.brushOperation).toBe('add')
   })
 
-  it('renders FocusBar with two separate divs for selection and zoom controls', async () => {
-    // Dynamic import Focus components
-    const { FocusModeProvider, FocusBar, FocusEnterButton } = await import('../src/features/common/FocusMode')
-    
+  it('opens graph expansion from panel entry and changes zoom without remount', async () => {
+    const { GraphExpansionProvider } = await import('../src/features/common/GraphExpansion')
+    const GraphPanel = (await import('../src/features/common/GraphPanel')).default
     renderWithStore(
-      <FocusModeProvider>
-        <div>
-          <FocusEnterButton targetId="test-target" title="Test Title" />
-          <FocusBar />
-        </div>
-      </FocusModeProvider>
+      <GraphExpansionProvider>
+        <GraphPanel graphId="test-target" title="Test Title" sizing="intrinsic" intrinsicSize={{ width: 560, height: 400 }}>
+          <svg data-testid="test-svg" viewBox="0 0 560 400"><circle cx={100} cy={100} r={5} /></svg>
+        </GraphPanel>
+      </GraphExpansionProvider>
     )
 
-    // Trigger focus mode
-    const enterBtn = screen.getByTestId('focus-enter-test-target')
-    fireEvent.click(enterBtn)
+    const host = screen.getByTestId('graph-host-test-target')
+    const svg = screen.getByTestId('test-svg')
+    fireEvent.click(screen.getByTestId('graph-expand-test-target'))
 
     await waitFor(() => {
-      // FocusBar root
-      expect(screen.getByTestId('focus-bar')).toBeInTheDocument()
-
-      // Two separate divs: selection and zoom
-      const selectionDiv = screen.getByTestId('focus-bar-selection')
-      const zoomDiv = screen.getByTestId('focus-bar-zoom')
-      expect(selectionDiv).toBeInTheDocument()
-      expect(zoomDiv).toBeInTheDocument()
-
-      // Check drag handle and title
-      expect(screen.getByTestId('focus-drag-handle')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-title')).toHaveTextContent('Test Title')
-      expect(screen.getByText(/選択: \d+行/)).toBeInTheDocument()
-      expect(screen.getByTestId('focus-pointer-selection')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-clear-selection')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-focus-selection')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-delete-selection')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-reset-selection')).toBeInTheDocument()
-
-      // Check zoom controls in zoomDiv
-      expect(screen.getByTestId('focus-fit')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-zoom-out')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-zoom-label')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-zoom-in')).toBeInTheDocument()
-      expect(screen.getByTestId('focus-exit')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-bar')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-title')).toHaveTextContent('Test Title')
+      expect(screen.getByTestId('graph-expansion-fit')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-zoom-out')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-zoom-label')).toHaveTextContent('フィット')
+      expect(screen.getByTestId('graph-expansion-zoom-in')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-exit')).toBeInTheDocument()
     })
-  })
+    // 同一 host・同一 svg が dialog 受け口へ移動する
+    expect(screen.getByTestId('graph-expansion-dock')).toContainElement(host)
+    expect(host).toContainElement(svg)
 
-  it('supports drag moving and double-click reset on FocusBar', async () => {
-    const { FocusModeProvider, FocusBar, FocusEnterButton } = await import('../src/features/common/FocusMode')
-    
-    renderWithStore(
-      <FocusModeProvider>
-        <div>
-          <FocusEnterButton targetId="test-target-drag" title="Drag Target" />
-          <FocusBar />
-        </div>
-      </FocusModeProvider>
-    )
-
-    const enterBtn = screen.getByTestId('focus-enter-test-target-drag')
-    fireEvent.click(enterBtn)
-
+    fireEvent.click(screen.getByTestId('graph-expansion-zoom-in'))
     await waitFor(() => {
-      expect(screen.getByTestId('focus-bar')).toBeInTheDocument()
+      expect(screen.getByTestId('graph-expansion-zoom-label')).toHaveTextContent('125%')
     })
+    expect(screen.getByTestId('graph-expansion-dock')).toContainElement(host)
 
-    const focusBar = screen.getByTestId('focus-bar')
-    const dragHandle = screen.getByTestId('focus-drag-handle')
-
-    // Initial style check (no left style set initially)
-    expect(focusBar.style.left).toBe('')
-    expect(focusBar.style.right).toBe('16px')
-
-    // Mock getBoundingClientRect
-    focusBar.getBoundingClientRect = () => ({
-      x: 800,
-      y: 8,
-      left: 800,
-      top: 8,
-      right: 1200,
-      bottom: 48,
-      width: 400,
-      height: 40,
-      toJSON: () => {},
-    })
-
-    // Simulate mousedown on drag handle
-    fireEvent.mouseDown(dragHandle, { button: 0, clientX: 810, clientY: 15 })
-
-    // Simulate window mousemove (dx = 510 - 810 = -300, newX = 800 - 300 = 500px, dy = 115 - 15 = 100, newY = 8 + 100 = 108px)
-    act(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 510, clientY: 115 }))
-    })
-
-    // Expect left & top to be updated
+    fireEvent.click(screen.getByTestId('graph-expansion-exit'))
     await waitFor(() => {
-      expect(focusBar.style.left).toBe('500px')
-      expect(focusBar.style.top).toBe('108px')
+      expect(screen.queryByTestId('graph-expansion-bar')).not.toBeInTheDocument()
     })
-
-    // Simulate mouseup
-    act(() => {
-      window.dispatchEvent(new MouseEvent('mouseup'))
-    })
-
-    // Simulate double click to reset
-    act(() => {
-      fireEvent.doubleClick(dragHandle)
-    })
-
-    await waitFor(() => {
-      expect(focusBar.style.left).toBe('')
-      expect(focusBar.style.right).toBe('16px')
-    })
+    expect(host).toContainElement(svg)
   })
 })
-

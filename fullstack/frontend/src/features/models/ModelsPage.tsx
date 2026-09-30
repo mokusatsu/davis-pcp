@@ -13,7 +13,8 @@ import MaAxisPicker from '../pcp/MaAxisPicker'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
+import { truncateText } from '../../utils/textUtils'
 
 interface LeafMembership {
   nodeId: number
@@ -57,7 +58,6 @@ interface LeafRow { key: string; leafId: string; count: number; rowIds: string[]
 export default function ModelsPage() {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
-  const { focused, isTargetActive } = useFocusMode()
   const rowIds = useSelector(selectEffectiveRowIds)
   const globalVariables = useSelector(selectOrdinaryVariables)
   const entities = useSelector(selectVariableEntities)
@@ -153,8 +153,8 @@ export default function ModelsPage() {
   if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
   return (
-    <div data-testid="models-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%', height: focused ? '100%' : undefined, flex: focused ? 1 : 'none', minHeight: focused ? 0 : undefined }}>
-      {!focused && (
+    <div data-testid="models-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%' }}>
+      {(
         <Card size="small" style={{ background: '#fafafa' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -221,11 +221,11 @@ export default function ModelsPage() {
       )}
 
       {/* Summary KPI Cards */}
-      {!focused && result && <Typography.Text type="secondary">
+      {result && <Typography.Text type="secondary">
         分析対象 {result.trainedRows} / {result.scopeCount} 行
         （除外 {result.scopeCount - result.trainedRows} 行、うち通常変数の欠損 {result.ordinaryMissingExcluded} 行）
       </Typography.Text>}
-      {!focused && result && (
+      {result && (
         <Row gutter={[12, 12]}>
           <Col xs={12} sm={6}>
             <Card size="small">
@@ -287,8 +287,8 @@ export default function ModelsPage() {
         </Card>
       )}
       {result && (
-        <Space direction="vertical" size="small" style={{ width: '100%', height: focused ? '100%' : undefined, flex: focused ? 1 : 'none', minHeight: focused ? 0 : undefined }}>
-          {!focused && (
+        <Space direction="vertical" size="small" style={{ width: '100%' }}>
+          {(
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -304,33 +304,32 @@ export default function ModelsPage() {
               </Space>
             </div>
           )}
-          {(!focused || isTargetActive('feature-importance')) && (
-            <FocusTarget id="feature-importance" title="特徴量重要度">
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14, height: isTargetActive('feature-importance') ? '100%' : undefined, flex: isTargetActive('feature-importance') ? 1 : 'none', minHeight: isTargetActive('feature-importance') ? 0 : undefined }}>
+          {result.featureImportance && (
+            <GraphPanel graphId="models/importance" title="特徴量重要度" available sizing="intrinsic" intrinsicSize={{ width: 640, height: Math.max(200, 60 + Object.keys(result.featureImportance).length * 36) }}>
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <Typography.Title level={5} style={{ margin: 0 }}>特徴量重要度 (Feature Importance)</Typography.Title>
-                  <FocusEnterButton targetId="feature-importance" title="特徴量重要度" />
                 </div>
                 <div
                   data-testid="feature-importance-panel"
-                  style={{ display: 'flex', flexDirection: 'column', gap: isTargetActive('feature-importance') ? 16 : 8, maxWidth: isTargetActive('feature-importance') ? 800 : undefined, margin: isTargetActive('feature-importance') ? '20px auto 0' : undefined }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
                 >
                   {Object.entries(result.featureImportance).sort((a, b) => b[1] - a[1]).map(([feature, importance]) => (
                     <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ width: isTargetActive('feature-importance') ? 180 : 140, fontSize: isTargetActive('feature-importance') ? 14 : 12, fontWeight: 500 }}><ColumnQuestionTooltip nameOrId={feature}>{feature}</ColumnQuestionTooltip></span>
-                      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: isTargetActive('feature-importance') ? 20 : 12 }}>
+                      <span style={{ width: 140, fontSize: 12, fontWeight: 500 }}><ColumnQuestionTooltip nameOrId={feature}>{feature}</ColumnQuestionTooltip></span>
+                      <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 12 }}>
                         <div style={{ width: `${importance * 100}%`, background: '#3b82f6', height: '100%', borderRadius: 4 }} />
                       </div>
-                      <span style={{ fontSize: isTargetActive('feature-importance') ? 13 : 11, width: 60, textAlign: 'right', fontWeight: 600 }}>{importance.toFixed(4)}</span>
+                      <span style={{ fontSize: 11, width: 60, textAlign: 'right', fontWeight: 600 }}>{importance.toFixed(4)}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            </FocusTarget>
+            </GraphPanel>
           )}
-          {(!focused || isTargetActive('tree')) && result.treeStructures?.[0] && (
-            <FocusTarget id="tree" title="決定木ダイアグラム">
-            <div style={{ maxWidth: '100%', height: focused ? '100%' : undefined, flex: focused ? 1 : 'none', minHeight: focused ? 0 : undefined, overflow: focused ? 'visible' : 'auto', border: focused ? 'none' : '1px solid #e5e7eb', borderRadius: focused ? 0 : 6, background: '#fff', padding: focused ? 8 : 14, userSelect: 'none' }}>
+          {result.treeStructures?.[0] && (
+            <GraphPanel graphId="models/tree" title="決定木ダイアグラム" available sizing="intrinsic" intrinsicSize={{ width: 760, height: 480 }}>
+            <div style={{ maxWidth: '100%', overflow: 'visible', padding: 14, userSelect: 'none' }}>
             <TreeDiagram
               root={result.treeStructures[0]}
               treeIndex={0}
@@ -346,10 +345,10 @@ export default function ModelsPage() {
               }
             />
             </div>
-            </FocusTarget>
+            </GraphPanel>
           )}
 
-          {!focused && leaves.length > 0 && (
+          {leaves.length > 0 && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
               <Typography.Title level={5} style={{ margin: '0 0 10px' }}>リーフ選択（選択で全ビューへrow集合を投影）</Typography.Title>
               <Table<LeafRow>
@@ -444,9 +443,8 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
         <Typography.Title level={5} style={{ margin: 0 }}>
           決定木構造（葉をクリックでその行集合を選択・全ビューへ伝播）{headerNote}
         </Typography.Title>
-        <FocusEnterButton targetId="tree" title="決定木ダイアグラム" />
       </Space>
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflow: 'visible', minHeight: 0 }}>
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', minWidth: Math.min(width, 700), maxWidth: 'none', height: 'auto', margin: '0 auto' }}>
         {[...positions.values()].map(({ x, y, node }) => {
           if (!node.children) return null
@@ -470,6 +468,7 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
             const color = classColorOf(node.majority ?? null)
             const topClass = node.values?.[0]
             const isActive = node.nodeId === activeLeafNodeId
+            const leafLabel = `${node.majority ?? 'leaf'}${isActive ? ' ✓' : ''}`
             return (
               <g key={node.nodeId} style={{ cursor: 'pointer' }}
                 role="button" tabIndex={0} aria-label={`葉${node.nodeId}の${node.count}行を選択`} aria-pressed={isActive}
@@ -486,7 +485,8 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
                   fill={color} opacity={isActive ? 0.45 : 0.18} stroke={color}
                   strokeWidth={isActive ? 2.2 : 1.4} />
                 <text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0b0b0b">
-                  {node.majority ?? 'leaf'}{isActive ? ' ✓' : ''}
+                  <title>{leafLabel}</title>
+                  {truncateText(leafLabel, 12)}
                 </text>
                 <text x={cx} y={cy + 10} textAnchor="middle" fontSize={9} fill="#52514e">
                   n={node.count}{topClass ? ` · ${Math.round(topClass.ratio * 100)}%` : ''}
@@ -494,12 +494,14 @@ function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSe
               </g>
             )
           }
+          const ruleLabel = `${node.feature?.replace(/_cm$/, '') ?? ''} ≤ ${node.threshold ?? '—'}`
           return (
             <g key={node.nodeId}>
               <rect x={cx - 46} y={cy - 15} width={92} height={30} rx={4}
                 fill="#f8fafc" stroke="#94a3b8" strokeWidth={1.2} />
               <ColumnQuestionTooltip nameOrId={node.feature ?? ''} svg><text x={cx} y={cy - 3} textAnchor="middle" fontSize={10} fontWeight={600} fill="#0b0b0b">
-                {node.feature?.replace(/_cm$/, '')} ≤ {node.threshold}
+                <title>{ruleLabel}</title>
+                {truncateText(ruleLabel, 12)}
               </text></ColumnQuestionTooltip>
               <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="#52514e">n={node.count}</text>
             </g>

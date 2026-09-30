@@ -7,7 +7,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import TablePage from '../src/features/table/TablePage'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 it('requests Table entities in shared order without changing off-page selection', async () => {

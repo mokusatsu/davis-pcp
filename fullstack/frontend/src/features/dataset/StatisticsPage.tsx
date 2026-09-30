@@ -6,7 +6,7 @@ import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Col, Dropdown, Empty, Pagination, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { Button, Card, Col, Dropdown, Empty, Pagination, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, statsScopeSet, selectEffectiveRowIds } from '../../app/store'
@@ -15,8 +15,10 @@ import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
 import { vizTheme, l1Color, signedNoiseViz } from '../../theme/viz'
 import { getBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel from '../common/GraphPanel'
+import { useGraphExpansion } from '../common/GraphExpansion'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import { truncateText } from '../../utils/textUtils'
 import { normalizeCode, useCodebook } from './useCodebookColumn'
 import { QuestionCard } from '../distribution/QuestionCard'
 import MultiResponseStatistics from './MultiResponseStatistics'
@@ -50,9 +52,9 @@ export default function StatisticsPage() {
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const data = useColumnarData(selection.datasetId, [...globalVars.activeVariableIds, ...(pcpColorBy ? [pcpColorBy] : [])])
   const { getColumn, formatValueLabel, getOrderedCategories } = useCodebook()
-  const { focused, isTargetActive } = useFocusMode()
   const theme = vizTheme(false)
   const { getColor } = useRowColorResolver()
+  const { openWhenAvailable, session } = useGraphExpansion()
 
   const contextMenuItems = [
     {
@@ -84,10 +86,36 @@ export default function StatisticsPage() {
   const [histDrag, setHistDrag] = useState<{ column: string; x1: number; x2: number } | null>(null)
   /** Last bin clicked per column (column → bin index) for exact self-highlight. */
   const [clickedBin, setClickedBin] = useState<{ column: string; bin: number } | null>(null)
+  const [expandedColumn, setExpandedColumn] = useState<string | null>(null)
+  const expandedHistogramWasActive = useRef(false)
   const histDragRef = useRef<{ column: string; x1: number; x2: number } | null>(null)
   const histSvgRefs = useRef(new Map<string, SVGSVGElement>())
 
   const statsScope = useSelector((s: RootState) => s.selection.statsScope)
+  const expandedHistogramGraphId = expandedColumn ? `statistics/histogram/${expandedColumn}` : null
+
+  useEffect(() => {
+    if (!expandedHistogramGraphId) {
+      expandedHistogramWasActive.current = false
+      return
+    }
+    if (session?.graphId === expandedHistogramGraphId) {
+      expandedHistogramWasActive.current = true
+      return
+    }
+    if (expandedHistogramWasActive.current) {
+      expandedHistogramWasActive.current = false
+      setExpandedColumn(null)
+    }
+  }, [expandedHistogramGraphId, session?.graphId])
+
+  const openHistogramExpansion = (column: string) => {
+    const graphId = `statistics/histogram/${column}`
+    expandedHistogramWasActive.current = false
+    setExpandedColumn(column)
+    openWhenAvailable(graphId)
+  }
+
   /** Scope-filtered row indexes (active or selected), shared by stats + histograms. */
   const scopedIndexes = useMemo(() => {
     if (!data) return []
@@ -231,9 +259,8 @@ export default function StatisticsPage() {
   if (!selection.datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
   return (
-    <div data-testid="statistics-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, height: focused ? '100%' : undefined, flex: focused ? 1 : 'none', minHeight: focused ? 0 : undefined }}>
+    <div data-testid="statistics-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Top Toolbar Card */}
-      {!focused && (
         <Card size="small" style={{ background: '#fafafa' }}>
           <Row gutter={[12, 8]} align="middle" justify="space-between">
             <Col>
@@ -263,10 +290,8 @@ export default function StatisticsPage() {
             </Col>
           </Row>
         </Card>
-      )}
 
       {/* Summary KPI Cards */}
-      {!focused && (
         <Row gutter={[12, 12]}>
           <Col xs={12} sm={6}>
             <Card size="small">
@@ -309,10 +334,9 @@ export default function StatisticsPage() {
             </Card>
           </Col>
         </Row>
-      )}
 
       <L1Legend />
-      {!focused && <MultiResponseStatistics rowIds={statsScope === 'selected' ? selection.selectedRowIds : effectiveRowIds} />}
+      <MultiResponseStatistics rowIds={statsScope === 'selected' ? selection.selectedRowIds : effectiveRowIds} />
       {loadingStats && (
         <Card size="small" style={{ textAlign: 'center', padding: '30px 20px', background: '#fafafa', borderRadius: 8 }}>
           <Spin size="large" tip="記述統計量を集計中..." />
@@ -337,8 +361,7 @@ export default function StatisticsPage() {
               </Space>
             </Card>
           )}
-          {!focused && (
-            <Card
+          <Card
               size="small"
               title={<span style={{ fontSize: 13, fontWeight: 600 }}>記述統計量サマリー（{statsScope === 'selected' ? '選択行' : '有効データ'}）</span>}
               style={{ boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}
@@ -366,7 +389,6 @@ export default function StatisticsPage() {
                 scroll={{ x: 'max-content' }}
               />
             </Card>
-          )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {visibleCategoricalColumns.map((name) => targetSchema.find((c) => c.name === name)!).filter(Boolean).map(column => {
@@ -393,8 +415,7 @@ export default function StatisticsPage() {
             })}
           </div>
           {(() => {
-            const activeSingleColumn = numericColumns.find((col) => isTargetActive(`histogram-${col}`))
-            const renderHistCard = (column: string, isSingleFocused: boolean) => {
+            const renderHistCard = (column: string) => {
               const rows = scopedIndexes
                 .map((index) => ({ id: data!.rowIds[index], index, v: columnValues[column].numbers[index] ?? NaN }))
                 .filter(({ v }) => Number.isFinite(v))
@@ -475,17 +496,11 @@ export default function StatisticsPage() {
               return (
                 <div
                   key={column}
-                  style={{
-                    userSelect: 'none',
-                    flex: isSingleFocused ? '1 1 100%' : '0 0 auto',
-                    maxWidth: isSingleFocused ? '1000px' : histWidth,
-                    margin: isSingleFocused ? '0 auto' : undefined,
-                    width: '100%',
-                  }}
+                  style={{ userSelect: 'none', flex: '0 0 auto', maxWidth: histWidth, width: '100%' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#f8fafc', border: '1px solid #e5e7eb', borderBottom: 'none', borderRadius: '6px 6px 0 0' }}>
                     <Typography.Text strong style={{ fontSize: 13, color: '#334155' }}><ColumnQuestionTooltip nameOrId={column}>{column}</ColumnQuestionTooltip></Typography.Text>
-                    {!isSingleFocused && <FocusEnterButton targetId={`histogram-${column}`} title={`${column} ヒストグラム`} />}
+                    <Button size="small" onClick={() => openHistogramExpansion(column)}>拡大表示</Button>
                   </div>
                   <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
                   <div>
@@ -495,11 +510,12 @@ export default function StatisticsPage() {
                     viewBox={`0 0 ${histWidth} ${histHeight}`}
                     width={histWidth}
                     height={histHeight}
-                    style={{
-                      width: '100%',
-                      height: 'auto',
-                      display: 'block',
-                      border: '1px solid #e5e7eb',
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        display: 'block',
+                        boxSizing: 'border-box',
+                        border: '1px solid #e5e7eb',
                       borderTop: 'none',
                       borderRadius: 0,
                       background: '#fff',
@@ -509,7 +525,7 @@ export default function StatisticsPage() {
                     onPointerMove={histOnPointerMove}
                     onPointerUp={histOnPointerUp}
                   >
-                    <ColumnQuestionTooltip nameOrId={column} svg><text x={histWidth / 2} y={16} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{column}</text></ColumnQuestionTooltip>
+                    <ColumnQuestionTooltip nameOrId={column} svg><text x={histWidth / 2} y={16} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{truncateText(column, 24)}</text></ColumnQuestionTooltip>
                     {groupBins.map((bins, gi) =>
                       bins.map((count, bi) => {
                         if (!count) return null
@@ -557,11 +573,12 @@ export default function StatisticsPage() {
                     viewBox={`0 0 ${histWidth} 40`}
                     width={histWidth}
                     height={40}
-                    style={{
-                      width: '100%',
-                      height: 'auto',
-                      display: 'block',
-                      background: '#fff',
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        display: 'block',
+                        boxSizing: 'border-box',
+                        background: '#fff',
                       border: '1px solid #e5e7eb',
                       borderTop: 'none',
                       borderRadius: '0 0 6px 6px',
@@ -595,28 +612,31 @@ export default function StatisticsPage() {
               )
             }
 
-            if (activeSingleColumn) {
-              return (
-                <FocusTarget id={`histogram-${activeSingleColumn}`} title={`${activeSingleColumn} ヒストグラム`}>
-                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 12 }}>
-                    {renderHistCard(activeSingleColumn, true)}
-                  </div>
-                </FocusTarget>
-              )
-            }
-
             return (
-              <Card
-                size="small"
-                title={<span style={{ fontSize: 13, fontWeight: 600 }}>各変数のヒストグラム分布（棒クリック＝値域選択 · 下段stripは選択値域を強調）</span>}
-                style={{
-                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
-                }}
-              >
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-                  {visibleNumericColumns.map((col) => renderHistCard(col, false))}
-                </div>
-              </Card>
+              <>
+                <Card
+                  size="small"
+                  title={<span style={{ fontSize: 13, fontWeight: 600 }}>各変数のヒストグラム分布（棒クリック＝値域選択 · 下段stripは選択値域を強調）</span>}
+                  style={{
+                    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                    {visibleNumericColumns.map((col) => renderHistCard(col))}
+                  </div>
+                </Card>
+                {expandedColumn && visibleNumericColumns.includes(expandedColumn) && (
+                  <GraphPanel
+                    graphId={`statistics/histogram/${expandedColumn}`}
+                    title={`${expandedColumn} ヒストグラム`}
+                    available
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: histWidth, height: histHeight + 40 }}
+                  >
+                    {renderHistCard(expandedColumn)}
+                  </GraphPanel>
+                )}
+              </>
             )
           })()}
         </>

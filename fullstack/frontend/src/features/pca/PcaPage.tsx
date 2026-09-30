@@ -13,10 +13,9 @@ import { LoadingTable } from './LoadingTable'
 import { BiplotView } from './BiplotView'
 import { PcaMatrixPlot } from './PcaMatrixPlot'
 import type { PcaResponse } from './types'
-import { useFocusMode } from '../common/FocusMode'
+
 
 export default function PcaPage() {
-  const { focused, isTargetActive } = useFocusMode()
   const selection = useSelector((s: RootState) => s.selection)
   const rowIds = useSelector(selectEffectiveRowIds)
   const globalVariables = useSelector(selectOrdinaryVariables)
@@ -95,19 +94,9 @@ export default function PcaPage() {
   return (
     <div
       data-testid="pca-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 14,
-        padding: focused ? 0 : 4,
-        height: focused ? '100%' : 'auto',
-        minHeight: '100%',
-        flex: focused ? 1 : 'none',
-        flexShrink: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4, height: 'auto', minHeight: '100%', flex: 'none', flexShrink: 0 }}
     >
       {/* Top Toolbar */}
-      {!focused && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, background: '#fff', padding: '10px 14px', borderRadius: 6, border: '1px solid #f0f0f0' }}>
           <Typography.Text strong>分析変数: </Typography.Text>
           <Select
@@ -157,9 +146,8 @@ export default function PcaPage() {
             </Button>
           </Space>
         </div>
-      )}
 
-      {!focused && error && (
+      {error && (
         <Alert
           type="error"
           message="PCA計算エラー"
@@ -170,7 +158,6 @@ export default function PcaPage() {
       )}
 
       {/* Pane 1: Scree Plot & Variance Explained */}
-      {(!focused || isTargetActive('pca-scree')) && (
         <ScreePlot
           pcaData={pcaData}
           loading={loading}
@@ -178,28 +165,18 @@ export default function PcaPage() {
           selectedY={selectedY}
           onSelectComponent={handleComponentSelectFromScree}
         />
-      )}
+      
 
       {/* Pane 2: Factor Loadings & Weights Table */}
-      {!focused && <LoadingTable pcaData={pcaData} loading={loading} />}
+      <LoadingTable pcaData={pcaData} loading={loading} />
 
       {/* Pane 3: Projection View (Biplot or Matrix) */}
-      {(!focused || isTargetActive('pca-biplot') || isTargetActive('pca-matrix')) && (
         <div
           style={{
-            background: '#fff',
-            padding: focused ? 4 : 14,
-            borderRadius: 6,
-            border: focused ? 'none' : '1px solid #f0f0f0',
-            height: focused ? '100%' : undefined,
-            flex: focused ? 1 : 'none',
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: focused ? 0 : 560,
+            background: '#fff', padding: 14, borderRadius: 6, border: '1px solid #f0f0f0',
+            flex: 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 560,
           }}
         >
-          {!focused && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <Typography.Title level={5} style={{ margin: 0 }}>
                 3. 主成分射影ビュー (Projection & Biplot)
@@ -214,7 +191,6 @@ export default function PcaPage() {
                 data-testid="pca-view-mode"
               />
             </div>
-          )}
 
           {viewMode === 'biplot' ? (
             <BiplotView
@@ -228,7 +204,6 @@ export default function PcaPage() {
             <PcaMatrixPlot pcaData={pcaData} />
           )}
         </div>
-      )}
     </div>
   )
 }

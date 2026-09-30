@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { CACategory } from './caTypes'
 import { axisLabel, displayCoords, type MapScaling } from './caMap'
+import { truncateText } from '../../utils/textUtils'
 
 const W = 560
 const H = 400
@@ -69,6 +70,9 @@ export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, h
         const isRow = p.cat.side === 'row'
         const fill = isRow ? '#1890ff' : '#52c41a'
         const title = `${p.cat.label} 質量=${p.cat.mass.toFixed(4)} 座標=(${p.x.toFixed(3)}${rank >= 2 ? `, ${p.y.toFixed(3)}` : ''}) cos2=${p.cat.cos2[0] ?? '—'}`
+        const label = truncateText(p.cat.label, 16)
+        const labelWidth = Array.from(label).length * 7
+        const labelOnRight = cx + 8 + labelWidth <= W - PAD.right
         return (
           <g key={p.cat.categoryId} onClick={() => onToggle(p.cat.categoryId)} style={{ cursor: 'pointer' }}>
             {isRow ? (
@@ -80,7 +84,10 @@ export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, h
                 <title>{title}</title>
               </rect>
             )}
-            <text x={cx + 8} y={cy + 4} fontSize={11} fill="#333">{p.cat.label}</text>
+            <text x={labelOnRight ? cx + 8 : cx - 8} y={cy + 4} textAnchor={labelOnRight ? 'start' : 'end'} fontSize={11} fill="#333">
+              <title>{title}</title>
+              {label}
+            </text>
           </g>
         )
       })}

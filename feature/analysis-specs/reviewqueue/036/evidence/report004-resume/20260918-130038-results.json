@@ -1,0 +1,154 @@
+{
+  "run_id": "20260918-130038",
+  "base": "http://127.0.0.1:8420",
+  "bundle": "http://127.0.0.1:8420/assets/index-CKY31PSW.js",
+  "cases": [
+    {
+      "name": "A0-前提条件(可視・非ゼロ幅・bundle)",
+      "ok": true,
+      "expected": "visible/1440/CKY31PSW",
+      "actual": "visible/1440/http://127.0.0.1:8420/assets/index-CKY31PSW.js",
+      "detail": ""
+    },
+    {
+      "name": "A1-通常幅でhorizontal Menu表示",
+      "ok": true,
+      "expected": "menu visible",
+      "actual": "nav=True",
+      "detail": ""
+    },
+    {
+      "name": "A2-6分類表示",
+      "ok": true,
+      "expected": "6",
+      "actual": "6",
+      "detail": ""
+    },
+    {
+      "name": "A3-現在地 PCP",
+      "ok": true,
+      "expected": "可視化 › 平行座標（PCP）",
+      "actual": "可視化 › 平行座標（PCP）",
+      "detail": ""
+    },
+    {
+      "name": "A4-メニュークリックでコンジョイント遷移",
+      "ok": true,
+      "expected": "/models/conjoint + 現在地",
+      "actual": "/models/conjoint + 予測・要因分析 › コンジョイント",
+      "detail": ""
+    },
+    {
+      "name": "B1-全31機能のpathname+現在地一致",
+      "ok": true,
+      "expected": "31/31一致",
+      "actual": "31/31一致",
+      "detail": ""
+    },
+    {
+      "name": "B2-/はPCP扱い",
+      "ok": true,
+      "expected": "可視化 › 平行座標（PCP）",
+      "actual": "可視化 › 平行座標（PCP）",
+      "detail": ""
+    },
+    {
+      "name": "B3-末尾スラッシュ正規化",
+      "ok": true,
+      "expected": "PCP現在地",
+      "actual": "/pcp/ 可視化 › 平行座標（PCP）",
+      "detail": ""
+    },
+    {
+      "name": "B4-/modelsはModels選択",
+      "ok": true,
+      "expected": "Models現在地",
+      "actual": "予測・要因分析 › 決定木・ランダムフォレスト（Models）",
+      "detail": ""
+    },
+    {
+      "name": "B5-同一機能再選択で履歴不増",
+      "ok": true,
+      "expected": "len=38維持",
+      "actual": "len=38->38 path=/pcp",
+      "detail": ""
+    },
+    {
+      "name": "B6-戻るで追従",
+      "ok": true,
+      "expected": "/table追従",
+      "actual": "/table データ・概要 › データ表（Table）",
+      "detail": ""
+    },
+    {
+      "name": "C1-1024幅で横スクロールなし",
+      "ok": true,
+      "expected": "横スクロールなし",
+      "actual": "overflow_rest=1/visible=True overflow-x:visible;scrollW:680;clientW:680",
+      "detail": ""
+    },
+    {
+      "name": "C2-overflow経由でFAMD到達(葉テキスト完全一致)",
+      "ok": true,
+      "expected": "/models/famd",
+      "actual": "/models/famd 次元削減・因子分析 › 混合データ因子分析（FAMD） [scrollH:48,clientH:48 | scrollH:224,clientH:224] leaves=['主成分分析（PCA）', '対応分析（CA）', '多重対応分析（MCA）', '混合データ因子分析（FAMD）', '因子分析']",
+      "detail": ""
+    },
+    {
+      "name": "C3-768幅で機能一覧ボタン",
+      "ok": true,
+      "expected": "ボタン表示",
+      "actual": "True",
+      "detail": ""
+    },
+    {
+      "name": "C4-狭幅で現在地分類を初期展開",
+      "ok": true,
+      "expected": "1分類展開",
+      "actual": "panel=True open=['次元削減・因子分析']",
+      "detail": ""
+    },
+    {
+      "name": "C5-狭幅は同時1分類のみ展開",
+      "ok": true,
+      "expected": "可視化のみ",
+      "actual": "['可視化']",
+      "detail": ""
+    },
+    {
+      "name": "C6-狭幅末尾機能へ到達しパネル閉鎖",
+      "ok": true,
+      "expected": "/models/factor-analysis+閉鎖",
+      "actual": "/models/factor-analysis closed=True",
+      "detail": ""
+    },
+    {
+      "name": "C7-幅往復後に通常Menu復帰・popup残存なし",
+      "ok": true,
+      "expected": "menu復帰",
+      "actual": "menu=True popup_nodes=0",
+      "detail": ""
+    },
+    {
+      "name": "D1-Tabでナビへ到達",
+      "ok": true,
+      "expected": "IN-NAV",
+      "actual": "keys=8 last=データ・概要可視化関係・集計パターン探索予測・要因分析次元削減・因子分析その他の",
+      "detail": ""
+    },
+    {
+      "name": "D2-Escapeでpopup閉鎖・分類へ復帰",
+      "ok": true,
+      "expected": "閉鎖+IN-NAV",
+      "actual": "before=0 after=0 focus=IN-NAV:データ・概要",
+      "detail": ""
+    },
+    {
+      "name": "D3-キー選択で遷移・本文フォーカス",
+      "ok": true,
+      "expected": "遷移+IN-MAIN",
+      "actual": "path=/statistics focus=IN-MAIN:DIV leafwas=menuitem|記述統計（Statistics）",
+      "detail": ""
+    }
+  ]
+}

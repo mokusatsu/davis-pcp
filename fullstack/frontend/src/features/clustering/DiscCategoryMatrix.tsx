@@ -2,7 +2,6 @@ import { Select as AntSelect } from 'antd'
 import Select from '../common/ColumnSelect'
 import { useMemo, useState } from 'react'
 import { Alert, Space, Typography } from 'antd'
-import { FocusEnterButton, useFocusMode } from '../common/FocusMode'
 
 interface DiscCategoryMatrixProps {
   categoryMatrices: Record<string, Record<string, { categories: string[]; matrix: number[][] }>>
@@ -31,8 +30,6 @@ export default function DiscCategoryMatrix({
   const clusterData = categoryMatrices[selectedCluster] ?? categoryMatrices[Object.keys(categoryMatrices)[0]] ?? {}
   const attributes = useMemo(() => Object.keys(clusterData), [clusterData])
   const [selectedAttr, setSelectedAttr] = useState<string>(attributes[0] ?? '')
-  const { isTargetActive } = useFocusMode()
-  const active = isTargetActive('disc-matrix')
 
   const currentAttr = attributes.includes(selectedAttr) ? selectedAttr : attributes[0] ?? ''
   const matrixData = clusterData[currentAttr]
@@ -48,11 +45,9 @@ export default function DiscCategoryMatrix({
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
-        height: active ? '100%' : undefined,
-        flex: active ? 1 : 'none',
         flexShrink: 0,
         minWidth: 0,
-        overflow: active ? 'hidden' : 'visible',
+        overflow: 'visible',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -60,7 +55,6 @@ export default function DiscCategoryMatrix({
           <Typography.Title level={5} style={{ margin: 0 }}>
             DISC カテゴリ適応関係行列 (AAAI 2026: Cluster-Customized Category Distance)
           </Typography.Title>
-          <FocusEnterButton targetId="disc-matrix" title="DISC カテゴリ関係行列" />
         </Space>
         <Space wrap align="center">
           <Typography.Text style={{ fontSize: 13 }}>クラスタ:</Typography.Text>
@@ -98,24 +92,24 @@ export default function DiscCategoryMatrix({
       />
 
       {matrixData && matrixData.categories && matrixData.categories.length > 0 ? (
-        <div style={{ overflowX: 'auto', minHeight: active ? 0 : 180, maxHeight: active ? undefined : 420, overflowY: 'auto', flex: active ? 1 : 'none' }}>
+        <div style={{ minHeight: 180 }}>
           <table
             data-testid="disc-heatmap-table"
             style={{
               borderCollapse: 'collapse',
-              fontSize: active ? 14 : 12,
+              fontSize: 12,
               fontFamily: 'monospace',
               margin: '0 auto',
             }}
           >
             <thead>
               <tr>
-                <th style={{ padding: active ? '8px 14px' : '6px 10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}></th>
+                <th style={{ padding: '6px 10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}></th>
                 {matrixData.categories.map((cat, j) => (
                   <th
                     key={j}
                     style={{
-                      padding: active ? '8px 14px' : '6px 10px',
+                      padding: '6px 10px',
                       background: '#f8fafc',
                       border: '1px solid #e2e8f0',
                       color: '#475569',
@@ -133,7 +127,7 @@ export default function DiscCategoryMatrix({
                 <tr key={i}>
                   <th
                     style={{
-                      padding: active ? '8px 14px' : '6px 10px',
+                      padding: '6px 10px',
                       background: '#f8fafc',
                       border: '1px solid #e2e8f0',
                       color: '#475569',
@@ -148,12 +142,12 @@ export default function DiscCategoryMatrix({
                       key={j}
                       title={`Distance(${catRow}, ${matrixData.categories[j]}) = ${val.toFixed(4)} in Cluster ${selectedCluster}`}
                       style={{
-                        padding: active ? '12px 18px' : '8px 12px',
+                        padding: '8px 12px',
                         textAlign: 'center',
                         background: cellColor(val),
                         color: textColorForBg(val),
                         border: '1px solid #cbd5e1',
-                        minWidth: active ? 70 : 54,
+                        minWidth: 54,
                         transition: 'background 0.15s ease',
                       }}
                     >

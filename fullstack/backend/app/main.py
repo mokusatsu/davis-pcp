@@ -34,6 +34,8 @@ from .api import correspondence as correspondence_api
 from .api import mca as mca_api
 from .api import famd as famd_api
 from .api import linear_regression as linear_regression_api
+from .api import factor_analysis as factor_analysis_api
+from .api import conjoint as conjoint_api
 from .api import analysis_results as analysis_results_api
 from .config import settings
 from .domain.errors import BizError, biz_error_handler
@@ -94,6 +96,8 @@ app.include_router(correspondence_api.router, prefix="/api/v1")
 app.include_router(mca_api.router, prefix="/api/v1")
 app.include_router(famd_api.router, prefix="/api/v1")
 app.include_router(linear_regression_api.router, prefix="/api/v1")
+app.include_router(factor_analysis_api.router, prefix="/api/v1")
+app.include_router(conjoint_api.router, prefix="/api/v1")
 app.include_router(analysis_results_api.router, prefix="/api/v1")
 
 _frontend_env = os.environ.get("DAVIS_PCP_FRONTEND_DIST")

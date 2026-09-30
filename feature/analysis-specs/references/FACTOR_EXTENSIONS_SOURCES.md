@@ -1,4 +1,4 @@
-# Feature 033b・033c：一次資料と設計判断
+# Feature 033 EFA・033c CFA：一次資料と設計判断
 
 確認日：2026-09-13。製品の初期値、対応範囲、API、停止条件は製品設計であり、原典が要求する普遍的な規則ではない。公開文書の確認はソフトの実行・数値検証を意味しない。
 
@@ -6,12 +6,12 @@
 
 |ID|資料|確認内容と対応|
 |---|---|---|
-|FX-POLY|[polycor::polychor](https://search.r-project.org/CRAN/refmans/polycor/html/polychor.html)|潜在二変量正規・閾値・two-step/MLの区別。033bのtwo-stepを選定し、同条件のoracleにする|
+|FX-POLY|[polycor::polychor](https://search.r-project.org/CRAN/refmans/polycor/html/polychor.html)|潜在二変量正規・閾値・two-step/MLの区別。033 EFAのtwo-stepを選定し、同条件のoracleにする|
 |FX-FA|[psych::fa](https://search.r-project.org/CRAN/refmans/psych/html/fa.html)|MINRES/OLS/ULSの近縁性、目的関数差、斜交のpatternとstructure。方法名だけの一致を同値としない|
 |FX-ULS|[factor_analyzer公開ソース](https://factor-analyzer.readthedocs.io/en/latest/_modules/factor_analyzer/factor_analyzer.html)|ULS profile目的の実装照合対象。パッケージの既定補完や回転後共通性を無検査で採用しない|
 |FX-ML|[R stats::factanal](https://search.r-project.org/R/refmans/stats/html/factanal.html)|通常MLの正規性、独自性下限、回転と得点。033の連続経路を参照|
-|FX-SMOOTH|[psych::cor.smooth](https://search.r-project.org/CRAN/refmans/psych/html/cor.smooth.html)|相関行列の非正定値と平滑化。033b初期版は停止し原行列を変更しない|
-|FX-PA|[psych::fa.parallel](https://personality-project.org/r/psych/help/fa.parallel.html)|観測・乱数比較と順序相関の利用。033bは項目別置換・全相関固有値という製品規約を明示|
+|FX-SMOOTH|[psych::cor.smooth](https://search.r-project.org/CRAN/refmans/psych/html/cor.smooth.html)|相関行列の非正定値と平滑化。033 EFA初期版は停止し原行列を変更しない|
+|FX-PA|[psych::fa.parallel](https://personality-project.org/r/psych/help/fa.parallel.html)|観測・乱数比較と順序相関の利用。033 EFAは項目別置換・全相関固有値という製品規約を明示|
 |FX-CAT|[lavaan categorical data](https://lavaan.ugent.be/tutorial/cat.html)|WLSMVのDWLS点推定と完全重み情報を用いる補正、順序経路のFIML制限|
 |FX-EST|[lavaan estimators](https://lavaan.ugent.be/tutorial/est.html)|MLRのHuber–White SEと補正検定、normal/Wishartの違い。CFAはnormal規約|
 |FX-CFA|[lavaan CFA example](https://lavaan.ugent.be/tutorial/cfa.html)|項目・因子を指定する測定モデルと結果読解。EFA回転から独立した機能|

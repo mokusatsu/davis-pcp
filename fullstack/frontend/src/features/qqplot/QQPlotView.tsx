@@ -1,7 +1,7 @@
 import { selectOrdinaryVariables } from '../../app/store'
 import CanvasColumnQuestions from '../common/CanvasColumnQuestions'
 import Select from '../common/ColumnSelect'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Card, Dropdown, Space, Tag, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
@@ -9,7 +9,8 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { api } from '../../api/client'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { useRowColorResolver } from '../../theme/useRowColor'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
+import { canvasBufferSize, clientToCanvas } from '../common/graphCoordinates'
 import { getBrushOp } from '../selection/SelectionMenu'
 import EmptyStatePanel from '../common/EmptyStatePanel'
 import { truncateText } from '../../utils/textUtils'
@@ -46,8 +47,19 @@ interface QQResponse {
   maxVal: number
 }
 
+type CanvasViewport = Pick<ReturnType<typeof useGraphViewport>, 'scale' | 'dpr' | 'revision'>
+
+/** GraphPanel の子で得た倍率を、親が保持する Q-Q Canvas の描画 effect へ中継する。 */
+function QQPlotViewportSync({ onViewportChange }: { onViewportChange: (viewport: CanvasViewport) => void }) {
+  const { scale, dpr, revision } = useGraphViewport()
+  useLayoutEffect(() => {
+    onViewportChange({ scale, dpr, revision })
+  }, [scale, dpr, revision, onViewportChange])
+  return null
+}
+
 export default function QQPlotView() {
-  const { focused } = useFocusMode()
+  const graphPopupContainer = useGraphPopupContainer('distribution/qq')
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
@@ -65,6 +77,16 @@ export default function QQPlotView() {
   const [selectedColumn, setSelectedColumn] = useState<string>('')
   const [qqData, setQqData] = useState<QQResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [canvasViewport, setCanvasViewport] = useState<CanvasViewport>(() => ({
+    scale: 1,
+    dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    revision: 0,
+  }))
+  const updateCanvasViewport = useCallback((next: CanvasViewport) => {
+    setCanvasViewport(current => current.scale === next.scale && current.dpr === next.dpr && current.revision === next.revision
+      ? current
+      : next)
+  }, [])
 
   // Brush drag state
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -92,11 +114,12 @@ export default function QQPlotView() {
   }, [selection.datasetId, selectedColumn, effectiveRowIds, data])
 
   const { selectedSet, getColor, selectionColor } = useRowColorResolver()
+  const { scale: viewportScale, dpr: viewportDpr, revision: viewportRevision } = canvasViewport
 
-  // Canvas dimensions
-  const width = focused ? 960 : 680
-  const height = focused ? 600 : 440
-  const margin = focused ? { top: 40, right: 40, bottom: 60, left: 70 } : { top: 30, right: 30, bottom: 50, left: 60 }
+  // Canvas dimensions: 固定論理寸法。表示倍率と DPR に応じた再描画は下の effect で行う。
+  const width = 680
+  const height = 440
+  const margin = { top: 30, right: 30, bottom: 50, left: 60 }
   const plotW = width - margin.left - margin.right
   const plotH = height - margin.top - margin.bottom
 
@@ -127,10 +150,12 @@ export default function QQPlotView() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = width * dpr
-    canvas.height = height * dpr
-    ctx.scale(dpr, dpr)
+    // 表示倍率と DPR に応じた描画バッファ更新。寸法変更だけで分析 API は再実行しない。
+    const dpr = viewportDpr
+    const buffer = canvasBufferSize({ width, height }, viewportScale, dpr)
+    canvas.width = buffer.width
+    canvas.height = buffer.height
+    ctx.setTransform(buffer.width / width, 0, 0, buffer.height / height, 0, 0)
 
     // Clear
     ctx.clearRect(0, 0, width, height)
@@ -167,7 +192,7 @@ export default function QQPlotView() {
     // X Axis Title
     ctx.fillStyle = '#374151'
     ctx.font = '600 12px sans-serif'
-    ctx.fillText('理論正規分位点 (Theoretical Normal Quantiles)', margin.left + plotW / 2, height - (focused ? 16 : 12))
+    ctx.fillText('理論正規分位点 (Theoretical Normal Quantiles)', margin.left + plotW / 2, height - 12)
 
     // Y Ticks
     ctx.fillStyle = '#6b7280'
@@ -213,7 +238,7 @@ export default function QQPlotView() {
       const ptColor = getColor(pt.rowId)
 
       ctx.beginPath()
-      ctx.arc(px, py, isSelected ? (focused ? 6.0 : 5.0) : (focused ? 4.5 : 3.5), 0, Math.PI * 2)
+      ctx.arc(px, py, isSelected ? 5.0 : 3.5, 0, Math.PI * 2)
       if (isSelected) {
         ctx.fillStyle = selectionColor
         ctx.fill()
@@ -241,16 +266,17 @@ export default function QQPlotView() {
       ctx.fillRect(bx, by, bw, bh)
       ctx.strokeRect(bx, by, bw, bh)
     }
-  }, [qqData, scales, selectedSet, getColor, selectionColor, dragBox, width, height, plotW, plotH, focused, margin.left, margin.top])
+  }, [qqData, scales, selectedSet, getColor, selectionColor, dragBox, width, height, plotW, plotH, margin.left, margin.top, viewportScale, viewportDpr, viewportRevision])
 
-  // Mouse drag handlers normalized to canvas coordinates
+  // Mouse drag handlers: Canvas 自体の表示矩形と論理寸法を基準に変換する。
+  const canvasPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { x: NaN, y: NaN }
+    return clientToCanvas(canvasRef.current, e, { width, height })
+  }
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0 || !canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const scaleXFactor = width / (rect.width || 1)
-    const scaleYFactor = height / (rect.height || 1)
-    const x = (e.clientX - rect.left) * scaleXFactor
-    const y = (e.clientY - rect.top) * scaleYFactor
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     isDragging.current = true
     dragStart.current = { x, y }
     setDragBox({ x1: x, y1: y, x2: x, y2: y })
@@ -258,11 +284,8 @@ export default function QQPlotView() {
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDragging.current || !canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const scaleXFactor = width / (rect.width || 1)
-    const scaleYFactor = height / (rect.height || 1)
-    const x = (e.clientX - rect.left) * scaleXFactor
-    const y = (e.clientY - rect.top) * scaleYFactor
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     setDragBox({ x1: dragStart.current.x, y1: dragStart.current.y, x2: x, y2: y })
   }
 
@@ -330,79 +353,52 @@ export default function QQPlotView() {
     return <EmptyStatePanel message="QQプロットには1つ以上の数値変数が必要です。上部の変数セレクタから追加してください。" />
   }
 
-  return (
-    <div
-      data-testid="qqplot-view"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : 'none',
-        minHeight: focused ? 0 : undefined,
-      }}
-    >
-      {!focused && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, flexShrink: 0 }}>
-          <Space wrap align="center">
-            <Typography.Text strong>対象変数: </Typography.Text>
-            <Select
-              style={{ width: 180 }}
-              value={selectedColumn}
-              onChange={setSelectedColumn}
-              options={numericColumns.map((c) => ({ label: c, value: c }))}
-              data-testid="qqplot-column-select"
-            />
-            <FocusEnterButton targetId="qqplot" title="正規Q-Qプロット" />
-          </Space>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            ドラッグで矩形範囲ブラシ · 右クリックで Focus/Delete
-          </Typography.Text>
-        </div>
-      )}
+  const columnControls = (
+    <Space wrap align="center">
+      <Typography.Text strong>対象変数: </Typography.Text>
+      <Select
+        style={{ width: 180 }}
+        value={selectedColumn}
+        onChange={setSelectedColumn}
+        options={numericColumns.map((c) => ({ label: c, value: c }))}
+        data-testid="qqplot-column-select"
+      />
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        ドラッグで矩形範囲ブラシ · 右クリックで Focus/Delete
+      </Typography.Text>
+    </Space>
+  )
 
-      <FocusTarget id="qqplot" title="正規Q-Qプロット">
-        <div
-          style={{
-            display: 'flex',
-            gap: focused ? 0 : 16,
-            alignItems: 'stretch',
-            flex: focused ? 1 : undefined,
-            height: focused ? '100%' : undefined,
-            minHeight: 0,
-          }}
-        >
-          {/* Canvas Plot */}
-          <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
+  return (
+    <div data-testid="qqplot-view" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+      <GraphPanel
+        graphId="distribution/qq"
+        title="正規Q-Qプロット"
+        available={numericColumns.length > 0}
+        sizing="intrinsic"
+        intrinsicSize={{ width, height }}
+        controls={columnControls}
+        style={{ flex: '1 1 680px', minWidth: 0 }}
+      >
+          <QQPlotViewportSync onViewportChange={updateCanvasViewport} />
+          <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
             <div
               style={{
                 position: 'relative',
-                border: focused ? 'none' : '1px solid #e5e7eb',
+                width,
+                height,
+                outline: '1px solid #e5e7eb',
+                outlineOffset: -1,
                 borderRadius: 6,
                 background: '#ffffff',
-                display: 'flex',
-                flex: 1,
-                width: focused ? '100%' : undefined,
-                height: focused ? '100%' : undefined,
                 userSelect: 'none',
-                overflow: 'hidden',
-                minHeight: 0,
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
               <canvas
                 ref={canvasRef}
                 title={`正規Q-Qプロット: ${qqData?.column ?? ''}`}
-                style={{
-                  width: focused ? '100%' : width,
-                  height: focused ? '100%' : height,
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain',
-                  cursor: 'crosshair',
-                  display: 'block',
-                }}
+                style={{ width, height, cursor: 'crosshair', display: 'block' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -412,13 +408,13 @@ export default function QQPlotView() {
                 regions={qqData ? [{ key: qqData.column, x: 6, y: margin.top + plotH / 2 - 130, width: 24, height: 260 }] : []} />
             </div>
           </Dropdown>
+      </GraphPanel>
 
-          {/* Diagnostics Card */}
-          {!focused && qqData && (
+          {qqData && (
             <Card
               size="small"
               title="正規性診断サマリー (Normality)"
-              style={{ width: 300, flexShrink: 0 }}
+              style={{ flex: '1 1 300px', minWidth: 280 }}
               loading={loading}
               data-testid="qqplot-diagnostics"
             >
@@ -473,8 +469,7 @@ export default function QQPlotView() {
               </Space>
             </Card>
           )}
-        </div>
-      </FocusTarget>
+      </div>
     </div>
   )
 }

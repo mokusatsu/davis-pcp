@@ -1,0 +1,35 @@
+{
+  "run_id": "20260918-212339",
+  "base": "http://127.0.0.1:8420",
+  "method": "css-viewport-640-equiv-200pct",
+  "cases": [
+    {
+      "name": "V0-前提条件(640 CSS px・DPR1・bundle)",
+      "ok": true,
+      "expected": "visible/640/dpr1/CKY31PSW",
+      "actual": "visible/640/dpr=1",
+      "detail": ""
+    },
+    {
+      "name": "V1-200%相当幅で機能一覧ボタン",
+      "ok": true,
+      "expected": "ボタン表示",
+      "actual": "True",
+      "detail": ""
+    },
+    {
+      "name": "V2-200%相当幅で末尾葉へ到達",
+      "ok": true,
+      "expected": "/models/factor-analysis",
+      "actual": "/models/factor-analysis 次元削減・因子分析 › 因子分析",
+      "detail": ""
+    },
+    {
+      "name": "V3-200%相当幅で横スクロールなし・重なりなし",
+      "ok": true,
+      "expected": "bodySW<=docCW+重なりなし",
+      "actual": "bodySW=640 docCW=640 overlap=False dpr=1 iw=640",
+      "detail": ""
+    }
+  ]
+}

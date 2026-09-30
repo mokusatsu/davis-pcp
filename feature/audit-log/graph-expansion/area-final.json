@@ -1,0 +1,66 @@
+[
+  {
+    "route": "/pcp",
+    "gid": "pcp/main",
+    "host": "1144x622",
+    "vp": "1144x590",
+    "sur": "1144x590",
+    "content": "1144x590"
+  },
+  {
+    "route": "/relationships",
+    "gid": "relationships/heatmap",
+    "host": "566x447",
+    "vp": "566x420",
+    "sur": "320x200",
+    "content": "320x0"
+  },
+  {
+    "route": "/relationships",
+    "gid": "relationships/pair",
+    "host": "566x447",
+    "vp": "566x420",
+    "sur": "600x420",
+    "content": "600x0"
+  },
+  {
+    "route": "/distribution",
+    "gid": "distribution/boxplot",
+    "host": "1144x1677",
+    "vp": "1144x1622",
+    "sur": "900x1622",
+    "content": "900x1670"
+  },
+  {
+    "route": "/barchart",
+    "gid": "barchart/main",
+    "host": "1112x412",
+    "vp": "1112x380",
+    "sur": "1010x380",
+    "content": "1010x468"
+  },
+  {
+    "route": "/fedf",
+    "gid": "fedf/main",
+    "host": "1112x482",
+    "vp": "1112x450",
+    "sur": "679x450",
+    "content": "679x459"
+  },
+  {
+    "route": "/loess",
+    "gid": "loess/main",
+    "host": "1112x506",
+    "vp": "1112x474",
+    "sur": "707x474",
+    "content": "707x513"
+  },
+  {
+    "route": "/covariance",
+    "gid": "covariance/matrix",
+    "host": "1112x392",
+    "vp": "1112x360",
+    "sur": "483x360",
+    "content": "483x436"
+  }
+]

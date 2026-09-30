@@ -9,7 +9,7 @@ import { selectOrdinaryVariables } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { api } from '../../api/client'
 import { useBrushOp } from '../selection/SelectionMenu'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { getSvgPoint } from '../../utils/svgCoordinates'
@@ -47,7 +47,7 @@ interface LoessResponse {
 }
 
 export default function LoessPlotPage() {
-  const { focused } = useFocusMode()
+  const graphPopupContainer = useGraphPopupContainer('loess/main')
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
@@ -214,18 +214,9 @@ export default function LoessPlotPage() {
   return (
     <div
       data-testid="loess-page"
-      style={{
-        padding: focused ? 0 : 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 12,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       {/* Top Controls Card */}
-      {!focused && (
         <div
           style={{
             border: '1px solid #e5e7eb',
@@ -313,25 +304,40 @@ export default function LoessPlotPage() {
           </Space>
 
           <Space size={12}>
-            <FocusEnterButton targetId="loess-container" />
           </Space>
         </div>
-      )}
 
       {/* Main Plot Card */}
-      <FocusTarget id="loess-container">
-        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={() => document.body}>
+      <GraphPanel
+        graphId="loess/main"
+        title="Loess 平滑化付き散布図"
+        available={Boolean(!loading && loessData)}
+        sizing="intrinsic"
+        intrinsicSize={{ width: totalSvgWidth, height: totalSvgHeight }}
+        controls={loessData ? (
+          <Space wrap size={10}>
+            <Tag color="blue">R²: {loessData.rSquared}</Tag>
+            <Tag color="cyan">残差標準偏差 σ: {loessData.residualStd}</Tag>
+            <Tag color={loessData.outlierCount > 0 ? 'volcano' : 'default'}>
+              外れ値 (|e| &gt; 2.5σ): {loessData.outlierCount}点
+            </Tag>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              矩形ドラッグで範囲選択・点クリックでトグル
+            </Typography.Text>
+          </Space>
+        ) : undefined}
+      >
+        <Dropdown menu={{ items: contextMenuItems, onClick: ({ key }) => onContextMenuClick(key) }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
           <div
             style={{
-              border: focused ? 'none' : '1px solid #e5e7eb',
-              borderRadius: focused ? 0 : 6,
-              background: '#ffffff',
-              padding: focused ? 8 : 16,
               position: 'relative',
-              overflow: 'visible',
+              width: totalSvgWidth,
+              height: totalSvgHeight,
+              outline: '1px solid #e5e7eb',
+              outlineOffset: -1,
+              borderRadius: 6,
+              background: '#ffffff',
               userSelect: 'none',
-              height: focused ? '100%' : undefined,
-              flex: focused ? 1 : undefined,
             }}
           >
             {loading && (
@@ -340,31 +346,14 @@ export default function LoessPlotPage() {
               </div>
             )}
 
-            {loessData && (
-              <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Tag color="blue">R²: {loessData.rSquared}</Tag>
-                <Tag color="cyan">残差標準偏差 σ: {loessData.residualStd}</Tag>
-                <Tag color={loessData.outlierCount > 0 ? 'volcano' : 'default'}>
-                  外れ値 (|e| &gt; 2.5σ): {loessData.outlierCount}点
-                </Tag>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>
-                  矩形ドラッグで範囲選択・点クリックでトグル
-                </span>
-              </div>
-            )}
-
             {!loading && loessData && scales && (
               <svg
                 ref={svgRef}
                 data-testid="loess-svg"
                 viewBox={`0 0 ${totalSvgWidth} ${totalSvgHeight}`}
-                width={focused ? '100%' : totalSvgWidth}
-                height={focused ? '100%' : totalSvgHeight}
-                style={{
-                  cursor: 'crosshair',
-                  display: 'block',
-                  maxHeight: focused ? 'calc(100vh - 100px)' : undefined,
-                }}
+                width={totalSvgWidth}
+                height={totalSvgHeight}
+                style={{ cursor: 'crosshair', display: 'block', width: totalSvgWidth, height: totalSvgHeight }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -508,14 +497,12 @@ export default function LoessPlotPage() {
             )}
           </div>
         </Dropdown>
-      </FocusTarget>
+      </GraphPanel>
 
       {/* Guide Note */}
-      {!focused && (
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px' }}>
           ※ 局所重み付き多項式回帰（LOWESS / LOESS）により、2変数間の非線形トレンドと95%信頼帯を算出します。ドラッグによる点選択のほか、「外れ値選択」ボタンで回帰曲線から2.5σ以上乖離した特異点を即座に抽出しPCPへ連動できます。
         </div>
-      )}
     </div>
   )
 }

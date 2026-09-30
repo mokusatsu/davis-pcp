@@ -32,11 +32,6 @@ vi.mock('../src/features/dataset/useCodebookColumn', () => {
     }),
   }
 })
-vi.mock('../src/features/common/FocusMode', () => ({
-  useFocusMode: () => ({ focused: false }),
-  FocusTarget: ({ children }: any) => children,
-  FocusEnterButton: () => null,
-}))
 const stableRowIds = ['r1', 'r2']
 vi.mock('../src/app/store', async (importOriginal) => {
   const actual = await importOriginal<any>()

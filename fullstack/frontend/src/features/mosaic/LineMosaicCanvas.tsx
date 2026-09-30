@@ -5,7 +5,6 @@ import { Dropdown, Tooltip } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { getBrushOp } from '../selection/SelectionMenu'
-import { useFocusMode } from '../common/FocusMode'
 import type { LineMosaicCell, LineMosaicResponse } from './types'
 import { mosaicPathLabel } from './types'
 
@@ -15,12 +14,29 @@ interface LineMosaicCanvasProps {
   onSelectCell?: (cell: LineMosaicCell | null) => void
 }
 
+/** 枠線まで含めた Line Mosaic の固定論理寸法。GraphPanel と描画子で共有する。 */
+export function lineMosaicDimensions(mosaicData: LineMosaicResponse): { width: number; height: number } {
+  const nCols = mosaicData.grid.nCols || mosaicData.grid.n_cols || 1
+  const nRows = mosaicData.grid.nRows || mosaicData.grid.n_rows || 1
+  const boxW = Math.max(Math.min(760 / Math.max(nCols, 1), 160), 75)
+  const boxH = Math.max(Math.min(420 / Math.max(nRows, 1), 80), 45)
+  const colDepth = mosaicData.grid.colVariables ? mosaicData.grid.colVariables.length : 1
+  const rowDepth = mosaicData.grid.rowVariables ? mosaicData.grid.rowVariables.length : 1
+  const headerHeight = Math.max(colDepth * 26 + 20, 48)
+  const leftLabelWidth = Math.max(rowDepth * 85, 70)
+  // 描画コンテナは content-box（padding 10px × 2 + border 1px × 2）。
+  // GraphPanel には実際の外形まで含めた論理寸法を渡す。
+  return {
+    width: leftLabelWidth + nCols * (boxW + 4) + 42,
+    height: headerHeight + nRows * (boxH + 6) + 42,
+  }
+}
+
 export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
   mosaicData,
   normalization,
   onSelectCell,
 }) => {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
 
@@ -49,13 +65,9 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     return m
   }, [cells])
 
-  // Cell box dimensions
-  const boxW = focused
-    ? Math.max(Math.min(1300 / Math.max(nCols, 1), 320), 120)
-    : Math.max(Math.min(760 / Math.max(nCols, 1), 160), 75)
-  const boxH = focused
-    ? Math.max(Math.min(720 / Math.max(nRows, 1), 160), 80)
-    : Math.max(Math.min(420 / Math.max(nRows, 1), 80), 45)
+  // Cell box dimensions: 通常寸法を固定し、拡大は共通 surface の scale で行う。
+  const boxW = Math.max(Math.min(760 / Math.max(nCols, 1), 160), 75)
+  const boxH = Math.max(Math.min(420 / Math.max(nRows, 1), 80), 45)
   const colGap = 4
   const rowGap = 6
 
@@ -63,7 +75,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
   const colDepth = grid.colVariables ? grid.colVariables.length : 1
   const rowDepth = grid.rowVariables ? grid.rowVariables.length : 1
   const headerHeight = Math.max(colDepth * 26 + 20, 48)
-  const leftLabelWidth = Math.max(rowDepth * (focused ? 110 : 85), 70)
+  const leftLabelWidth = Math.max(rowDepth * 85, 70)
 
   // Drag state
   const dragStart = useRef<{ x: number; y: number } | null>(null)
@@ -203,18 +215,17 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
     },
   ]
 
-  const totalWidth = leftLabelWidth + nCols * (boxW + colGap) + 20
-  const totalHeight = headerHeight + nRows * (boxH + rowGap) + 20
+  const { width: visualWidth, height: visualHeight } = lineMosaicDimensions(mosaicData)
+  const totalWidth = visualWidth - 22
+  const totalHeight = visualHeight - 22
 
   return (
     <div
       data-testid="mosaic-view"
       style={{
-        overflow: 'auto',
-        maxHeight: focused ? 'none' : '72vh',
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        padding: 8,
+        width: visualWidth,
+        height: visualHeight,
+        overflow: 'visible',
       }}
     >
       <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
@@ -255,7 +266,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    fontSize: focused ? 12 : 11,
+                    fontSize: 11,
                     fontWeight: 600,
                     color: '#333',
                     borderBottom: '2px solid #d9d9d9',
@@ -268,7 +279,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                   title={mosaicPathLabel(mosaicData, 'col', cl.path)}
                 >
                   {cl.path.map((p, pIdx) => (
-                    <div key={pIdx} style={{ fontSize: focused ? (pIdx === 0 ? 12 : 11) : (pIdx === 0 ? 11 : 10), color: pIdx === 0 ? '#111' : '#666', lineHeight: 1.3 }}>
+                    <div key={pIdx} style={{ fontSize: pIdx === 0 ? 11 : 10, color: pIdx === 0 ? '#111' : '#666', lineHeight: 1.3 }}>
                       {mosaicData.valueLabels?.[grid.colVariables[pIdx]]?.[p] ?? p}
                     </div>
                   ))}
@@ -296,7 +307,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                     alignItems: 'center',
                     justifyContent: 'flex-end',
                     paddingRight: 8,
-                    fontSize: focused ? 12 : 11,
+                    fontSize: 11,
                     fontWeight: 600,
                     color: '#333',
                     textAlign: 'right',
@@ -379,7 +390,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                         }}
                       >
                         {/* Cell Count Label */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: focused ? 12 : 10, color: '#666' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#666' }}>
                           <span style={{ fontWeight: count > 0 ? 600 : 'normal', color: count > 0 ? '#222' : '#aaa' }}>
                             {count}
                           </span>
@@ -392,7 +403,7 @@ export const LineMosaicCanvas: FC<LineMosaicCanvasProps> = ({
                         <div
                           style={{
                             width: '100%',
-                            height: focused ? 14 : 10,
+                            height: 10,
                             background: '#f0f0f0',
                             borderRadius: 2,
                             overflow: 'hidden',

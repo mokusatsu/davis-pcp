@@ -15,7 +15,7 @@ import {
 import type { RootState, AppDispatch } from '../../../app/store'
 import { pcpStateChanged, selectOrdinaryVariables } from '../../../app/store'
 import { api } from '../../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../../common/FocusMode'
+import GraphPanel from '../../common/GraphPanel'
 
 export interface DriverItem {
   name: string
@@ -49,7 +49,6 @@ export interface KdaResponse {
 }
 
 export default function KeyDriverAnalysisPage() {
-  const { focused, isTargetActive } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -165,17 +164,17 @@ export default function KeyDriverAnalysisPage() {
   return (
     <div
       style={{
-        padding: focused ? 0 : 16,
-        height: focused ? '100%' : 'auto',
+        padding: 16,
+        height: 'auto',
         minHeight: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: focused ? 'hidden' : 'visible',
+        overflow: 'visible',
       }}
       data-testid="kda-page"
     >
       {/* Configuration Header */}
-      {!focused && (
+      {(
         <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
           <Row gutter={[16, 12]} align="middle">
             <Col xs={24} md={8}>
@@ -232,7 +231,7 @@ export default function KeyDriverAnalysisPage() {
       {result && (
         <>
           {/* KPI and Model Quality Card */}
-          {!focused && (
+          {(
             <Row gutter={[12, 12]} style={{ marginBottom: 12, flexShrink: 0 }}>
               <Col xs={12} sm={6}>
                 <Card size="small">
@@ -268,7 +267,7 @@ export default function KeyDriverAnalysisPage() {
             </Row>
           )}
 
-          {!focused && result.model.warnings.length > 0 && (
+          {result.model.warnings.length > 0 && (
             <Alert
               message="多重共線性診断の注記"
               description={result.model.warnings.join(' ')}
@@ -279,45 +278,22 @@ export default function KeyDriverAnalysisPage() {
           )}
 
           {/* Main Visuals: Shapley Importance Chart & Correlation Contrast Table */}
-          <Row
-            gutter={focused ? [0, 0] : [16, 16]}
-            style={{
-              flex: focused ? 1 : 'none',
-              flexShrink: 0,
-              minHeight: 0,
-              height: focused ? '100%' : undefined,
-            }}
-          >
-            {/* Left: Shapley Importance Bar Chart */}
-            {(!focused || isTargetActive('kda-importance')) && (
-              <Col
-                xs={24}
-                lg={focused ? 24 : 12}
-                style={{
-                  height: focused ? '100%' : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: 0,
-                }}
-              >
-                <FocusTarget id="kda-importance" title="キードライバー重要度">
+          <Row gutter={[16, 16]} style={{ flexShrink: 0, minHeight: 0 }}>
+            {/* Left: Shapley Importance Bar Chart: G32。比較表は対象外（X04） */}
+            {(
+              <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <GraphPanel
+                    graphId="key-drivers/importance"
+                    title="真のキードライバー重要度"
+                    available={Boolean(result?.drivers?.length)}
+                    sizing="intrinsic"
+                    intrinsicSize={{ width: 560, height: Math.max(280, 120 + (result?.drivers?.length ?? 4) * 56) }}
+                    normalWidth="viewport"
+                  >
                   <Card
                     size="small"
-                    title="真のキードライバー重要度 (Shapley Importance %)"
-                    extra={<FocusEnterButton targetId="kda-importance" title="キードライバー重要度" />}
                     data-testid="kda-importance-chart"
-                    style={{
-                      height: focused ? '100%' : undefined,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      flex: focused ? 1 : undefined,
-                      minHeight: 0,
-                    }}
-                    bodyStyle={{
-                      flex: focused ? 1 : undefined,
-                      overflow: 'auto',
-                      minHeight: 0,
-                    }}
+                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
                   >
                     <Space direction="vertical" style={{ width: '100%' }} size={14}>
                       {result.drivers.map((d, idx) => {
@@ -348,40 +324,18 @@ export default function KeyDriverAnalysisPage() {
                       })}
                     </Space>
                   </Card>
-                </FocusTarget>
+                  </GraphPanel>
               </Col>
             )}
 
-            {/* Right: Correlation vs True Impact Contrast Table */}
-            {(!focused || isTargetActive('kda-contrast')) && (
-              <Col
-                xs={24}
-                lg={focused ? 24 : 12}
-                style={{
-                  height: focused ? '100%' : undefined,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: 0,
-                }}
-              >
-                <FocusTarget id="kda-contrast" title="相関 vs 真の重要度">
+            {/* Right: Correlation vs True Impact Contrast Table: X04 対象外。拡大なし・表維持 */}
+            {(
+              <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   <Card
                     size="small"
                     title="相関 (見かけ) vs Shapley (真のインパクト) 乖離分析"
-                    extra={<FocusEnterButton targetId="kda-contrast" title="相関 vs 真の重要度" />}
                     data-testid="kda-contrast-table"
-                    style={{
-                      height: focused ? '100%' : undefined,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      flex: focused ? 1 : undefined,
-                      minHeight: 0,
-                    }}
-                    bodyStyle={{
-                      flex: focused ? 1 : undefined,
-                      overflow: 'auto',
-                      minHeight: 0,
-                    }}
+                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
                   >
                     <Table
                       size="small"
@@ -417,13 +371,12 @@ export default function KeyDriverAnalysisPage() {
                       ]}
                     />
                   </Card>
-                </FocusTarget>
               </Col>
             )}
           </Row>
 
           {/* Interactive What-If Simulator & Action Bar */}
-          {!focused && (
+          {(
             <Card
               size="small"
               style={{ marginTop: 16, flexShrink: 0 }}

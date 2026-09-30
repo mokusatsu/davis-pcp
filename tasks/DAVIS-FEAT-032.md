@@ -61,3 +61,27 @@
 - frontend build: 成功（8.78s、dist更新）。static build: 成功（9.79s、dist/static更新）。
 - backend_app.zipにapp/api/linear_regression.py・app/algorithms/models/linear_regression.py・app/algorithms/survey/model_covariance.py含有を確認（全119件）。
 - 実ブラウザ・Pyodide実機操作は未検証（別セッションのdev占有継続のため本セッション未起動）。
+
+## 実ブラウザ検証（2026-09-13夜、devサーバ終了後に自前環境で実施）
+- 環境: backend 8423（現ツリー）＋frontend 5178（proxy指向）、Playwright実マウス操作。
+- 実行: 目的変数sepal_length_cm・数値sepal_width_cm＋petal_length_cm→実行200・有効3列R2=0.8402・参照df=147・係数3行（SE/t/p/CI/標準化）を確認。
+- 交互作用L004: 変数1/変数2に異なる変数を選択しタグ追加→実行で係数4行（交互作用項あり）を確認。
+- 実ポインタ矩形選択R3: 診断図をドラッグ→sidebar選択行135/active150/全150、Table連動を確認。
+- KeepAlive: PCP→重回帰へアプリ内遷移で結果保持（有効1件）を確認。
+- 予測・評価: 予測タブで成功150/150・RMSE=0.3299を確認。保存元に予測IDが自動選択されることを確認。
+- 保存L007関連の追加修正: 予測元選択時に項目がfittedのまま残り422となる問題を2件修正（matSource変更時の項目正規化＋予測直後の項目自動切替）。保存実行でLR_FITTED列の作成を確認。
+- 証拠: .temp/lr-run.png・lr-coef.png・lr-brush.png・lr-keepalive.png・lr-inter-coef.png・lr-predict.png・lr-saved.png。
+
+## static検証（2026-09-13夜）
+- build_static.pyで再構築し、backend_app.zipにLR3件＋parquet fallback含有を確認。
+- 静的実機: LRページ表示・実行→有効3列R2=0.8402（localと一致）を確認。
+- 追加修正: Pyodide同梱polarsにwrite_parquetがない問題をanalysis_result_store.pyのpyarrow fallback（dataset_storeと同方式）で解消。MCA/FAMDを含む共通基盤の修正。
+
+## レビュー003のL008修正（2026-09-13深夜）
+- 再分析・dataset切替時に保存元fit＋項目fit許可項目へ正規化。実ブラウザでFIELD=fitを確認。報告書: reviewqueue/032/REVIEW-003-REPLY.md
+
+## レビュー004の受入証拠（2026-09-14）
+- survey E2E（taylor・df=3・scope外PSU保持・重み不変）、応答待ち版変更の破棄、静的実機R2一致を追加。報告書: reviewqueue/032/REVIEW-004-REPLY.md
+
+## レビュー005・006の本番相当確認（2026-09-14）
+- dist bundle index-BKgwgYIp.js（SHA256一致）で予測→再分析→項目fit復帰を画面確認、fit保存をHTTP確認（LR_PROD_12056、150行）。報告書: reviewqueue/032/REVIEW-005-REPLY.md

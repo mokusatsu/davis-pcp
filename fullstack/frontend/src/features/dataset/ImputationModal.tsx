@@ -1,4 +1,5 @@
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
+import GraphPanel from '../common/GraphPanel'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -159,6 +160,10 @@ export default function ImputationModal({
 
   const settingsKey = useMemo(() => JSON.stringify(buildBody()), [buildBody])
 
+  // F005-G51: columnsWithMissingは親の再レンダーごとに新参照になるため、
+  // 配列の中身が変わらない限り初期化effectを再実行しない。拡大開始の
+  // Provider再レンダーでpreviewDataが消える回帰を防ぐ。
+  const missingKey = columnsWithMissing.map((c) => c.name).join(',')
   useEffect(() => {
     if (targetColumn) {
       setSelectedCols([targetColumn])
@@ -175,7 +180,8 @@ export default function ImputationModal({
     setPreviewedSettings(null)
     setPredictorMode('auto')
     setPredictorCols([])
-  }, [targetColumn, columnsWithMissing, open])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetColumn, missingKey, open])
 
   const fetchPreview = async () => {
     if (selectedCols.length === 0) return null
@@ -511,8 +517,15 @@ export default function ImputationModal({
                 )}
               </div>
 
-              {/* Distribution Bar Chart */}
+              {/* Distribution Bar Chart: 図だけを拡大。プレビュー更新・編集状態を保持 */}
               {activePreview && activePreview.histogram.length > 0 && (
+                <GraphPanel
+                  graphId={`preprocess/imputation/${previewCol || 'preview'}`}
+                  title="補完前後の分布比較"
+                  available={open && Boolean(activePreview)}
+                  sizing="intrinsic"
+                  intrinsicSize={{ width: 560, height: Math.max(200, 60 + activePreview.histogram.length * 28) }}
+                >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Typography.Text strong style={{ fontSize: 12 }}>
@@ -558,6 +571,7 @@ export default function ImputationModal({
                     })}
                   </div>
                 </div>
+                </GraphPanel>
               )}
             </div>
           ) : (

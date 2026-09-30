@@ -1,4 +1,4 @@
-# Feature 033b・033c：合成fixture仕様
+# Feature 033 EFA・033c CFA：合成fixture仕様
 
 版1.0／2026-09-13。ここでは作成すべき数値検証データを定義する。新EFA/CFAのraw標本・R golden値はまだ生成していない。既存factor_exact_correlation.csvは連続ML用の補助であり、順序相関・CFAロバスト推論の証拠として代用しない。
 

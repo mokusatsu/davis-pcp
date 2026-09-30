@@ -6,7 +6,6 @@ import { Alert, Button, Descriptions, Popconfirm, Space, Tag, Typography, notifi
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated } from '../../app/store'
 import { api } from '../../api/client'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
 import BinningModal from './BinningModal'
 import OneHotModal from './OneHotModal'
 import ImputationModal from './ImputationModal'
@@ -64,7 +63,6 @@ interface DatasetMeta {
 }
 
 export default function OverviewPage() {
-  const { focused } = useFocusMode()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const { columns: definitions, schemaRevision } = useCodebook()
@@ -178,18 +176,10 @@ export default function OverviewPage() {
   return (
     <div
       data-testid="overview-page"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: focused ? 0 : 14,
-        height: focused ? '100%' : undefined,
-        flex: focused ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}
     >
-      {!focused && <ProvenanceHistoryPanel />}
+      <ProvenanceHistoryPanel />
 
-      {!focused && (
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>
           <Descriptions title="データセット概要" size="small" bordered column={2}>
             <Descriptions.Item label="名前">{meta.name}</Descriptions.Item>
@@ -202,17 +192,13 @@ export default function OverviewPage() {
             <Descriptions.Item label="作成日時">{meta.createdAt}</Descriptions.Item>
           </Descriptions>
         </div>
-      )}
 
-      <FocusTarget id="overview-table" title="変数一覧 & 前処理変換">
         <div
           style={{
-            border: focused ? 'none' : '1px solid #e5e7eb',
+            border: '1px solid #e5e7eb',
             borderRadius: 6,
             background: '#ffffff',
-            padding: focused ? 4 : 14,
-            height: focused ? '100%' : undefined,
-            flex: focused ? 1 : undefined,
+            padding: 14,
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
@@ -246,13 +232,12 @@ export default function OverviewPage() {
               >
                 変数の動的追加 (計算式)
               </Button>
-              <FocusEnterButton targetId="overview-table" title="変数一覧 & 前処理変換" />
             </Space>
           </div>
           <Table
             size="small"
             pagination={false}
-            scroll={{ x: true, y: focused ? 'calc(100vh - 120px)' : undefined }}
+            scroll={{ x: true }}
             dataSource={rows}
             columns={[
               {
@@ -351,7 +336,6 @@ export default function OverviewPage() {
             ]}
           />
         </div>
-      </FocusTarget>
 
       {/* Modals */}
       {binModalTarget && (

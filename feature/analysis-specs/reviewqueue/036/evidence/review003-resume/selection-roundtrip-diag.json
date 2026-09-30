@@ -1,0 +1,19 @@
+{
+  "purpose": "N001-03/V09の診断用合成クリック往復（受入証拠ではなく、実ポインタ検証の前段確認）",
+  "server": "http://localhost:8420 (run-production.bat経由のpreview server 78475199-236e-4931-a466-8ba0244be16e)",
+  "bundle": "assets/index-BKo4d9vi.js",
+  "note": "previewタブがhidden・width=0のままのため、画像/寸法系の受入証拠には使わない。SPA遷移と選択保持のロジック確認のみ。",
+  "run": {
+    "id": "036-selection-1789660015023",
+    "startedAt": "2026-09-17T15:46:55.023Z",
+    "finishedAt": "2026-09-17T15:46:55.693Z",
+    "timeOrigin": 1789659884052.6,
+    "steps": [
+      { "path": "/table", "current": "データ・概要 › データ表（Table）", "selected": [] },
+      { "path": "/pcp", "current": "可視化 › 平行座標（PCP）", "selected": ["IRIS-001"] },
+      { "path": "/table", "current": "データ・概要 › データ表（Table）", "selected": ["IRIS-001"] }
+    ],
+    "checkboxAfterRoundtrip": true,
+    "pass": true
+  }
+}

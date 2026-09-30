@@ -1,6 +1,6 @@
 # DAVIS-PCP追加分析仕様・実装設計：一括閲覧版
 
-更新日：2026-09-13。正本は各分割ファイル。033b EFA・033c CFAを含む。
+更新日：2026-09-13。正本は各分割ファイル。探索的因子分析（EFA）・033c CFAを含む。
 
 ---
 
@@ -14,7 +14,7 @@
 
 本書群は設計成果物であり、DAVIS-PCPへの実装パッチではない。添付の`feature.zip`と`package(1).zip`を設計基準とし、実際のコード上の接続箇所を確認した。確認した版と根拠は[ソース照合記録](references/source_audit.md)に記載する。
 
-一括閲覧：[HTML読書版](index.html)／[Markdown連結版](ALL_SPECIFICATIONS.md)。旧029〜034の検証結果：参照数式・入力契約42ケース成功。033b・033cの追加設計は2026-09-13版で、実績は[拡張検証報告](validation/FACTOR_EXTENSIONS_VALIDATION.md)を参照する。新規API本体・画面・静的版への組込み試験は未実施。
+一括閲覧：[HTML読書版](index.html)／[Markdown連結版](ALL_SPECIFICATIONS.md)。旧029〜034の検証結果：参照数式・入力契約42ケース成功。033 EFA・033c CFAの追加設計は2026-09-13版で、実績は[拡張検証報告](validation/FACTOR_EXTENSIONS_VALIDATION.md)を参照する。新規API本体・画面・静的版への組込み試験は未実施。
 
 文書の配置先は `feature/analysis-specs/`。本書群内の相対リンクは各文書からの相対パスであり、本文中の `fullstack/` はリポジトリルート基準の実装パスを表す。[既存機能仕様](../README.md)／[開発タスク一覧](../../tasks/task-list.md)／[本体README](../../fullstack/README.md)。
 
@@ -28,18 +28,17 @@
 |030|[多重対応分析](feature/30_multiple_correspondence_analysis.md)|[MCA実装設計](tasks/DAVIS-FEAT-030-DESIGN.md)|完全指示行列MCA、明示選択したMA子項目の二値変数化|
 |031|[混合データ因子分析](feature/31_famd.md)|[FAMD実装設計](tasks/DAVIS-FEAT-031-DESIGN.md)|カテゴリ＋数値のFAMD、個体・変数・カテゴリの別表示|
 |032|[重回帰分析](feature/32_multiple_linear_regression.md)|[重回帰実装設計](tasks/DAVIS-FEAT-032-DESIGN.md)|OLS、カテゴリ説明変数、交互作用、HC3、調査設計分散|
-|033|[最尤因子分析](feature/33_maximum_likelihood_factor_analysis.md)|[ML因子分析実装設計](tasks/DAVIS-FEAT-033-DESIGN.md)|最尤抽出のみ、無回転・Varimax・Promax、因子得点|
-|033b|[探索的因子分析（EFA）](feature/33b_exploratory_factor_analysis.md)|[EFA詳細設計](tasks/DAVIS-FEAT-033B-DESIGN.md)|順序相関＋MINRES／ULS系・ML、平行分析、斜交回転、Pearson／Polychoric感度比較|
+|033|[探索的因子分析（EFA）](feature/33_exploratory_factor_analysis.md)|[EFA実装設計](tasks/DAVIS-FEAT-033-DESIGN.md)|非加重・完全ケース、Pearson ML／MINRES、Polychoric MINRES、平行分析、斜交回転、Pearson／Polychoric感度比較|
 |033c|[確認的因子分析（CFA）](feature/33c_confirmatory_factor_analysis.md)|[CFA詳細設計](tasks/DAVIS-FEAT-033C-DESIGN.md)|独立した測定モデル、WLSMV/MLRと追加ULSMV・ML、推論・適合度・独立性|
 |034|[コンジョイント分析](feature/34_conjoint_analysis.md)|[コンジョイント実装設計](tasks/DAVIS-FEAT-034-DESIGN.md)|評点型・選択型・完全順位型、効用・重要度・選好シミュレーション|
 
 ### 既存仕様との関係
 
-033b・033cは[拡張契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)と[専用受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を併読する。033はML基礎資料として保持し、033bではML専用・平行分析なし・順序相関対象外の制限を拡張する。相違時は033b/033cの個別仕様を優先する。初期版の両機能は非加重・完全ケースのみ。CFAはローカルlavaanを検証対象とし、静的CFA実行は別段階。旧42件の参照試験は、新しい順序EFA/CFAの数値受入済みを意味しない。
+033 EFA・033c CFAは[拡張契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)と[専用受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を併読する。現行033はEFAの唯一の正本であり、旧033と033bは移動案内である。初期版の両機能は非加重・完全ケースのみ。CFAはローカルlavaanを検証対象とし、静的CFA実行は別段階。旧42件の参照試験は、新しい順序EFA/CFAの数値受入済みを意味しない。
 
-追加成果物：[入力Python契約](contracts/factor_extension_requests.py)、[EFA Schema](contracts/schemas/efa.schema.json)、[CFA Schema](contracts/schemas/cfa.schema.json)、[fixture仕様](fixtures/FACTOR_EXTENSIONS_FIXTURES.md)、[一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)、[接続確認](references/FACTOR_EXTENSIONS_SOURCE_AUDIT.md)。033b/033cの構文正本はこの追加Python契約、意味・計算の正本は各詳細設計とする。
+追加成果物：[入力Python契約](contracts/factor_extension_requests.py)、[EFA Schema](contracts/schemas/efa.schema.json)、[CFA Schema](contracts/schemas/cfa.schema.json)、[fixture仕様](fixtures/FACTOR_EXTENSIONS_FIXTURES.md)、[一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)、[接続確認](references/FACTOR_EXTENSIONS_SOURCE_AUDIT.md)。033 EFA/033cの構文正本はこの追加Python契約、意味・計算の正本は各詳細設計とする。既存のFactorAnalysisRequestとfactor_analysis.schema.jsonは旧連続ML資料の参照検証資産であり、現行入力契約ではない。
 
-033b/033cの個別仕様は版1.1。主要用途を5件法中心・N=1000〜2000程度とし、良好分布でのPearson＋ML/MINRESを主要経路に含める。033bの順序尺度感度分析は、共通条件・因子の順序/符号整合の下で相関・負荷量・共通性・因子相関・因子数候補の差を表示する。CFAはEFA比較の一致を独立検証や推論の同等性として扱わない。
+033 EFA/033cの個別仕様は版1.1。主要用途を5件法中心・N=1000〜2000程度とし、良好分布でのPearson＋ML/MINRESを主要経路に含める。033の順序尺度感度分析は、共通条件・因子の順序/符号整合の下で相関・負荷量・共通性・因子相関・因子数候補の差を表示する。CFAはEFA比較の一致を独立検証や推論の同等性として扱わない。
 
 新規IDは添付のFeature 28までに続けて29〜34を採番した設計上の提案番号であり、既存リポジトリの採番を変更済みという意味ではない。Feature 30はFeature 27のMCA分析部分を置き換える。Feature 27/28のPCP、スクロール、ヒットテスト、ポップアップ、L1等の仕様は置き換えない。`/models/mca`はこの新契約で一本化し、同名の別エンドポイントを増やさない。
 
@@ -51,7 +50,7 @@
 
 コンジョイントは「評点を回帰する方式」だけに限定せず、選択型の条件付きロジット、完全順位型の逐次選択モデルも対象にした。階層ベイズ、混合ロジット、個人別効用の自動推定、実験計画の自動生成、適応型質問票は本版に含めない。代わりに対象内の識別可能性、回答単位、ウェイト、標準誤差、シミュレーションの意味を確定している。
 
-推定値と標準誤差のウェイト対応は別に定義した。特にsurveyウェイトを精度重みや複製度数として処理しない。最尤因子分析だけは本版でsurveyウェイトを受け付けず、明示エラーとユーザーによる「非加重で実行」を要求する。
+推定値と標準誤差のウェイト対応は別に定義した。特にsurveyウェイトを精度重みや複製度数として処理しない。Feature 033 EFAは初期版で解決済みdatasetウェイトを受け付けず、FA_WEIGHT_UNSUPPORTEDを返す。ユーザーがnoneを明示した場合は別の非加重試行として保存する。
 
 ## 3. 付属成果物
 
@@ -124,7 +123,7 @@ invalidは欠損カテゴリに変換しない。欠損処理で残ったカテ�
 |CA分割表モード|セルを度数/質量として指定|重み列の二重適用不可|重み列の二重適用不可|整数度数として明示した場合のみPearson|
 |MCA/FAMD|可|可|加重幾何として可|軸の有意性検定は提供しない|
 |重回帰|可|複製標本と一致|加重推定＋設計分散|HC3と調査設計分散を区別|
-|最尤因子分析|可|複製標本と一致|本版では不可|正規共通因子モデルの参考検定|
+|探索的因子分析（EFA）|可|本版では不可|本版では不可|Pearson＋MLのみ参考検定。順序MINRESは推論なし|
 |コンジョイント|可|回答者ブロックの複製|回答者重み＋設計分散|回答者内反復・PSUを維持|
 
 unsupportedはエラーとし、画面に適用しないことを告知したうえで、ユーザーがnoneを選び直す。裏で無視して計算しない。surveyウェイトを一律c倍したとき幾何・係数・設計SEが変わらないことを必須テストとする。frequencyはc倍すると情報量・SE等が変わるので同じ不変条件を課さない。
@@ -996,631 +995,6 @@ surveyは少なくとも2層×各3PSU、PSU内複数行の手計算fixture、sco
 
 <a id="doc-12"></a>
 
-出典ファイル：[feature/33_maximum_likelihood_factor_analysis.md](feature/33_maximum_likelihood_factor_analysis.md)
-
-# Feature 033：最尤法による因子分析機能仕様書
-
-版1.0／2026-09-12／実装詳細：[DAVIS-FEAT-033-DESIGN](tasks/DAVIS-FEAT-033-DESIGN.md)。
-
-拡張設計：[033b EFA](feature/33b_exploratory_factor_analysis.md)／[033c CFA](feature/33c_confirmatory_factor_analysis.md)。本書は連続MLの基礎仕様として保持する。033bの範囲ではML専用等の制限より033bを優先し、CFAは別機能とする。
-
-## 1. 目的・範囲
-
-複数の数値設問の相関を少数の共通因子と変数固有の独自分散に分解する探索的因子分析を提供する。抽出法はmaximum likelihoodのみ。PCA、主因子法、最小残差法へ暗黙に切り替えない。回転はnone、varimax、promaxに対応する。回転を変えても抽出法の表示は最尤法のままとする。
-
-カテゴリをそのまま数量化した因子分析、polychoric/tetrachoric相関、順序プロビット因子、確認的因子分析、構造方程式は本版対象外。
-
-## 2. 入力・前提
-
-通常のinterval/ratioを3変数以上選択する。ordinalを入れる場合は変数ごとに`ordinalAsNumericAcknowledged=true`とordered_rank得点化を指定し、等間隔・正規近似であることを警告する。MA、nominal、text、idは不可。目的変数は存在しない。
-
-欠損は指定全変数でlistwise除外のみ。相関行列は不偏標本共分散から算出し、各変数を標本標準偏差で標準化する。相関行列の正定値性、ゼロ分散、変数数に対する有効N、モデル自由度を検証する。非正定値行列をnearPDやridgeで勝手に修正しない。
-
-frequencyは同じ観測の複製として扱い、標本数は度数合計。surveyは通常の正規尤度として取り扱わないため本版では拒否する。利用者が明示的にnoneへ切り替えた場合だけ非加重として実行し、その選択を来歴に記録する。
-
-## 3. 因子数・推定
-
-因子数qは利用者が整数で指定する。UIは相関行列の固有値・スクリープロットを補助表示できるが、固有値>1を自動的な正解として採用しない。適合不能なqを自動で減らさない。モデル自由度df=((p-q)²-p-q)/2が0以上で、q>=1、q<pを要求する。
-
-独自性の下限0.005、上限1、固定seedと複数初期値による最適化を既定とする。下限に達した項目は境界解警告、収束しない場合は推定失敗として返す。境界解を適切な因子構造が見つかった証拠と表示しない。
-
-## 4. 出力
-
-因子負荷量、共通性、独自性、再現相関、残差相関、対数尤度由来の乖離量、参考χ²、df、p値、RMSEA、非対角RMSR、最適化情報を表示する。斜交回転ではpattern、structure、factorCorrelationを必須の別表とする。斜交因子の二乗負荷和を足して総説明率とする誤りを避ける。
-
-無回転/直交回転では因子別二乗負荷和とpで割った比率を表示できるが、PCAの固有値や全慣性比と混同しない。斜交では因子ごとの加算可能な分散寄与を表示せず、共通性と全共通分散Σh²/pを表示する。小標本・正規性・境界解の注意をχ²の近くに置く。
-
-因子得点はregressionまたはbartlettを選択する。得点は潜在変数の真値ではない旨を表示する。符号や回転が異なれば得点の意味も変わるため、得点列に回転・得点法・学習版を保存する。因子名の自動断定は行わず、利用者が表示名を設定できる。
-
-## 5. 画面・連動
-
-設定：変数、得点化、因子数、回転、得点法、重み。結果：負荷量表、pattern/structure切替、独自性・共通性、残差相関、スクリープロット、因子得点散布図、収束診断。負荷量のハイライト閾値は初期値|0.4|とするが、表示用であり係数の切捨てや因子選択には使わない。
-
-個体得点の選択はPCPへ連動し、全有効行の得点列保存を許す。新規行へは学習時の標本平均・標本標準偏差・得点係数を固定して射影する。欠損項目を他項目だけで推定するperson-specific scoreは本版対象外。
-
-## 6. 受入条件
-
-FA01 最尤法以外の抽出法を指定できない。FA02 既知相関モデルを復元。FA03 同じ設定のR factanal比較（回転規約を合わせる）。FA04 frequency展開同値。FA05 Varimax/Promax前後で再現相関が不変。FA06 PromaxのΦ対角=1、structure=pattern×Φ。FA07 回帰得点に標本RとΦを正しく適用。FA08 境界・非収束・非正定値を可視化。FA09 surveyを無視せず拒否。FA10 斜交負荷の二乗和を加算的寄与率として出さない。
-
-## 一次資料との対応
-
-[S-FA](references/PRIMARY_SOURCES.md#s-fa)、[S-ROT](references/PRIMARY_SOURCES.md#s-rot)を参照。原文の最小引用・確認対象・本設計との差異は参照資料に記載した。API、閾値、対応範囲、警告方針は本書群で採用した製品設計であり、原典の必須仕様という意味ではない。
-
-
----
-
-<a id="doc-13"></a>
-
-出典ファイル：[tasks/DAVIS-FEAT-033-DESIGN.md](tasks/DAVIS-FEAT-033-DESIGN.md)
-
-# DAVIS-FEAT-033：最尤因子分析 実装詳細化設計書
-
-版1.0／対応仕様：[Feature 033](feature/33_maximum_likelihood_factor_analysis.md)。抽出法はMLのみ。PCAは相関構造の診断に使えても、抽出失敗の代替法にしない。
-
-拡張時は[033b詳細設計](tasks/DAVIS-FEAT-033B-DESIGN.md)と[033c詳細設計](tasks/DAVIS-FEAT-033C-DESIGN.md)を優先する。本書のML目的・回転・連続得点規約は033bから明示参照する。frequency対応・平行分析なし等の適用範囲は033bの個別規約で置き換える。
-
-## 1. 接続とAPI
-
-新規`backend/app/algorithms/models/factor_analysis_ml.py`、`algorithms/models/factor_rotations.py`、`api/factor_analysis.py`、`frontend/src/features/models/FactorAnalysisPage.tsx`。route `/models/factor-analysis`、POST `/api/v1/models/factor-analysis`。
-
-```json
-{"context":{"datasetId":"survey-demo","expectedDataRevision":1,"expectedSchemaRevision":1,"scope":"all","weightMode":"none","missingPolicy":"exclude"},"variables":[{"columnId":"q1"},{"columnId":"q2"},{"columnId":"q3"},{"columnId":"q4"},{"columnId":"q5"},{"columnId":"q6"}],"nFactors":2,"method":"ml","rotation":"varimax","scoreMethod":"regression","uniquenessLower":0.005,"nStarts":5,"maxIterations":2000,"seed":42}
-```
-
-variablesは3以上で重複なし。ordinal時のscore/ackは回帰と同じ。missingPolicyはexcludeのみ。survey解決時はFA_SURVEY_WEIGHT_UNSUPPORTED、利用者の明示none操作以外のfallback禁止。uniquenessLowerは[1e-6,0.1]、nStarts1..20、maxIterations100..20000の明示設定範囲（データ行数制限ではない）。nFactorsは1以上p未満、df制約をデータ依存で検証する。
-
-## 2. 標本相関と識別可能性
-
-非加重ならf_i=1、frequencyなら整数f_i。N=Σf、mean=Σf x/N、S=Σf(x−mean)(x−mean)'/(N−1)、sd=sqrt(diagS)、R=diag(sd)^−1 S diag(sd)^−1。N>p、各sd>0を要求し、RにCholesky分解を行う。正定値でない場合FA_NON_POSITIVE_DEFINITE。完全相関・多重共線性を修正して通さない。
-
-q=nFactors、df=((p−q)²−p−q)/2。df<0ならFA_UNDERIDENTIFIED、df=0なら点推定は許すが適合度検定p/通常RMSEAはnull。q<p、q>=1。標本数に対する「5倍/10倍」は警告にとどめ統計的必要十分条件としない。
-
-## 3. ML目的関数と最適化
-
-相関変数モデルR≈Σ=L L'+Ψ、Ψ=diag(ψ)、ψ_j∈[lower,1]。
-
-固定ψでEVD：`C=diag(ψ)^−1/2 R diag(ψ)^−1/2 = E diag(d) E'`、dを降順とする。`L(ψ)=diag(sqrt(ψ)) E_q diag(sqrt(max(d_1..q−1,0)))`。
-
-目的関数は常に完全式を使う。
-
-`F(ψ)=logdetΣ+trace(R Σ^−1)−logdetR−p`。
-
-d_q<=1の場合にも成立するよう、上位qの簡略化式だけに依存しない。ΣのCholeskyでlogdetとsolveを計算する。Fは理論上>=0、-1e-10程度の丸めだけ0にclip。大きな負値は内部エラー。Σ/Rの明示逆行列はscore・勾配など必要な場合もsolveから求める。
-
-可微分な範囲のprofile勾配は`diag(Σ^−1−Σ^−1 R Σ^−1)`。計算ではA=solve(Σ,I)、gradient=diag(A−A@R@A)。EVD重複やd=1の境界でgradientが不安定ならそのstartを失敗候補として記録し、有限差分で検証する。微分のテストをなくして自動差分へ丸投げしない。
-
-最適化はscipy.optimize.minimize(method='L-BFGS-B',jac=gradient,bounds)。ftol=1e-12、gtol=1e-7、maxiterは入力、maxls=50。初期ψ_0=clip((1−0.5q/p)/diag(R^−1),lower,1)。残りstartはnp.random.default_rng(seed)でUniform(max(lower,0.05),0.95)をp成分独立に生成。seedと各startの初期ψ・終了status・F・iterations・projectedGradientNormを記録する。
-
-候補採用はsolver.successかつfiniteかつprojectedGradientInfNorm<=1e-5。境界成分のprojected gradientは、下限でgradient>0または上限でgradient<0なら0にする。成功候補のF最小を採用し、差が1e-10以下ならstart indexが小さいもの。全失敗ならFA_NONCONVERGENCEで422、負荷量を正常モデルとして返さない。
-
-採用ψからLを再計算し、学習時のq列を保持する。ゼロの因子列が含まれる場合はeffectiveFactorRank<qの警告を出し、Bartlett得点係数が求められなければ得点計算不能としてFA_SCORE_UNIDENTIFIEDを返す。因子数を勝手に減らして成功させない。
-
-## 4. 回転
-
-### 4.1 none
-
-Lの各列符号を最大絶対負荷が正となるように決定し、負荷二乗和の降順（同率は元列順）に並べる。Φ=I。常に同じ変換を因子得点へ適用する。
-
-### 4.2 Varimax
-
-Kaiser正規化を固定する。h_j=sqrt(Σ_l L_jl²)、ゼロ行は0行として残し、B_j=L_j/h_j（非ゼロ）。T=I、最大500回、各反復Λ=BT、C=B'[Λ³−Λ diag(colSums(Λ²))/p]、C=U D V'、T_new=UV'。目的値d=ΣdiagDを用い、改善がrelative1e-8未満なら収束。正規化を戻してL_v=(BT)*h。
-
-Σ=L_v L_v'+Ψが元とrtol1e-9で一致することを検証。500回で収束しなければFA_ROTATION_NONCONVERGENCE、noneへ暗黙fallbackしない。回転後二乗負荷和順に列を並べ、符号を正準化する。
-
-### 4.3 Promax
-
-まず上記Varimaxを完了。target=sign(L_v)*abs(L_v)^4。`B=least_squares(L_v,target)`、rankq必須。Φ0=(B'B)^−1、D=diag(sqrt(diagΦ0))、T_p=B D、L_p=L_v T_p、Φ=D^−1 Φ0 D^−1。
-
-pattern=L_p、structure=L_pΦ、diagΦ=1。Σ=L_pΦL_p'+Ψを元と照合する。因子並べ替え/符号をH（符号つき置換行列）で行う場合、pattern_new=L_p H、Φ_new=H'ΦH、structure_new=structure H、score_new=score H。このHは一般の斜交変換とは違い直交置換なのでこの式が成り立つ。
-
-Promaxの並べ替えはpatternの二乗和の降順を表示上の規約として採用するだけで、分散寄与を加算する根拠にしない。因子相関が極端に±1に近くrankを失う場合はFA_ROTATION_SINGULAR。
-
-## 5. 因子得点
-
-学習/予測標準化z=(x−mean)/sdは前記標本sd（ddof1、frequency複製同値）を用いる。patternをL、因子相関をΦ、独自性Ψとする。
-
-regression得点係数`B_reg=solve(R,L) Φ`、score=Z B_reg。Rは標本相関であり、Σhatへ勝手に置換しない。この規約はR factanalのregression scoresに合わせる。
-
-Bartlett得点係数`B_bart=Ψ^−1 L (L'Ψ^−1 L)^−1`、score=Z B_bart。逆行列はCholesky/solveから作り、L'Ψ^−1Lがrankqでない場合に一般化逆行列で黙って救済しない。斜交でもpattern Lを使用し、さらにΦを掛けない。
-
-得点の分散が必ず1になるように再標準化しない。regression得点とBartlett得点は一致する必要がない。fit行をpredictに通して同じ値になることを検証する。元項目に欠損がある予測行はnull。
-
-## 6. 適合指標と診断
-
-共通性h²=diag(LΦL')、uniqueness=ψ、reproducedCorrelation=LΦL'+diagψ、residualCorrelation=R−reproducedCorrelation。対角残差も返し、0へ強制しない。数値丸めを超えてh²<0なら内部エラー。
-
-ML乖離Fに対しc=N−1−(2p+5)/6−2q/3、T=cF、df=((p−q)²−p−q)/2。c>0,df>0ならpValue=chi2.sf(T,df)、RMSEA=sqrt(max((T−df)/(df*(N−1)),0))。c<=0またはdf<=0ならstatistic/p/RMSEAの適用不能部分をnullにする。境界ψ<=lower+1e-6ならBOUNDARY_UNIQUENESS警告と、χ²近似が標準的に成立する保証はない旨を添える。
-
-非対角RMSR=sqrt(Σ_{j<k}(R_jk−Σhat_jk)²/[p(p−1)/2])。標準化残差をさらにnや期待分散で割った別指標と混在させない。全共通分散比=Σh²/p。
-
-必須の補助指標KMOはinverseRからpartialCorrelation_jk=−invR_jk/sqrt(invR_jj invR_kk)、KMO=Σ_{j<k}r²/(Σr²+Σpartial²)。分母0はnull。Bartlett球面性の参考検定はT_b=−(N−1−(2p+5)/6)logdetR、df_b=p(p−1)/2、適用可能ならχ²p。ただし本版ではKMO/Bartlettは必須出力とし、係数が非正ならnullで理由を返す。これらの数値を「因子分析してよい/悪い」の自動ゲートに使わない。
-
-AIC/BIC、平行分析、自動因子数選択、ブートストラップCIは本版では提供しない。未提供欄を仮の0で埋めない。
-
-## 7. 結果型
-
-summary={nVariables,nFactors,effectiveFactorRank,fitFunction,chiSquare,modelDf,pValue,rmsea,rmsr,totalCommunalityRatio,kmo,bartlett,converged,boundaryVariables,scoreMethod,rotation}。
-
-details={variables,pattern,structure,factorCorrelation,uniqueness,communality,sampleCorrelation,reproducedCorrelation,residualCorrelation,rotationTransform,optimizerStarts,factorLabels,ssLoadings,varianceRatios}。ssLoadings/varianceRatiosはPromaxではnull。variablesにcolumnId/label/mean/sampleScale/ordinalScoringを含む。loadingsの行はvariables順、列はfactorLabels順を厳守する。
-
-model.npzにR,mean,sd,pattern,Φ,ψ,scoreCoefficientsとrawLoadings/rotationTransformを保存。rawLoadingsと最終patternの変換関係を再構成できるようにする。row結果はrowId/scores。materialize field=score:1..q。
-
-## 8. UI・実装順序・受入
-
-因子数qは入力値を保持し、推定不能なら該当qと理由を表示。負荷閾値|0.4|は表示だけ。回転変更は本版では保存raw MLモデルからの再回転処理をサービス内で行い、新しいresultId/config/fingerprintとして返す。最尤推定の再利用は可能だが表示だけ変更して古い得点列を新回転の得点と称さない。codebookのreverseを変えたらschema staleで再学習が必要。
-
-`test_140_factor_analysis.py`はR生成の固定相関fixture、合成モデルの再現相関、profile gradient有限差分、複数start、境界/非収束、Varimax/Promax不変性、regression/Bartlett得点、frequency展開、rank失敗を含める。回転が異なるoracle同士のpatternを符号補正だけで一致させず、Σhatや因子空間・目的値から比較する。
-
-本体実装のゲートは、数値kernel→収束/境界→回転→得点→API/保存→FE→static。scikit-learn FactorAnalysisのEM既定を単に呼び、指定していない別の下限・初期値・尤度規約に依存する実装は本設計の代替にならない。
-
-## 一次資料との対応
-
-[S-FA](references/PRIMARY_SOURCES.md#s-fa)、[S-FA-SRC](references/PRIMARY_SOURCES.md#s-fa-src)、[S-ROT](references/PRIMARY_SOURCES.md#s-rot)を参照。原文の最小引用・確認対象・本設計との差異は参照資料に記載した。API、閾値、対応範囲、警告方針は本書群で採用した製品設計であり、原典の必須仕様という意味ではない。
-
-
----
-
-<a id="doc-14"></a>
-
-出典ファイル：[feature/33b_exploratory_factor_analysis.md](feature/33b_exploratory_factor_analysis.md)
-
-# Feature 033b：探索的因子分析（EFA）機能仕様書
-
-版1.1／2026-09-13／状態：設計確定、数値エンジン・本体実装の受入は未完了。
-詳細：[033b詳細設計](tasks/DAVIS-FEAT-033B-DESIGN.md)。関連：[入力・結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)、[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)。
-
-## 1. 目的・範囲
-
-アンケート項目の共通因子構造を探索する。主要利用条件は同一国内の一般的なアンケート、N=1000〜2000程度、5件法中心とする。順序尺度のモデル化にはポリコリック相関と最小残差法（MINRES／ULS系）を提供し、明示した連続近似のPearson＋ML／MINRESも主要経路として扱う。因子数決定、回転、欠損、診断、分析の再現に、Pearson／Polychoric感度分析を含める。
-
-5件法でカテゴリ分布が概ね対称、床・天井への極端な集中がなく、各カテゴリが十分観測される場合、連続近似を合理的な実務選択肢として提示する。N=1000を統計的な境界とはしない。ベル型ヒストグラムは単一項目の連続正規性や多変量正規性の証明ではなく、手法間の一致も潜在モデルの正しさの証明ではない。
-
-033の連続変数ML設計を基礎とし、033bの対象では本書を優先する。033の「MLのみ」「平行分析なし」「順序相関対象外」は033bへ適用しない。MLの目的関数・回転・連続変数得点規約は明示参照する。033のfrequency対応は033bへ引き継がず、初期版は全経路で非加重のみ。旧入力の自動変換や互換APIは設計しない。
-
-ULSとMINRESを尺度別の別抽出法として並べない。PAFの追加は初期版の対象外とする理由を、用途の重複と検証負荷に置く。方法の普遍的な優劣を表示しない。CFAとロバスト推論は[033c](feature/33c_confirmatory_factor_analysis.md)で扱う。
-
-## 2. 入力・測定水準
-
-3項目以上。質問票・コードブックの測定水準を初期設定とし、利用者が分析設定で明示確認する。カテゴリ数・標本数で尺度や推定法を自動変更しない。単一の7件法も順序尺度として扱う。合算・平均尺度得点は別の列として作成履歴を参照し、その列の測定水準を確認する。
-
-|入力状態|既定候補|制御|
-|---|---|---|
-|5件法中心、N=1000〜2000程度、良好なカテゴリ分布|Pearson／Polychoric感度比較を優先提示|連続近似への確認後はPearson＋MINRES／MLを主結果として選べる|
-|2〜3件法の順序尺度|ポリコリック＋MINRES／ULS系を原則候補|推定成功や正しさを保証しない|
-|4件法、強い歪み・床／天井集中|ポリコリック経路を推奨提示|カテゴリ数・歪度だけで実行経路を強制しない|
-|6〜7件法以上で良好な分布|Pearsonを通常選択肢として提示|連続近似を明示。元の順序尺度は維持|
-|項目間で分布形状が大きく異なる|感度比較を推奨|項目別分布と相関差を確認|
-|順序モデルを明示して実行|ポリコリック＋MINRES／ULS系|潜在応答と閾値を仮定する旨を表示|
-|全項目が連続変数|ピアソン＋ML|多変量正規性の前提を表示。MINRESも選択可能|
-|順序項目の連続近似を明示選択|ピアソン＋MLまたはMINRES|項目ごとに同意、等間隔順位得点。元の測定水準は維持|
-|順序と連続のモデル化が混在|実行不可|混合相関・ポリシリアル経路は初期版未対応|
-|水準不明・名義・ID・文字列・MA親|実行不可|対象列または測定水準の確認が必要|
-
-順序項目は許容コード、カテゴリ順序、逆転指定を必須の分析情報とする。カテゴリ順序を数値コードやラベルの辞書順から生成しない。逆転は確認済み順序の反転として一度だけ適用する。コードブック変換済み列への二重逆転を防ぎ、元の順序と最終順序を保存する。
-
-## 3. 欠損・ウェイト・相関診断
-
-初期版は全対象項目の完全ケース（listwise、APIでは`missingPolicy=exclude`）に固定する。無回答・非該当・不正値を区別して行除外理由と項目別件数を返す。既存補完済み値の利用は共通契約の`use_current_values`に従い、補完件数と来歴を明記する。EFA内部で平均補完しない。pairwise、FIML、重み付き推定は未対応として拒否する。データセットの既定ウェイトが解決された場合も黙って無視しない。
-
-|診断|表示・動作|
-|---|---|
-|未観測の許容カテゴリ|該当項目を表示して停止。カテゴリの削除・統合は明示した再設定で別実行|
-|少数カテゴリ|件数5未満を初期警告基準として分布表に表示。性能保証や自動除外には用いない|
-|二変量分割表の疎なセル|0件セル・5件未満セルの数と項目対を表示。自動連続性補正なし|
-|相関未収束・境界推定|該当対、試行結果、境界値を保存して抽出へ進まない|
-|非正定値・数値的特異|最小固有値、条件数、関連項目を表示して停止。自動平滑化なし|
-
-ポリコリック相関は、背後の連続潜在応答の二変量正規性と閾値を仮定する。観測得点のピアソン相関とは推定対象が異なる。2値項目は同じ推定系のテトラコリック特殊形とする。[相関の根拠](references/FACTOR_EXTENSIONS_SOURCES.md)
-
-分布診断は各カテゴリ頻度、最小頻度、最大占有率、順位得点上の歪度、最下位／最上位回答率、項目間の分布差を返す。これらは警告と判断材料であり、「歪度>1なら強制変更」のような経路決定には使わない。ポリコリック推定も疎なカテゴリ・極端な閾値・高相関等で不安定化しうるため、Pearsonの上位互換と説明しない。
-
-## 4. 因子数・抽出・回転
-
-因子数は利用者が最終指定する。全相関固有値のスクリープロット、項目別置換による平行分析、指定した複数因子数の結果比較を初期版に含める。平行分析は候補を提示し、設定の因子数を書き換えない。観測側と置換側の相関推定・固有値定義を揃える。
-
-MINRES／ULS系はピアソン・ポリコリック双方に同じ検証対象エンジンを用いる。UI名と実際の目的関数識別子を保存する。MLはピアソン経路のみ。未収束時に別の抽出法へ切り替えない。利用者が方法を変更して再実行した場合は元の試行を残す。
-
-回転はPromaxを既定とし、Varimax、無回転も提供する。1因子は回転不要であり、要求回転と実適用none、理由を記録する。回転の失敗を無回転で置き換えない。
-
-## 5. 結果と診断
-
-パターン行列Λ、構造行列S=ΛΦ、因子間相関Φ、共通性diag(ΛΦΛ′)、独自性、観測相関、再現相関、対角を含む残差、非対角RMSRを返す。斜交回転のパターン二乗和を共通性・加算可能な因子寄与率として表示しない。表示閾値|0.4|は係数の強調専用とする。
-
-`computationStatus`（計算）と`solutionStatus`（解の診断）、`inferenceStatus`（推論）を分離する。未収束、回転特異、独自性境界、負の独自性、共通性範囲外、特異Φを明示する。パターン係数の絶対値が1を超えたことだけで斜交解を不適と判定しない。
-
-MINRES／ULS系は負荷量・残差を中心とし、χ²、CFI、TLI、RMSEA、係数SEを提供しない。MLは033で定義した通常版の参考推論だけを適用可能条件付きで返す。順序相関に通常MLの適合度式を適用しない。欠損値は理由付きnullとし、0を代用しない。
-
-## 6. 得点・PCP・画面連動
-
-得点法は既定none。ピアソン経路ではregression／Bartlettを明示選択できる。連続近似項目を含む場合は「連続近似に基づく因子得点」と表示し、厳密な順序モデル得点とは呼ばない。ポリコリック経路は初期版で得点計算・PCP得点軸追加・得点による行選択を提供しない。
-
-画面は既存分析ページと同じ設定領域＋結果領域とし、「対象と尺度」「因子数」「抽出・回転」「診断」「負荷量・残差」の順に読める配置とする。項目・因子の選択を回答者行の選択として扱わない。得点がある結果だけ散布図、Reduxの選択連動、全fit行の派生列保存を有効化する。
-
-KeepAliveで設定・結果・スクロールを保持する。dataset変更、列・コードブック・maskの版変更を検知し、旧結果はstaleで閲覧可能、再適用不可とする。選択スコープの変更だけで自動再推定せず、明示実行時の行集合を固定する。
-
-## 7. 再現性・受入
-
-要求・適用方法、選択根拠、試行ID、切替理由、相関補正の有無、行ID、欠損分類、カテゴリ変換、初期値、乱数方式・シード、反復数、比較分位点、エンジン版・ソースhashを保存する。補正なしも`applied=false`と明記する。
-
-受入IDはEFA-B01〜B22。数値oracle比較、コードの順序保存再符号化、項目順、逆転、欠損、定数、疎カテゴリ、非正定値、未収束、回転不変性、平行分析、得点来歴、PCP/KeepAlive、順序尺度感度分析を必須とする。実行済み証拠と未実施事項は[検証報告](validation/FACTOR_EXTENSIONS_VALIDATION.md)で分離する。
-
-## 8. 順序尺度感度分析
-
-同じ回答者・項目・逆転・欠損処理について、Pearson＋MINRES／ULS系とPolychoric＋同じMINRES／ULS系を比較する独立した結果パネルを初期版に含める。単に二つの表を並べず、因子の対応を整合させ、負荷量差、共通性差、因子間相関差、因子割当変更、平行分析の因子数候補差を数値化する。
-
-5件法では比較プリセットを目立つ既定候補とする。「順序モデルと連続近似の両方を計算する」と対象・二つの方法を実行前に表示し、比較を含む実行操作で連続近似への明示確認を得る。APIは比較既定off、確認なしに連続近似を開始しない。利用者は主結果をPearsonまたはPolychoricから選べる。主結果MLの場合も感度ペアはMINRES同士に揃え、相関と抽出法の差を混同しない。
-
-主結果の完了を待たせ続けず、副解析は段階進捗付きで計算する。N=1000〜2000なら常に軽いと仮定せず、項目数・カテゴリ数・PA反復数を含む実測で検証する。片側失敗は「比較不能」、因子対応が不安定なら「対応要確認」、差が目安を超えたら「手法による差あり」。両側が適切な解で必要比較が揃い、差が目安内なら「設定した目安では差が小さい」と表示する。
-
-感度比較の一致を統計的同等性検定、正規性検定、確認的妥当性の証明と呼ばない。差が大きい場合は項目分布・因子数候補・順序モデルの診断を確認する導線を出し、どちらを主結果にするかを利用者が決める。順序モデルが適切に推定され、近似への懸念もある場合には順序モデルを主結果候補として推奨するが、自動的な置換はしない。
-
-
----
-
-<a id="doc-15"></a>
-
-出典ファイル：[tasks/DAVIS-FEAT-033B-DESIGN.md](tasks/DAVIS-FEAT-033B-DESIGN.md)
-
-# DAVIS-FEAT-033b：EFA 実装詳細化設計書
-
-版1.1／2026-09-13／対応：[033b機能仕様](feature/33b_exploratory_factor_analysis.md)。本書のAPIとファイルは実装予定であり、既存実装済みという意味ではない。
-
-## 1. 接続・責務・実装境界
-
-画面は既存033の予定route `/models/factor-analysis`をEFAとして一本化し、POST `/api/v1/models/factor-analysis`の新入力を[別契約](contracts/factor_extension_requests.py)のEFARequestで定義する。旧033入力の互換変換は行わない。結果methodは`efa`、schemaVersionは`factor_extensions.1`。
-
-|予定ファイル（fullstack/基準）|責務|
-|---|---|
-|backend/app/api/factor_analysis.py|構文検証・サービス呼出し|
-|backend/app/services/factor_analysis_service.py|scope snapshot、尺度解決、重み拒否、段階実行、保存|
-|backend/app/algorithms/models/ordinal_correlations.py|閾値・ポリコリック・項目対診断|
-|backend/app/algorithms/models/factor_analysis_minres.py|単一のULS系目的関数と最適化|
-|backend/app/algorithms/models/factor_analysis_ml.py|033の通常ML目的関数と診断|
-|backend/app/algorithms/models/factor_rotations.py|033のVarimax／Promax規約|
-|backend/app/algorithms/models/factor_parallel.py|項目別置換、同一相関推定、固有値比較|
-|backend/app/algorithms/models/factor_sensitivity.py|Pearson／Polychoricの同条件比較、因子整合、差分診断|
-|frontend/src/features/models/FactorAnalysisPage.tsx|既存分析ページの設定・診断・結果・得点連動|
-
-既存のcontext、codebook_adapter、analysis_columns、analysis-results、provenance、storeを接続先とする。main.tsx、KeepAliveOutlet.tsx、AppShell.tsxへ登録する。現行ソースの確認範囲は[接続記録](references/FACTOR_EXTENSIONS_SOURCE_AUDIT.md)。共通基盤が未完成の箇所を完成済みと仮定しない。
-
-NumPy/SciPyでlocal／Pyodide共通kernelを作り、Rのpsych・polycor・factanalを独立oracleとする。既存の本番依存方針を維持し、factor_analyzerをそのままproduction依存へ追加しない。下記ULS系仕様は検証対象を一つに絞るための採用仕様であり、検証済みと表示できるのは受入通過後。oracle不一致のまま公開せず、目的関数・制約の差を記録して設計版を改訂する。
-
-## 2. 前処理と意味検証
-
-1. 所有dataset、data/schema/mask revision、明示scopeを確定し必要項目だけsnapshot取得。空selectedをallへ変えない。
-2. 宣言されたweightを既存resolverで解決。有効ウェイトがあれば`FA_WEIGHT_UNSUPPORTED`。dataset設定をnoneへ勝手に変更しない。
-3. measurementはコードブックまたは明示した分析時指定を根拠付きで解決。未知・名義・ID等は拒否。analysis overrideはコードブックを書き換えない。
-4. 許容コードを既存normalize_codeで照合。categoryOrderは許容される順序カテゴリの完全な並び、重複なし。欠損・非該当用コードを回答カテゴリへ含めない。許容領域外はinvalid。コードブックと異なるorderは確認した分析時overrideとして保存する。
-5. 逆転はraw code→確認済みカテゴリ位置→最終順序を一度だけ適用する。変換済みanalysis_seriesの逆転をさらに反転しない。連続近似では最終位置を1..Kの等間隔得点にする。連続変数の逆転は前処理列として作成し、ここではreverse=false。
-6. 全対象項目の有効値を持つ完全ケース集合を固定。排他主理由はinvalid→missing（無回答・非該当を含む）の順、詳細診断では両者を別件数にする。主件数は`scopeCount=fitCount+excludedCount`。不正値の除外を黙って行わず設定画面・結果で件数を表示する。
-7. 連続列sd>0、順序列の実観測カテゴリ≥2、全許容カテゴリ観測済み、n>p、q<p、df=((p−q)²−p−q)/2≥0を要求。n>pは本版の数値入力条件であり一般的な必要標本数の結論ではない。df=0は記述解のみ。欠損が多いことによる母集団代表性の変化を注記する。
-
-全ordinal treatmentならpolychoric/minres/scoreMethod=none、他はpearson。元ordinalのcontinuous_approximationだけは明示同意が必須。混在は`FA_MIXED_MEASUREMENT_UNSUPPORTED`。pairwise、FIML、correctionを構文で受け付けない。
-
-## 3. 相関・閾値の推定
-
-### 3.1 ピアソン
-
-同一fit集合から標本平均、ddof=1の標本共分散S、sd、R=D⁻¹SD⁻¹を計算。行列の転置平均などで大きな非対称性を隠さず、数値丸め範囲だけ対称化した場合も数値処理として記録する。変数別・対別の有効数は全てn。
-
-### 3.2 順序相関
-
-2段階推定を固定する。項目jのカテゴリ累積比率Fjkから有限内部閾値τjk=Φ⁻¹(Fjk)、端は−∞,+∞。全項目で同じ完全ケース集合を用いるため、項目の閾値は全項目対で共有できる。未観測カテゴリは同一閾値または無限内部閾値を生むため停止する。
-
-項目対のセル度数nkl、潜在標準二変量正規の矩形確率pkl(ρ)に対し、`−Σ(nkl log pkl)`をρ∈[−0.9999,0.9999]で最小化する。0件セルは和に寄与しない。度数への0.5加算、カテゴリ統合はしない。2×2も同一式でtetrachoricと記録する。
-
-確率は条件付き正規の一次元積分を用いる。行区間[a,b]、列区間[c,d]に対し `∫[a,b] φ(z){Φ((d−ρz)/sqrt(1−ρ²))−Φ((c−ρz)/sqrt(1−ρ²))} dz`。SciPy積分の絶対・相対許容誤差1e-10を要求し、極端な尾部は生存関数またはlog差分で桁落ちを抑える。負確率・積分誤差超過をclipで救済しない。
-
-bounded scalar solver、xatol=1e-8、maxiter=1000を初期規約とする。粗いρ格子で目的関数形状を点検し、最良区間を含めて探索する。停止成功、有限目的値、有限確率を要求。端点から1e-5以内なら境界推定として抽出を停止する。pair recordにはn、度数表、閾値参照、ρ、最適化回数、誤差、境界フラグ、0セル数、少数セル数を持つ。
-
-相関係数だけのSEをCFA用の漸近共分散として渡さない。本版相関モジュールはCFAの標本統計量・Γ生成器の代用品ではない。
-
-### 3.3 行列検証
-
-対角1・有限・対称・範囲内を確認。固有値の最小値≤1e-10×最大固有値なら数値的非正定値／特異として停止し、Choleskyも要求する。これは数値許容値である。元行列と診断を失敗記録に保存し、nearPD・ridge・cor.smoothを自動適用しない。初期版は明示平滑化も提供しないため`matrixCorrection={applied:false,method:null}`。
-
-## 4. 単一の最小二乗系エンジン
-
-UI名「最小残差法（MINRES／ULS系）」、API extraction=`minres`、実方式`uls_profile_full_v1`。代表的な非対角MINRESの目的値 `Foff=Σ(i<j)(Rij−[L L′]ij)²`も診断値として返すが、以下の最適化目的値と同じ名前にしない。
-
-採用するprofile ULS規約を固定する。対角パラメータu∈[uniquenessLower,1]に対しA(u)=R−diag(u)。上位q固有値・固有ベクトルから `L(u)=E_q diag(sqrt(max(d_q,0)))`、`Fprofile(u)=||A(u)−L(u)L(u)′||F²` を最小化する。対角残差を含む。目的値の2倍・半分を黙って混同しない。
-
-これは対角の扱い・境界制約を明示したULS系の一方式であり、全実装のMINRESと完全同一とは主張しない。factor_analyzerの公開ULS profile実装と、R psychのMINRESによる再現相関を別の比較対象にする。関数名の一致だけで同値と判定しない。
-
-optimizerはL-BFGS-B、ftol=1e-12、gtol=1e-7、maxls=50、maxiter入力値。微分可能な領域で勾配は`−2 diag(A−LL′)`、有限差分で検証する。重複固有値の境界では勾配・解の再現性を診断する。初期uはclip(1/diag(solve(R,I)),lower,1)、追加startはseedを固定したPCG64によるUniform(max(lower,.05),.95)。選択基準は033と同じ有限性・solver成功・projectedGradientInf≤1e-5、最小目的値、同値1e-10ならstart番号順。
-
-最終共通性h²=diag(LL′)、報告する独自性ψ=1−h²。最適化変数uをψと同一とみなさず、両方と差を返す。u境界、ψ≤lower+1e-6、ψ<−1e-8、h²>1+1e-8を個別診断する。負のψを0に修正しない。無効解は記述診断のみで、得点・推論・派生列保存を無効にする。
-
-MLは[033詳細設計](tasks/DAVIS-FEAT-033-DESIGN.md)の第3節を採用する。MLからULS系への自動切替をしない。各startの成功／失敗は残す。全start失敗は422、部分結果を有効resultIdにしない。
-
-## 5. 因子数・平行分析
-
-観測と比較側はともに「対角1の全相関行列の降順固有値」とする。縮約相関の共通因子固有値ではないことを`eigenvalueDefinition=full_correlation`として画面・manifestに示す。PCAを因子抽出として実行する意味ではない。
-
-帰無データはfit行列の項目別独立置換。各項目のカテゴリ度数または連続値分布を厳密に維持し、項目間関連を壊す。反復数既定500（100..10000）、比較分位点.95、seed42。PRNG=PCG64、列処理順はcolumnIdによる固定順、返却は要求項目順。ストリームを推定startと分ける。各反復で観測と同じ相関推定・行列診断を通す。
-
-成功反復だけへのすり替えを防ぐため、失敗反復の再抽選をしない。一つでも相関推定失敗・非正定値があれば全予定反復の診断を保存し、平行分析の候補と分位値はnull／`PA_REPLICATE_FAILED`。EFA本体が成功した場合はその結果を保持し、平行分析未完了と明示する。
-
-分位値は各固有値順位の線形補間分位点（NumPy method=linear）。観測値が比較値を厳密に超える先頭からの連続順位数を候補kとする。0も返し、1に切り上げない。後順位で再び超えた場合は全超過順位も示す。モデルとして許されるqの範囲は別に提示し、kが範囲外でも黙って切り詰めない。利用者は手動nFactorsを確定する。
-
-compareFactorsは追加候補の明示整数配列。主nFactorsも含む候補集合の各モデルを同じfit行・R・回転規約で計算し、各qの目的値・RMSR・共通性・診断・試行参照を返す。失敗候補を一覧から落とさない。主qの失敗なら全実行を失敗記録とし、成功した別qを主結果に置換しない。比較用モデルの得点は主qを明示して別実行するまで保存不可。
-
-## 6. 回転・得点・推論
-
-Varimax（Kaiser正規化）、Promax power=4、停止条件、符号・因子順は033第4節と同じ。L→Λ、Φ、S=ΛΦを保存し `ΛΦΛ′=LL′`をatol1e-8で確認。因子順序・符号変換をΦと得点にも適用。ψとh²を回転後に再確認する。Promax時ssLoadingsとvarianceRatiosはnull。
-
-得点noneならcapabilities.rows/projection/materialize=false。ピアソン・適切な解・明示得点法なら033第5節の標本Rを使うregressionとpatternを使うBartlettを使用。定義をモデルΣへ変更しない。連続近似ではscoreInterpretation=`continuous_approximation`を列来歴にも残す。欠損予測行はnull。順序経路のEBM等は未実装として得点選択自体を拒否する。
-
-MINRESの推論は全てnot_implemented。KMOは可逆Rから記述指標として計算できる。Bartlett球面性、通常MLのχ²/RMSEAはピアソン＋MLのみ033第6節の条件で返す。境界・不適解なら推論欄をnullとし、元の計算値が必要なら診断artifactへ参考値として分離保存する。MLの通常近似をscaled／robustと名付けない。
-
-## 7. 保存・エラー・性能
-
-共通manifestに加え、fit/excluded行ID、変換辞書、R、閾値、pair診断、raw loadings、最終行列、start履歴、PA設定・全反復固有値、候補比較を保存。原回答は共通snapshotだけとし、POSTに全行・全分割表を詰めずdiagnosticsのページ出力で取得する。model.npzにpickleを含めない。
-
-canonical fingerprintは行集合と内容hash、測定水準、元／適用order、逆転、欠損、要求／適用方法、全数値設定、実装版を含む。UIの表示閾値は含めない。列順変更は出力の並びに反映するが数値の不変性試験はIDで揃える。
-
-422の代表コード：FA_CATEGORY_ORDER_REQUIRED、FA_UNOBSERVED_CATEGORY、FA_CONSTANT_COLUMN、FA_CORRELATION_NONCONVERGENCE、FA_CORRELATION_BOUNDARY、FA_NON_POSITIVE_DEFINITE、FA_UNDERIDENTIFIED、FA_NONCONVERGENCE、FA_ROTATION_NONCONVERGENCE、FA_WEIGHT_UNSUPPORTED。各detailsはstage/columnIds/pairIds/attemptIdを含む。失敗試行は診断専用に保存し、有効モデルとしてselect/predict/materializeを受け付けない。
-
-計算段階ごとに進捗を表示。相関推定・PAは直列化／区分実行し、logical cancel時の古い応答をrunSequenceで破棄する。推定対象を画面のページ件数へ縮めない。実メモリ不足は503、容量見積による任意の行数拒否ゲートは追加しない。
-
-入力エラーは項目直下と上部一覧に表示し、実行失敗時には一覧へフォーカス、一覧から入力へ移動できるようにする。診断は色だけに依存せず項目名・状態・理由を表示する。表の列見出し、グラフの軸・凡例・数値表の代替表示を付ける。設定変更時の自動フォーカス移動やKeepAlive非表示ページの通知は行わない。
-
-## 8. 実装ゲート
-
-相関oracle→単一ULS系oracle＋ML→PA→回転と不適解→感度比較→契約/API/保存→FE/PCP→localとPyodideを順に検証。仕様のみの段階では数値一致を達成済みとしない。具体的fixture・許容差・公開条件は[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)に定義する。
-
-## 9. Pearson／Polychoric感度分析
-
-### 9.1 対象・設定・主解析との関係
-
-初期版は全項目の元measurementがordinalの場合に提供する。カテゴリ数2以上で技術的には利用できるが、5件法中心の比較を標準UXとする。continuous混入はこの比較機能では未対応。主解析のtreatmentは全ordinalまたは全continuous_approximationとし、主解析の尺度混在禁止を維持する。
-
-sensitivityAnalysis.enabled=trueには独立したapproximationAcknowledged=trueとparallelAnalysis.enabled=trueを要求する。主が順序モデルであっても比較側の連続近似を明示確認する。主が連続近似の場合も比較設定の同意を保存する。比較側MINRESにするため主の指定MLを勝手に変更せず、必要なら主ML＋比較用Pearson-MINRES＋Polychoric-MINRESの3モデルを保持する。
-
-各比較子モデルのcorrelation以外は同じにする。項目ID・行集合・有効N・逆転・許容値・欠損処理・q・回転・ULS目的・制約・最適化start・シードを揃え、scoreMethod=none。Pearson側は最終カテゴリ順位1..Kを使い、原コードが1,2,4,8でもその間隔を利用しない。副結果の得点を主結果の得点として保存しない。
-
-利用者の主結果選択は保存して自動変更しない。比較結果から「こちらを主結果として使う」を選ぶ場合は、要求と適用設定を明示した別実行にする。比較子モデルを無断でPCPへmaterializeしない。
-
-### 9.2 分布プロファイル・推奨表示
-
-fit完全ケースに対し、項目ごとにcategoryCounts、categoryProportions、minCategoryCount、maxCategoryProportion、floorProportion、ceilingProportionを計算する。分母は同じn。floor/ceilingは確認済み順序の両端であり、逆転適用前後の対応を保持する。除外前scopeの有効回答分布は別集計として表示し、両方のNを混同しない。
-
-補助歪度はカテゴリ位置rに対する調整Fisher–Pearson係数とする。mk=n⁻¹Σ(r−mean)^k、g1=m3/m2^(3/2)、`G1=sqrt(n(n−1))/(n−2) g1`（n>2、m2>0）。未定義はnull。任意コードの数値間隔に依存しない。これは順位上の形状要約であり、潜在応答の正規性検定ではない。
-
-異なるKの項目も比較するため、順位位置をu=(r−1)/(K−1)へ揃えた経験CDFの対間最大差をdistributionDistanceとして表示する。各対のCDF距離と最大対を示すが、独立2標本の検定p値は計算しない。同じ回答者の項目対であり、分布差そのものが模型誤りを意味するわけではない。
-
-少数カテゴリ・高い端点占有・大きな|G1|は警告材料。初期の表示目安はcount<5、floor/ceiling≥.5、|G1|>1とするが、数値・目安・該当項目を併記するだけで強制routingしない。主要UXのN=1000〜2000はプロファイル説明用で、999と1000で実行可否や測定水準を変えない。
-
-5件法では「感度比較」を目立つ提案として表示し、主結果の候補をPearson-MINRESとPolychoric-MINRESから同じ操作で選べるようにする。良好な分布を確認した利用者にはPearsonを通常の選択肢として提示する。2〜3件法は順序モデルを原則推奨、4件法や強い非対称は順序モデルを推奨、6〜7件法の良好分布はPearsonを通常候補とする。全て根拠付きの提案であり、測定尺度・設定の自動書換えではない。
-
-### 9.3 同条件の平行分析と因子数
-
-同じfit行列から同じ項目別置換indexを生成し、各反復をPearson側・Polychoric側へ共通供給する。それぞれの観測と帰無側には同じ相関推定を使い、両側のseedだけを同じにして別の置換標本を使うことはしない。第5節の固有値・分位点・失敗反復規約を双方に適用する。
-
-両側のsuggestedFactorsを比較し、差・生固有値・比較分位値を表示する。PA失敗時の候補はnullであって0ではない。共通の指定qにおける負荷量比較と、PAの候補数差を別の結果とする。候補数が異なっても指定qでの感度差は計算できるが、「因子数まで一致」と表示しない。
-
-各側の候補数で別々に抽出する結果はcompareFactorsの別モデルに置く。qが異なる行列の不足列を0で埋めて負荷量差を作らない。異なるqの直接比較はfactorCountDifferenceを返し、loadingsMetrics=null、reasonCode=FACTOR_COUNTS_DIFFER。
-
-### 9.4 因子の整合
-
-標準比較は同じ回転・同じqのpattern P（Pearson）、O（Polychoric）を使う。c_ab=(P_a′O_b)/(||P_a||||O_b||)を求め、Σ|c_ab|を最大化する一対一割当をlinear_sum_assignmentで解く。符号をc_ab≥0へ合わせた符号付き置換Hを保存する。整合後は`Oa=O H`、`Φoa=H′ΦoH`、structureも同じHで変換する。元の行列を上書きしない。
-
-ゼロノルム因子、rank欠損、最適割当と次善割当の目的差≤1e-6はalignmentStatus=ambiguous。次善は採用辺を一つずつ禁止した割当の最良値を使う。q=1では次善なし。対応congruence<.85は低整合警告としてambiguousにする。.85は工学的な表示目安であり因子同一性の検定ではない。曖昧なときは候補対応を表示できるが、確定した割当変更数や「差が小さい」を返さない。
-
-追加診断として直交Procrustesによる因子空間の近さを返せる。`O′P=U D V′`、Q=UV′、`||OQ−P||F/||P||F`をprocrustesResidualとする。Qは因子を混合するため、この値でパターン差・因子割当差を置き換えない。斜交ΦにQを適用してから単位対角へ戻さずそのまま相関として扱う実装も禁止する。初期の主整合方式はsigned_permutation固定で、Procrustesは空間診断だけとする。
-
-### 9.5 差分指標・自動要約
-
-|指標|定義|
-|---|---|
-|correlationMax/MedianAbsDifference|Rpearson−Rpolyのi<j絶対差。異なる推定対象の差であり推定誤差と呼ばない|
-|loadingMax/MedianAbsDifference|共通q・整合後patternのp×q絶対差|
-|communalityMax/MedianAbsDifference|各側diag(ΛΦΛ′)の項目別絶対差|
-|factorCorrelationMaxAbsDifference|整合後Φの非対角絶対差。q=1は0・比較対0件|
-|assignmentChangedCount|両側で確定割当を持つ項目のうち、対応後の所属因子が変わった数|
-|assignmentComparableCount/ambiguousCount|確定比較対象数／少なくとも片側が曖昧な項目数|
-|factorCountDifference|PA候補kP−kO。片側nullならnull|
-
-因子割当は最大絶対負荷≥assignmentThreshold（既定.4）、かつ第2位との差≥assignmentMargin（既定.1）の場合に確定する。q=1は第2位条件なし。それ以外はunassigned/ambiguousを区別し、無理に所属を断定しない。表示用強調閾値とは別設定として保存する。
-
-loadingDifferenceThreshold、communalityDifferenceThreshold、factorCorrelationDifferenceThresholdの既定は各.10。これらは探索比較の表示目安で、統計的同等性マージンではない。利用者変更値と判定バージョンを保存する。
-
-自動要約assessmentは次の優先順とする。
-
-1. 片側失敗、PA不能、境界・不適解、因子整合不能はindeterminate。計算できた差分は残して理由を示す。
-2. 両側適切で整合済みかつPA候補差≠0、最大差が各目安を超過、または確定割当変更>0ならmethod_sensitive。
-3. 上記の差がなくても曖昧割当項目が残ればindeterminate（AMBIGUOUS_ASSIGNMENT）。
-4. 必要比較が揃い、候補数一致・全差が目安以下・全項目の確定割当変更0ならsmall_observed_difference。
-
-画面文言は「設定した目安では差が小さい」「手法による差が見られる」「比較結果の確認が必要」。p値、同等性証明、近似の無影響保証を付けない。手法依存があれば分布・相関差・因子数・問題項目へ移動できるようにし、順序モデル側の診断も確認する。単に差が大きいことだけでPolychoricを正解としない。
-
-### 9.6 非同期状態・保存・性能
-
-主結果は通常のresultIdとして完了後に公開し、比較はcomparisonIdで参照する。POST EFAのenabled指定で比較まで許可されたものとし、別途黙って解析を追加しない。GET `/api/v1/analysis-comparisons/{comparisonId}`でqueued/running/completed/partial/failed/cancelledと段階・進捗を返す。POST同URLの`/cancel`で比較だけ中断できる。主結果の計算値・設定・PCP選択は比較の完了/失敗によって変えない。
-
-両子結果、親resultId、固定snapshot、行・列hash、近似確認、共通置換ストリーム、回転・q・抽出条件、H、Q診断、差分、閾値、判定・理由を保存する。進捗は更新可能だが完成後の比較artifactは不変。同じ版での明示再実行は新comparisonIdにする。dataset版競合では新規比較を公開せずstaleとし、主結果は共通規約でstale閲覧にする。比較結果をCFAへ渡した場合は全探索結果の行集合を来歴に含める。
-
-ポリコリック相関は概ね項目対数p(p−1)/2、PAはそれを反復数倍評価するため、Nだけで実行時間を見積もらない。最終相関・閾値・各側Rを再利用し、同じMINRES主結果は比較の一方として共有できる。local/staticとも重い仕事はキューで直列化し、進捗更新のために区分実行する。無断のサンプリング・反復数削減・タイムアウト後Pearsonだけ成功扱いはしない。
-
-
----
-
-<a id="doc-16"></a>
-
-出典ファイル：[feature/33c_confirmatory_factor_analysis.md](feature/33c_confirmatory_factor_analysis.md)
-
-# Feature 033c：確認的因子分析（CFA）機能仕様書
-
-版1.1／2026-09-13／状態：設計確定、本体実装・統計的受入は未完了。
-詳細：[033c詳細設計](tasks/DAVIS-FEAT-033C-DESIGN.md)。関連：[契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)、[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)。
-
-## 1. 目的・EFAとの関係
-
-事前に指定した項目と因子の対応関係を、因子モデルとして推定・診断する独立機能とする。EFAの回転をCFAと呼ばない。CFAの完成を033bの公開条件にはしない。推定法と分析目的は別の分類であり、WLSMV等が原理的にCFA専用であるとは説明しない。
-
-初期版は単一群、一次因子、単純構造、連続または全順序項目、因子間相関を自由／直交から選ぶ範囲とする。各因子に3項目以上、各項目は1因子に所属させる。交差負荷、誤差共分散、等値・非線形制約、多群・測定不変性、高次・bifactor・構造回帰・ESEMは追加段階であり、入力UIで利用可能にしない。
-
-## 2. 測定モデルの指定
-
-項目一覧から各因子に指標を割り当て、因子名と尺度基準となるマーカー項目を指定する。マーカー負荷量を+1に固定する。未指定交差負荷は0、項目誤差共分散は0。因子相関は既定自由、直交を明示選択したとき0に固定する。固定・自由パラメータの表を実行前に確認できる。
-
-カテゴリの順序・許容値・逆転・連続近似、欠損分類は033bと同じ。順序項目の閾値と残差尺度の制約を明示し、連続モデルの切片と混同しない。カテゴリ数やNによる自動切替は行わない。
-
-## 3. 推定法と対象
-
-|方法|初期の位置づけ|前提・制限|
-|---|---|---|
-|WLSMV|順序CFAの基本候補|DWLS点推定とロバストSE・平均分散補正検定を組み合わせる|
-|MLR|連続または明示した連続近似の基本候補|ロバストSEと補正検定。外れ値除去や順序性の解消ではない|
-|ULSMV|有力な追加候補|独立した数値照合に合格後に利用可能。小標本での収束を保証しない|
-|通常ML|連続モデルの基本方式の確認・比較|多変量正規性と通常推論の前提を表示|
-
-ULSMVの提供は追加ゲートとし、WLSMVとMLRを第一の受入対象とする。WLSMVをN≥500や1000専用としない。推定法の加重と回答者の調査ウェイトを区別する。初期版はfrequency／surveyとも未対応。欠損は完全ケース方式のみとし、順序経路に連続FIMLを流用しない。
-
-主要な5件法・N=1000〜2000程度の利用でも、良好な周辺分布を持つ項目の明示的な連続近似＋MLRを主要候補として提示する。ヒストグラムがベル型であることだけで通常MLの前提成立とはしない。033bのPearson／Polychoric感度分析は、測定上の扱いを検討する参考情報として参照できるが、その一致だけでCFAの推定法を決定したり、CFAのSE・適合度が同等と判断したりしない。EFA比較結果を同じデータで再利用した事実も来歴に残す。
-
-## 4. 推定・識別・状態
-
-自由度だけで識別済みと判断せず、モデル構造、パラメータと標本統計量の対応、局所識別性、情報行列を検査する。標本数に対する固定倍率を実行の可否にしない。推定器の実際の収束・情報不足を診断する。
-
-負の分散、極端な因子相関、特異な潜在共分散、閾値の不順序、SE計算不能、負荷量の境界、非正定値、未収束を表示する。計算完了と適切な解を別状態とし、別推定法での自動再試行をしない。
-
-## 5. 結果・適合度
-
-非標準化推定値、標準誤差、信頼区間、標準化負荷量、因子共分散・相関、残差分散、切片または閾値、再現共分散／潜在応答相関、残差を返す。固定パラメータにはSE・検定値を付けず、fixedを表示する。
-
-χ²・df・p・CFI・TLI・RMSEA（CIを含む）・SRMRを、推定器と定義が対応するものだけ返す。通常版・scaled版・robust版を別欄にし、元エンジンの名称と補正法を保存する。適用不能は理由付きnull。MINRES負荷量からML適合度を計算する等の代用を禁止する。
-
-CFI等の固定カットオフによる「合格」「妥当性確認済み」を表示しない。df=0、基準モデル推定失敗、補正係数未定義、順序相関の非正定値、非収束、不適解の場合は対応指標と推論の利用可否を分ける。異なる定義の値を同名に詰め直さない。
-
-## 6. 確認の独立性
-
-`validationIntent`は利用者の意図であり証明ではない。EFAからのモデル作成は割当の草案だけを渡し、CFA実行前に確定させる。同一データ・重複行での再推定は「同じデータによる追試」と表示する。
-
-探索元の結果、データの系譜、回答者ID集合、分割方法、モデル確定時点を保存する。同一データセットでは行ID交差を検証し、別データセットで回答者同一性を確認できなければ「独立性未確認」とする。非重複だけで研究上の独立な確認が成立したとは断定しない。学習後にモデルを変更した検証データは、その変更後のモデルの独立確認には数えない。
-
-## 7. UI・PCP・実行環境
-
-EFAと別ページで、対象項目→因子への割当→尺度設定→推定法と前提→結果と診断の順に構成する。モデル表はキーボードで操作でき、図を使う場合も表から同じ情報を読めるようにする。ドラッグ操作だけを必須にしない。
-
-初期版のCFAは因子得点・PCP得点保存・個体予測を提供しない。設定・結果はKeepAliveで保持し、PCPの行選択を勝手に変更しない。結果の表とmanifestの出力を提供する。
-
-初期の検証対象はローカル実行のlavaanエンジン。静的版は結果閲覧に必要な契約を共有するが、CFA実行は未対応能力として明示する。静的環境でのCFA実行には同じ推定・推論を実現するエンジンの別受入が必要。ブラウザから外部へ回答データを送信して代用しない。
-
-## 8. 受入
-
-受入IDはCFA-C01〜C14。測定モデル、固定／自由、識別、WLSMV・MLR・追加ULSMV・MLの数値照合、閾値・SE・各適合度定義、欠損、疎カテゴリ、不適解、同一データ判定、結果保存、環境能力を検証する。詳細は[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を正本とする。
-
-
----
-
-<a id="doc-17"></a>
-
-出典ファイル：[tasks/DAVIS-FEAT-033C-DESIGN.md](tasks/DAVIS-FEAT-033C-DESIGN.md)
-
-# DAVIS-FEAT-033c：CFA 実装詳細化設計書
-
-版1.1／2026-09-13／対応：[033c機能仕様](feature/33c_confirmatory_factor_analysis.md)。設計上の予定API・ファイルであり、既存機能の実装を示さない。
-
-## 1. 接続と実行エンジン
-
-route `/models/cfa`、POST `/api/v1/models/cfa`、結果method=`cfa`、schemaVersion=`factor_extensions.1`。入力は[CFARequest](contracts/factor_extension_requests.py)。既存のML-EFA APIと分離する。予定ファイルはfullstack/backend/app/api/cfa.py、services/cfa_service.py、algorithms/models/cfa_engine.py、algorithms/models/cfa_runner.R、frontend/src/features/models/ConfirmatoryFactorAnalysisPage.tsx。
-
-初期ローカルエンジンはR lavaanを採用し、推定・SE・検定・適合度を同じfitから取り出す。WLSMV/MLRを必須、MLを通常版の照合対象、ULSMVを独立した追加受入対象とする。実装時にR/lavaan/BLAS版とソースhashを固定し、全オプションを解決したengine manifestを作成する。最新版への無条件追従はしない。
-
-033cに限り、共通設計の「NumPy/SciPyのみでlocal/static同時実行」から独立したローカルエンジン境界を定義する。静的PyodideではCFA実行を`CFA_ENGINE_UNAVAILABLE`とし、環境能力と理由を表示する。EFAの静的対応をCFA完了待ちにしない。静的CFAは後続エンジンの同等性検証で別ゲートとする。
-
-Rscriptは設定済み絶対パスから引数配列で起動し、ユーザーの文字列をR式やshellへ補間しない。固定runnerが制限したJSON測定モデルを内部記号v1..vp/f1..fqに変換する。表示ラベルやcolumnIdを構文識別子として流用しない。raw R script、任意式、任意パスをAPI入力で受け付けない。依存不足時の自動インストールや外部計算サービスへの送信は行わない。
-
-## 2. 測定モデルとパラメータ表
-
-連続：`x=ν+Λη+ε`、Eη=0、Varη=Φ、Varε=Θ、Σ=ΛΦΛ′+Θ。Θは対角、非指定負荷量は0。各因子のmarker負荷量を+1、他の所属負荷量を自由、因子分散を自由にする。因子共分散はfreeなら全対自由、orthogonalなら全対0。
-
-順序：同じ線形モデルを潜在応答x*に置き、`Yj=k ⇔ τj,k−1<x*j≤τjk`。probit、theta parameterizationを固定する。単一群で項目の潜在応答切片0、残差分散1、潜在因子平均0とし、内部閾値Kj−1を自由、marker負荷量+1・因子分散自由。項目の潜在応答総分散を1と決め打ちせず、標準化時にΣの対角から求める。
-
-1項目が複数因子に所属、未所属、markerが非所属、因子ID重複、項目数3未満、未知項目を拒否する。これは初期UIの単純構造範囲であり、3項目あれば必ず識別されるという主張ではない。
-
-自由パラメータは安定ID、lhs/op/rhs、fixedValue、freeIndex、label、sourceColumnId/sourceFactorId、scaleを持つ。標本統計量との対応順を保存する。markerの符号を後処理で変更して固定+1と矛盾させない。符号反転は別モデルの設定変更として扱う。
-
-## 3. 前処理・識別性
-
-scope・版・欠損・重み・categoryOrder・逆転は033b第2節の前処理を再利用し、完全ケースのみ。同節のEFA専用n>p・q・自由度条件はCFAへ引き継がず、以下のCFAモデルで検査する。raw相関のユーザー持込モードは初期版なし。連続項目は元の分析単位の値を渡し、EFAのddof1相関への標準化を勝手に適用しない。連続近似は確認済み等間隔順位値を渡す。
-
-識別は事前構造検証、自由度、推定後Jacobianの列rank、情報行列のrankと条件数で判定。連続の標本統計量数はp+p(p+1)/2、順序はΣ(Kj−1)+p(p−1)/2。自由度は当該統計量数と制約を適用した独立自由パラメータ数から求め、エンジン値と照合する。冗長制約やデータ依存特異をdf≥0だけで許可しない。
-
-df<0は停止。df=0は点推定を条件付きで許し、モデル適合の検定・RMSEA/CFI/TLIをnullとする。十分なNの固定境界は設けず、定数・未観測カテゴリ・計算不能・実測rank不足など具体的原因で停止する。
-
-## 4. 四つの計算層
-
-|層|入力→出力|禁止事項|
-|---|---|---|
-|標本統計量|raw fit行→共分散／閾値・相関・Γ|EFAのpair別SEをΓと呼ばない|
-|パラメータ推定|統計量・モデル・推定重み→θhat|単なるULS負荷量をULSMVと名付けない|
-|推論|θhat・Jacobian・情報行列・Γ→SE・検定・補正量|通常SEでロバストSEを代用しない|
-|適合度|target/h1/baselineの対応する統計量→指標|通常・scaled・robustを混合しない|
-
-順序の標本統計量sは閾値＋相関の一意成分、Γはsqrt(n)(s−σ)の漸近共分散として、順序・次元・Nによるscale規約を必ず記録する。点推定はWLSMVで対角重み、ULSMVで単位重みを使うが、推論は完全な漸近共分散情報を要する。lavaan内部の標本統計量・WLS.V・NACOV・parameterTable・test設定を取り出し、正規化や並びをadapterで検証する。
-
-連続ML/MLRはlavaanのnormal likelihood、meanstructure=true、missing=listwiseを固定し、内部のN分母共分散・尤度規約を保存する。033 EFAのN−1/Bartlett補正式をCFAへ流用しない。MLRのSE/testはエンジンが解決した方式を返す。ロバスト性は標準誤差と検定の補正の意味に限定する。
-
-runnerはestimator、ordered項目、parameterization、meanstructure、std.lv=false、missing、likelihood、SE/test、optim.method、最大反復・許容誤差を解決済み設定として返す。初期adapterはNLMINB、最大反復20000とし、収束許容値は選定したエンジン版の値を固定manifestに記録してgolden生成前に凍結する。これは公開UIの任意エンジンオプションではない。エンジンが指定した推定器を別方式へ変えた場合は、WLSMV内部のDWLSのように定義に含まれるもの以外をエラーとする。
-
-## 5. 結果抽出と標準化
-
-非標準化推定値は元のパラメータ表順。std.lv（因子標準化）とstd.all（因子・観測または潜在応答の標準化）を別フィールドにする。`stdAllLoading_jf = Λjf sqrt(Φff)/sqrt(Σjj)`。`Dφ=diag(diagΦ)`として`factorCorrelation=Dφ^(-1/2) Φ Dφ^(-1/2)`。SE・CIの標準化版はエンジンがその定義で返すものだけ採用し、点推定を割った倍率で通常SEを代用しない。
-
-順序閾値は有限内部閾値を推定尺度付きで返す。外端の±∞はJSON数値として返さず、境界種別文字列で表す。固定残差分散1と標準化残差分散Θjj/Σjjを混同しない。順序の再現相関は`Dσ=diag(diagΣ)`として`Dσ^(-1/2) Σ Dσ^(-1/2)`で、観測回答コードの相関ではない。共通性はstd.all尺度のdiag(ΛΦΛ′)/diagΣとして返す。
-
-負のΘ/Φ対角、Φ非正定値、|因子相関|≥1、未順序閾値、特異Jacobian、境界・非収束を診断。不適解に対するSE/CI/検定は公開推論欄をnullとし、エンジンの生値は診断用に分離する。SEのみ不能で点推定が許容される場合は`solutionStatus=admissible`、`inferenceStatus=unavailable`を許す。
-
-## 6. 検定統計量・適合度の契約
-
-返却は[拡張結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)の`fitMeasures[]`。metric、variant、engineKey、value、補正法、N/df、availabilityとreasonCodeを一組とする。
-
-|表示指標|通常版エンジンキー|scaled版|robust版|
-|---|---|---|---|
-|χ²/df/p|chisq / df / pvalue|chisq.scaled / df.scaled / pvalue.scaled|独立した値を捏造しない。scaled検定と補正名を使用|
-|CFI/TLI|cfi / tli|cfi.scaled / tli.scaled|cfi.robust / tli.robust|
-|RMSEA/CI|rmsea / rmsea.ci.lower / rmsea.ci.upper|各キーのscaled系列|各キーのrobust系列|
-|SRMR|srmr|提供なしはnull|提供なしはnull|
-
-実エンジンのキーとCIキーの位置は採用版で存在検査し、登録した対応表を固定する。CI水準は入力confidenceLevelをfitMeasuresのRMSEA CI設定へ明示伝達する。指標の標準キー名を生成規則だけで推測しない。availabilityはavailable/not_applicable/not_implemented/failed。未提供キーはnullと理由を返す。
-
-target model、baseline model、h1の推定器、統計量種別、補正係数、shift、df、元エンジンtestオブジェクト参照を保存する。相関行列PD検査を無効化してrobust指標を強制しない。baseline不適合・未収束ならCFI/TLIの関連variantをnull、RMSEA等は個別条件で判断する。通常のカットオフによる自動合否なし。
-
-AIC/BICはML/MLRの比較可能な同一データ・同一観測変数・同一尤度規約のみ。初期UIはモデル比較機能を持たず、WLSMV/ULSMVで尤度を捏造しない。修正指標と自動モデル探索は初期版対象外。将来のscaled差の検定は専用検定を用い、補正χ²同士の単純な差で代用しない。
-
-## 7. EFAからの草案と独立性
-
-`sourceEfaResultId`は同一所有者の保存結果を解決し、元のdata lineage、fit行ID集合、設定hash、モデル作成時点を記録する。標準は利用者による手動割当。草案機能を設ける場合も負荷量閾値で自動確定せず、全項目の単純構造割当を確認してCFAモデルとして保存する。
-
-同一dataset lineageなら行ID交差のcountを算出し、重複>0ならsame_data。非重複で事前に固定されたsplitとmodel hashが確認できる場合はholdout_recorded。別datasetで同一回答者の判別情報がなければunknown。externalの選択だけでconfirmedとしない。meta.isExplorative=trueを維持し、analysisPurpose=confirmatory_model、validationEvidenceで確認の意味を分離する。
-
-探索元EFAに感度比較が付随する場合は親resultIdからcomparisonId・両比較子結果・探索使用行の和集合を解決する。主結果だけを探索使用データと見なし、比較で使った行を未使用holdoutと誤認しない。同じscopeに固定した初期仕様では集合は同じになることを検証する。比較のsmall_observed_differenceをCFAモデルの独立検証済みフラグへ変換しない。
-
-5件法・N=1000〜2000の良好分布に対する明示連続近似はMLRの主要利用例とし、元measurementがordinalでもtreatmentで推定器を選ぶ。CFA自身のWLSMV対MLR自動感度比較は初期版には追加しない。将来実施する場合は同じ指標・同じ制約でも観測得点と潜在応答の推定対象・尺度が違うことを整合させ、EFAの行列差比較をそのまま流用しない。
-
-## 8. API・保存・画面・運用
-
-共通の409 stale、422 input/estimation、503 resourceと原子的result publishを使う。計算時の失敗はattemptIdに診断を保存し、正常モデルとして公開しない。対応エンジンが未導入なら503 `CFA_ENGINE_UNAVAILABLE`、ULSMVが未検証なら422 `CFA_ESTIMATOR_NOT_VALIDATED`。Rの警告を捕捉し、SE失敗と非収束を同一分類にまとめない。
-
-manifest、parameter table、sample statistics、Γ/WLS.V参照、test/fit measures、モデル制約、engine版・hash、fit/excluded行ID、sourceEfaResultIdと独立性根拠を保存する。raw RオブジェクトをPython pickleへ変換しない。必要な数値・文字列をJSON/NPZ/Parquetへ明示変換し、raw engine logは内部診断としてパスを公開しない。
-
-rows/projection/materialize/simulation=false、selectionKinds=[]。CFA図上の因子・項目クリックでReduxの回答者選択を変更しない。設定モデルと結果モデルhashを表示し、変更後に旧結果を新モデルの結果として見せない。KeepAlive・dataset切替・logical cancel・版照合・exportは既存規約を使用する。
-
-入力エラーは対応項目の直下と上部のエラー一覧に併記する。実行失敗時は一覧見出しへフォーカスを移し、一覧から各入力へ移動できるようにする。推定診断の警告は色だけで区別せず、状態名・対象項目・修正可能な設定をテキストで示す。進捗は読み上げ対応、非表示KeepAliveページからの重複通知を抑制する。
-
-本番実装時はrun-production.batによるローカル画面確認を受入に含める。ビルド・配布検証は実施指示がある段階で行い、設計資料作成やkernel試験と区別する。
-
-## 9. 未実装ゲート
-
-R同梱方式・ライセンス・依存固定・runner起動の製品検証、単純構造のoracle、SE/適合度variant、失敗診断、API/保存/FE、追加ULSMVを順に完了させる。これらは実装前の未検証事項であり、WLSMV/MLRの名前だけを選択肢へ追加して完了としない。[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を参照。
-
-
----
-
-<a id="doc-18"></a>
-
 出典ファイル：[feature/34_conjoint_analysis.md](feature/34_conjoint_analysis.md)
 
 # Feature 034：コンジョイント分析機能仕様書
@@ -1694,7 +1068,7 @@ CJ01 effect codingで水準効用和0。CJ02 2択・同一属性差・3対1選�
 
 ---
 
-<a id="doc-19"></a>
+<a id="doc-13"></a>
 
 出典ファイル：[tasks/DAVIS-FEAT-034-DESIGN.md](tasks/DAVIS-FEAT-034-DESIGN.md)
 
@@ -1853,13 +1227,452 @@ mapping wizard→完全性検証→属性・水準一覧→model設定→結果�
 
 ---
 
-<a id="doc-20"></a>
+<a id="doc-14"></a>
+
+出典ファイル：[feature/33_exploratory_factor_analysis.md](feature/33_exploratory_factor_analysis.md)
+
+# Feature 033：探索的因子分析（EFA）機能仕様書
+
+版1.1／2026-09-13／状態：設計確定、数値エンジン・本体実装の受入は未完了。
+実装詳細：[DAVIS-FEAT-033-DESIGN](tasks/DAVIS-FEAT-033-DESIGN.md)。関連：[入力・結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)、[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)。
+
+## 1. 目的・範囲
+
+アンケート項目の共通因子構造を探索する。主要利用条件は同一国内の一般的なアンケート、N=1000〜2000程度、5件法中心とする。順序尺度のモデル化にはポリコリック相関と最小残差法（MINRES／ULS系）を提供し、明示した連続近似のPearson＋ML／MINRESも提供する。因子数の候補、回転、欠損・相関・解の診断、再現可能な設定、Pearson／Polychoric感度分析を含める。
+
+5件法でカテゴリ分布が概ね対称、床・天井への極端な集中がなく、各カテゴリが十分観測される場合、連続近似を合理的な実務選択肢として提示する。N=1000を統計的境界にはしない。ベル型ヒストグラムは単一項目の連続正規性や多変量正規性の証明ではなく、手法間の一致も潜在モデルの正しさの証明ではない。
+
+現行のEFAは非加重・完全ケースのみである。PCA、PAF、混合相関・ポリシリアル、順序プロビット因子、確認的因子分析、構造方程式、pairwise、FIML、内部補完は対象外とする。CFAは独立した[Feature 033c](feature/33c_confirmatory_factor_analysis.md)で扱う。旧Feature 033の連続ML資料とFeature 033bは移動案内であり、本書より優先しない。
+
+## 2. 入力・測定水準・前処理
+
+POST /api/v1/models/factor-analysis は [EFARequest](contracts/factor_extension_requests.py) を受け、結果 method は efa、schemaVersion は factor_extensions.1 とする。生成Schemaは[efa.schema.json](contracts/schemas/efa.schema.json)、入力例は[efa.request.json](contracts/examples/efa.request.json)である。旧[FactorAnalysisRequest](contracts/analysis_requests.py)と[factor_analysis.schema.json](contracts/schemas/factor_analysis.schema.json)は旧連続ML資料の参照検証資産であり、現行API入力ではない。旧入力を自動変換せず、旧形式は明示的に拒否する。
+
+3項目以上を選ぶ。測定水準はコードブックまたは根拠付きの分析時指定から解決し、カテゴリ数・標本数・分布形状で自動変更しない。
+
+|入力状態|既定候補|制御|
+|---|---|---|
+|全項目が連続|Pearson＋ML|多変量正規性の前提を表示。MINRESも選択可能|
+|順序尺度を順序モデルとして扱う|Polychoric＋MINRES／ULS系|潜在応答と閾値を仮定する旨を表示|
+|順序尺度の連続近似|Pearson＋MLまたはMINRES|項目ごとの明示同意と等間隔順位得点が必要|
+|順序と連続のモデル化が混在|実行不可|混合相関・ポリシリアル経路は初期版未対応|
+|名義・ID・文字列・MA親・水準不明|実行不可|対象列または測定水準の確認が必要|
+
+順序項目は許容コード、カテゴリ順序、逆転指定を分析情報として保存する。カテゴリ順序を数値コードやラベルの辞書順から生成しない。逆転は確認済み順序の反転として一度だけ適用し、元の順序と最終順序を保存する。連続近似では最終位置を1..Kの等間隔得点にする。コードブック変換済み列への二重逆転を防ぐ。
+
+全対象項目の完全ケースを固定する。無回答・非該当・不正値を区別し、除外理由と項目別件数を返す。既存補完値の利用は共通契約の use_current_values に従い、補完件数と来歴を明記する。datasetの解決済みウェイトが存在する場合は FA_WEIGHT_UNSUPPORTED で拒否し、設定を none へ変更して続行しない。
+
+未観測の許容カテゴリ、定数、項目ごとの実観測カテゴリ不足、n<=p、q>=p、df<0、非正定値または数値的特異な相関行列は停止条件である。カテゴリの削除・統合、nearPD、ridge、cor.smooth、因子数の自動削減は行わない。
+
+## 3. 相関・抽出・因子数
+
+Pearson相関は同じfit集合から ddof=1 の標本共分散と標本標準偏差で求める。Polychoricは全項目で共通の完全ケース集合を使う二段階推定であり、項目閾値を項目対で共有する。2値項目は同じ推定系のtetrachoric特殊形とする。0.5加算、カテゴリ統合、負確率のclip、相関行列補正は行わない。相関未収束、境界推定、非正定値は抽出へ進めず、対別診断と試行を保存する。
+
+抽出法は Pearson 経路のMLと、Pearson／Polychoric双方の単一MINRES／ULS系である。MLをPolychoricへ適用せず、未収束時に別の抽出法へ切り替えない。MLの完全目的関数、勾配、複数start、Varimax／Promax、連続得点、参考推論は[実装詳細](tasks/DAVIS-FEAT-033-DESIGN.md)に定義する。MINRES／ULS系は目的関数識別子 uls_profile_full_v1 を保存し、非対角MINRESのSSEと混同しない。
+
+因子数は利用者が最終指定する。全相関行列のスクリープロット、項目別独立置換による平行分析、明示した compareFactors の比較を提供する。平行分析は候補を示すだけで nFactors を変更しない。観測・比較側とも対角1の全相関行列の降順固有値を使い、項目分布を厳密に維持する。反復失敗を再抽選・除外せず、失敗時の分位値と候補はnullとする。主qの失敗を別qの成功で置換しない。
+
+回転はPromaxを既定とし、Varimax、無回転を提供する。1因子では適用回転をnoneとし、要求との差と理由を保存する。回転失敗を無回転で置き換えない。Promaxではpattern、structure、因子間相関Phiを別表とし、pattern二乗和を加算可能な因子寄与率として表示しない。
+
+## 4. 結果・診断・推論
+
+pattern、structure、Phi、共通性、独自性、観測相関、再現相関、対角を含む残差、非対角RMSR、最適化履歴、分布・相関診断を返す。computationStatus、solutionStatus、inferenceStatusを分離する。未収束、回転特異、独自性境界、負の独自性、共通性範囲外、特異Phiを明示する。pattern係数の絶対値だけで斜交解を不適と判定しない。
+
+MINRES／ULS系は負荷量・残差を中心に返し、chi-square、CFI、TLI、RMSEA、係数SEを返さない。Pearson＋MLだけが適用条件付きで通常の参考chi-square、df、p値、RMSEA、KMO、Bartlett球面性を返せる。境界・不適解・定義不能な推論値は理由付きnullとし、0を代用しない。MLの通常近似をscaledまたはrobustと表示しない。
+
+表示用の負荷量強調閾値は初期値 abs(0.4) とするが、係数の切捨て、因子選択、解の適否には使わない。因子名は自動断定せず、利用者が表示名を設定できる。
+
+## 5. 得点・保存・PCP
+
+scoreMethodの既定はnoneである。Pearson経路で適切な解かつ明示したregressionまたはbartlettだけ、学習時の標本平均・標本標準偏差・標本相関・得点係数を固定して得点、射影、PCP行選択、派生列保存を有効にする。連続近似を含む場合は continuous_approximation と来歴へ残す。Polychoric経路、得点none、不適解では得点に基づくrows、projection、materialize、PCP操作を無効にする。
+
+回答者得点は全fit行を原rowIdで結合し、対象外・欠損予測行はnullにする。項目・因子のクリックを回答者行選択として扱わない。得点が有効な結果だけ中央selection、既存L1/L2、実ポインタ選択、相互ハイライト、export、保存を利用できる。dataset、列、コードブック、maskの版変更で結果をstaleにし、KeepAliveで設定・結果・スクロールを保持する。
+
+結果・失敗試行・比較は共通の所有dataset、revision、scope、有限JSON、原子的保存、idempotency、stale、削除、ページ出力の規約に従う。EFAの設定、変換、相関、閾値、start、平行分析反復、比較条件、エンジン版とhashを保存する。
+
+## 6. Pearson／Polychoric感度分析
+
+感度分析は全項目の元measurementがordinalの場合に提供する。API既定はoffであり、enabled=true、独立したapproximationAcknowledged=true、parallelAnalysis.enabled=trueを同時に要求する。主結果を変更せず、Pearson-MINRESとPolychoric-MINRESを同じfit行、項目、順序、逆転、欠損、q、回転、制約、start、seed、置換indexで比較する。主MLを比較用MINRESへ置換しない。
+
+両側の因子は絶対congruence最大の一対一割当と符号付き置換で整合し、Phiとstructureにも同じ変換を適用する。元の行列を上書きしない。次善割当との差、低congruence、ゼロノルム、rank不足から曖昧性を判定する。Procrustesは補助の空間診断だけであり、pattern差や割当変更を消すために使わない。
+
+相関・負荷量・共通性・Phiの差、確定因子割当の変更、平行分析候補の差を返す。異なるqの不足列を0で埋めて差を計算しない。片側失敗、平行分析不能、不適解、曖昧整合は「差なし」にしない。比較artifactは主resultIdとは独立し、comparisonIdで進捗、取得、export、cancelを提供する。感度比較の一致を同等性検定、正規性の証明、CFAの独立検証と表示しない。
+
+## 7. 受入
+
+受入IDはEFA-B01〜EFA-B22である。尺度・順序・逆転・欠損・ウェイト拒否、Pearson／Polychoric、ML／ULS系、回転・不適解、平行分析・候補比較、得点、保存、PCP、KeepAlive、感度分析、local/Pyodide、性能を検証する。数値oracle、許容差、実装順序、未実施事項は[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)と[検証報告](validation/FACTOR_EXTENSIONS_VALIDATION.md)を参照する。
+
+## 一次資料との対応
+
+[S-FA](references/PRIMARY_SOURCES.md#s-fa)、[S-FA-SRC](references/PRIMARY_SOURCES.md#s-fa-src)、[S-ROT](references/PRIMARY_SOURCES.md#s-rot)、[拡張一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)を参照する。API、閾値、対応範囲、警告方針は本書群で採用した製品設計であり、原典が唯一の実装方法を要求するという意味ではない。
+
+
+---
+
+<a id="doc-15"></a>
+
+出典ファイル：[tasks/DAVIS-FEAT-033-DESIGN.md](tasks/DAVIS-FEAT-033-DESIGN.md)
+
+# DAVIS-FEAT-033：探索的因子分析（EFA）実装詳細化設計書
+
+版1.1／2026-09-13／対応：[Feature 033](feature/33_exploratory_factor_analysis.md)。本書のAPIとファイルは実装予定であり、既存実装済みという意味ではない。
+
+現行の入力正本は[EFARequest](contracts/factor_extension_requests.py)、生成Schemaは[efa.schema.json](contracts/schemas/efa.schema.json)、結果・能力・診断の正本は[拡張契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)である。旧FactorAnalysisRequest、factor_analysis.schema.json、旧033／033b文書は参照検証資産または移動案内であり、現行APIの互換入力ではない。
+
+初期版は全経路で非加重・完全ケースである。旧033のfrequency対応、ML専用、平行分析なし、順序相関対象外の規約を引き継がない。EFA-B01〜EFA-B22が本設計の受入IDである。CFAは[033c](tasks/DAVIS-FEAT-033C-DESIGN.md)の独立機能で、本書の完了条件ではない。
+
+## 1. 接続・責務・実装境界
+
+画面は route /models/factor-analysis、POSTは /api/v1/models/factor-analysis、結果methodは efa、schemaVersionは factor_extensions.1 とする。
+
+|予定ファイル（fullstack/基準）|責務|
+|---|---|
+|backend/app/api/factor_analysis.py|構文検証・サービス呼出し|
+|backend/app/services/factor_analysis_service.py|scope snapshot、尺度解決、ウェイト拒否、段階実行、保存|
+|backend/app/algorithms/models/ordinal_correlations.py|閾値・ポリコリック・項目対診断|
+|backend/app/algorithms/models/factor_analysis_minres.py|単一ULS系目的関数と最適化|
+|backend/app/algorithms/models/factor_analysis_ml.py|Pearson ML目的関数、得点、参考診断|
+|backend/app/algorithms/models/factor_rotations.py|Varimax／Promax規約|
+|backend/app/algorithms/models/factor_parallel.py|項目別置換、同一相関推定、固有値比較|
+|backend/app/algorithms/models/factor_sensitivity.py|Pearson／Polychoricの同条件比較、因子整合、差分診断|
+|frontend/src/features/models/FactorAnalysisPage.tsx|設定、診断、結果、得点連動|
+
+既存のcontext、codebook_adapter、analysis_columns、analysis-results、provenance、storeを接続先とし、main.tsx、KeepAliveOutlet.tsx、AppShell.tsxへ登録する。共通基盤が未完成の箇所を完成済みと仮定しない。
+
+NumPy/SciPyでlocal／Pyodide共通kernelを作り、Rのpsych・polycor・factanalを独立oracleとする。factor_analyzer、psych、polycor、factanalをproduction依存へ追加しない。仕様だけで数値一致を達成済みと表示せず、oracle不一致は目的関数・制約・回転規約を確認して設計差分として記録する。
+
+## 2. 入力・前処理・識別可能性
+
+1. 所有dataset、data/schema/mask revision、明示scopeを確定し、必要項目だけをsnapshot取得する。空selectedをallへ変更しない。
+2. 既存resolverでweightを解決し、有効なdatasetウェイトがあれば FA_WEIGHT_UNSUPPORTED を返す。weightModeをnoneへ黙って変更しない。
+3. measurementはコードブックまたは根拠付き分析時指定で解決する。未知・名義・ID・MA親・countは拒否し、分析時指定でコードブックを変更しない。
+4. 順序項目は既存normalize_codeで許容コードを照合する。categoryOrderは許容順序カテゴリの完全な重複なし配列で、欠損・非該当用コードを含めない。表示ラベル、辞書順、数値間隔から順序を作らない。
+5. 逆転は raw code → 確認済みカテゴリ位置 → 最終順序の順で一度だけ適用する。連続近似は最終位置1..Kを等間隔得点にする。連続変数の逆転は前処理済み派生列として扱い、ここでreverse=trueを受け付けない。
+6. 全対象項目に有効値を持つ完全ケースをfit集合とする。主除外理由は invalid、次にmissing（無回答・非該当を含む）とし、詳細診断では両者を別件数にする。scopeCount=fitCount+excludedCountを維持する。既存補完値の使用は共通契約のuse_current_valuesに従い、補完来歴を保存する。
+7. 連続列は標本標準偏差が正、順序列は実観測カテゴリが2以上で全許容カテゴリが観測済み、n>p、1<=q<p、df=((p-q)^2-p-q)/2>=0を要求する。n>pは数値入力条件であり一般的な必要標本数の結論ではない。df=0は記述解を許すが通常の適合度推論をnullにする。
+
+全ordinal treatmentなら polychoric/minres/scoreMethod=none、ordinal treatmentを含まない場合はpearsonとする。continuousと明示したcontinuous_approximationの混在は許可する。ordinal→continuous_approximationには項目ごとのapproximationAcknowledged=trueが必須である。真の順序treatmentと連続treatmentの混在は FA_MIXED_MEASUREMENT_UNSUPPORTED とする。pairwise、FIML、correction、重み付き推定は受け付けない。
+
+未観測カテゴリ、定数、n不足、df負、危険な数値、非正定値は自動的に修正・削除・統合しない。失敗試行は診断として保存し、有効resultId、rows、projection、materializeには公開しない。
+
+## 3. 相関・閾値・行列検証
+
+### 3.1 Pearson
+
+同じfit集合から、nをfit行数として標本平均、ddof=1の標本共分散 S、標本標準偏差 D、相関 R=D^-1 S D^-1 を求める。大きな非対称性を転置平均で隠さず、丸め範囲の対称化だけを数値処理として記録する。変数別・対別の有効数はすべてnである。
+
+### 3.2 Polychoric
+
+二段階推定を固定する。項目jのカテゴリ累積比率 F_jk から有限内部閾値 tau_jk=Phi^-1(F_jk) を求め、端点は -infinity、+infinity とする。全項目で同じ完全ケース集合を使うため、項目閾値は全項目対で共有する。未観測カテゴリは無限内部閾値を生むため停止する。
+
+項目対のセル度数 n_kl と潜在標準二変量正規の矩形確率 p_kl(rho) に対し、負の対数尤度 -sum(n_kl log p_kl) を rho in [-0.9999,0.9999] で最小化する。0件セルは和に寄与しない。度数への0.5加算、カテゴリ統合、負確率のclipは行わない。2×2も同じ式でtetrachoricとして記録する。
+
+行区間[a,b]、列区間[c,d]の矩形確率は次の条件付き一次元積分を用いる。
+
+P = integral_a^b phi(z) { Phi((d-rho z)/sqrt(1-rho^2)) - Phi((c-rho z)/sqrt(1-rho^2)) } dz
+
+積分は絶対・相対許容誤差1e-10を要求し、極端な尾部は生存関数またはlog差分で桁落ちを抑える。積分誤差超過、負確率、非有限確率はclipなどで救済せず相関推定失敗とする。bounded scalar solverはxatol=1e-8、maxiter=1000とし、粗いrho格子で目的関数形状を確認して最良区間を含む探索を行う。有限目的値、有限確率、停止成功を要求し、端点から1e-5以内は境界推定として抽出を停止する。pair recordにはn、度数表、閾値参照、rho、最適化回数、積分誤差、境界フラグ、0セル数、少数セル数を保存する。
+
+相関係数だけのSEをCFAの漸近共分散として渡さない。この相関モジュールはCFAの標本統計量・Gamma生成器の代用品ではない。
+
+### 3.3 行列検証
+
+Rは対角1、有限、対称、範囲内を要求する。最小固有値が 1e-10×最大固有値以下なら数値的非正定値または特異として停止し、Choleskyも要求する。元行列と診断を失敗記録に保存し、nearPD、ridge、cor.smoothを自動適用しない。matrixCorrectionは applied=false、method=null とする。
+
+## 4. 抽出エンジン
+
+### 4.1 単一のMINRES／ULS系
+
+UI名は「最小残差法（MINRES／ULS系）」、API extractionは minres、実方式は uls_profile_full_v1 とする。代表的な非対角診断値 F_off=sum_{i<j}(R_ij-[L L']_ij)^2 も返すが、最適化目的値と同名にしない。
+
+対角パラメータ u in [uniquenessLower,1] に対し A(u)=R-diag(u) とする。上位q固有値・固有ベクトルから L(u)=E_q diag(sqrt(max(d_1..d_q,0))) を作り、F_profile(u)=||A(u)-L(u)L(u)'||_F^2 を最小化する。対角残差を含む。目的値の2倍・半分を黙って混同しない。
+
+これは対角の扱い・境界制約を明示したULS系の一方式であり、全実装のMINRESと完全同一とは主張しない。factor_analyzerの公開ULS profile実装と、R psychのMINRESによる再現相関を別の比較対象にする。名称だけで同値と判定しない。
+
+optimizerはL-BFGS-B、ftol=1e-12、gtol=1e-7、maxls=50、maxiterは入力値とする。微分可能な領域の勾配は -2 diag(A-L L') とし、有限差分で検証する。初期uは clip(1/diag(solve(R,I)),lower,1)、追加startはseed固定PCG64のUniform(max(lower,.05),.95)とする。成功候補は有限、solver成功、projectedGradientInfNorm<=1e-5を満たすものとし、目的値最小、差が1e-10以下ならstart番号順で採用する。
+
+最終共通性 h^2=diag(L L')、報告独自性 psi=1-h^2 とする。最適化変数uをpsiと同一とせず、両方と差を返す。u境界、psi<=lower+1e-6、psi<-1e-8、h^2>1+1e-8を個別診断する。負のpsiを0へ修正しない。不適解は記述診断だけを残し、得点・推論・派生列保存を無効にする。
+
+### 4.2 Pearson ML
+
+MLはPearson経路だけで用いる。相関変数モデルは R approximately Sigma=L L'+Psi、Psi=diag(psi)、psi_j in [lower,1] とする。固定psiでは C=diag(psi)^(-1/2) R diag(psi)^(-1/2)=E diag(d) E' を固有値降順で分解し、L(psi)=diag(sqrt(psi)) E_q diag(sqrt(max(d_l-1,0))) for l=1..q とする。
+
+目的関数は完全式 F(psi)=logdet(Sigma)+trace(R Sigma^-1)-logdet(R)-p を常に使う。d_q<=1でも上位qだけの簡略式へ置き換えない。SigmaのCholeskyでlogdetとsolveを計算し、Fは理論上非負、-1e-10程度の丸めだけ0へclipする。大きな負値は内部エラーとする。SigmaやRの明示逆行列は作らずsolveを使う。
+
+可微分領域のprofile勾配は diag(Sigma^-1-Sigma^-1 R Sigma^-1) である。計算では A=solve(Sigma,I)、gradient=diag(A-A R A) とし、重複固有値またはd=1境界で不安定なstartは失敗候補として記録して有限差分で検証する。微分試験を自動差分だけへ委ねない。
+
+最適化は scipy.optimize.minimize(method=L-BFGS-B,jac=gradient,bounds) とする。ftol=1e-12、gtol=1e-7、maxiterは入力、maxls=50。初期psi_0=clip((1-0.5q/p)/diag(R^-1),lower,1) とし、残りstartはseed固定PCG64のUniform(max(lower,0.05),0.95)をp成分独立で生成する。seed、各startの初期psi、終了status、F、iterations、projectedGradientNormを保存する。
+
+成功候補はsolver成功、有限、projectedGradientInfNorm<=1e-5を満たすものとする。境界成分のprojected gradientは下限でgradient>0、上限でgradient<0なら0とする。F最小を採用し、差が1e-10以下ならstart indexが小さいものを採用する。全start失敗は FA_NONCONVERGENCE で422とし、部分負荷量を正常結果として返さない。ゼロ因子列はeffectiveFactorRank<q警告とし、因子数を勝手に減らさない。
+
+## 5. 因子数、平行分析、候補比較
+
+観測・比較側とも「対角1の全相関行列の降順固有値」を使い、eigenvalueDefinition=full_correlation を画面・manifestに保存する。PCAを因子抽出として実行する意味ではない。
+
+帰無データはfit行列の項目別独立置換とし、各項目のカテゴリ度数または連続値分布を厳密に維持し、項目間関連だけを壊す。既定は500反復、許容範囲100..10000、比較分位点.95、seed42、PRNG=PCG64である。列処理順はcolumnIdで固定し、返却は要求項目順にする。推定startとは別ストリームを使い、各反復で観測と同じ相関推定・行列診断を通す。
+
+失敗反復は再抽選・除外しない。1件でも相関推定失敗または非正定値があれば、予定反復すべての診断を保存し、referenceQuantilesとsuggestedFactorsはnull、reasonCode=PA_REPLICATE_FAILEDとする。EFA本体が成功していれば主結果は保持する。
+
+分位値は各固有値順位の線形補間分位点とする。観測値が比較値を厳密に超える先頭からの連続順位数を候補kとし、0を1へ切り上げない。後順位の超過も表示する。kがモデルとして許されるqの範囲外でも黙って切り詰めず、利用者がnFactorsを確定する。
+
+compareFactorsは追加候補の明示整数配列であり、主nFactorsを含む候補集合を同じfit行、R、回転規約で実行する。各qの目的値、RMSR、共通性、診断、試行参照を成功・失敗とも残す。主q失敗なら全実行を失敗記録とし、別qの成功を主結果へ置換しない。比較用モデルの得点は主qを明示して別実行するまで保存しない。
+
+## 6. 回転、得点、推論
+
+### 6.1 回転
+
+1因子では要求回転にかかわらず適用noneとし、理由をmeta.methodSwitchReasonへ保存する。
+
+無回転ではLの各列を最大絶対負荷が正となる符号に正準化し、負荷二乗和の降順（同率は元列順）で並べる。Phi=Iとし、同じ符号付き置換を得点へ適用する。
+
+VarimaxはKaiser正規化を固定する。h_j=sqrt(sum_l L_jl^2)、ゼロ行は0行のまま残し、B_j=L_j/h_jとする。T=Iから最大500回反復し、Lambda=B T、C=B'[Lambda^3-Lambda diag(colSums(Lambda^2))/p]、C=U D V'、T_new=U V'とする。目的値sum(diag(D))の相対改善が1e-8未満で収束する。正規化を戻して L_v=(B T) h とし、L_v L_v'+Psi が元のSigmaとrtol=1e-9で一致することを検証する。未収束は FA_ROTATION_NONCONVERGENCE としnoneへfallbackしない。収束後は二乗負荷和の降順（同率は元列順）で因子を並べ、各列の最大絶対負荷が正となるよう符号を正準化する。
+
+PromaxはVarimax完了後に target=sign(L_v) abs(L_v)^4 を作る。B=least_squares(L_v,target) はrank qを要求し、Phi_0=(B'B)^-1、D=diag(sqrt(diag(Phi_0)))、T_p=B D、L_p=L_v T_p、Phi=D^-1 Phi_0 D^-1 とする。pattern=L_p、structure=L_p Phi、diag(Phi)=1、L_p Phi L_p'+Psiが元のSigmaと一致することを確認する。符号付き置換Hでは pattern_new=L_p H、Phi_new=H' Phi H、structure_new=structure H、score_new=score H とする。Promax後もpattern二乗和の降順（同率は元列順）と符号正準化を表示規約として適用する。これは加算可能な分散寄与の根拠ではない。因子相関が極端に±1に近くrankを失う場合は FA_ROTATION_SINGULAR とする。
+
+### 6.2 得点
+
+scoreMethodの既定はnoneである。Pearson・適切な解・明示した得点法だけがrows/projection/materializeを有効にする。標準化は z=(x-mean)/sd で、meanとsdは学習fit集合のddof=1標本値を固定する。連続近似ではscoreInterpretation=continuous_approximationを結果と派生列来歴に残す。順序経路は得点を拒否し、EBMなどを代替しない。
+
+patternをL、Phi、Psiとする。regression得点係数は B_reg=solve(R,L) Phi、score=Z B_reg とする。Rは標本相関であり、Sigmahatへ置換しない。Bartlett得点係数は B_bart=Psi^-1 L (L' Psi^-1 L)^-1、score=Z B_bart とする。逆行列はCholesky/solveで構成し、rank不足を一般化逆行列で救済しない。斜交でもBartlettはpattern Lを使い、さらにPhiを掛けない。得点分散を1に再標準化しない。fit行をpredictへ通した値と保存得点の一致を検証し、元項目に欠損のある予測行はnullにする。
+
+### 6.3 参考推論と診断
+
+共通性 h^2=diag(L Phi L')、uniqueness=psi、reproducedCorrelation=L Phi L'+diag(psi)、residualCorrelation=R-reproducedCorrelationとする。対角残差を返し、0へ強制しない。非対角RMSRは sqrt(sum_{j<k}(R_jk-Sigmahat_jk)^2/[p(p-1)/2]) とする。全共通分散比は sum(h^2)/p とする。
+
+Pearson＋MLでは F を使い、c=n-1-(2p+5)/6-2q/3、T=cF、df=((p-q)^2-p-q)/2 とする。c>0かつdf>0なら pValue=chi2.sf(T,df)、RMSEA=sqrt(max((T-df)/(df(n-1)),0))とする。c<=0またはdf<=0は対応する推論値をnullにする。psi<=lower+1e-6は BOUNDARY_UNIQUENESS 警告とし、chi-square近似の保証がないことを明示する。
+
+KMOは可逆Rから partialCorrelation_jk=-invR_jk/sqrt(invR_jj invR_kk)、KMO=sum r^2/(sum r^2+sum partial^2) とする。分母0はnullとする。Bartlett球面性の参考検定はPearson＋MLだけで、係数 n-1-(2p+5)/6 が正のとき T_b=-(n-1-(2p+5)/6)logdetR、df_b=p(p-1)/2、chi-square p値を返す。MINRES、係数非正、非正定値その他の適用不能時はstatisticとp値をnullにし理由を返す。KMO/Bartlettを実行可否の自動ゲートに使わない。
+
+MINRES／ULS系のchi-square、CFI、TLI、RMSEA、係数SEはnot_implementedとし、MLの通常近似をscaledまたはrobustと呼ばない。不適解・境界解では公開推論値をnullにし、内部計算値は診断artifactへ分離する。
+
+## 7. Pearson／Polychoric感度分析
+
+### 7.1 対象と共通条件
+
+対象は全項目の元measurementがordinalの場合である。sensitivityAnalysis.enabled=trueには独立したapproximationAcknowledged=trueとparallelAnalysis.enabled=trueを要求する。主treatmentは全ordinalまたは全continuous_approximationであり、混在は拒否する。
+
+比較はPearson-MINRESとPolychoric-MINRESで揃える。主がMLなら主MLを保持し、必要に応じて主ML＋比較用Pearson-MINRES＋Polychoric-MINRESの3モデルを保存する。比較子は項目ID、fit行、n、逆転、許容値、欠損、q、回転、ULS目的、制約、最適化start、seedを共通化し、scoreMethod=noneとする。Pearson側は最終カテゴリ順位1..Kを使い、元コードの数値間隔を使わない。
+
+主結果は比較完了を待たずに公開する。比較子結果を主結果としてmaterializeせず、主結果の設定・fingerprint・PCP選択を比較の完了・失敗・中断で変更しない。
+
+### 7.2 分布プロファイルと平行分析
+
+fit集合に対し、各項目のcategoryCounts、categoryProportions、minCategoryCount、maxCategoryProportion、floorProportion、ceilingProportionを返す。scope除外前の有効回答分布は別集計・別Nとして保存し、fit集合と混同しない。floor/ceilingは確認済み順序の両端であり、逆転適用前後の対応を保存する。順位位置rの歪度は m_k=n^-1 sum(r-mean)^k、g1=m3/m2^(3/2)、G1=sqrt(n(n-1))/(n-2) g1（n>2、m2>0）とし、未定義はnullとする。異なるKは u=(r-1)/(K-1) で揃え、対ごとの経験CDF最大差をdistributionDistanceとして返す。count<5、floor/ceiling>=.5、abs(G1)>1は表示目安であり、実行経路を強制しない。
+
+同じfit行列の項目別置換indexをPearson側・Polychoric側へ共通供給する。両側の観測・帰無に同じ相関推定を使い、同じseedでも別の置換標本を使う実装は禁止する。片側のPA失敗は候補nullであって0ではない。候補数が違う場合も共通指定qの感度差は計算できるが、異qの係数差はnull、reasonCode=FACTOR_COUNTS_DIFFERとする。
+
+### 7.3 因子整合と評価
+
+同じq・回転のpattern P（Pearson）とO（Polychoric）に対し、c_ab=(P_a' O_b)/(||P_a|| ||O_b||)とする。sum abs(c_ab)を最大化する一対一割当をlinear_sum_assignmentで解き、c_ab>=0となる符号付き置換Hを保存する。整合後は O_a=O H、Phi_oa=H' Phi_o H、structureも同じHで変換する。元行列を上書きしない。
+
+ゼロノルム因子、rank不足、最適割当と次善割当の目的差<=1e-6、congruence<.85はalignmentStatus=ambiguousとする。次善割当は採用辺を一つずつ禁止した最良割当を使い、q=1では次善割当なしと記録する。Procrustesは O'P=U D V'、Q=U V'、||OQ-P||_F/||P||_F による補助空間診断だけであり、pattern差・割当変更を置き換えない。
+
+返却する差分は i<j の相関の最大・中央値絶対差、整合済み負荷量の最大・中央値絶対差、共通性差、Phi非対角差、確定因子割当変更数、比較可能数、曖昧数、PA候補差である。q=1のPhi非対角差は0、比較対数は0とする。因子割当は最大絶対負荷>=assignmentThreshold（既定.4）かつ第2位との差>=assignmentMargin（既定.1）で確定する。q=1は第2位条件を持たない。確定しない項目はunassignedとambiguousを区別する。負荷量差・共通性差・Phi差の閾値は各0.10、範囲(0,1]として要求値とともに保存する。
+
+assessmentの優先順は、片側失敗・PA不能・境界・不適解・整合不能ならindeterminate、次に候補差・いずれかの最大差の閾値超過・確定割当変更ならmethod_sensitive、曖昧項目があればindeterminate、すべて揃い候補一致・差が目安以下・確定割当変更0ならsmall_observed_differenceとする。これは同等性検定、正規性証明、CFAの独立検証ではない。
+
+比較はcomparisonIdで queued/running/completed/partial/failed/cancelled、進捗、比較子resultIdまたはattemptId、行・項目hash、置換ストリーム、H、Q、差分、閾値、判定を保存する。GET /api/v1/analysis-comparisons/{comparisonId}、同URLのexport、POST同URLのcancelを提供する。完成artifactは不変とし、stale時は新規比較を公開しない。
+
+## 8. 結果、保存、UI、実装ゲート
+
+保存するEFA結果は拡張契約に従い、fit/excluded行ID、変換辞書、R、閾値、対別診断、raw loadings、最終行列、start履歴、PA設定・全反復固有値、候補比較、engine manifestを含む。model.npzにpickleを含めない。canonical fingerprintは行集合と内容hash、測定水準、元／適用order、逆転、欠損、要求／適用方法、全数値設定、実装版を含み、UI表示閾値は含めない。
+
+422の代表コードは FA_CATEGORY_ORDER_REQUIRED、FA_UNOBSERVED_CATEGORY、FA_CONSTANT_COLUMN、FA_CORRELATION_NONCONVERGENCE、FA_CORRELATION_BOUNDARY、FA_NON_POSITIVE_DEFINITE、FA_UNDERIDENTIFIED、FA_NONCONVERGENCE、FA_ROTATION_NONCONVERGENCE、FA_WEIGHT_UNSUPPORTED とする。失敗試行は GET /api/v1/analysis-attempts/{attemptId} と diagnosticsページで参照可能にし、有効モデル操作に使わない。
+
+得点可能な適切な解だけ中央selection、既存L1/L2、rectangle／row_ids、相互ハイライト、fit得点の派生列保存を提供する。対象外・未計算行はnullにする。項目・因子選択で回答者選択を変更しない。設定・結果・スクロールはKeepAliveで保持し、dataset切替、古い応答、logical cancelを扱う。
+
+UIは「対象と尺度」「因子数」「抽出・回転」「診断」「負荷量・残差」「平行分析・感度比較」の順で読めるようにする。入力エラーは項目直下と上部一覧に表示し、失敗時は一覧へフォーカスする。診断は色だけに依存せず、項目名・状態・理由を表示する。重い相関・PAはキューで直列化・区分実行し、無断のサンプリング、反復削減、画面ページだけの推定、容量見積だけによる任意拒否を行わない。実メモリ不足は503として扱う。
+
+検証は相関oracle→ULS系oracle＋ML→PA→回転と不適解→感度比較→契約/API/保存→FE/PCP→localとPyodideの順に行う。各段階のfixture、oracle、許容差、実装順序、性能計測は[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を正本とする。R oracleの入力hash、出力、sessionInfo、版・設定を保存し、製品kernelをoracle期待値の生成に使わない。
+
+## 一次資料との対応
+
+[S-FA](references/PRIMARY_SOURCES.md#s-fa)、[S-FA-SRC](references/PRIMARY_SOURCES.md#s-fa-src)、[S-ROT](references/PRIMARY_SOURCES.md#s-rot)、[拡張一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)を参照する。閾値、API、能力境界、警告方針は製品設計であり、原典が唯一の実装方法を要求するという意味ではない。
+
+
+---
+
+<a id="doc-16"></a>
+
+出典ファイル：[feature/33c_confirmatory_factor_analysis.md](feature/33c_confirmatory_factor_analysis.md)
+
+# Feature 033c：確認的因子分析（CFA）機能仕様書
+
+版1.1／2026-09-13／状態：設計確定、本体実装・統計的受入は未完了。
+詳細：[033c詳細設計](tasks/DAVIS-FEAT-033C-DESIGN.md)。関連：[契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)、[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)。
+
+## 1. 目的・EFAとの関係
+
+事前に指定した項目と因子の対応関係を、因子モデルとして推定・診断する独立機能とする。EFAの回転をCFAと呼ばない。CFAの完成を033 EFAの公開条件にはしない。推定法と分析目的は別の分類であり、WLSMV等が原理的にCFA専用であるとは説明しない。
+
+初期版は単一群、一次因子、単純構造、連続または全順序項目、因子間相関を自由／直交から選ぶ範囲とする。各因子に3項目以上、各項目は1因子に所属させる。交差負荷、誤差共分散、等値・非線形制約、多群・測定不変性、高次・bifactor・構造回帰・ESEMは追加段階であり、入力UIで利用可能にしない。
+
+## 2. 測定モデルの指定
+
+項目一覧から各因子に指標を割り当て、因子名と尺度基準となるマーカー項目を指定する。マーカー負荷量を+1に固定する。未指定交差負荷は0、項目誤差共分散は0。因子相関は既定自由、直交を明示選択したとき0に固定する。固定・自由パラメータの表を実行前に確認できる。
+
+カテゴリの順序・許容値・逆転・連続近似、欠損分類は[033 EFA](feature/33_exploratory_factor_analysis.md#2-入力測定水準前処理)と同じ。順序項目の閾値と残差尺度の制約を明示し、連続モデルの切片と混同しない。カテゴリ数やNによる自動切替は行わない。
+
+## 3. 推定法と対象
+
+|方法|初期の位置づけ|前提・制限|
+|---|---|---|
+|WLSMV|順序CFAの基本候補|DWLS点推定とロバストSE・平均分散補正検定を組み合わせる|
+|MLR|連続または明示した連続近似の基本候補|ロバストSEと補正検定。外れ値除去や順序性の解消ではない|
+|ULSMV|有力な追加候補|独立した数値照合に合格後に利用可能。小標本での収束を保証しない|
+|通常ML|連続モデルの基本方式の確認・比較|多変量正規性と通常推論の前提を表示|
+
+ULSMVの提供は追加ゲートとし、WLSMVとMLRを第一の受入対象とする。WLSMVをN≥500や1000専用としない。推定法の加重と回答者の調査ウェイトを区別する。初期版はfrequency／surveyとも未対応。欠損は完全ケース方式のみとし、順序経路に連続FIMLを流用しない。
+
+主要な5件法・N=1000〜2000程度の利用でも、良好な周辺分布を持つ項目の明示的な連続近似＋MLRを主要候補として提示する。ヒストグラムがベル型であることだけで通常MLの前提成立とはしない。033 EFAの[Pearson／Polychoric感度分析](feature/33_exploratory_factor_analysis.md#6-pearsonpolychoric感度分析)は、測定上の扱いを検討する参考情報として参照できるが、その一致だけでCFAの推定法を決定したり、CFAのSE・適合度が同等と判断したりしない。EFA比較結果を同じデータで再利用した事実も来歴に残す。
+
+## 4. 推定・識別・状態
+
+自由度だけで識別済みと判断せず、モデル構造、パラメータと標本統計量の対応、局所識別性、情報行列を検査する。標本数に対する固定倍率を実行の可否にしない。推定器の実際の収束・情報不足を診断する。
+
+負の分散、極端な因子相関、特異な潜在共分散、閾値の不順序、SE計算不能、負荷量の境界、非正定値、未収束を表示する。計算完了と適切な解を別状態とし、別推定法での自動再試行をしない。
+
+## 5. 結果・適合度
+
+非標準化推定値、標準誤差、信頼区間、標準化負荷量、因子共分散・相関、残差分散、切片または閾値、再現共分散／潜在応答相関、残差を返す。固定パラメータにはSE・検定値を付けず、fixedを表示する。
+
+χ²・df・p・CFI・TLI・RMSEA（CIを含む）・SRMRを、推定器と定義が対応するものだけ返す。通常版・scaled版・robust版を別欄にし、元エンジンの名称と補正法を保存する。適用不能は理由付きnull。MINRES負荷量からML適合度を計算する等の代用を禁止する。
+
+CFI等の固定カットオフによる「合格」「妥当性確認済み」を表示しない。df=0、基準モデル推定失敗、補正係数未定義、順序相関の非正定値、非収束、不適解の場合は対応指標と推論の利用可否を分ける。異なる定義の値を同名に詰め直さない。
+
+## 6. 確認の独立性
+
+`validationIntent`は利用者の意図であり証明ではない。EFAからのモデル作成は割当の草案だけを渡し、CFA実行前に確定させる。同一データ・重複行での再推定は「同じデータによる追試」と表示する。
+
+探索元の結果、データの系譜、回答者ID集合、分割方法、モデル確定時点を保存する。同一データセットでは行ID交差を検証し、別データセットで回答者同一性を確認できなければ「独立性未確認」とする。非重複だけで研究上の独立な確認が成立したとは断定しない。学習後にモデルを変更した検証データは、その変更後のモデルの独立確認には数えない。
+
+## 7. UI・PCP・実行環境
+
+EFAと別ページで、対象項目→因子への割当→尺度設定→推定法と前提→結果と診断の順に構成する。モデル表はキーボードで操作でき、図を使う場合も表から同じ情報を読めるようにする。ドラッグ操作だけを必須にしない。
+
+初期版のCFAは因子得点・PCP得点保存・個体予測を提供しない。設定・結果はKeepAliveで保持し、PCPの行選択を勝手に変更しない。結果の表とmanifestの出力を提供する。
+
+初期の検証対象はローカル実行のlavaanエンジン。静的版は結果閲覧に必要な契約を共有するが、CFA実行は未対応能力として明示する。静的環境でのCFA実行には同じ推定・推論を実現するエンジンの別受入が必要。ブラウザから外部へ回答データを送信して代用しない。
+
+## 8. 受入
+
+受入IDはCFA-C01〜C14。測定モデル、固定／自由、識別、WLSMV・MLR・追加ULSMV・MLの数値照合、閾値・SE・各適合度定義、欠損、疎カテゴリ、不適解、同一データ判定、結果保存、環境能力を検証する。詳細は[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を正本とする。
+
+
+---
+
+<a id="doc-17"></a>
+
+出典ファイル：[tasks/DAVIS-FEAT-033C-DESIGN.md](tasks/DAVIS-FEAT-033C-DESIGN.md)
+
+# DAVIS-FEAT-033c：CFA 実装詳細化設計書
+
+版1.1／2026-09-13／対応：[033c機能仕様](feature/33c_confirmatory_factor_analysis.md)。設計上の予定API・ファイルであり、既存機能の実装を示さない。
+
+## 1. 接続と実行エンジン
+
+route `/models/cfa`、POST `/api/v1/models/cfa`、結果method=`cfa`、schemaVersion=`factor_extensions.1`。入力は[CFARequest](contracts/factor_extension_requests.py)。既存のEFA APIと分離する。予定ファイルはfullstack/backend/app/api/cfa.py、services/cfa_service.py、algorithms/models/cfa_engine.py、algorithms/models/cfa_runner.R、frontend/src/features/models/ConfirmatoryFactorAnalysisPage.tsx。
+
+初期ローカルエンジンはR lavaanを採用し、推定・SE・検定・適合度を同じfitから取り出す。WLSMV/MLRを必須、MLを通常版の照合対象、ULSMVを独立した追加受入対象とする。実装時にR/lavaan/BLAS版とソースhashを固定し、全オプションを解決したengine manifestを作成する。最新版への無条件追従はしない。
+
+033cに限り、共通設計の「NumPy/SciPyのみでlocal/static同時実行」から独立したローカルエンジン境界を定義する。静的PyodideではCFA実行を`CFA_ENGINE_UNAVAILABLE`とし、環境能力と理由を表示する。EFAの静的対応をCFA完了待ちにしない。静的CFAは後続エンジンの同等性検証で別ゲートとする。
+
+Rscriptは設定済み絶対パスから引数配列で起動し、ユーザーの文字列をR式やshellへ補間しない。固定runnerが制限したJSON測定モデルを内部記号v1..vp/f1..fqに変換する。表示ラベルやcolumnIdを構文識別子として流用しない。raw R script、任意式、任意パスをAPI入力で受け付けない。依存不足時の自動インストールや外部計算サービスへの送信は行わない。
+
+## 2. 測定モデルとパラメータ表
+
+連続：`x=ν+Λη+ε`、Eη=0、Varη=Φ、Varε=Θ、Σ=ΛΦΛ′+Θ。Θは対角、非指定負荷量は0。各因子のmarker負荷量を+1、他の所属負荷量を自由、因子分散を自由にする。因子共分散はfreeなら全対自由、orthogonalなら全対0。
+
+順序：同じ線形モデルを潜在応答x*に置き、`Yj=k ⇔ τj,k−1<x*j≤τjk`。probit、theta parameterizationを固定する。単一群で項目の潜在応答切片0、残差分散1、潜在因子平均0とし、内部閾値Kj−1を自由、marker負荷量+1・因子分散自由。項目の潜在応答総分散を1と決め打ちせず、標準化時にΣの対角から求める。
+
+1項目が複数因子に所属、未所属、markerが非所属、因子ID重複、項目数3未満、未知項目を拒否する。これは初期UIの単純構造範囲であり、3項目あれば必ず識別されるという主張ではない。
+
+自由パラメータは安定ID、lhs/op/rhs、fixedValue、freeIndex、label、sourceColumnId/sourceFactorId、scaleを持つ。標本統計量との対応順を保存する。markerの符号を後処理で変更して固定+1と矛盾させない。符号反転は別モデルの設定変更として扱う。
+
+## 3. 前処理・識別性
+
+scope・版・欠損・重み・categoryOrder・逆転は[033 EFA設計第2節](tasks/DAVIS-FEAT-033-DESIGN.md#2-入力前処理識別可能性)の前処理を再利用し、完全ケースのみとする。同節のEFA専用n>p・q・自由度条件はCFAへ引き継がず、以下のCFAモデルで検査する。raw相関のユーザー持込モードは初期版なし。連続項目は元の分析単位の値を渡し、EFAのddof1相関への標準化を勝手に適用しない。連続近似は確認済み等間隔順位値を渡す。
+
+識別は事前構造検証、自由度、推定後Jacobianの列rank、情報行列のrankと条件数で判定。連続の標本統計量数はp+p(p+1)/2、順序はΣ(Kj−1)+p(p−1)/2。自由度は当該統計量数と制約を適用した独立自由パラメータ数から求め、エンジン値と照合する。冗長制約やデータ依存特異をdf≥0だけで許可しない。
+
+df<0は停止。df=0は点推定を条件付きで許し、モデル適合の検定・RMSEA/CFI/TLIをnullとする。十分なNの固定境界は設けず、定数・未観測カテゴリ・計算不能・実測rank不足など具体的原因で停止する。
+
+## 4. 四つの計算層
+
+|層|入力→出力|禁止事項|
+|---|---|---|
+|標本統計量|raw fit行→共分散／閾値・相関・Γ|EFAのpair別SEをΓと呼ばない|
+|パラメータ推定|統計量・モデル・推定重み→θhat|単なるULS負荷量をULSMVと名付けない|
+|推論|θhat・Jacobian・情報行列・Γ→SE・検定・補正量|通常SEでロバストSEを代用しない|
+|適合度|target/h1/baselineの対応する統計量→指標|通常・scaled・robustを混合しない|
+
+順序の標本統計量sは閾値＋相関の一意成分、Γはsqrt(n)(s−σ)の漸近共分散として、順序・次元・Nによるscale規約を必ず記録する。点推定はWLSMVで対角重み、ULSMVで単位重みを使うが、推論は完全な漸近共分散情報を要する。lavaan内部の標本統計量・WLS.V・NACOV・parameterTable・test設定を取り出し、正規化や並びをadapterで検証する。
+
+連続ML/MLRはlavaanのnormal likelihood、meanstructure=true、missing=listwiseを固定し、内部のN分母共分散・尤度規約を保存する。033 EFAのN−1/Bartlett補正式をCFAへ流用しない。MLRのSE/testはエンジンが解決した方式を返す。ロバスト性は標準誤差と検定の補正の意味に限定する。
+
+runnerはestimator、ordered項目、parameterization、meanstructure、std.lv=false、missing、likelihood、SE/test、optim.method、最大反復・許容誤差を解決済み設定として返す。初期adapterはNLMINB、最大反復20000とし、収束許容値は選定したエンジン版の値を固定manifestに記録してgolden生成前に凍結する。これは公開UIの任意エンジンオプションではない。エンジンが指定した推定器を別方式へ変えた場合は、WLSMV内部のDWLSのように定義に含まれるもの以外をエラーとする。
+
+## 5. 結果抽出と標準化
+
+非標準化推定値は元のパラメータ表順。std.lv（因子標準化）とstd.all（因子・観測または潜在応答の標準化）を別フィールドにする。`stdAllLoading_jf = Λjf sqrt(Φff)/sqrt(Σjj)`。`Dφ=diag(diagΦ)`として`factorCorrelation=Dφ^(-1/2) Φ Dφ^(-1/2)`。SE・CIの標準化版はエンジンがその定義で返すものだけ採用し、点推定を割った倍率で通常SEを代用しない。
+
+順序閾値は有限内部閾値を推定尺度付きで返す。外端の±∞はJSON数値として返さず、境界種別文字列で表す。固定残差分散1と標準化残差分散Θjj/Σjjを混同しない。順序の再現相関は`Dσ=diag(diagΣ)`として`Dσ^(-1/2) Σ Dσ^(-1/2)`で、観測回答コードの相関ではない。共通性はstd.all尺度のdiag(ΛΦΛ′)/diagΣとして返す。
+
+負のΘ/Φ対角、Φ非正定値、|因子相関|≥1、未順序閾値、特異Jacobian、境界・非収束を診断。不適解に対するSE/CI/検定は公開推論欄をnullとし、エンジンの生値は診断用に分離する。SEのみ不能で点推定が許容される場合は`solutionStatus=admissible`、`inferenceStatus=unavailable`を許す。
+
+## 6. 検定統計量・適合度の契約
+
+返却は[拡張結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)の`fitMeasures[]`。metric、variant、engineKey、value、補正法、N/df、availabilityとreasonCodeを一組とする。
+
+|表示指標|通常版エンジンキー|scaled版|robust版|
+|---|---|---|---|
+|χ²/df/p|chisq / df / pvalue|chisq.scaled / df.scaled / pvalue.scaled|独立した値を捏造しない。scaled検定と補正名を使用|
+|CFI/TLI|cfi / tli|cfi.scaled / tli.scaled|cfi.robust / tli.robust|
+|RMSEA/CI|rmsea / rmsea.ci.lower / rmsea.ci.upper|各キーのscaled系列|各キーのrobust系列|
+|SRMR|srmr|提供なしはnull|提供なしはnull|
+
+実エンジンのキーとCIキーの位置は採用版で存在検査し、登録した対応表を固定する。CI水準は入力confidenceLevelをfitMeasuresのRMSEA CI設定へ明示伝達する。指標の標準キー名を生成規則だけで推測しない。availabilityはavailable/not_applicable/not_implemented/failed。未提供キーはnullと理由を返す。
+
+target model、baseline model、h1の推定器、統計量種別、補正係数、shift、df、元エンジンtestオブジェクト参照を保存する。相関行列PD検査を無効化してrobust指標を強制しない。baseline不適合・未収束ならCFI/TLIの関連variantをnull、RMSEA等は個別条件で判断する。通常のカットオフによる自動合否なし。
+
+AIC/BICはML/MLRの比較可能な同一データ・同一観測変数・同一尤度規約のみ。初期UIはモデル比較機能を持たず、WLSMV/ULSMVで尤度を捏造しない。修正指標と自動モデル探索は初期版対象外。将来のscaled差の検定は専用検定を用い、補正χ²同士の単純な差で代用しない。
+
+## 7. EFAからの草案と独立性
+
+`sourceEfaResultId`は同一所有者の保存結果を解決し、元のdata lineage、fit行ID集合、設定hash、モデル作成時点を記録する。標準は利用者による手動割当。草案機能を設ける場合も負荷量閾値で自動確定せず、全項目の単純構造割当を確認してCFAモデルとして保存する。
+
+同一dataset lineageなら行ID交差のcountを算出し、重複>0ならsame_data。非重複で事前に固定されたsplitとmodel hashが確認できる場合はholdout_recorded。別datasetで同一回答者の判別情報がなければunknown。externalの選択だけでconfirmedとしない。meta.isExplorative=trueを維持し、analysisPurpose=confirmatory_model、validationEvidenceで確認の意味を分離する。
+
+探索元EFAに感度比較が付随する場合は親resultIdからcomparisonId・両比較子結果・探索使用行の和集合を解決する。主結果だけを探索使用データと見なし、比較で使った行を未使用holdoutと誤認しない。同じscopeに固定した初期仕様では集合は同じになることを検証する。比較のsmall_observed_differenceをCFAモデルの独立検証済みフラグへ変換しない。
+
+5件法・N=1000〜2000の良好分布に対する明示連続近似はMLRの主要利用例とし、元measurementがordinalでもtreatmentで推定器を選ぶ。CFA自身のWLSMV対MLR自動感度比較は初期版には追加しない。将来実施する場合は同じ指標・同じ制約でも観測得点と潜在応答の推定対象・尺度が違うことを整合させ、EFAの行列差比較をそのまま流用しない。
+
+## 8. API・保存・画面・運用
+
+共通の409 stale、422 input/estimation、503 resourceと原子的result publishを使う。計算時の失敗はattemptIdに診断を保存し、正常モデルとして公開しない。対応エンジンが未導入なら503 `CFA_ENGINE_UNAVAILABLE`、ULSMVが未検証なら422 `CFA_ESTIMATOR_NOT_VALIDATED`。Rの警告を捕捉し、SE失敗と非収束を同一分類にまとめない。
+
+manifest、parameter table、sample statistics、Γ/WLS.V参照、test/fit measures、モデル制約、engine版・hash、fit/excluded行ID、sourceEfaResultIdと独立性根拠を保存する。raw RオブジェクトをPython pickleへ変換しない。必要な数値・文字列をJSON/NPZ/Parquetへ明示変換し、raw engine logは内部診断としてパスを公開しない。
+
+rows/projection/materialize/simulation=false、selectionKinds=[]。CFA図上の因子・項目クリックでReduxの回答者選択を変更しない。設定モデルと結果モデルhashを表示し、変更後に旧結果を新モデルの結果として見せない。KeepAlive・dataset切替・logical cancel・版照合・exportは既存規約を使用する。
+
+入力エラーは対応項目の直下と上部のエラー一覧に併記する。実行失敗時は一覧見出しへフォーカスを移し、一覧から各入力へ移動できるようにする。推定診断の警告は色だけで区別せず、状態名・対象項目・修正可能な設定をテキストで示す。進捗は読み上げ対応、非表示KeepAliveページからの重複通知を抑制する。
+
+本番実装時はrun-production.batによるローカル画面確認を受入に含める。ビルド・配布検証は実施指示がある段階で行い、設計資料作成やkernel試験と区別する。
+
+## 9. 未実装ゲート
+
+R同梱方式・ライセンス・依存固定・runner起動の製品検証、単純構造のoracle、SE/適合度variant、失敗診断、API/保存/FE、追加ULSMVを順に完了させる。これらは実装前の未検証事項であり、WLSMV/MLRの名前だけを選択肢へ追加して完了としない。[受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を参照。
+
+
+---
+
+<a id="doc-18"></a>
 
 出典ファイル：[contracts/RESULT_CONTRACT.md](contracts/RESULT_CONTRACT.md)
 
 # 結果契約・データ辞書 v1.0
 
-033b EFA／033c CFAでは[拡張入力・結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)がmethod、状態、適合度variant、capabilities、export表を追加する。本書のML専用項目や「CA以外rows=true」は拡張機能へ自動適用しない。
+033 EFA／033c CFAでは[拡張入力・結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)がmethod、状態、適合度variant、capabilities、export表を追加する。本書の旧ML因子分析項目や「CA以外rows=true」は拡張機能へ自動適用しない。
 
 本書はFeature 029〜034のJSON出力名・単位・配列形状の正本。数式は各実装設計、入力型は`analysis_requests.py`。未提供値はnullと理由を返す。以下の型表記はTypeScript相当で、`Float`は有限JSON number、`Count`は0以上の整数、`Nullable<T>`はTまたはnullである。公開APIのcamelCaseとmaterialize用の固定sourceField識別子を混同しない。
 
@@ -1979,7 +1792,9 @@ summary.jointTest=`{kind:'classical_f'|'robust_wald_f'|null,statistic:Float|null
 
 vif=`[{designColumnId,value:Float|null,status:'available'|'constant'|'perfect_collinearity'}]`。大きさ∞はJSON数値にせずnull。summary.rSquaredType=`centered`/`uncentered`、rmseは重み和分母、residualStdErrorは残差自由度分母で区別する。
 
-### 5.5 最尤因子分析
+### 5.5 旧最尤因子分析資料
+
+この節は旧FactorAnalysisRequestに対応する参照検証資産であり、現行Feature 033 EFAの結果正本ではない。現行のEFA結果、得点能力、平行分析、感度比較は[拡張入力・結果契約](contracts/FACTOR_EXTENSIONS_CONTRACT.md)を参照する。
 
 pattern/structureはp×q、factorCorrelation/rotationTransformはq×q。sample/reproduced/residualCorrelationはp×p、uniqueness/communalityはp、ssLoadings/varianceRatiosはqまたはPromax時null。variables順とfactorLabels順が共通。
 
@@ -2047,19 +1862,19 @@ includeWtp=falseならwtp=null。trueでは非価格カテゴリの各非基準�
 
 ---
 
-<a id="doc-21"></a>
+<a id="doc-19"></a>
 
 出典ファイル：[contracts/FACTOR_EXTENSIONS_CONTRACT.md](contracts/FACTOR_EXTENSIONS_CONTRACT.md)
 
-# Feature 033b・033c：入力・結果契約
+# Feature 033 EFA・033c CFA：入力・結果契約
 
-版1.1／2026-09-13。対象はEFA/CFA拡張のみ。[共通結果契約](contracts/RESULT_CONTRACT.md)の行ID・保存・stale・有限JSON・CSV安全性を継承し、本書でmethodとcapabilities、診断を追加定義する。既存033契約の自動互換変換は行わない。
+版1.1／2026-09-13。対象は現行Feature 033 EFAと033c CFAのみ。[共通結果契約](contracts/RESULT_CONTRACT.md)の行ID・保存・stale・有限JSON・CSV安全性を継承し、本書でmethodとcapabilities、診断を追加定義する。旧FactorAnalysisRequestの自動互換変換は行わない。
 
 ## 1. 正本・入力
 
 実行可能な構文正本は[factor_extension_requests.py](contracts/factor_extension_requests.py)、生成Schemaは[efa.schema.json](contracts/schemas/efa.schema.json)と[cfa.schema.json](contracts/schemas/cfa.schema.json)。入力例は[efa.request.json](contracts/examples/efa.request.json)、[cfa.request.json](contracts/examples/cfa.request.json)。既存analysis_requests.pyのAnalysisContextV2とStrictModelを再利用する。データ依存検証・エンジン能力はSchema外でサービスが検査する。
 
-|入力|033b EFA|033c CFA|
+|入力|033 EFA|033c CFA|
 |---|---|---|
 |context|既存V2、missingPolicy=exclude|同左|
 |weightMode|none/dataset。dataset解決後にweightなしのみ|同左|
@@ -2077,7 +1892,7 @@ EFA qは1以上p未満、df≥0、比較候補も同条件。CFAは全項目が�
 
 生成JSON Schemaはフィールド型・enum・基本範囲を表し、Pydanticのmodel_validatorによる複数項目間の制約を自動では表現しない。JSON Schemaだけの合格を実行許可とせず、Python契約でtreatmentと推定器・因子割当・欠損・ウェイト設定等を再検証し、その後サービスがデータ依存条件を検証する。
 
-sensitivityAnalysisはenabled=false、approximationAcknowledged=falseがAPI既定。両者を同時にtrueにした場合だけ比較を実行する。全項目の元measurement=ordinal、parallelAnalysis.enabled=trueが必須。主treatmentは全ordinal／全continuous_approximationを許すが、その混在は禁止。alignment=signed_permutation、comparisonExtraction=minresを固定し、主のML指定は保持する。差分目安3種は(0,1]、割当閾値とmarginは[0,1]で、全て有限値。定義と既定値は033b詳細設計第9節を正本とする。CFARequestではこの比較指定を受け付けない。
+sensitivityAnalysisはenabled=false、approximationAcknowledged=falseがAPI既定。両者を同時にtrueにした場合だけ比較を実行する。全項目の元measurement=ordinal、parallelAnalysis.enabled=trueが必須。主treatmentは全ordinalまたは全continuous_approximationであり、その二つのtreatmentは混在させない。continuousとcontinuous_approximationだけの混在は主EFAで許可されるが、感度比較の対象ではない。alignment=signed_permutation、comparisonExtraction=minresを固定し、主のML指定は保持する。差分目安3種は(0,1]、割当閾値とmarginは[0,1]で、全て有限値。定義と既定値は[033 EFA設計の第7節](tasks/DAVIS-FEAT-033-DESIGN.md#7-pearsonpolychoric感度分析)を正本とする。CFARequestではこの比較指定を受け付けない。
 
 ## 2. 共通エンベロープ拡張
 
@@ -2204,7 +2019,7 @@ result storeは共通の原子的保存と版照合を使用する。schemaVersi
 
 ---
 
-<a id="doc-22"></a>
+<a id="doc-20"></a>
 
 出典ファイル：[tasks/ACCEPTANCE_AND_HANDOFF.md](tasks/ACCEPTANCE_AND_HANDOFF.md)
 
@@ -2212,7 +2027,7 @@ result storeは共通の原子的保存と版照合を使用する。schemaVersi
 
 版1.0。これは実装タスクの完了条件であり、この成果物作成時の試験実績ではない。実績はvalidation/VALIDATION_REPORT.mdを参照。
 
-033b EFA／033c CFAは[拡張受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を適用する。旧ML専用の受入条件を順序EFAへそのまま適用しない。CFAはEFA完成後の独立段階で、ローカルlavaanと静的実行未対応の能力境界を個別に検証する。
+033 EFA／033c CFAは[拡張受入計画](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)を適用する。現行033のEFA受入条件を適用し、旧ML専用資料の受入条件は使わない。CFAはEFA完成後の独立段階で、ローカルlavaanと静的実行未対応の能力境界を個別に検証する。
 
 ## 1. PR/タスク分割
 
@@ -2222,7 +2037,7 @@ result storeは共通の原子的保存と版照合を使用する。schemaVersi
 |B|CA kernel→表→回答者API→画面|A|解析解、カテゴリ選択、零質量、local/static一致|
 |C|MCAとFAMDを別kernel/画面で実装|A,BのSVD/カテゴリ基盤|m/K正規化、FAMD標準化、寄与・cos2・射影|
 |D|回帰core＋Taylor model_covariance|A|OLS/HC3/frequency複製、設計PSU、識別不能|
-|E|ML因子→回転→得点|A|ML目的関数、収束、回転不変性、得点規約|
+|E|EFA（Pearson ML／MINRES、Polychoric MINRES）→平行分析→回転→得点・感度比較|A|EFA-B01〜B22、ML目的関数、相関・回転不変性、得点能力規約|
 |F|CJデータ検証→ratings→choice→ranking→simulate|A,D|タスク完全性、回答者SE、分離、効用・WTP|
 |G|共通保存/export/PCP/E2E/配布統合|B〜F|原子的保存・idempotency・stale・KeepAlive・静的版|
 
@@ -2314,13 +2129,13 @@ npm run build:static
 
 ---
 
-<a id="doc-23"></a>
+<a id="doc-21"></a>
 
 出典ファイル：[tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md](tasks/FACTOR_EXTENSIONS_ACCEPTANCE.md)
 
-# Feature 033b・033c：実装順序・受入条件
+# Feature 033 EFA・033c CFA：実装順序・受入条件
 
-版1.0／2026-09-13。以下は実装の受入計画であり、実行済み実績ではない。[検証実績](validation/FACTOR_EXTENSIONS_VALIDATION.md)と区別する。033のFA01「ML以外を指定できない」等は033bへの受入条件として流用しない。
+版1.1／2026-09-13。以下は実装の受入計画であり、実行済み実績ではない。[検証実績](validation/FACTOR_EXTENSIONS_VALIDATION.md)と区別する。現行033はEFA-B01〜EFA-B22を適用し、旧033のFA01「ML以外を指定できない」等は現行EFAの受入条件として流用しない。
 
 ## 1. 段階と終了条件
 
@@ -2415,7 +2230,7 @@ CFA-C11では、EFA感度比較の親・両子結果の探索行を解決し、�
 
 ---
 
-<a id="doc-24"></a>
+<a id="doc-22"></a>
 
 出典ファイル：[references/source_audit.md](references/source_audit.md)
 
@@ -2487,22 +2302,23 @@ package.zipとpackage(1).zipのSHA-256は同一。実装設計の基準はpackag
 
 ---
 
-<a id="doc-25"></a>
+<a id="doc-23"></a>
 
 出典ファイル：[references/FACTOR_EXTENSIONS_SOURCE_AUDIT.md](references/FACTOR_EXTENSIONS_SOURCE_AUDIT.md)
 
-# Feature 033b・033c：既存構成・接続箇所の確認
+# Feature 033 EFA・033c CFA：既存構成・接続箇所の確認
 
 確認日：2026-09-13。現ワークスペースの文書構成と接続先を静的に確認した。過去の添付ZIPに対する[source_audit.md](references/source_audit.md)のhashは更新せず、今回の確認とは区別する。
 
 ## 1. 文書配置と優先関係
 
-既存analysis-specsはfeature/、tasks/、contracts/、fixtures/、validation/、references/、README、Markdown/HTML一括閲覧、SHA256SUMSからなる。033bと033cも同じ配置を使う。
+既存analysis-specsはfeature/、tasks/、contracts/、fixtures/、validation/、references/、README、Markdown/HTML一括閲覧、SHA256SUMSからなる。033 EFAと033c CFAも同じ配置を使う。
 
-|既存文書|033b/033cでの扱い|
+|文書|033 EFA/033cでの扱い|
 |---|---|
-|33_maximum_likelihood_factor_analysis.md|連続MLの基礎資料として保持。033bは対象を順序EFAへ拡張|
-|DAVIS-FEAT-033-DESIGN.md|ML目的・回転・連続得点を明示参照。ML専用・PAなし・frequency対応は033bでは個別規約優先|
+|33_exploratory_factor_analysis.md|現行033 EFAの機能仕様正本。連続MLと順序EFAの範囲を集約|
+|DAVIS-FEAT-033-DESIGN.md|現行033 EFAの実装設計正本。ML目的・回転・連続得点、MINRES、PA、感度比較を自己完結して定義|
+|33_maximum_likelihood_factor_analysis.md／33b_exploratory_factor_analysis.md／DAVIS-FEAT-033B-DESIGN.md|移動案内。現行契約として参照しない|
 |00_common_analysis_contract.md / COMMON-DESIGN|scope、版、欠損分類、選択、保存、KeepAliveを継承|
 |RESULT_CONTRACT.md|efa/cfa method、状態・結果・exportは拡張契約で追加|
 |analysis_requests.py|既存型を変更せず新factor_extension_requests.pyが共通contextを再利用|
@@ -2532,13 +2348,13 @@ package.zipとpackage(1).zipのSHA-256は同一。実装設計の基準はpackag
 
 ---
 
-<a id="doc-26"></a>
+<a id="doc-24"></a>
 
 出典ファイル：[references/PRIMARY_SOURCES.md](references/PRIMARY_SOURCES.md)
 
 # 一次資料・採用根拠
 
-033b EFA／033c CFAの根拠は[拡張一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)に追加する。新しい順序経路・推論の設計は各個別仕様を参照する。
+033 EFA／033c CFAの根拠は[拡張一次資料](references/FACTOR_EXTENSIONS_SOURCES.md)に追加する。新しい順序経路・推論の設計は各個別仕様を参照する。
 
 確認日：2026-09-12。書誌情報と公開一次資料を参照し、引用は各URLにつき最小限に留めた。出力数式は本設計の定義と独立参照計算に基づく。閾値・API・機能範囲・エラーポリシーは製品として採用した規約であり、原典で唯一許容される方法だという主張ではない。
 
@@ -2695,11 +2511,11 @@ URLのmaster/stableは将来更新される。製品のoracle fixtureを更新�
 
 ---
 
-<a id="doc-27"></a>
+<a id="doc-25"></a>
 
 出典ファイル：[references/FACTOR_EXTENSIONS_SOURCES.md](references/FACTOR_EXTENSIONS_SOURCES.md)
 
-# Feature 033b・033c：一次資料と設計判断
+# Feature 033 EFA・033c CFA：一次資料と設計判断
 
 確認日：2026-09-13。製品の初期値、対応範囲、API、停止条件は製品設計であり、原典が要求する普遍的な規則ではない。公開文書の確認はソフトの実行・数値検証を意味しない。
 
@@ -2707,12 +2523,12 @@ URLのmaster/stableは将来更新される。製品のoracle fixtureを更新�
 
 |ID|資料|確認内容と対応|
 |---|---|---|
-|FX-POLY|[polycor::polychor](https://search.r-project.org/CRAN/refmans/polycor/html/polychor.html)|潜在二変量正規・閾値・two-step/MLの区別。033bのtwo-stepを選定し、同条件のoracleにする|
+|FX-POLY|[polycor::polychor](https://search.r-project.org/CRAN/refmans/polycor/html/polychor.html)|潜在二変量正規・閾値・two-step/MLの区別。033 EFAのtwo-stepを選定し、同条件のoracleにする|
 |FX-FA|[psych::fa](https://search.r-project.org/CRAN/refmans/psych/html/fa.html)|MINRES/OLS/ULSの近縁性、目的関数差、斜交のpatternとstructure。方法名だけの一致を同値としない|
 |FX-ULS|[factor_analyzer公開ソース](https://factor-analyzer.readthedocs.io/en/latest/_modules/factor_analyzer/factor_analyzer.html)|ULS profile目的の実装照合対象。パッケージの既定補完や回転後共通性を無検査で採用しない|
 |FX-ML|[R stats::factanal](https://search.r-project.org/R/refmans/stats/html/factanal.html)|通常MLの正規性、独自性下限、回転と得点。033の連続経路を参照|
-|FX-SMOOTH|[psych::cor.smooth](https://search.r-project.org/CRAN/refmans/psych/html/cor.smooth.html)|相関行列の非正定値と平滑化。033b初期版は停止し原行列を変更しない|
-|FX-PA|[psych::fa.parallel](https://personality-project.org/r/psych/help/fa.parallel.html)|観測・乱数比較と順序相関の利用。033bは項目別置換・全相関固有値という製品規約を明示|
+|FX-SMOOTH|[psych::cor.smooth](https://search.r-project.org/CRAN/refmans/psych/html/cor.smooth.html)|相関行列の非正定値と平滑化。033 EFA初期版は停止し原行列を変更しない|
+|FX-PA|[psych::fa.parallel](https://personality-project.org/r/psych/help/fa.parallel.html)|観測・乱数比較と順序相関の利用。033 EFAは項目別置換・全相関固有値という製品規約を明示|
 |FX-CAT|[lavaan categorical data](https://lavaan.ugent.be/tutorial/cat.html)|WLSMVのDWLS点推定と完全重み情報を用いる補正、順序経路のFIML制限|
 |FX-EST|[lavaan estimators](https://lavaan.ugent.be/tutorial/est.html)|MLRのHuber–White SEと補正検定、normal/Wishartの違い。CFAはnormal規約|
 |FX-CFA|[lavaan CFA example](https://lavaan.ugent.be/tutorial/cfa.html)|項目・因子を指定する測定モデルと結果読解。EFA回転から独立した機能|
@@ -2750,13 +2566,13 @@ CFAのSE・検定・適合度は同じエンジンと同じfitに由来する値
 
 ---
 
-<a id="doc-28"></a>
+<a id="doc-26"></a>
 
 出典ファイル：[fixtures/README.md](fixtures/README.md)
 
 # 合成fixture
 
-033b EFA／033c CFAの追加データとoracle条件は[拡張fixture仕様](fixtures/FACTOR_EXTENSIONS_FIXTURES.md)を参照する。追加数値fixtureは未生成であり、既存ML期待値を順序相関・ロバストCFAの検証実績として扱わない。
+033 EFA／033c CFAの追加データとoracle条件は[拡張fixture仕様](fixtures/FACTOR_EXTENSIONS_FIXTURES.md)を参照する。追加数値fixtureは未生成であり、既存ML期待値を順序相関・ロバストCFAの検証実績として扱わない。
 
 すべて個人を含まない人工データ。seed=20260912。数式の参照検証用であり、実際のアンケート結果やDAVIS-PCPのAPI応答ではない。
 
@@ -2767,11 +2583,11 @@ CFAのSE・検定・適合度は同じエンジンと同じfitに由来する値
 
 ---
 
-<a id="doc-29"></a>
+<a id="doc-27"></a>
 
 出典ファイル：[fixtures/FACTOR_EXTENSIONS_FIXTURES.md](fixtures/FACTOR_EXTENSIONS_FIXTURES.md)
 
-# Feature 033b・033c：合成fixture仕様
+# Feature 033 EFA・033c CFA：合成fixture仕様
 
 版1.0／2026-09-13。ここでは作成すべき数値検証データを定義する。新EFA/CFAのraw標本・R golden値はまだ生成していない。既存factor_exact_correlation.csvは連続ML用の補助であり、順序相関・CFAロバスト推論の証拠として代用しない。
 
@@ -2826,7 +2642,7 @@ PAは置換indexまたはストリーム生成規約を保存して同一反復�
 
 ---
 
-<a id="doc-30"></a>
+<a id="doc-28"></a>
 
 出典ファイル：[validation/VALIDATION_REPORT.md](validation/VALIDATION_REPORT.md)
 
@@ -2881,15 +2697,15 @@ fixtureは合成データ。ユーザーのアンケート回答は含めてい�
 
 ---
 
-<a id="doc-31"></a>
+<a id="doc-29"></a>
 
 出典ファイル：[validation/FACTOR_EXTENSIONS_VALIDATION.md](validation/FACTOR_EXTENSIONS_VALIDATION.md)
 
-# Feature 033b・033c：設計成果物の検証報告
+# Feature 033 EFA・033c CFA：設計成果物の検証報告
 
 対象日：2026-09-13。対象は設計文書、入力契約、Schema、入力例、文書間参照。EFA/CFAの本体数値エンジンの検証ではない。
 
-既存のartifact_qa.json、environment.json、pytest_output.txt、pytest_results.xmlは2026-09-12の参照検証記録として保持する。追加033b/033cの現在の検証範囲は本報告を参照する。
+既存のartifact_qa.json、environment.json、pytest_output.txt、pytest_results.xmlは2026-09-12の参照検証記録として保持する。追加033 EFA/033c CFAの現在の検証範囲は本報告を参照する。
 
 ## 1. 検証対象
 
@@ -2931,3 +2747,11 @@ python -m unittest discover -s feature/analysis-specs/validation -p test_factor_
 ```text
 python feature/analysis-specs/validation/publish_specifications.py
 ```
+
+## 5. 033／033b集約の文書検証
+
+2026-09-13に、旧033の連続ML資料と033b EFA資料を現行Feature 033 EFAへ集約した。ここでの記録は文書構造・生成物の検証であり、EFA/CFAの数値エンジン受入ではない。旧VALIDATION_REPORT.mdの42件を含む既存の歴史的検証記録は変更していない。
+
+バンドルPythonでpublish_specifications.pyを実行し、現行の一括閲覧対象29文書、HTML ID 41件、ローカルリンク205件、欠落0件を確認した。旧033、033b、033B設計は移動案内として残し、一括閲覧の正本文書集合から除外した。新033仕様・新033設計、033cからの033参照、EFARequest／efa.schema.json／入力例への入口、EFA-B01〜EFA-B22の所属を確認した。
+
+SHA256SUMSは現行86エントリを再計算し、全エントリの再照合で不一致0件を確認した。033cから新033への第2節・第6節参照、拡張契約から新033設計第7節への参照は、対象見出しと一致することを確認した。

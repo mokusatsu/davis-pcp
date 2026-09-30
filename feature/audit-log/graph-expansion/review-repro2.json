@@ -1,0 +1,47 @@
+[
+  {
+    "name": "R035-01 scroll keeps canvas",
+    "ok": true,
+    "detail": "before=選択行 66 / active 150 / 全150解除Fo"
+  },
+  {
+    "name": "R035-02 menu in dialog",
+    "ok": true,
+    "detail": "menu=in-dialog"
+  },
+  {
+    "name": "R035-02 esc1 keeps expansion",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "R035-02 esc2 exits",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "R035-03 fit minus -> 75%",
+    "ok": true,
+    "detail": "got=75%"
+  },
+  {
+    "name": "R035-03 75% minus -> 50%",
+    "ok": true,
+    "detail": "got=50%"
+  },
+  {
+    "name": "R035-04 zoom keeps center",
+    "ok": true,
+    "detail": "[154, 75]"
+  },
+  {
+    "name": "R035-04 normal restored",
+    "ok": true,
+    "detail": "before=[1, 0] after=[1, 0]"
+  },
+  {
+    "name": "R035-05 400% buffer",
+    "ok": true,
+    "detail": "label=400% buf=[1229, 602]"
+  }
+]

@@ -7,7 +7,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import ModelsPage from '../src/features/models/ModelsPage'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false, isTargetActive: () => false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: () => { throw new Error('raw data forbidden') } }))
 vi.mock('../src/features/pcp/MaAxisPicker', () => ({ default: ({ onAdd }: any) => <button onClick={() => onAdd([{ columnId: 'a' }])}>MA子Aを追加</button> }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })

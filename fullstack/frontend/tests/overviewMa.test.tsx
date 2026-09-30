@@ -6,7 +6,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import OverviewPage from '../src/features/dataset/OverviewPage'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: null }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/features/dataset/BinningModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/OneHotModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/ImputationModal', () => ({ default: () => null }))

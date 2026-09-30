@@ -2,7 +2,6 @@ import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState } from 'react'
 import { Button, Space, Tag, Typography } from 'antd'
 import { DownOutlined, RightOutlined } from '@ant-design/icons'
-import { FocusEnterButton, useFocusMode } from '../common/FocusMode'
 
 export interface CobwebTreeNode {
   id: string
@@ -113,8 +112,6 @@ export default function CobwebTreeViewer({
   rowIds,
   onSelectRows,
 }: CobwebTreeViewerProps) {
-  const { isTargetActive } = useFocusMode()
-  const active = isTargetActive('cobweb-tree')
 
   return (
     <div
@@ -127,8 +124,6 @@ export default function CobwebTreeViewer({
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
-        height: active ? '100%' : undefined,
-        flex: active ? 1 : 'none',
         flexShrink: 0,
         minHeight: 0,
       }}
@@ -138,14 +133,13 @@ export default function CobwebTreeViewer({
           <Typography.Title level={5} style={{ margin: 0 }}>
             Cobweb 概念階層木 (Concept Formation Hierarchy)
           </Typography.Title>
-          <FocusEnterButton targetId="cobweb-tree" title="Cobweb 概念木" />
         </Space>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           ノードクリック=展開/折りたたみ · 「この概念を選択」=集合演算で全ビューへ伝播
         </Typography.Text>
       </div>
 
-      <div style={{ maxHeight: active ? undefined : 480, height: active ? '100%' : undefined, flex: active ? 1 : undefined, overflowY: 'auto', paddingRight: 4 }}>
+      <div style={{ paddingRight: 4 }}>
         <TreeNodeItem node={conceptTree} rowIds={rowIds} onSelectRows={onSelectRows} depth={0} />
       </div>
     </div>

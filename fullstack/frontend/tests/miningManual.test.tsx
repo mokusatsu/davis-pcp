@@ -7,7 +7,6 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import SubgroupMiningPage from '../src/features/mining/SubgroupMiningPage'
 
-vi.mock('../src/features/common/FocusMode', () => ({ useFocusMode: () => ({ focused: false }), FocusTarget: ({ children }: any) => children, FocusEnterButton: () => null }))
 vi.mock('../src/features/mining/useMiningTargets', () => ({ useMiningTargets: () => ({ attributes: ['x'], questions: ['a'], ready: true, control: <span>Targets</span> }) }))
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 

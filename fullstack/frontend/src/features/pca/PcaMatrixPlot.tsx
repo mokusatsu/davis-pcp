@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FC, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type PointerEvent as ReactPointerEvent } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown, Space, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
-import { FocusEnterButton, FocusTarget, useFocusMode } from '../common/FocusMode'
+import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
+import { canvasBufferSize, clientToCanvas } from '../common/graphCoordinates'
 import { getBrushOp } from '../selection/SelectionMenu'
 import type { PcaResponse } from './types'
 
@@ -12,9 +13,30 @@ interface PcaMatrixPlotProps {
   pcaData: PcaResponse | null
 }
 
+type CanvasViewport = Pick<ReturnType<typeof useGraphViewport>, 'scale' | 'dpr' | 'revision'>
+
+/** GraphPanel の子で実倍率を取得し、親所有の Canvas の描画バッファへ反映する。 */
+function PcaMatrixViewportSync({ onViewportChange }: { onViewportChange: (viewport: CanvasViewport) => void }) {
+  const { scale, dpr, revision } = useGraphViewport()
+  useLayoutEffect(() => {
+    onViewportChange({ scale, dpr, revision })
+  }, [scale, dpr, revision, onViewportChange])
+  return null
+}
+
 export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
-  const { isTargetActive, focused, zoom } = useFocusMode()
-  const active = isTargetActive('pca-matrix')
+  const [canvasViewport, setCanvasViewport] = useState<CanvasViewport>(() => ({
+    scale: 1,
+    dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+    revision: 0,
+  }))
+  const updateCanvasViewport = useCallback((next: CanvasViewport) => {
+    setCanvasViewport(current => current.scale === next.scale && current.dpr === next.dpr && current.revision === next.revision
+      ? current
+      : next)
+  }, [])
+  const { scale: viewportScale, dpr: viewportDpr, revision: viewportRevision } = canvasViewport
+  const graphPopupContainer = useGraphPopupContainer('pca/matrix')
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const { getColor, isSelected: isRowSelected, selectionColor } = useRowColorResolver()
@@ -51,12 +73,18 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
     return bounds
   }, [pcaData, k])
 
-  // Draw matrix
+  // Draw matrix: 行列全体を一組。セル内座標と全体座標を区別する。
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const buffer = canvasBufferSize({ width, height }, viewportScale, viewportDpr)
+    if (canvas.width !== buffer.width || canvas.height !== buffer.height) {
+      canvas.width = buffer.width
+      canvas.height = buffer.height
+    }
+    ctx.setTransform(buffer.width / width, 0, 0, buffer.height / height, 0, 0)
 
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = '#ffffff'
@@ -162,15 +190,17 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
       ctx.lineWidth = 1.5
       ctx.strokeRect(rx, ry, rw, rh)
     }
-  }, [focused, zoom, pcaData, k, compBounds, cellW, cellH, isRowSelected, getColor, selectionColor, dragBox])
+  }, [pcaData, k, compBounds, cellW, cellH, isRowSelected, getColor, selectionColor, dragBox, viewportScale, viewportDpr, viewportRevision])
 
-  // Mouse drag handlers
+  // Mouse drag handlers: Canvas 自体の表示矩形と論理寸法を基準に変換する。
+  const canvasPoint = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return { x: NaN, y: NaN }
+    return clientToCanvas(canvasRef.current, e, { width, height })
+  }
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = (e.clientX - rect.left) * width / rect.width
-    const y = (e.clientY - rect.top) * height / rect.height
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     isDragging.current = true
     e.currentTarget.setPointerCapture(e.pointerId)
     dragStart.current = { x, y }
@@ -180,10 +210,8 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!isDragging.current) return
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const x = (e.clientX - rect.left) * width / rect.width
-    const y = (e.clientY - rect.top) * height / rect.height
+    const { x, y } = canvasPoint(e)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
     dragEnd.current = { x, y }
     setDragBox({
       x1: dragStart.current.x,
@@ -202,11 +230,8 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
     isDragging.current = false
 
     if (e && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect()
-      dragEnd.current = {
-        x: (e.clientX - rect.left) * width / rect.width,
-        y: (e.clientY - rect.top) * height / rect.height,
-      }
+      const pt = canvasPoint(e)
+      if (Number.isFinite(pt.x) && Number.isFinite(pt.y)) dragEnd.current = pt
     }
 
     const bx1 = Math.min(dragStart.current.x, dragEnd.current.x)
@@ -293,35 +318,29 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
   return (
     <div
       data-testid="pca-matrix-view"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: active ? 0 : 10,
-        height: active ? '100%' : undefined,
-        flex: active ? 1 : undefined,
-        minHeight: 0,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}
     >
-      {!active && (
         <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
           <Typography.Text strong>主成分散布図行列 (PC1〜PC{k})</Typography.Text>
           <Space wrap>
-            <FocusEnterButton targetId="pca-matrix" title="PCA主成分散布図行列" />
           </Space>
         </Space>
-      )}
 
-      <FocusTarget id="pca-matrix" title="PCA主成分散布図行列">
-        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
+      <GraphPanel
+        graphId="pca/matrix"
+        title="PCA主成分散布図行列"
+        available={Boolean(pcaData && pcaData.scores.length)}
+        sizing="intrinsic"
+        intrinsicSize={{ width, height }}
+      >
+        <PcaMatrixViewportSync onViewportChange={updateCanvasViewport} />
+        <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
           <div
             style={{
-              border: '1px solid #e5e7eb',
+              boxShadow: 'inset 0 0 0 1px #e5e7eb',
               borderRadius: 6,
               background: '#ffffff',
-              display: active ? 'flex' : 'inline-block',
-              flex: active ? 1 : undefined,
-              height: active ? '100%' : undefined,
-              width: active ? '100%' : undefined,
+              display: 'inline-block',
               justifyContent: 'center',
               alignItems: 'center',
               userSelect: 'none',
@@ -331,13 +350,8 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
           >
             <canvas
               ref={canvasRef}
-              width={width}
-              height={height}
               style={{
-                width: active ? 'auto' : width,
-                height: active ? '100%' : height,
-                maxHeight: active ? '100%' : undefined,
-                maxWidth: active ? '100%' : undefined,
+                width, height, maxWidth: '100%',
                 aspectRatio: `${width} / ${height}`,
                 cursor: 'crosshair',
                 touchAction: 'none',
@@ -352,7 +366,7 @@ export const PcaMatrixPlot: FC<PcaMatrixPlotProps> = ({ pcaData }) => {
             />
           </div>
         </Dropdown>
-      </FocusTarget>
+      </GraphPanel>
     </div>
   )
 }
