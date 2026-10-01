@@ -270,7 +270,7 @@ export default function SurpriseAssociationView() {
                   }}
                 >
                     {/* Quadrant labels */}
-                    <div style={{ position: 'absolute', top: 8, right: 12, maxWidth: '45%', textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#722ed1', zIndex: 1 }}>
+                    <div data-testid="surprise-high-quadrant-caption" style={{ position: 'absolute', top: 34, right: 12, maxWidth: '45%', pointerEvents: 'none', textAlign: 'right', fontSize: 11, fontWeight: 'bold', color: '#722ed1', zIndex: 1 }}>
                       💎 隠れた強相関 (高強度・高意外性)
                     </div>
                     <div style={{ position: 'absolute', top: 8, left: 12, maxWidth: '45%', fontSize: 11, fontWeight: 'bold', color: '#1677ff', zIndex: 1 }}>

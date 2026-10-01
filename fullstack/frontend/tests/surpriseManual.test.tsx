@@ -58,6 +58,21 @@ it('renders the native association heatmap with pair details and preserves its i
   fireEvent.click(view.getByText('Choose options'))
   fireEvent.click(view.getByTestId('refresh-surprise-btn'))
   await view.findByTestId('top-lift-inspector')
+  const assertCaptionClearsExport = () => {
+    const plot = view.getByTestId('surprise-quadrant-plot')
+    const caption = view.getByTestId('surprise-high-quadrant-caption')
+    const button = plot.querySelector<HTMLButtonElement>('[data-chart-export="svg"]')!
+    expect(button).toBeTruthy()
+    // Local caption is below the export row, without moving chart coordinates.
+    expect(parseFloat(caption.style.top)).toBeGreaterThanOrEqual(parseFloat(button.style.top) + 28)
+    expect(caption).toHaveStyle({ pointerEvents: 'none', right: '12px' })
+    expect(plot).toHaveStyle({ width: '500px', height: '400px' })
+  }
+  assertCaptionClearsExport()
+  fireEvent.click(view.getByTestId('graph-expand-associations/quadrant'))
+  fireEvent.click(view.getByTestId('graph-expansion-zoom-in'))
+  assertCaptionClearsExport()
+  fireEvent.click(view.getByTestId('graph-expansion-exit'))
   fireEvent.click(view.getByText('階層化ヒートマップ (Heatmap)'))
   const chartDom = await view.findByTestId('surprise-heatmap-chart')
   const chart = getInstanceByDom(chartDom)!
