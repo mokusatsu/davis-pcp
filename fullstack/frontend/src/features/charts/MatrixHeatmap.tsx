@@ -8,7 +8,9 @@ export default function MatrixHeatmap({ labels, matrix, counts, bound, selected,
   const extent = bound ?? Math.max(...values.map(Math.abs), 1e-12)
   const cells = matrix.flatMap((row, r) => row.map((value, c) => ({ value: [c, r, value ?? 0], raw: value, row: r, col: c,
     itemStyle: { borderWidth: selected?.[0] === r && selected?.[1] === c ? 3 : 1, borderColor: selected?.[0] === r && selected?.[1] === c ? '#1677ff' : '#e5e7eb' } })))
-  return <EChart testId={testId} height={height} ariaLabel={title} option={{
+  // The y-label gutter above the first row stays clear of every top-axis label.
+  // Keep export here rather than covering a staggered label at the upper right.
+  return <EChart exportPosition="top-left" testId={testId} height={height} ariaLabel={title} option={{
     // The shared category layout converts these outer gutters into bounded
     // multiline label space once, without double-reserving containLabel margins.
     grid: { left: 12, right: 24, top: 12, bottom: 44, containLabel: true },

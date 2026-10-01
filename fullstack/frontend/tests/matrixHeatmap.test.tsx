@@ -120,3 +120,34 @@ it.each([[320, 260, 2], [388, 300, 4], [600, 440, 4], [900, 620, 12]])('bounds h
     expect(rect.y + rect.height).toBeLessThanOrEqual(height + .01)
   }
 })
+
+
+it.each([[320, 260, 2], [388, 300, 4], [512, 348, 6], [900, 620, 12]])('keeps the matrix SVG button clear of axis glyphs at %ipx × %ipx for %i variables', (width, height, count) => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(height)
+  const labels = Array.from({ length: count }, (_, i) => `label_${i}_${'long_source_identifier_'.repeat(6)}`)
+  const matrix = labels.map((_, r) => labels.map((_, c) => r === c ? 1 : .5))
+  const select = vi.fn()
+  const view = render(<MatrixHeatmap labels={labels} matrix={matrix} height={height} title="Matrix" testId="toolbar-matrix" onSelect={select} />)
+  const chart = getInstanceByDom(view.getByTestId('toolbar-matrix'))!
+  const button = view.getByRole('button', { name: 'Matrix：SVGを保存' })
+  expect(button).toHaveStyle({ top: '4px', left: '8px', width: '84px', height: '24px', boxSizing: 'border-box' })
+  expect(button.style.right).toBe('')
+  const texts = chart.getZr().storage.getDisplayList().filter((item: any) => item.type === 'tspan' && /[a-z]/.test(item.style.text))
+  for (const text of texts) {
+    const rect = text.getBoundingRect().clone()
+    if (text.transform) rect.applyTransform(text.transform)
+    for (const scale of [.5, 1, 2]) {
+      const glyph = { x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale }
+      const toolbar = { x: 8 * scale, y: 4 * scale, width: 84 * scale, height: 24 * scale }
+      const overlap = glyph.x < toolbar.x + toolbar.width && glyph.x + glyph.width > toolbar.x
+        && glyph.y < toolbar.y + toolbar.height && glyph.y + glyph.height > toolbar.y
+      expect(overlap, `${JSON.stringify(glyph)} overlaps ${JSON.stringify(toolbar)}`).toBe(false)
+    }
+  }
+  expect((chart.getOption().xAxis as any[])[0].tooltip.formatter({ value: labels[0] })).toBe(labels[0])
+  // Exercise ECharts' own series-event mapping from a native zrender heatmap hit.
+  const cell = (chart as any).getModel().getSeriesByIndex(0).getData().getItemGraphicEl(1)
+  act(() => { chart.getZr().trigger('click', { target: cell, topTarget: cell, event: new MouseEvent('click') } as any) })
+  expect(select).toHaveBeenCalledWith(0, 1)
+})

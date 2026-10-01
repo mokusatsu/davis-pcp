@@ -18,6 +18,12 @@ it('reflows labels on external resize without replacing the chart, source values
     series: [{ type: 'bar' as const, name: 'signed values', data: [-2.75, 1.625] }] }
   const view = render(<EChart option={option} testId="label-resize" onEvents={{ click: onClick }} />)
   const chart = getInstanceByDom(view.getByTestId('label-resize'))!
+  act(() => { chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: 0 }) })
+  const tip = view.container.querySelector<HTMLElement>('.davis-chart-tooltip')
+  expect(tip).not.toBeNull()
+  expect(tip!.style.pointerEvents).toBe('none')
+  act(() => { chart.dispatchAction({ type: 'hideTip' }) })
+  formatter.mockClear()
   act(() => { chart.dispatchAction({ type: 'legendUnSelect', name: 'signed values' }) })
   for (width of [320, 960, 440, 320, 960, 440]) {
     act(() => { window.dispatchEvent(new Event('resize')) })
@@ -26,7 +32,7 @@ it('reflows labels on external resize without replacing the chart, source values
     expect(current.series[0].data).toEqual([-2.75, 1.625])
     expect(current.tooltip[0].extraCssText).toContain('white-space: normal')
     expect(current.tooltip[0].confine).toBe(true)
-    expect(current.tooltip[0].enterable).toBe(true)
+    expect(current.tooltip[0].enterable).toBe(false)
     expect(current.yAxis[0].tooltip.enterable).toBe(true)
     expect(current.yAxis[0].data).toEqual(names)
     expect(current.yAxis[0].axisLabel.formatter(names[0], 0).split('\n').length).toBeGreaterThan(1)

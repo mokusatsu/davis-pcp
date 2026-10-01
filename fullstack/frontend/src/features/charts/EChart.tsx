@@ -9,6 +9,7 @@ import type { ECharts, EChartsOption } from 'echarts'
 
 export interface EChartProps {
   resetKey?: string | number
+  exportPosition?: 'top-right' | 'top-left'
   renderer?: 'svg' | 'canvas'
   option: EChartsOption
   height?: number | string
@@ -25,7 +26,7 @@ export interface EChartProps {
 /** Single lifecycle owner for all non-PCP charts. Options and handlers may change
  * without recreating a chart; hidden keep-alive/focus panels resize on re-entry. */
 export default function EChart({ option, height = 360, width = '100%', onEvents, onReady,
-  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style }: EChartProps) {
+  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style, exportPosition = 'top-right' }: EChartProps) {
   const [exportError, setExportError] = useState<string | null>(null)
   const graphViewport=useGraphViewport()
   const viewportKey=JSON.stringify(graphViewport)
@@ -132,7 +133,9 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     const tooltips = option.tooltip ? (Array.isArray(option.tooltip) ? option.tooltip : [option.tooltip]).map(tooltip => ({
       ...tooltip,
       // Full labels remain readable without growing the graph's scroll extent.
-      ...(tooltip.renderMode !== 'richText' ? { confine: true, enterable: true,
+      // Preserve the caller's enterable setting; ordinary mark tooltips must not
+      // intercept the next cell/point click. Full-label axis tips opt in separately.
+      ...(tooltip.renderMode !== 'richText' ? { confine: true,
         className: [tooltip.className, 'davis-chart-tooltip'].filter(Boolean).join(' '), extraCssText:
         `${tooltip.extraCssText ?? ''}; max-width: min(420px, 80vw); max-height: 50vh; white-space: normal; overflow-wrap: anywhere; overflow: auto` } : {}),
     })) : undefined
@@ -214,7 +217,8 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
         try { downloadChartSvg(chart, ariaLabel); setExportError(null) }
         catch (error) { setExportError(`SVGを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`) }
       }}
-      style={{ position: 'absolute', top: 4, right: 8, zIndex: 2, padding: '2px 6px', border: '1px solid #d9d9d9', borderRadius: 4,
+      style={{ position: 'absolute', top: 4, ...(exportPosition === 'top-left'
+        ? { left: 8, width: 84, height: 24, boxSizing: 'border-box' as const } : { right: 8 }), zIndex: 2, padding: '2px 6px', border: '1px solid #d9d9d9', borderRadius: 4,
         background: '#fff', color: '#333', font: '12px sans-serif', cursor: 'pointer' }}>SVGを保存</button>
     {exportError && <div role="alert" style={{ position: 'absolute', top: 32, right: 8, zIndex: 3, background: '#fff', color: '#b42318', padding: 6 }}>{exportError}</div>}
   </div>
