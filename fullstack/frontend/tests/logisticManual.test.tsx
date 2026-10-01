@@ -105,7 +105,7 @@ it.each([0.5, 1, 2])('selects points and rectangles at display scale %s', async 
   const middle = series.data[1]
   expect(middle.itemStyle.color).toBe('#abcdef')
   expect(middle.itemStyle.borderColor).toBe('#123456')
-  expect(middle.symbolSize).toBe(14)
+  expect(middle.symbolSize).toBe(9)
   const [x,y] = chart.convertToPixel({gridIndex:0}, middle.value) as number[]
   const point = (x: number, y: number) => ({ clientX: 10 + x * scale, clientY: 20 + y * scale, button: 0 })
   fireEvent.pointerDown(svg, point(x, y))

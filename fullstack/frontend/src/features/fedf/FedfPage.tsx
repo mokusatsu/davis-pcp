@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -475,7 +476,7 @@ export default function FedfPage() {
                             key={rid}
                             cx={cx}
                             cy={cy}
-                            r={isSelected ? 5.0 : 3.0}
+                            data-chart-marker="point" r={pointRadius(isSelected, hoveredPoint?.id === rid)}
                             fill={isSelected ? '#2a78d6' : ptColor}
                             stroke={isSelected ? '#ffffff' : 'rgba(0,0,0,0.2)'}
                             strokeWidth={isSelected ? 1.5 : 0.5}

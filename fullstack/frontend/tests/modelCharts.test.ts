@@ -15,7 +15,7 @@ describe('ECharts model semantics', () => {
   it('retains stable ids and signs', () => {
     const option = modelScatterOption([{id:'row-stable-7',x:-2,y:3,title:'raw title',selected:true}], 'X','Y')
     const data = (option.series as any[])[0].data
-    expect(data[0].id).toBe('row-stable-7');expect(data[0].value).toEqual([-2,3]);expect(data[0].symbolSize).toBe(14)
+    expect(data[0].id).toBe('row-stable-7');expect(data[0].value).toEqual([-2,3]);expect(data[0].symbolSize).toBe(9)
   })
   it('keeps one-dimensional jitter out of axis interpretation', () => {
     const option = modelScatterOption([{id:'a',x:2,y:null,title:'a'}], '第1軸','',true)

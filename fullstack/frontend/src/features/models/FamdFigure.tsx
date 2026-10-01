@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointEmphasis } from '../charts/markerStyle'
 import type { FAMDCategory, FAMDResponse } from './famdTypes'
 import type { EChartsOption } from 'echarts'
 import EChart from '../charts/EChart'
@@ -41,7 +42,7 @@ export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank =
   testId: string; axisX?: number; axisY?: number; rank?: number; size?: number
 }): JSX.Element {
   const circle = Array.from({ length: 129 }, (_, i) => [Math.cos(i * Math.PI / 64), Math.sin(i * Math.PI / 64)])
-  return <div style={{ maxWidth: size, aspectRatio: '1', width: '100%' }}><EChart height="100%" testId={testId} ariaLabel="相関円"
+  return <div style={{ maxWidth: size, aspectRatio: '1', width: '100%' }}><EChart fitPointMarkers pointHitRadius={CHART_MARKERS.hitRadius} height="100%" testId={testId} ariaLabel="相関円"
     option={{ animation: false, backgroundColor: '#fafafa', grid: { left: 70, right: 70, top: 70, bottom: 70, outerBoundsMode: 'none' },
       tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.title ?? p.seriesName ?? '' },
       xAxis: { type: 'value', min: -1.15, max: 1.15, name: `第${axisX}軸 相関`, nameLocation: 'middle', nameGap: 30 },
@@ -49,7 +50,7 @@ export function CorrelationCircle({ points, testId, axisX = 1, axisY = 2, rank =
       series: [{ type: 'line', data: circle, symbol: 'none', silent: true, lineStyle: { color: '#aaa', width: 1 } },
         ...points.map(p => ({ type: 'line' as const, name: p.title, data: [[0, 0], [p.x, p.y ?? 0]],
           symbol: 'none', lineStyle: { color: p.color ?? '#1890ff', width: 2 } })),
-        { type: 'scatter', labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' }, data: points.map(p => ({ value: [p.x, p.y ?? 0], title: p.title, name: p.label,
+        { type: 'scatter', symbolSize: CHART_MARKERS.diameter, emphasis: pointEmphasis(), labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' }, data: points.map(p => ({ value: [p.x, p.y ?? 0], title: p.title, name: p.label,
           itemStyle: { color: p.color ?? '#1890ff' }, label: { show: true, formatter: () => truncateText(p.label, 14), position: p.x >= 0 ? 'left' : 'right', color: '#333' } })) }],
     }} /></div>
 }

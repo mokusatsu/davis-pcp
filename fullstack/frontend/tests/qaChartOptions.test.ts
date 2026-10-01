@@ -49,7 +49,7 @@ it('keeps missing method scores missing and variable identity available for link
   expect(option.series[0].data[0].description).toContain('raw=123')
   const scatter = rankingScatterOption(rankings, 'b', ['a'], (_name, fallback) => fallback + .1, 1) as any
   expect(scatter.series[0].data[0].value).toEqual([10, .35])
-  expect(scatter.series[0].data[1].symbolSize).toBe(20)
+  expect(scatter.series[0].data[1].symbolSize).toBe(9)
 })
 
 it('renders the native chart options through ECharts SVG without invalid geometry', async () => {
@@ -139,7 +139,7 @@ it('matches PRA legend swatches to signed bars and Kano points without changing 
       } else {
         const points = (chart.getOption().series as any[]).flatMap(s => s.data)
         expect(points.find(p => p.name === 'second').value).toEqual([-6, 5])
-        expect(points.find(p => p.name === 'second').itemStyle.borderWidth).toBe(3)
+        expect(points.find(p => p.name === 'second').itemStyle.borderWidth).toBe(1.5)
       }
     } finally { chart.dispose() }
   }

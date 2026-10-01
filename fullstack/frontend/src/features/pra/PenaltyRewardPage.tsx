@@ -1,3 +1,4 @@
+import { CHART_MARKERS } from '../charts/markerStyle'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -346,7 +347,7 @@ export default function PenaltyRewardPage() {
                         minHeight: 0,
                       }}
                     >
-                      <EChart testId="kano-chart" height={440} ariaLabel="低評価側係数と高評価側係数の符号付き比較"
+                      <EChart fitPointMarkers pointHitRadius={CHART_MARKERS.hitRadius} testId="kano-chart" height={440} ariaLabel="低評価側係数と高評価側係数の符号付き比較"
                         option={kanoOption(result.attributes, selectedAttribute, selectedRowIds)}
                         onEvents={{ click: event => {
                           const attribute = result.attributes.find(a => a.name === event.data?.name)

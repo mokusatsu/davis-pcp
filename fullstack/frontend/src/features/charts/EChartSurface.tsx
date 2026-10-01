@@ -1,3 +1,4 @@
+import { CHART_MARKERS, markerFitScale } from './markerStyle'
 import { useGraphViewport } from '../common/GraphPanel'
 import { Children, Fragment, forwardRef, isValidElement, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type SVGProps } from 'react'
 import { graphic, type EChartsOption } from 'echarts'
@@ -29,7 +30,8 @@ function textContent(node: ReactNode, includeTitle = false): string {
  * shapes are never mounted as SVG: ECharts/zrender owns drawing and hit testing.
  * Keeping the original geometry preserves linkage distances, confidence bounds,
  * categorical strips and existing selection membership exactly. */
-export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Function, event: any) => void = (handler, event) => handler(event), questions: Record<string, string> = {}, hitRadius = 12): any[] {
+export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Function, event: any) => void = (handler, event) => handler(event), questions: Record<string, string> = {}, hitRadius: number = CHART_MARKERS.hitRadius, markerScale = { x: 1, y: 1 }, fitScale = 1): any[] {
+  const sx = Math.max(markerScale.x, .01), sy = Math.max(markerScale.y, .01)
   const convert = (node: ReactNode, path: string, inherited: Record<string, unknown> = {}): any[] => {
     if (!isValidElement<Record<string, any>>(node)) return []
     const p = node.props
@@ -52,6 +54,10 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
     if (sourceStyle.strokeDasharray) style.lineDash = String(sourceStyle.strokeDasharray).split(/[ ,]+/).map(Number)
     const item: any = { id: path, type: node.type, style, cursor: p.style?.cursor,
       silent: sourceStyle.pointerEvents === 'none', name: p['data-testid'] ?? path }
+    const selectable = Boolean(p.onClick || p['data-selectable'] || sourceStyle.__selectable)
+    const sizedCircle = (rx: number, ry: number) => rx === ry
+      ? { type: 'circle', shape: { cx: +p.cx || 0, cy: +p.cy || 0, r: rx } }
+      : { type: 'ellipse', shape: { cx: +p.cx || 0, cy: +p.cy || 0, rx, ry } }
     const title = Children.toArray(p.children).find(child => isValidElement(child) && child.type === 'title') as any
     if (title) item.tooltip = { formatter: () => textContent(title.props.children, true), renderMode: 'richText', confine: true }
     const handlers: Record<string, string> = { onClick: 'onclick', onDoubleClick: 'ondblclick', onMouseEnter: 'onmouseover', onMouseLeave: 'onmouseout', onMouseMove: 'onmousemove', onMouseDown: 'onmousedown', onMouseUp: 'onmouseup' }
@@ -59,7 +65,7 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
     const rawText = node.type === 'text' ? textContent(p.children) : undefined
     const explicitTitle = title ? textContent(title.props.children, true) : undefined
     const fullTitle = [sourceStyle.__davisTitle, explicitTitle].filter((value, index, values) => value && values.indexOf(value) === index).join('\n')
-    item.info = { selectable: Boolean(p.onClick || p['data-selectable']), title: fullTitle || (p['data-label-width'] ? rawText : undefined), fullText: rawText }
+    item.info = { selectable, title: fullTitle || (p['data-label-width'] ? rawText : undefined), fullText: rawText }
 
     switch (node.type) {
       case 'g':
@@ -67,11 +73,16 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
         item.children = Children.toArray(p.children).flatMap((child, i) => convert(child, `${path}.${i}`, {
           fill: sourceStyle.fill, stroke: sourceStyle.stroke, strokeWidth: sourceStyle.strokeWidth,
           opacity: sourceStyle.opacity, fillOpacity: sourceStyle.fillOpacity, strokeOpacity: sourceStyle.strokeOpacity, fontFamily: sourceStyle.fontFamily, fontSize: sourceStyle.fontSize, fontWeight: sourceStyle.fontWeight,
-          pointerEvents: sourceStyle.pointerEvents, __davisTitle: sourceStyle.__davisTitle,
+          pointerEvents: sourceStyle.pointerEvents, __davisTitle: sourceStyle.__davisTitle, __selectable: selectable,
         }))
         break
       case 'rect': item.shape = { x: +p.x || 0, y: +p.y || 0, width: Math.max(0, +p.width || 0), height: Math.max(0, +p.height || 0), r: +p.rx || 0 }; break
-      case 'circle': item.shape = { cx: +p.cx || 0, cy: +p.cy || 0, r: +p.r || 0 }; break
+      case 'circle':
+        // Only ordinary point/ring markers opt in. Guide circles retain their
+        // analytical geometry; responsive viewBox reflow must not enlarge dots.
+        Object.assign(item, sizedCircle((+p.r || 0) / (p['data-chart-marker'] ? sx * fitScale : 1), (+p.r || 0) / (p['data-chart-marker'] ? sy * fitScale : 1)))
+        if (p['data-chart-marker']) item.style.lineWidth /= Math.min(sx, sy) * fitScale
+        break
       case 'ellipse': item.shape = { cx: +p.cx || 0, cy: +p.cy || 0, rx: +p.rx || 0, ry: +p.ry || 0 }; break
       case 'line': item.shape = { x1: +p.x1 || 0, y1: +p.y1 || 0, x2: +p.x2 || 0, y2: +p.y2 || 0 }; item.style.fill = null; break
       case 'path': item.type = 'davisStatisticalPath'; item.shape = { pathData: p.d ?? '' }; break
@@ -95,11 +106,11 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
         if (match[1] === 'rotate') { item.rotation = -values[0] * Math.PI / 180; item.originX = values[1] ?? 0; item.originY = values[2] ?? 0 }
       }
     }
-    if (node.type === 'circle' && p.onClick && item.shape.r < hitRadius) {
+    if (node.type === 'circle' && selectable && !item.silent) {
       const visible = { ...item, id: `${path}.visible`, silent: true }
       for (const name of Object.values(handlers)) delete visible[name]
       return [{ type: 'group', id: `${path}.hit-group`, children: [visible,
-        { ...item, shape: { ...item.shape, r: hitRadius }, style: { fill: 'rgba(0,0,0,0)', stroke: null } }] }]
+        { ...item, ...sizedCircle(Math.max(item.shape.r ?? item.shape.rx, hitRadius / sx), Math.max(item.shape.r ?? item.shape.ry, hitRadius / sy)), style: { fill: 'rgba(0,0,0,0)', stroke: null } }] }]
     }
     return [item]
   }
@@ -108,7 +119,8 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
 
 type Props = SVGProps<SVGSVGElement> & { 'data-testid'?: string; onViewportChange?: () => void }
 const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ children, viewBox, width, height, style, onViewportChange, ...props }, forwardedRef) {
-  const viewportKey=JSON.stringify(useGraphViewport())
+  const viewport = useGraphViewport()
+  const viewportKey=JSON.stringify(viewport)
   const previousViewport=useRef(viewportKey)
   const onViewportChangeRef=useRef(onViewportChange);onViewportChangeRef.current=onViewportChange
   useEffect(()=>{if(previousViewport.current!==viewportKey){previousViewport.current=viewportKey;onViewportChangeRef.current?.()}},[viewportKey])
@@ -175,9 +187,11 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
       x: stretch ? 0 : (size.width - logicalWidth * scale) / 2,
       y: stretch ? 0 : (size.height - logicalHeight * scale) / 2,
       scaleX: stretch ? sx : scale, scaleY: stretch ? sy : scale,
-      children: geometryToGraphic(children, eventBridge, questions, 12 / Math.max(scale, .01)),
+      children: geometryToGraphic(children, eventBridge, questions,
+        CHART_MARKERS.hitRadius / Math.max(viewport.scale, .01),
+        { x: stretch ? sx : scale, y: stretch ? sy : scale }, markerFitScale(viewport)),
     }] } as EChartsOption
-  }, [children, size, logicalWidth, logicalHeight, props.preserveAspectRatio, questions])
+  }, [children, size, logicalWidth, logicalHeight, props.preserveAspectRatio, questions, viewport.scale, viewport.zoom])
   const mouseHandler = (key: keyof Props) => (event: any) => {
     const handler = (props as Props)[key] as Function | undefined
     if (!handler) return

@@ -1,3 +1,4 @@
+import { pointDiameter, pointEmphasis } from '../charts/markerStyle'
 import type { EChartsOption } from 'echarts'
 import type { PraAttribute } from './PenaltyRewardPage'
 
@@ -17,8 +18,9 @@ export function kanoOption(attributes: PraAttribute[], selected: string | null, 
       type: 'scatter', name: attributes.find(a => a.classification === classification)?.class_label ?? classification,
       data: attributes.filter(a => a.classification === classification).map(a => ({
         name: a.name, value: [a.penalty.coef, a.reward.coef], description: description(a),
-        symbolSize: (a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))) ? 20 : 14,
-        itemStyle: { color, borderColor: (a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))) ? '#2a78d6' : '#fff', borderWidth: (a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))) ? 3 : 1 },
+        symbolSize: pointDiameter(a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))),
+        emphasis: pointEmphasis(a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))),
+        itemStyle: { color, borderColor: (a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))) ? '#2a78d6' : '#fff', borderWidth: (a.name === selected || a.dissatisfied_row_ids.some(id => selectedRowIds.includes(id))) ? 1.5 : .5 },
         label: { show: true, formatter: () => a.label, position: 'right', fontSize: 11, color: '#333' },
       })),
       markLine: { silent: true, symbol: 'none', label: { show: false }, data: [{ xAxis: 0 }, { yAxis: 0 }] },

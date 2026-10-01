@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointEmphasis } from '../charts/markerStyle'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -41,9 +42,9 @@ export function efaScreeOption(observed: (number | null)[], reference: (number |
     yAxis: { type: 'value', name: '固有値', scale: false },
     series: [
       { id: 'efa-observed-eigenvalues', name: '観測', type: 'line', data: values(observed),
-        connectNulls: false, symbol: 'circle', symbolSize: 8, itemStyle: { color: '#1890ff' }, lineStyle: { width: 1.5 } },
+        connectNulls: false, symbol: 'circle', symbolSize: CHART_MARKERS.diameter, emphasis: pointEmphasis(), itemStyle: { color: '#1890ff' }, lineStyle: { width: 1.5 } },
       { id: 'efa-reference-quantiles', name: '参照分位', type: 'line', data: values(reference),
-        connectNulls: false, symbol: 'emptyCircle', symbolSize: 6, itemStyle: { color: '#fa8c16' }, lineStyle: { width: 1.5, type: 'dashed' } },
+        connectNulls: false, symbol: 'emptyCircle', symbolSize: CHART_MARKERS.diameter, emphasis: pointEmphasis(), itemStyle: { color: '#fa8c16' }, lineStyle: { width: 1.5, type: 'dashed' } },
     ],
   }
 }
@@ -524,7 +525,7 @@ export default function FactorAnalysisPage(): JSX.Element {
                     sizing="intrinsic"
                     intrinsicSize={{ width: 560, height: 220 }}
                   >
-                  <EChart
+                  <EChart fitPointMarkers
                     option={efaScreeOption(result.details.parallelAnalysis.observedEigenvalues ?? [],
                       result.details.parallelAnalysis.referenceQuantiles ?? [], result.details.parallelAnalysis.suggestedFactors)}
                     height={220} testId="efa-scree" ariaLabel="固有値・平行分析スクリープロット"

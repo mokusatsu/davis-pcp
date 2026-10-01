@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointDiameter, pointEmphasis } from '../charts/markerStyle'
 import { useLayoutEffect, useMemo, useRef, type FC } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown } from 'antd'
@@ -62,7 +63,8 @@ function PcaMatrixChart({ pcaData }: { pcaData: PcaResponse | null }) {
           itemStyle: { color: ids.some(isSelected) ? selectionColor : '#bae0ff' } })) })
     } else series.push({ type: 'scatter', xAxisIndex: index, yAxisIndex: index, name: `PC${c + 1} × PC${r + 1}`,
       data: (pcaData?.scores ?? []).filter(s => Number.isFinite(s.pc[c]) && Number.isFinite(s.pc[r])).map(s => { const id = s.rowId || s.row_id || ''; return {
-        value: [s.pc[c], s.pc[r]], rowId: id, symbolSize: isSelected(id) ? 8 : 5,
+        value: [s.pc[c], s.pc[r]], rowId: id, symbolSize: pointDiameter(isSelected(id), selection.hoveredRowId === id),
+        emphasis: pointEmphasis(isSelected(id), selection.hoveredRowId === id),
         tooltip: `rowId: ${id}\nPC${c + 1}: ${s.pc[c]}\nPC${r + 1}: ${s.pc[r]}`,
         itemStyle: { color: getColor(id), borderColor: isSelected(id) ? selectionColor : undefined, borderWidth: isSelected(id) ? 2 : 0, opacity: isSelected(id) ? 1 : .65 },
       } }) })
@@ -72,7 +74,7 @@ function PcaMatrixChart({ pcaData }: { pcaData: PcaResponse | null }) {
     return chart && rect.width && rect.height ? { x: (event.clientX - rect.left) * chart.getWidth() / rect.width, y: (event.clientY - rect.top) * chart.getHeight() / rect.height, rect } : null
   }
   const nearest = (index: number, pos: { x: number; y: number; rect: DOMRect }) => {
-    let result: string | undefined, distance = 64
+    let result: string | undefined, distance = CHART_MARKERS.nearestRadius ** 2
     const chart = chartRef.current!
     for (const data of series[index]?.data ?? []) {
       if (!data.rowId) continue
@@ -122,7 +124,7 @@ function PcaMatrixChart({ pcaData }: { pcaData: PcaResponse | null }) {
         }
       }} onPointerCancel={clear} onLostPointerCapture={clear}>
 
-      <EChart chartRef={chartRef} option={option} testId="pca-matrix-canvas" height="100%" ariaLabel="PCA主成分散布図行列"
+      <EChart fitPointMarkers chartRef={chartRef} option={option} testId="pca-matrix-canvas" height="100%" ariaLabel="PCA主成分散布図行列"
         onEvents={{
           click: params => { const ids = params.data?.rowIds; if (ids) dispatch(selectionApplied({ rowIds: ids, operation: params.data.rowId ? 'toggle' : getBrushOp(), label: 'PCA行列選択' })) },
           mouseover: params => { if (params.data?.rowId) dispatch(hovered(params.data.rowId)) },

@@ -1,3 +1,4 @@
+import { pointDiameter, pointEmphasis } from '../charts/markerStyle'
 import type { EChartsOption } from 'echarts'
 import type { VariableRankItem } from './FeatureRankingPage'
 
@@ -40,7 +41,8 @@ export function rankingScatterOption(rankings: VariableRankItem[], highlighted: 
       const dynamic = redundancy(row.variable, row.meanRedundancy)
       return { name: row.variable, value: [row.bordaScore, dynamic],
         description: `${row.variable}\nBorda Score: ${row.bordaScore} (rank ${row.overallRank})\nmRMR Redundancy vs Top-${topK}: ${dynamic.toFixed(4)}\nStatic mean redundancy: ${row.meanRedundancy.toFixed(4)}`,
-        symbolSize: row.variable === highlighted ? 20 : topKVariables.includes(row.variable) ? 16 : 12,
+        symbolSize: pointDiameter(row.variable === highlighted, topKVariables.includes(row.variable)),
+        emphasis: pointEmphasis(row.variable === highlighted, topKVariables.includes(row.variable)),
         itemStyle: { color: row.variable === highlighted ? '#ff4d4f' : topKVariables.includes(row.variable) ? '#2f54eb' : '#8c8c8c', borderColor: '#fff', borderWidth: 1.5 },
         label: { show: true, formatter: () => row.variable, position: 'right', fontSize: 10, color: '#333' } }
     }) }],

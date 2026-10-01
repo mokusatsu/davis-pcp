@@ -30,6 +30,12 @@ it('starts with six ordinary variables, expands only a requested MA child, and d
     : { rowIds: ['r'], x: [1], y: [2] } as any)
   const view = render(<Provider store={local}><RelationshipsPage /></Provider>)
   await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+  const chartColumns = view.getByTestId('relationships-chart-stack').children
+  expect(chartColumns).toHaveLength(2)
+  for (const col of Array.from(chartColumns)) {
+    expect(col).toHaveClass('ant-col-24')
+    expect(col.className).not.toMatch(/ant-col-(?:xl|lg)-12/)
+  }
   expect(post.mock.calls[0][1]).toMatchObject({ columns: ['x0', 'x1', 'x2', 'x3', 'x4', 'x5'] })
   expect(post.mock.calls[1][1]).toMatchObject({ columns: ['x0', 'x1'] })
   expect(load.mock.calls.every(args => args[1]?.length === 0)).toBe(true)

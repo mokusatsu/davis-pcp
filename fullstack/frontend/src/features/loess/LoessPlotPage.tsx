@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -423,12 +424,12 @@ export default function LoessPlotPage() {
                   return (
                     <g key={pt.id}>
                       {pt.isOutlier && (
-                        <circle cx={cx} cy={cy} r={6.5} fill="none" stroke="#ef4444" strokeWidth={1.5} opacity={0.7} />
+                        <circle cx={cx} cy={cy} data-chart-marker="ring" r={pointRadius(isSelected, hoveredPt?.id === pt.id) + CHART_MARKERS.ringGap} fill="none" stroke="#ef4444" strokeWidth={1.5} opacity={0.7} />
                       )}
                       <circle
                         cx={cx}
                         cy={cy}
-                        r={isSelected ? 5.0 : 3.5}
+                        data-chart-marker="point" r={pointRadius(isSelected, hoveredPt?.id === pt.id)}
                         fill={isSelected ? '#2a78d6' : ptColor}
                         stroke={isSelected ? '#ffffff' : 'rgba(0,0,0,0.25)'}
                         strokeWidth={isSelected ? 1.5 : 0.5}

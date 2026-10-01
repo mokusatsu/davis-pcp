@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { Select as AntSelect } from 'antd'
 import Select from '../common/ColumnSelect'
@@ -588,7 +589,7 @@ function PcaScatterSurface({ result, onSelect, size }: { result: ClusterResponse
               key={id}
               cx={scaleX(xs[index])}
               cy={scaleY(ys[index])}
-              r={isSelected ? 5.0 : isHovered ? 4.5 : 3.5}
+              data-chart-marker="point" r={pointRadius(isSelected, isHovered)}
               fill={getColor(id)}
               opacity={isSelected ? 1 : 0.55}
               stroke={isSelected ? selectionColor : theme.surface}

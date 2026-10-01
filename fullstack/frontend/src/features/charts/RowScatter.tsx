@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointDiameter, pointEmphasis } from './markerStyle'
 import { useGraphViewport } from '../common/GraphPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -48,7 +49,7 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
   const nearest = (position: { x: number; y: number; rect: DOMRect }) => {
     const chart = chartRef.current
     if (!chart) return undefined
-    let nearestPoint: RowPoint | undefined, distance = 64
+    let nearestPoint: RowPoint | undefined, distance = CHART_MARKERS.nearestRadius ** 2
     for (const point of latest.current) {
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
       const screen = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [point.x, point.y]) as number[]
@@ -67,7 +68,8 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
     ...option,
     series: [{ id: 'respondent-rows', type: 'scatter',
       data: finite.map(point => ({ value: [point.x, point.y], rowId: point.rowId, tooltip: point.tooltip,
-        symbolSize: selectedSet.has(point.rowId) || hover === point.rowId ? 11 : 7,
+        symbolSize: pointDiameter(selectedSet.has(point.rowId), hover === point.rowId),
+        emphasis: pointEmphasis(selectedSet.has(point.rowId), hover === point.rowId),
         itemStyle: { color: (colorOf ?? getColor)(point.rowId),
           borderColor: selectedSet.has(point.rowId) ? selectionColor : undefined, borderWidth: selectedSet.has(point.rowId) ? 1.5 : 0, opacity: selectedSet.has(point.rowId) || hover === point.rowId ? 1 : 0.65 } })),
     }, ...(Array.isArray(option?.series) ? option.series : option?.series ? [option.series] : [])],
@@ -108,7 +110,7 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); setKeyboardIndex(i => Math.max(0, i - 1)) }
       else if ((event.key === 'Enter' || event.key === ' ') && keyboardPoint) { event.preventDefault(); dispatch(selectionApplied({ rowIds: [keyboardPoint.rowId], operation: 'toggle', label: `${testId ?? '散布図'} 行選択` })) }
     }} style={{ width: '100%', height }}>
-    <EChart chartRef={chartRef} option={chartOption} height="100%" testId={testId} ariaLabel={ariaLabel ?? `${xName} × ${yName}`} onReady={onReady} />
+    <EChart fitPointMarkers chartRef={chartRef} option={chartOption} height="100%" testId={testId} ariaLabel={ariaLabel ?? `${xName} × ${yName}`} onReady={onReady} />
     <span aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardPoint ? `rowId ${keyboardPoint.rowId}, ${xName} ${keyboardPoint.x}, ${yName} ${keyboardPoint.y}` : 'データなし'}</span>
   </div>
 }

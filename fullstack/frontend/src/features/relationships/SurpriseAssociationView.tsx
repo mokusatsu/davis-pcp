@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
 import EChartSurface from '../charts/EChartSurface'
 import Table from '../common/ColumnTable'
@@ -300,7 +301,7 @@ export default function SurpriseAssociationView() {
                         const cx = quadrant.left + Math.min(Math.max(p.surprise.unexpectedness, 0), 1) * (quadrant.right - quadrant.left)
                         const cy = quadrant.bottom - Math.min(Math.max(p.strength, 0), 1) * (quadrant.bottom - quadrant.top)
                         const isSelected = p.id === selectedPairId
-                        const r = isSelected ? 8 : 6
+                        const r = pointRadius(isSelected)
                         const fill = isSelected ? '#2a78d6' : (p.surprise.unexpectedness > 0.5 && p.strength > 0.5 ? '#722ed1' : '#1677ff')
                         const fullLabel = `${p.x.name} × ${p.y.name}`
                         const labelOnRight = cx < (quadrant.left + quadrant.right) / 2
@@ -311,7 +312,7 @@ export default function SurpriseAssociationView() {
                             <circle
                               cx={cx}
                               cy={cy}
-                              r={r}
+                              data-chart-marker="point" r={r}
                               fill={fill}
                               opacity={isSelected ? 1.0 : 0.75}
                               stroke={isSelected ? '#000' : '#fff'}

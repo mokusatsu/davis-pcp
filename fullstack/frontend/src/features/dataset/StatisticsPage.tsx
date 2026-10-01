@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
@@ -602,9 +603,8 @@ export default function StatisticsPage() {
                         <g key={id} data-selectable="true"
                           style={{ cursor: 'pointer' }}
                           onClick={(e) => { e.stopPropagation(); dispatch(selectionApplied({ rowIds: [id], operation: getBrushOp(), label: 'ヒストグラム点クリック' })) }}>
-                          <circle cx={cx} cy={cy} r={11} fill="transparent" />
                           <circle cx={cx} cy={cy}
-                            r={isSelected ? 3.8 : 2.2}
+                            data-chart-marker="point" r={pointRadius(isSelected)}
                             fill={color} opacity={isSelected ? 0.95 : 0.45}
                             stroke={isSelected ? '#fff' : 'none'} strokeWidth={isSelected ? 1.5 : 0}>
                             <title>{`${id}: ${v.toFixed(3)} — クリックで選択`}</title>

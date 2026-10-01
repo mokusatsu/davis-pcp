@@ -31,7 +31,9 @@ for (const plot of ['biplot', 'matrix']) {
       expect(selected.itemStyle.color).toBe('#bb6600')
       expect(unselected.itemStyle.color).toBe('#008855')
       expect(selected.itemStyle.borderColor).toBe('#2a78d6')
-      expect(selected.symbolSize).toBeGreaterThan(unselected.symbolSize)
+      expect(selected.symbolSize).toBe(9)
+      expect(unselected.symbolSize).toBe(6)
+      expect(selected.emphasis.scale).toBe(false)
     }
     assertColors()
     const chartDom = view.getByTestId(plot === 'biplot' ? 'pca-biplot-canvas' : 'pca-matrix-canvas')

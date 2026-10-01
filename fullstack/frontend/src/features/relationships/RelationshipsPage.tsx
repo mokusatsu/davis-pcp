@@ -102,17 +102,18 @@ export default function RelationshipsPage() {
     {(matrix.error || points.error) && <Alert type="error" showIcon message={matrix.error || points.error} />}
     {names.length < 2 && <Alert type="info" message="通常変数またはMA選択肢を2つ以上選択してください。" />}
     <WeightUnsupportedAlert weightColumnName={matrix.value?.weightStatus === 'unsupported' ? matrix.value?.weightColumn : null} />
-    <Row gutter={[12, 12]}>
-      <Col xs={24} xl={12}>
+    <Row gutter={[12, 12]} data-testid="relationships-chart-stack">
+      <Col span={24}>
         <GraphPanel
           graphId="relationships/heatmap"
           title="相関ヒートマップ"
           available={names.length >= 2}
           sizing="intrinsic"
           intrinsicSize={{ width: heatmapWidth, height: heatmapHeight }}
+          normalWidth="viewport"
         >
           <Spin spinning={matrix.loading}>
-            <div style={{ width: heatmapWidth, height: heatmapHeight }}>
+            <div style={{ width: '100%', minWidth: heatmapWidth, height: heatmapHeight }}>
               {matrix.value && <MatrixHeatmap labels={matrix.value.columns.map(title)} matrix={matrix.value.matrix} counts={matrix.value.counts} bound={1}
                 height={heatmapHeight} title="Pearson相関行列" testId="relationships-matrix"
                 selected={pair ? [matrix.value.columns.indexOf(pair[0]), matrix.value.columns.indexOf(pair[1])] : null}
@@ -123,7 +124,7 @@ export default function RelationshipsPage() {
         </GraphPanel>
         <Typography.Text type="secondary">Pearson相関・ペアごとに欠損を除外。セルを選ぶと焦点ペアを表示します。</Typography.Text>
       </Col>
-      <Col xs={24} xl={12}>
+      <Col span={24}>
         <GraphPanel
           graphId="relationships/pair"
           title="焦点ペア"

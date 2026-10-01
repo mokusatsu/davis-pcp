@@ -1,3 +1,4 @@
+import { fitPointSeries, markerFitScale } from './markerStyle'
 import { useGraphViewport } from '../common/GraphPanel'
 import { useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type MutableRefObject, type RefObject } from 'react'
 import * as echarts from 'echarts'
@@ -8,6 +9,10 @@ import { ReactReduxContext } from 'react-redux'
 import type { ECharts, EChartsOption } from 'echarts'
 
 export interface EChartProps {
+  /** Ordinary scatter/line markers opt in; semantic/tree geometry is untouched. */
+  fitPointMarkers?: boolean
+  /** Invisible coarse-pointer radius for point charts without a nearest-point handler. */
+  pointHitRadius?: number
   resetKey?: string | number
   exportPosition?: 'top-right' | 'top-left'
   renderer?: 'svg' | 'canvas'
@@ -26,17 +31,21 @@ export interface EChartProps {
 /** Single lifecycle owner for all non-PCP charts. Options and handlers may change
  * without recreating a chart; hidden keep-alive/focus panels resize on re-entry. */
 export default function EChart({ option, height = 360, width = '100%', onEvents, onReady,
-  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style, exportPosition = 'top-right' }: EChartProps) {
+  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style, exportPosition = 'top-right', pointHitRadius, fitPointMarkers = false }: EChartProps) {
   const [exportError, setExportError] = useState<string | null>(null)
   const graphViewport=useGraphViewport()
   const viewportKey=JSON.stringify(graphViewport)
+  const fitScale = fitPointMarkers ? markerFitScale(graphViewport) : 1
   // SVG is resolution independent. ECharts Canvas fixes DPR at init, so renew
   // only its painter when the display density changes; React/analysis stay alive.
+  const effectivePointerSize = pointHitRadius ? 2 * pointHitRadius / Math.max(graphViewport.scale, .01) : undefined
   const effectiveDpr=renderer==='canvas' ? Math.max(.5,(graphViewport.dpr || (typeof window!=='undefined' ? window.devicePixelRatio : 1) || 1)*graphViewport.scale) : 1
   const redux = useContext(ReactReduxContext)
   const datasetId = useSyncExternalStore(redux?.store.subscribe ?? (() => () => {}), () => redux?.store.getState().selection?.datasetId)
   const container = useRef<HTMLDivElement>(null)
   const instance = useRef<ECharts | null>(null)
+  // DPR / pointer-tolerance changes replace the painter, not user legend/zoom choices.
+  const previousInstanceOption = useRef<ReturnType<ECharts['getOption']> | undefined>()
   const events = useRef(onEvents)
   const ready = useRef(onReady)
   const readyCalled = useRef(false)
@@ -59,7 +68,8 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
   useEffect(() => {
     const element = container.current
     if (!element) return
-    const chart = echarts.init(element, undefined, { renderer, devicePixelRatio: effectiveDpr })
+    const chart = echarts.init(element, undefined, { renderer, devicePixelRatio: effectiveDpr,
+      ...(effectivePointerSize ? { useCoarsePointer: true, pointerSize: effectivePointerSize } : {}) })
     instance.current = chart
     if (chartRef) chartRef.current = chart
     const syncSvg = () => {
@@ -88,9 +98,10 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
       if (svgRef) (svgRef as MutableRefObject<SVGSVGElement | null>).current = null
       instance.current = null
       readyCalled.current = false
+      previousInstanceOption.current = chart.getOption()
       chart.dispose()
     }
-  }, [chartRef, svgRef, renderer, effectiveDpr])
+  }, [chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize])
 
   useEffect(() => {
     const chart=instance.current, element=container.current
@@ -107,7 +118,7 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     const topology = (nodes: any[]): any => nodes.map(node => [node.id, node.name, node.value, topology(node.children ?? [])])
     const key = JSON.stringify([resetKey ?? datasetId, nextSeries.map(series => [series.id, series.name, series.type,
       series.type === 'tree' ? topology((series as any).data ?? []) : undefined])])
-    const previous = chart.getOption()
+    const previous = chart.getOption() ?? previousInstanceOption.current
     let legend = option.legend
     if (legend && legendKey.current === key) {
       const oldLegends = Array.isArray(previous?.legend) ? previous.legend : []
@@ -148,14 +159,14 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
       ...(tooltips ? { tooltip: tooltips } : {}),
       ...(legend ? { legend } : {}),
       ...(dataZoom ? { dataZoom } : {}),
-      ...(series ? { series } : {}),
+      ...(series ? { series: fitPointSeries(series, fitScale) } : {}),
       // Export is a stable DOM control: a native toolbox target is recreated
       // on setOption (including every Grand Tour frame), losing in-flight clicks.
       toolbox: option.toolbox,
     }, { notMerge: true, lazyUpdate: false })
     if (svgRef) (svgRef as MutableRefObject<SVGSVGElement | null>).current = container.current?.querySelector('svg') ?? null
     if (!readyCalled.current) { readyCalled.current = true; ready.current?.(chart) }
-  }, [option, ariaLabel, chartRef, svgRef, renderer, effectiveDpr, resetKey, datasetId])
+  }, [option, ariaLabel, chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize, fitScale, resetKey, datasetId])
 
   useEffect(() => {
     const chart = instance.current
@@ -175,7 +186,7 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
       return { name, handler }
     })
     return () => { if (!chart.isDisposed()) handlers.forEach(({ name, handler }) => chart.off(name, handler)) }
-  }, [eventNames, chartRef, svgRef, renderer, effectiveDpr])
+  }, [eventNames, chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize])
 
   const retainNativeControl = (event: MouseEvent<HTMLDivElement>) => {
     // Long full-text tooltips can be scrolled without starting a chart brush.
@@ -214,7 +225,7 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
         event.stopPropagation()
         const chart = instance.current
         if (!chart || chart.isDisposed()) return
-        try { downloadChartSvg(chart, ariaLabel); setExportError(null) }
+        try { downloadChartSvg(chart, ariaLabel, graphViewport.scale); setExportError(null) }
         catch (error) { setExportError(`SVGを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`) }
       }}
       style={{ position: 'absolute', top: 4, ...(exportPosition === 'top-left'

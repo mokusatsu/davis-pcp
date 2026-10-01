@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointDiameter, pointEmphasis } from '../charts/markerStyle'
 import { useGraphViewport } from '../common/GraphPanel'
 import { truncateText } from '../../utils/textUtils'
 import { useContext, useEffect, useRef, useSyncExternalStore, type RefObject, type PointerEvent } from 'react'
@@ -44,15 +45,16 @@ export function modelScatterOption(points: ModelPoint[], xLabel: string, yLabel:
     tooltip: { trigger: 'item', renderMode: 'richText', formatter: (p: any) => p.data?.title ?? p.name ?? '' },
     xAxis: { type: 'value', min: x[0], max: x[1], name: xLabel, nameLocation: 'middle', nameGap: 32, scale: true, axisLabel: { formatter: (value: number) => formatModelAxisValue(value, x) } },
     yAxis: { type: 'value', min: y[0], max: y[1], show: !oneDimensional, name: yLabel, nameLocation: 'middle', nameGap: 44, scale: true, axisLabel: { formatter: (value: number) => formatModelAxisValue(value, y) } },
-    series: [...extraSeries, ...(finite.some(p => p.misclassified) ? [{ id: 'misclassification-rings', type: 'scatter' as const, silent: true, z: 4,
-      data: finite.flatMap((p,i) => p.misclassified ? [{value:[p.x,oneDimensional?((i%12)-5.5)/9:p.y],symbolSize:p.selected?20:16,
+    series: [...extraSeries, ...(finite.some(p => p.misclassified) ? [{ id: 'misclassification-rings', type: 'scatter' as const, silent: true, z: 4, emphasis: { scale: false },
+      data: finite.flatMap((p,i) => p.misclassified ? [{value:[p.x,oneDimensional?((i%12)-5.5)/9:p.y],symbolSize:pointDiameter(p.selected, p.highlighted) + 2 * CHART_MARKERS.ringGap,
         itemStyle:{color:'transparent',borderColor:'#ff4d4f',borderWidth:1.5}}] : []) }] : []), { id: 'model-points', type: 'scatter', z: 5, labelLayout:{hideOverlap:true},
       data: finite.map((p, i) => ({
         id: p.id, rowId: p.rowId, name: p.label ?? '', title: p.title, value: [p.x, oneDimensional ? ((i % 12) - 5.5) / 9 : p.y],
-        symbol: p.symbol ?? 'circle', symbolSize: p.selected ? 14 : 10,
+        symbol: p.symbol ?? 'circle', symbolSize: pointDiameter(p.selected, p.highlighted),
+        emphasis: pointEmphasis(p.selected, p.highlighted),
         itemStyle: { color: p.color ?? '#1890ff', opacity: p.selected ? 1 : 0.8,
           borderColor: p.selected ? p.selectionColor ?? '#2a78d6' : p.highlighted ? '#fa8c16' : '#fff',
-          borderWidth: p.selected || p.highlighted ? 2.5 : 1 },
+          borderWidth: p.selected || p.highlighted ? 1.5 : 0.5 },
         label: { show: !!p.label, formatter: () => truncateText(p.label ?? '',16), position: p.x > x[0]+(x[1]-x[0])*.8 ? 'left' : 'right', fontSize: 11, color: '#333' },
       })),
       markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: '#ccc' },
@@ -82,7 +84,7 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
   const nearest = (p: {x:number;y:number}, box: DOMRect): string | undefined => {
     const chart=chartRef.current
     if(!chart)return undefined
-    let hit: string | undefined, distance=64.000001
+    let hit: string | undefined, distance=CHART_MARKERS.nearestRadius ** 2 + .000001
     points.filter(q => Number.isFinite(q.x) && (oneDimensional || Number.isFinite(q.y))).forEach((q,i) => {
       const pos=chart.convertToPixel({gridIndex:0},[q.x,oneDimensional?((i%12)-5.5)/9:q.y]) as number[]
       const dx=(pos[0]-p.x)*box.width/chart.getWidth(),dy=(pos[1]-p.y)*box.height/chart.getHeight(),d=dx*dx+dy*dy
@@ -97,14 +99,14 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
   const dataKey = JSON.stringify([points.map(p => [p.id,p.x,p.y]),xLabel,yLabel,oneDimensional,xExtent,yExtent])
   useEffect(clear, [dataKey, viewportKey])
   return <div style={{height}} onPointerDown={e => {
-    if (e.button !== 0 || !onBrush || start.current) return
+    if (e.button !== 0 || (!onBrush && !onToggle) || start.current) return
     const p = local(e)
     if (!p) return
     start.current = {...p,clientX:e.clientX,clientY:e.clientY,pointerId:e.pointerId,coordKey:viewportKey,hit:nearest(p,e.currentTarget.getBoundingClientRect())};suppressClick.current = false
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }} onPointerMove={e => {
     const p = local(e), a = start.current
-    if (!p || !a || a.hit || a.pointerId!==e.pointerId) return
+    if (!p || !a || !onBrush || a.hit || a.pointerId!==e.pointerId) return
     chartRef.current?.setOption({graphic:[{id:'model-selection',type:'rect',invisible:false,silent:true,z:100,
       shape:{x:Math.min(a.x,p.x),y:Math.min(a.y,p.y),width:Math.abs(p.x-a.x),height:Math.abs(p.y-a.y)},
       style:{fill:'rgba(42,120,214,.15)',stroke:'#2a78d6',lineWidth:1.5}}]})
@@ -125,7 +127,7 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
     const hi=chart.convertFromPixel({gridIndex:0},[Math.max(a.x,p.x),Math.min(a.y,p.y)]) as number[]
     if (lo?.every(Number.isFinite) && hi?.every(Number.isFinite)) onBrush?.({x:[lo[0],hi[0]],y:oneDimensional?null:[lo[1],hi[1]]})
   }} onPointerCancel={e => { if(start.current?.pointerId===e.pointerId){suppressClick.current=true; clear()} }} onLostPointerCapture={e=>{if(start.current?.pointerId===e.pointerId)clear()}}>
-  <EChart chartRef={chartRef} option={modelScatterOption(points.map(p=>({...p,highlighted:p.highlighted || !!p.rowId && p.rowId===hoveredRow})), xLabel, yLabel, oneDimensional, xExtent, yExtent, extraSeries, note)}
+  <EChart fitPointMarkers chartRef={chartRef} option={modelScatterOption(points.map(p=>({...p,highlighted:p.highlighted || !!p.rowId && p.rowId===hoveredRow})), xLabel, yLabel, oneDimensional, xExtent, yExtent, extraSeries, note)}
     height={height} svgRef={svgRef} testId={testId} ariaLabel={`${xLabel} / ${yLabel}`}
     onEvents={{ mouseover:p=>{if(p.data?.rowId)hoverRow(p.data.rowId)}, mouseout:p=>{if(p.data?.rowId)hoverRow(null)}, click: p => { if (suppressClick.current) { suppressClick.current=false; return }; if (p.seriesId === 'model-points' && p.data?.id) onToggle?.(p.data.id) },
       brushEnd: p => {

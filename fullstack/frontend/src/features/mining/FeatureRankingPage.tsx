@@ -1,3 +1,4 @@
+import { CHART_MARKERS } from '../charts/markerStyle'
 import EChart from '../charts/EChart'
 import { importanceBarsOption, rankingBarsOption, rankingScatterOption } from './rankingCharts'
 import { selectOrdinaryVariables } from '../../app/store'
@@ -572,11 +573,12 @@ export default function FeatureRankingPage() {
 
       {/* Visualizations: Multi-Metric Bar & Relevance vs Redundancy Bubble Plot */}
       {result && !loading && (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[16, 16]} data-testid="ranking-chart-stack">
           {/* Multi-Metric Bar Chart */}
-          <Col xs={24} lg={12}>
+          <Col span={24}>
             <GraphPanel
               graphId="ranking/metrics"
+              normalWidth="viewport"
               title="手法別スコア比較"
               available={Boolean(result && sortedRankings.length)}
               sizing="intrinsic"
@@ -593,9 +595,10 @@ export default function FeatureRankingPage() {
           </Col>
 
           {/* Relevance vs Redundancy Plot (mRMR) */}
-          <Col xs={24} lg={12}>
+          <Col span={24}>
             <GraphPanel
               graphId="ranking/mrmr"
+              normalWidth="viewport"
               title="関連度 vs 冗長性プロット"
               available={Boolean(result && result.rankings.length)}
               sizing="intrinsic"
@@ -603,7 +606,7 @@ export default function FeatureRankingPage() {
               controls={<Typography.Text type="secondary">右下が最良（高重要度・低冗長性）</Typography.Text>}
             >
             <div data-testid="ranking-mrmr-card">
-              <EChart testId="ranking-mrmr-chart" height={340} ariaLabel="関連度と動的冗長性"
+              <EChart fitPointMarkers pointHitRadius={CHART_MARKERS.hitRadius} testId="ranking-mrmr-chart" height={340} ariaLabel="関連度と動的冗長性"
                 option={rankingScatterOption(result.rankings, highlightedVar, topKVariables, getDynamicRedundancy, topK)}
                 onEvents={{ click: event => { if (event.data?.name) setHighlightedVar(event.data.name === highlightedVar ? null : event.data.name) } }} />
             </div>

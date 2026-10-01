@@ -1,3 +1,4 @@
+import { CHART_MARKERS, pointDiameter, pointEmphasis, markerFitScale, fitPointSeries } from '../charts/markerStyle'
 import { useGraphViewport, useGraphPopupContainer } from '../common/GraphPanel'
 import { useEffect, useMemo, useRef, useState, type FC, type PointerEvent } from 'react'
 import type { ECharts, EChartsOption } from 'echarts'
@@ -43,16 +44,18 @@ export function tourOption(points: TourPoint[], width: number, height: number, s
         return {type:'group',children}
       }},
       {id:'tour-points',type:'scatter',z:3,data:points.map(p=>({id:p.rowId,rowId:p.rowId,value:[p.x,p.y],
-        symbolSize:p.selected?10:7,itemStyle:{color:p.selected?selectionColor:p.color,borderColor:'#fff',borderWidth:p.selected?2:.5,opacity:1}}))}],
+        symbolSize:pointDiameter(p.selected),emphasis:pointEmphasis(p.selected),itemStyle:{color:p.selected?selectionColor:p.color,borderColor:'#fff',borderWidth:p.selected?2:.5,opacity:1}}))}],
   }
 }
 export const TgtCanvas: FC<TgtCanvasProps> = props => {
   const { engine, rowIds, dataMatrix, isPlaying, isTracking }=props
-  const viewportKey=JSON.stringify(useGraphViewport())
+  const viewport = useGraphViewport()
+  const viewportKey=JSON.stringify(viewport)
+  const fitScale = markerFitScale(viewport)
   const getPopupContainer=useGraphPopupContainer()
   const dispatch=useDispatch<AppDispatch>(),selection=useSelector((s:RootState)=>s.selection)
   const colors=useRowColorResolver()
-  const latest=useRef({props,colors});latest.current={props,colors}
+  const latest=useRef({props,colors,fitScale});latest.current={props,colors,fitScale}
   const containerRef=useRef<HTMLDivElement>(null),chartRef=useRef<ECharts|null>(null)
   const pointsRef=useRef<ProjectionPoint[]>([]),start=useRef<{x:number;y:number;clientX:number;clientY:number;pointerId:number;coordKey:string;pointId?:string}|null>(null)
   const lastProjection=useRef<{engine:GeodesicEngine;rowIds:string[];dataMatrix:number[][];basis:string}|null>(null)
@@ -73,7 +76,8 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
     const {props:p,colors:c}=latest.current
     const points:TourPoint[]=pointsRef.current.map(q=>({...q,color:c.getColor(q.rowId),selected:c.isSelected(q.rowId),
       trails:p.isTracking?p.engine.getTrails(q.rowId):[]}))
-    chart.setOption(tourOption(points,chart.getWidth(),chart.getHeight(),c.selectionColor),{notMerge:false,lazyUpdate:false})
+    const option = tourOption(points,chart.getWidth(),chart.getHeight(),c.selectionColor)
+    chart.setOption({...option,series:fitPointSeries(option.series,latest.current.fitScale)},{notMerge:false,lazyUpdate:false})
   }
   // One step/project per requested frame. Parent basis-label renders must not
   // advance or append trail history a second time.
@@ -112,7 +116,7 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
   const nearestRow=(point:{x:number;y:number},box:DOMRect)=>{
     const chart=chartRef.current
     if(!chart)return undefined
-    let hit:string|undefined,distance=64.000001
+    let hit:string|undefined,distance=CHART_MARKERS.nearestRadius ** 2 + .000001
     for(const q of pointsRef.current){const xy=chart.convertToPixel({gridIndex:0},[q.x,q.y]) as number[]
       const d=((xy[0]-point.x)*box.width/chart.getWidth())**2+((xy[1]-point.y)*box.height/chart.getHeight())**2
       if(d<distance){distance=d;hit=q.rowId}}

@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { useMemo, type FC } from 'react'
 import { Card, Space, Tag, Typography } from 'antd'
@@ -188,7 +189,7 @@ export const ScreePlot: FC<ScreePlotProps> = ({
               key={`dot-${i}`}
               cx={p.cx}
               cy={p.cy}
-              r={4}
+              data-chart-marker="point" r={pointRadius()}
               fill="#fff"
               stroke="#faad14"
               strokeWidth={2}

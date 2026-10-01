@@ -42,6 +42,18 @@ export function chartSvg(chart: ECharts): string {
   } finally { snapshot.dispose() }
 }
 
-export function downloadChartSvg(chart: ECharts, name: string): void {
-  downloadBlob(new Blob([chartSvg(chart)], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`)
+export function chartSvgAtScale(chart: ECharts, scale = 1): string {
+  const svg = chartSvg(chart)
+  if (!Number.isFinite(scale) || scale <= 0 || scale === 1) return svg
+  // The host transform is outside ECharts' SVG. Give the exported viewport the
+  // displayed dimensions so Fit-compensated dots retain their on-screen size.
+  return svg.replace(/<svg\b([^>]*)>/, (_root, attributes: string) => {
+    const width = chart.getWidth(), height = chart.getHeight()
+    const dimensions = attributes.replace(/\s(?:width|height)="[^"]*"/g, '')
+    return `<svg${dimensions} width="${width * scale}" height="${height * scale}"${/\sviewBox=/.test(attributes) ? '' : ` viewBox="0 0 ${width} ${height}"`}>`
+  })
+}
+
+export function downloadChartSvg(chart: ECharts, name: string, scale = 1): void {
+  downloadBlob(new Blob([chartSvgAtScale(chart, scale)], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`)
 }

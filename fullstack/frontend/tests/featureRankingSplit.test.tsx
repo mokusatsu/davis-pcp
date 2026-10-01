@@ -56,6 +56,12 @@ it('renders MDI and permutation as separate columns with warnings and tooltips',
   const { fireEvent, waitFor } = await import('@testing-library/react')
   fireEvent.click(view.getByTestId('compute-ranking-btn'))
   await waitFor(() => expect(view.getByTestId('importance-split')).toBeTruthy())
+  const chartColumns = view.getByTestId('ranking-chart-stack').children
+  expect(chartColumns).toHaveLength(2)
+  for (const col of Array.from(chartColumns)) {
+    expect(col).toHaveClass('ant-col-24')
+    expect(col.className).not.toMatch(/ant-col-(?:xl|lg)-12/)
+  }
   expect(view.getByTestId('importance-warnings').textContent).toContain('因果効果ではない')
   expect(view.container.textContent).toContain('Permutation Importance')
   expect(view.container.textContent).toContain('0.280')

@@ -1,3 +1,4 @@
+import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -497,7 +498,7 @@ export default function DistributionPage() {
                       key={`${panel.column}-${row.id}`}
                       cx={scaleX(row.v)}
                       cy={centerY + signedNoiseViz(row.id, `${panel.column}-box`) * Math.min(10, rowSpacing * 0.35)}
-                      r={isSelected ? 3.8 : isHovered ? 3.4 : 2.2}
+                      data-chart-marker="point" r={pointRadius(isSelected, isHovered)}
                       fill={isSelected ? theme.selection : getColor(row.id)}
                       opacity={isSelected || isHovered ? 0.95 : 0.28}
                       stroke={isSelected ? theme.surface : getColor(row.id)}
@@ -572,7 +573,7 @@ export default function DistributionPage() {
                       key={`${panel.column}-${row.id}`}
                       cx={centerX + signedNoiseViz(row.id, `${panel.column}-boxv`) * Math.min(10, colSpacing * 0.35)}
                       cy={scaleY(row.v)}
-                      r={isSelected ? 3.8 : isHovered ? 3.4 : 2.2}
+                      data-chart-marker="point" r={pointRadius(isSelected, isHovered)}
                       fill={isSelected ? theme.selection : getColor(row.id)}
                       opacity={isSelected || isHovered ? 0.95 : 0.28}
                       stroke={isSelected ? theme.surface : getColor(row.id)}

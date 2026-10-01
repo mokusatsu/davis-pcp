@@ -44,7 +44,7 @@ describe('native Conjoint diagnostic scatter', () => {
     expect(points(chart)[0].symbolSize).toBeGreaterThan(points(chart)[1].symbolSize)
     expect(points(chart)[0].itemStyle.color).toBe('#2a78d6')
     expect(points(chart)[1].itemStyle.color).toBe('#456789')
-    expect(points(chart)[1].itemStyle.borderWidth).toBe(2.5)
+    expect(points(chart)[1].itemStyle.borderWidth).toBe(1.5)
     expect(svgRef.current?.tagName.toLowerCase()).toBe('svg')
     expect(chart.getDataURL({ type: 'svg' })).toContain('data:image/svg+xml')
     expect(host.querySelector('raw')).toBeNull()
@@ -73,7 +73,7 @@ describe('native Conjoint diagnostic scatter', () => {
     expect((chart.getOption().yAxis as any[])[0].name).toBe('行順')
     act(() => { trigger(chart, 'mouseover', { data: points(chart)[1] }) })
     expect(store.getState().selection.hoveredRowId).toBe('rank-b')
-    expect(points(chart)[1].itemStyle.borderWidth).toBe(2.5)
+    expect(points(chart)[1].itemStyle.borderWidth).toBe(1.5)
     act(() => { trigger(chart, 'mouseout', { data: points(chart)[1] }) })
     expect(store.getState().selection.hoveredRowId).toBeNull()
     view.rerender(draw('#abcdef'))
@@ -103,7 +103,7 @@ describe('native factor-score scatter', () => {
     const chart = getInstanceByDom(view.getByTestId('efa-native'))!
     expect(points(chart).map((p) => [p.rowId, p.value])).toEqual([['score-a', [-3, -3]], ['score-b', [5, 5]]])
     expect(points(chart)[0].itemStyle.color).toBe('#765432')
-    expect(points(chart)[0].itemStyle.borderWidth).toBe(2.5)
+    expect(points(chart)[0].itemStyle.borderWidth).toBe(1.5)
     expect(points(chart)[1].itemStyle.color).toBe('#2a78d6')
     expect((chart.getOption().yAxis as any[])[0].show).toBe(true)
     act(() => {

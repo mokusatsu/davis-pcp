@@ -1,3 +1,5 @@
+import { useGraphViewport } from '../common/GraphPanel'
+import { pointRadius, markerFitScale } from '../charts/markerStyle'
 import EChart from '../charts/EChart'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import type { EChartsOption } from 'echarts'
@@ -8,7 +10,7 @@ export function formatOdds(value: number | null, status?: string): string {
   if (!Number.isFinite(value)) return '未定義'
   return value !== 0 && (Math.abs(value) >= 1e4 || Math.abs(value) < 0.001) ? value.toExponential(3) : value.toPrecision(4)
 }
-export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Record<string, string>> = {}): EChartsOption {
+export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Record<string, string>> = {}, fitScale = 1): EChartsOption {
   const values = items.flatMap(r => [r.logOddsRatio, r.logCiLower, r.logCiUpper]).filter(Number.isFinite).map(v => v / Math.LN10)
   const lo = Math.min(0, ...values), hi = Math.max(0, ...values)
   const pad = Math.max(0.1, (hi - lo) * 0.08)
@@ -29,13 +31,14 @@ export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Reco
           children.push({ type: 'line', shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] }, style: { stroke: color, lineWidth: 2 } })
           for (const p of [low, high]) children.push({ type: 'line', shape: { x1: p[0], y1: p[1]-5, x2: p[0], y2: p[1]+5 }, style: { stroke: color } })
         }
-        if (mid.every(Number.isFinite)) children.push({ type: 'circle', shape: { cx: mid[0], cy: mid[1], r: 5 }, style: { fill: color } })
+        if (mid.every(Number.isFinite)) children.push({ type: 'circle', shape: { cx: mid[0], cy: mid[1], r: pointRadius() / fitScale }, style: { fill: color } })
         return { type: 'group', children }
       } }, { type: 'scatter', data: [], markLine: { symbol: 'none', silent: true, data: [{ xAxis: 0 }], label: { formatter: 'OR = 1', position: 'start' } } }],
   }
 }
 export default function OddsRatioForest({ items }: { items: CoefficientItem[] }) {
+  const fitScale = markerFitScale(useGraphViewport())
   const questionText = useQuestionText()
   const labels = Object.fromEntries(items.map(item => [item.name, questionText(item.name)]))
-  return <EChart testId="logistic-forest-chart" height={Math.max(280, items.length * 38 + 100)} ariaLabel="オッズ比と95%信頼区間" option={oddsForestOption(items, labels)} />
+  return <EChart testId="logistic-forest-chart" height={Math.max(280, items.length * 38 + 100)} ariaLabel="オッズ比と95%信頼区間" option={oddsForestOption(items, labels, fitScale)} />
 }
