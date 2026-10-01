@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { CHART_MARKERS } from '../charts/markerStyle'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -59,6 +60,11 @@ export default function PenaltyRewardPage() {
   const [attributes, setAttributes] = useState<string[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<PraResponse | null>(null)
+  const runScope = useScopedRun(JSON.stringify([outcome, attributes]))
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const [runError, setRunError] = useState<string | null>(null)
+  useEffect(() => { setResult(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null)
 
   useEffect(() => {
@@ -84,21 +90,28 @@ export default function PenaltyRewardPage() {
     const o = targetOutcome || outcome
     const a = targetAttrs || attributes
     if (!datasetId || !o || a.length === 0) return
+    const ticket = runScope.begin()
+    setRunError(null)
     setLoading(true)
     try {
       const res = await api.post<PraResponse>('/pra/evaluate', {
         datasetId,
+        rowIds: ticket.scope.rowIds,
+        expectedDataRevision: dataRevision,
+        expectedSchemaRevision: schemaRevision,
         outcome: o,
         attributes: a,
       })
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setResult(res)
       if (res.attributes.length > 0) {
         setSelectedAttribute(res.attributes[0].name)
       }
     } catch (err) {
-      console.error(err)
+      if (ticket.isCurrent()) setRunError((err as {message?: string}).message || '分析に失敗しました。')
     } finally {
-      setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -111,11 +124,6 @@ export default function PenaltyRewardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns])
 
-  useEffect(() => {
-    if (datasetId && outcome && attributes.length > 0 && !result && !loading) {
-      void runEvaluation()
-    }
-  }, [datasetId, outcome, attributes])
 
   const currentAttr = useMemo(() => {
     if (!result || !selectedAttribute) return null
@@ -187,6 +195,9 @@ export default function PenaltyRewardPage() {
       }}
       data-testid="penalty-reward-page"
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Alert type="info" message="現在の入力と異なる実行済み結果です。再実行すると更新されます。" />}
+      {runError && <Alert type="error" message={runError} />}
       {/* Header controls */}
       {(
         <Card size="small" style={{ marginBottom: 12 }}>
@@ -201,7 +212,6 @@ export default function PenaltyRewardPage() {
                   setOutcome(val)
                   const newA = columns.filter((c) => c !== val)
                   setAttributes(newA)
-                  void runEvaluation(val, newA)
                 }}
                 options={columns.map((c) => ({ label: c, value: c }))}
               />
@@ -215,7 +225,6 @@ export default function PenaltyRewardPage() {
                 value={attributes}
                 onChange={(vals) => {
                   setAttributes(vals)
-                  void runEvaluation(outcome, vals)
                 }}
                 options={columns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
               />

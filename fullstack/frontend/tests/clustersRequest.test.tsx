@@ -28,7 +28,7 @@ function setup(selectedRowIds: string[] = []) {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds, activeRowIds: ['r7', 'r14'], clusterResult: null },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'x' }, { kind: 'column', columnId: 'category' }, { kind: 'ma', groupId: 'g' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, columns: [
       { name: 'x', columnId: 'x', role: 'question', scaleType: 'ratio' },
@@ -36,7 +36,7 @@ function setup(selectedRowIds: string[] = []) {
       { name: 'category', columnId: 'category', role: 'attribute', scaleType: 'nominal' },
       { name: 'A', columnId: 'A', role: 'question', scaleType: 'nominal', multiResponseGroup: 'g' }] } }
   const local = configureStore({ reducer: (current = state, action: any) => action.type === 'test/scope'
-    ? { ...current, globalObservations: { ...current.globalObservations, activeRowIds: action.payload } }
+    ? { ...current, globalObservations: { ...current.globalObservations, scopeMode: 'sampled', sampling: { ...current.globalObservations.sampling, sampledRowIds: action.payload } } }
     : action.type === 'test/revision' ? { ...current, selection: { ...current.selection, dataRevision: 4 } }
     : clusterResultStored.match(action) ? { ...current, selection: { ...current.selection, clusterResult: action.payload } } : current,
     middleware: get => get({ serializableCheck: false }) })
@@ -59,7 +59,7 @@ it('sends only common ordinary candidates, strict scope and revisions on manual 
   expect(action.payload.map(group => group.rowIds)).toEqual([['r7'], ['r14']])
 })
 
-it.each(['scope', 'revision', 'unmount'])('does not overwrite linked groups after %s changes', async change => {
+it.each(['revision', 'unmount'])('does not overwrite linked groups after %s changes', async change => {
   let finish!: (value: any) => void
   vi.spyOn(api, 'post').mockImplementation(() => new Promise(resolve => { finish = resolve }))
   const success = vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)

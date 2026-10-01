@@ -1,4 +1,4 @@
-import { configureStore, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { configureStore, createAction, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { entityKey, reconcileEntities, variableCatalog, type VariableEntity } from '../features/selection/variableEntities'
 
 export interface GroupDef {
@@ -43,8 +43,6 @@ export interface SelectionState {
   /** L2 color-coding (analysis groups) enabled. Groups come from Clusters etc.;
    *  per AGENTS.md the render settings only offer enable/disable, not creation. */
   l2ColorEnabled: boolean
-  /** Statistics page scope: active rows or selected rows only. */
-  statsScope: 'active' | 'selected'
   /** Persisted Models result so switching tabs doesn't lose it. */
   modelResult: unknown | null
   history: { label: string; at: string }[]
@@ -66,11 +64,26 @@ const initialState: SelectionState = {
   groups: [],
   clusterResult: null,
   l2ColorEnabled: false,
-  statsScope: 'active',
   modelResult: null,
   history: [],
   futureCount: 0,
 }
+
+export interface AnalysisWorkspaceSnapshot {
+  workspaceVersion: 1
+  datasetId: string
+  dataRevision: number
+  schemaRevision: number
+  activeRowIds: string[]
+  selectedRowIds: string[]
+  groups: GroupDef[]
+  globalVariables: GlobalVariableState
+  globalObservations: GlobalObservationState
+}
+export const analysisWorkspaceRestored = createAction<AnalysisWorkspaceSnapshot>('workspace/analysisRestored')
+
+/** One action updates the canonical working set and its source description atomically. */
+export const rangeSelectionApplied = createAction<{ from: number; to: number; rowIds: string[]; asSelected?: boolean }>('observations/rangeSelectionApplied')
 
 const selectionSlice = createSlice({
   name: 'selection',
@@ -94,13 +107,13 @@ const selectionSlice = createSlice({
       state.clusterResult = null
       state.modelResult = null
       state.l2ColorEnabled = false
-      state.statsScope = 'active'
       state.history = []
       state.futureCount = 0
     },
     selectionApplied(state, action: PayloadAction<{ rowIds: string[]; operation: 'add' | 'replace' | 'subtract' | 'toggle'; label: string }>) {
       const { rowIds, operation, label } = action.payload
-      const hits = new Set(rowIds.filter((id) => state.activeRowIds.includes(id)))
+      const active = new Set(state.activeRowIds)
+      const hits = new Set(rowIds.filter((id) => active.has(id)))
       const current = new Set(state.selectedRowIds)
       if (operation === 'replace') state.selectedRowIds = [...hits]
       else if (operation === 'add') hits.forEach((id) => current.add(id))
@@ -144,9 +157,6 @@ const selectionSlice = createSlice({
     l2ColorToggled(state, action: PayloadAction<boolean>) {
       state.l2ColorEnabled = action.payload
     },
-    statsScopeSet(state, action: PayloadAction<'active' | 'selected'>) {
-      state.statsScope = action.payload
-    },
     modelResultStored(state, action: PayloadAction<unknown>) {
       state.modelResult = action.payload
     },
@@ -157,11 +167,40 @@ const selectionSlice = createSlice({
       state.history.unshift({ label: action.payload.label, at: new Date().toISOString() })
     },
   },
+  extraReducers: builder => {
+    builder.addCase(analysisWorkspaceRestored, (state, { payload }) => {
+      if (payload.datasetId !== state.datasetId || payload.dataRevision !== state.dataRevision) return
+      const known = new Set(state.allRowIds)
+      const active = payload.activeRowIds.filter(id => known.has(id))
+      const activeSet = new Set(active)
+      state.activeRowIds = active
+      state.activeRowIdSet = activeSet
+      state.selectedRowIds = payload.selectedRowIds.filter(id => activeSet.has(id))
+      state.groups = payload.groups
+      state.l2ColorEnabled = payload.groups.length > 0
+      state.history.unshift({ label: '共通分析対象をセッションから復元', at: new Date().toISOString() })
+    })
+    builder.addCase(rangeSelectionApplied, (state, action) => {
+      const known = new Set(action.payload.asSelected ? state.activeRowIds : state.allRowIds)
+      const rows = [...new Set(action.payload.rowIds)].filter(id => known.has(id))
+      if (action.payload.asSelected) state.selectedRowIds = rows
+      else {
+        state.activeRowIds = rows
+        const active = new Set(rows)
+        state.activeRowIdSet = active
+        state.selectedRowIds = state.selectedRowIds.filter(id => active.has(id))
+      }
+      state.history.unshift({ label: `行範囲 ${action.payload.from}〜${action.payload.to}（${rows.length}行）`, at: new Date().toISOString() })
+      state.futureCount = 0
+    })
+  },
 })
+
+export const selectionReducer = selectionSlice.reducer
 
 export const {
   datasetLoaded, datasetValuesUpdated, selectionApplied, selectionCleared, hovered,
-  focusSelected, deleteSelected, resetWorkingSet, groupsReplaced, clusterResultStored, l2ColorToggled, statsScopeSet, modelResultStored, undoDone,
+  focusSelected, deleteSelected, resetWorkingSet, groupsReplaced, clusterResultStored, l2ColorToggled, modelResultStored, undoDone,
 } = selectionSlice.actions
 
 export interface PcpState {
@@ -298,6 +337,7 @@ export const globalVariablesSlice = createSlice({
     },
   },
   extraReducers: builder => {
+    builder.addCase(analysisWorkspaceRestored, (_state, { payload }) => payload.globalVariables)
     for (const thunk of [fetchCodebookThunk, saveCodebookThunk]) {
       builder.addCase(thunk.fulfilled, (state, action) => {
         if (state.datasetId && state.datasetId !== action.payload.datasetId) return
@@ -372,12 +412,17 @@ export interface SamplingConfig {
   seed?: number
   sampledRowIds: string[]
   sampledRowWeights: Record<string, number>
+  sourceScope?: 'active' | 'all'
+  sourceScopeHash?: string
+  sourceOrderHash?: string
+  sourceRowCount?: number
+  datasetId?: string
+  dataRevision?: number
+  schemaRevision?: number
+  sampleId?: string
 }
 
 export interface GlobalObservationState {
-  totalRowIds: string[]
-  activeRowIds: string[]
-  selectedRowIds: string[]
   scopeMode: 'active' | 'selected' | 'sampled' | 'all'
   sampling: SamplingConfig
   rangeSelection?: { from: number; to: number }
@@ -395,9 +440,6 @@ const initialSampling: SamplingConfig = {
 }
 
 const initialGlobalObservations: GlobalObservationState = {
-  totalRowIds: [],
-  activeRowIds: [],
-  selectedRowIds: [],
   scopeMode: 'active',
   sampling: initialSampling,
   rangeSelection: undefined,
@@ -435,56 +477,24 @@ export const globalObservationsSlice = createSlice({
         state.scopeMode = 'active'
       }
     },
-    rangeSelectionApplied(
-      state,
-      action: PayloadAction<{ from: number; to: number; rowIds: string[]; asSelected?: boolean }>
-    ) {
-      state.rangeSelection = { from: action.payload.from, to: action.payload.to }
-      if (action.payload.asSelected) {
-        state.selectedRowIds = action.payload.rowIds
-      } else {
-        state.activeRowIds = action.payload.rowIds
-        state.scopeMode = 'active'
-      }
-    },
+
   },
   extraReducers: (builder) => {
     builder
-      .addCase(selectionSlice.actions.datasetLoaded, (state, action) => {
-        state.totalRowIds = action.payload.rowIds
-        state.activeRowIds = action.payload.rowIds
-        state.selectedRowIds = []
+      .addCase(analysisWorkspaceRestored, (_state, { payload }) => payload.globalObservations)
+      .addCase(selectionSlice.actions.datasetLoaded, state => {
         state.scopeMode = 'active'
         state.sampling = initialSampling
         state.rangeSelection = undefined
       })
-      .addCase(selectionSlice.actions.selectionApplied, (state, action) => {
-        const { rowIds, operation } = action.payload
-        const hits = new Set(rowIds.filter((id) => state.activeRowIds.includes(id)))
-        const current = new Set(state.selectedRowIds)
-        if (operation === 'replace') state.selectedRowIds = [...hits]
-        else if (operation === 'add') hits.forEach((id) => current.add(id))
-        else if (operation === 'subtract') hits.forEach((id) => current.delete(id))
-        else hits.forEach((id) => (current.has(id) ? current.delete(id) : current.add(id)))
-        if (operation !== 'replace') state.selectedRowIds = [...current]
+      .addCase(rangeSelectionApplied, (state, action) => {
+        state.rangeSelection = { from: action.payload.from, to: action.payload.to }
+        if (!action.payload.asSelected) state.scopeMode = 'active'
       })
-      .addCase(selectionSlice.actions.selectionCleared, (state) => {
-        state.selectedRowIds = []
-      })
-      .addCase(selectionSlice.actions.focusSelected, (state) => {
-        const selected = new Set(state.selectedRowIds)
-        state.activeRowIds = state.activeRowIds.filter((id) => selected.has(id))
-      })
-      .addCase(selectionSlice.actions.deleteSelected, (state) => {
-        const selected = new Set(state.selectedRowIds)
-        state.activeRowIds = state.activeRowIds.filter((id) => !selected.has(id))
-        state.selectedRowIds = []
-      })
-      .addCase(selectionSlice.actions.resetWorkingSet, (state) => {
-        state.activeRowIds = [...state.totalRowIds]
-        state.selectedRowIds = []
+      .addCase(selectionSlice.actions.resetWorkingSet, state => {
         state.sampling = initialSampling
         state.scopeMode = 'active'
+        state.rangeSelection = undefined
       })
   },
 })
@@ -493,22 +503,21 @@ export const {
   observationScopeChanged,
   samplingApplied,
   samplingCleared,
-  rangeSelectionApplied,
 } = globalObservationsSlice.actions
 
 export function selectEffectiveRowIds(state: RootState): string[] {
   const obs = state.globalObservations
   if (!obs) return state.selection.activeRowIds
   if (obs.scopeMode === 'selected') {
-    return obs.selectedRowIds
+    return state.selection.selectedRowIds
   }
   if (obs.scopeMode === 'sampled') {
     return obs.sampling.sampledRowIds
   }
   if (obs.scopeMode === 'all') {
-    return obs.totalRowIds
+    return state.selection.allRowIds
   }
-  return obs.activeRowIds
+  return state.selection.activeRowIds
 }
 
 import {

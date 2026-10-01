@@ -24,7 +24,7 @@ function setup() {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds: ['r7'] },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'Area' }, { kind: 'column', columnId: 'score' }, { kind: 'ma', groupId: 'g' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, columns: [
       { name: 'Area', columnId: 'Area', role: 'attribute', scaleType: 'nominal' },
@@ -32,7 +32,7 @@ function setup() {
       { name: 'hidden', columnId: 'hidden', role: 'question', scaleType: 'nominal' },
       { name: 'A', columnId: 'A', role: 'question', scaleType: 'nominal', multiResponseGroup: 'g' }] } }
   const local = configureStore({ reducer: (current = state, action: any) => action.type === 'test/scope'
-    ? { ...current, globalObservations: { ...current.globalObservations, activeRowIds: ['r7'] } }
+    ? { ...current, globalObservations: { ...current.globalObservations, scopeMode: 'sampled', sampling: { ...current.globalObservations.sampling, sampledRowIds: ['r7'] } } }
     : action.type === 'test/revision' ? { ...current, selection: { ...current.selection, dataRevision: 4 } } : current })
   return { local, view: render(<Provider store={local}><LineMosaicPage /></Provider>) }
 }

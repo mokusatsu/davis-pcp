@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import CategoryBars from '../charts/CategoryBars'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Empty, Pagination, Radio, Space, Spin, Tooltip, Typography } from 'antd'
@@ -30,6 +31,7 @@ const weightNote = (weight: Comparison | null, summary: MultiResponseSummary): s
 
 export default function MultiResponseBarChart() {
   const dispatch = useDispatch()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const entities = useSelector(selectVariableEntities)
   const rowIds = useSelector(selectEffectiveRowIds)
@@ -81,6 +83,7 @@ export default function MultiResponseBarChart() {
   const version = useRef(0)
   useEffect(() => { setPage(1); setStrataPage(1); setMatching(false); return () => { version.current++ } }, [key])
   useEffect(() => {
+    if (!viewActive) return
     if (!groupId || !selection.datasetId || isLoading) return
     let cancelled = false
     setLoading(true)
@@ -97,7 +100,7 @@ export default function MultiResponseBarChart() {
       .catch(error => { if (!cancelled) { setResult(null); setError(error.message || 'MA集計に失敗しました。') } })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [key, selection.selectedRowIds, isLoading, retry])
+  }, [viewActive, key, selection.selectedRowIds, isLoading, retry])
 
   const contentRef = useRef<HTMLDivElement>(null)
   const [contentHeight, setContentHeight] = useState(300)

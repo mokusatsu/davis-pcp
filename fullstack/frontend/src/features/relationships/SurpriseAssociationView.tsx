@@ -1,9 +1,10 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
 import EChartSurface from '../charts/EChartSurface'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -92,7 +93,6 @@ export default function SurpriseAssociationView() {
       : global.activeVariableIds.includes(column.name)))
   const names = (current?.names ?? []).filter(name => candidates.some(column => column.name === name))
   const [error, setError] = useState<string | null>(null)
-  const requestVersion = useRef(0)
 
   const [mode, setMode] = useState<'quadrant' | 'heatmap' | 'list'>('quadrant')
   const [wStrength, setWStrength] = useState<number>(50)
@@ -102,37 +102,36 @@ export default function SurpriseAssociationView() {
   const namesKey = JSON.stringify(names)
   const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, namesKey, wStrength]),
     [datasetId, dataRevision, schemaRevision, rowIds, namesKey, wStrength])
-  const contextRef = useRef(context)
-  contextRef.current = context
+  const runScope = useScopedRun(context)
 
   const fetchSurprise = async (wStr: number) => {
     if (!datasetId || names.length < 2) return
-    const version = ++requestVersion.current, startedContext = contextRef.current
+    const ticket = runScope.begin()
     setLoading(true)
     setError(null)
     try {
       const res = await api.post<SurpriseResult>('/relationships/surprise', {
         datasetId,
-        columns: names, rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
+        columns: names, rowIds: ticket.scope.rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         wStrength: wStr / 100.0,
         wUnexpected: (100 - wStr) / 100.0,
       })
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setResult(res)
       if (res.pairs.length > 0) {
         setSelectedPairId(res.pairs[0].id)
       }
     } catch (err: any) {
-      if (version === requestVersion.current && startedContext === contextRef.current) setError(err.message || '計算に失敗しました。')
+      if (ticket.isCurrent()) setError(err.message || '計算に失敗しました。')
     } finally {
-      if (version === requestVersion.current && startedContext === contextRef.current) setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
   useEffect(() => {
-    requestVersion.current += 1
     setResult(null); setSelectedPairId(null); setLoading(false); setError(null)
-  }, [context])
+  }, [runScope.identity])
 
   const currentPair = useMemo(() => {
     if (!result || !selectedPairId) return null
@@ -169,6 +168,9 @@ export default function SurpriseAssociationView() {
       style={{ padding: 16, display: 'flex', flexDirection: 'column', minWidth: 0 }}
       data-testid="surprise-association-view"
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
       {/* Controls */}
         <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
           <Space wrap style={{ marginBottom: 12 }}>

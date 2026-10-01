@@ -14,7 +14,7 @@ it('never executes either mining method on entry, mode changes or tab switches',
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r1', 'r2'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r1', 'r2'] } },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2 },
   }), middleware: g => g({ serializableCheck: false }) })
   const post = vi.spyOn(api, 'post').mockResolvedValue({ run_id: 'run', mode: 'standard', summary: {}, insights: [] })

@@ -16,7 +16,7 @@ it('runs only on explicit execution with selected columns, scope and revisions',
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'manual', dataRevision: 3, selectedRowIds: ['r'] },
-    globalObservations: { ...base.globalObservations, scopeMode: 'selected', selectedRowIds: ['r'], activeRowIds: ['r'], totalRowIds: ['r'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'selected' },
     codebook: { ...base.codebook, datasetId: 'manual', schemaRevision: 2, columns: ['a', 'b'].map(name => ({
       columnId: name, name, role: 'question', scaleType: 'nominal', multiResponseGroup: 'q',
     })) }, globalVariables: { ...base.globalVariables, activeEntities: null },
@@ -39,7 +39,7 @@ it('renders the native association heatmap with pair details and preserves its i
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'heatmap', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r'], totalRowIds: ['r'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r'] } },
     codebook: { ...base.codebook, datasetId: 'heatmap', schemaRevision: 2, columns: ['a', 'b'].map(name => ({
       columnId: name, name, label: `${name} full question`, role: 'question', scaleType: 'nominal', multiResponseGroup: 'q',
     })) }, globalVariables: { ...base.globalVariables, activeEntities: null },

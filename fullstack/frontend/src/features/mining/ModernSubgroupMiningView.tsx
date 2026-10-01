@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
@@ -6,7 +7,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Button, Typography, Space, Tag, Row, Col,
-  Statistic, Spin, Empty, InputNumber, Radio, Divider, Alert, Checkbox,
+  Statistic, Spin, Empty, InputNumber, Radio, Divider, Alert,
 } from 'antd'
 import {
   ThunderboltOutlined, CheckCircleOutlined,
@@ -115,16 +116,12 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const navigate = useNavigate()
 
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
-  const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
   const rowIds = useSelector(selectEffectiveRowIds)
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
   const targets = useMiningTargets()
   const { schemaRevision, getColumn, formatValueLabel } = useCodebook()
-  const requestVersion = useRef(0)
-  const resultContext = useRef('')
   const context = useMemo(() => JSON.stringify([datasetId, schemaRevision, dataRevision, rowIds, targets.attributes, targets.questions]),
     [datasetId, schemaRevision, dataRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|')])
-  resultContext.current = context
   const conditionLabel = (c: ModernCondition) => {
     const title = getColumn(c.column)?.label || c.column
     const value = ['==', '!=', 'in'].includes(c.operator)
@@ -138,7 +135,6 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const [minGroupSize, setMinGroupSize] = useState<number>(30)
   const [topK, setTopK] = useState<number>(12)
   const [filterQuestion, setFilterQuestion] = useState<string>('all')
-  const [filterBySelection, setFilterBySelection] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<{ message: string; details?: string; suggestedActions?: string[] } | null>(null)
   const [result, setResult] = useState<ModernMiningResult | null>(null)
@@ -149,26 +145,27 @@ export const ModernSubgroupMiningView: React.FC = () => {
   /** Only used to offer independent-verification targets; never the analysis subject. */
   const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
 
-  // Verification is refused unless the scope hash matches exploration, so it has
-  // to be fed exactly the rows the modern run scoped, filter included.
-  const scopeRowIds = useMemo(() => {
-    if (!filterBySelection) return rowIds
-    const selected = new Set(selectedRowIds)
-    return rowIds.filter((id) => selected.has(id))
-  }, [rowIds, selectedRowIds, filterBySelection])
-  const inputContext = useMemo(() => JSON.stringify([context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null]),
-    [context, miningMode, maxDepth, minGroupSize, topK, filterBySelection, filterBySelection ? selectedRowIds : null])
-  resultContext.current = inputContext
+  const inputContext = JSON.stringify([context, miningMode, maxDepth, minGroupSize, topK])
+  const runScope = useScopedRun(inputContext)
+  const [runInput, setRunInput] = useState<Record<string, unknown> | null>(null)
+  const verificationVersion = useRef(0)
+  const resultRef = useRef(result)
+  resultRef.current = result
+  const identityRef = useRef(runScope.identity)
+  identityRef.current = runScope.identity
+
 
   useEffect(() => {
-    requestVersion.current += 1
+    verificationVersion.current += 1
+    setRunInput(null)
+    setVerifying(false)
     setResult(null)
     setSelectedInsightId(null)
     setLoading(false)
     setError(null)
     setVerificationResult(null)
     setVerificationInfo(null)
-  }, [inputContext])
+  }, [runScope.identity])
 
   // The picker has to be filled before it opens, or 独立データ指定 looks dead;
   // the current dataset is filtered out by the modal itself.
@@ -187,29 +184,25 @@ export const ModernSubgroupMiningView: React.FC = () => {
    * whichever algorithm pinned it. Only the hash is sent, never candidate ids.
    */
   const runVerification = async (config: VerificationConfig) => {
-    if (!datasetId || !result?.candidateSetHash) return
-    const version = ++requestVersion.current, startedContext = resultContext.current
+    if (!datasetId || !result?.candidateSetHash || !runInput) return
+    const version = ++verificationVersion.current, sourceResult = result, sourceIdentity = runScope.identity
+    const isCurrent = () => version === verificationVersion.current && resultRef.current === sourceResult && identityRef.current === sourceIdentity
     setVerifying(true)
     setError(null)
     try {
       const res = await api.post<{ verification?: VerificationInfo; results?: VerificationResultItem[] }>(
         '/mining/subgroups', {
-          datasetId,
-          attributeCols: targets.attributes,
-          questionCols: targets.questions,
-          rowIds: scopeRowIds,
-          expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
-          minGroupSize,
+          ...runInput,
           analysisMode: 'verification',
           verificationConfig: config,
           candidateSetHash: result.candidateSetHash,
         })
-      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      if (!isCurrent()) return
       setVerificationResult(res.results ?? null)
       setVerificationInfo(res.verification ?? null)
       setVerificationModalOpen(false)
     } catch (e: any) {
-      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      if (!isCurrent()) return
       const details = typeof e?.details === 'object' ? JSON.stringify(e.details, null, 2) : (e?.details ? String(e.details) : undefined)
       setError({
         message: e?.message || '検証の実行に失敗しました。',
@@ -217,15 +210,15 @@ export const ModernSubgroupMiningView: React.FC = () => {
         suggestedActions: Array.isArray(e?.suggestedActions) ? e.suggestedActions : undefined,
       })
     } finally {
-      if (version === requestVersion.current && startedContext === resultContext.current) setVerifying(false)
+      if (isCurrent()) setVerifying(false)
     }
   }
 
   // Omnipresent Auto-mining runner
-  const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall', overrideFilterSelection?: boolean) => {
+  const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall') => {
     if (!datasetId || !targets.ready) return
-    const version = ++requestVersion.current
-    const startedContext = resultContext.current
+    const ticket = runScope.begin()
+    verificationVersion.current++; setVerifying(false)
     setLoading(true)
     setError(null)
     // A new exploration pins a new candidate set, so any previous verification
@@ -233,20 +226,21 @@ export const ModernSubgroupMiningView: React.FC = () => {
     setVerificationResult(null)
     setVerificationInfo(null)
     try {
-      const shouldUseFilter = overrideFilterSelection !== undefined ? overrideFilterSelection : filterBySelection
       const payload: any = {
         datasetId,
-        attributeCols: targets.attributes, targetQuestions: targets.questions, rowIds,
+        attributeCols: [...targets.attributes], targetQuestions: [...targets.questions], rowIds: ticket.scope.rowIds,
         expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         mode: overrideMode || miningMode,
         maxDepth,
         minGroupSize,
         topK,
-        selectedRowIds: shouldUseFilter ? selectedRowIds : undefined,
       }
 
       const res = await api.post<ModernMiningResult>('/mining/modern-subgroup', payload)
-      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      if (!ticket.isCurrent()) return
+      ticket.commit()
+      setRunInput({ datasetId, attributeCols: payload.attributeCols, questionCols: payload.targetQuestions,
+        rowIds: ticket.scope.rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision, minGroupSize })
       setResult(res)
       if (res.insights.length > 0) {
         setSelectedInsightId(res.insights[0].id)
@@ -254,14 +248,14 @@ export const ModernSubgroupMiningView: React.FC = () => {
         setSelectedInsightId(null)
       }
     } catch (e: any) {
-      if (version !== requestVersion.current || startedContext !== resultContext.current) return
+      if (!ticket.isCurrent()) return
       console.error('Failed to run omnipresent auto mining', e)
       const msg = e?.message || e?.detail || 'マイニング処理中にエラーが発生しました。'
       const details = typeof e?.details === 'object' ? JSON.stringify(e.details, null, 2) : (e?.details ? String(e.details) : undefined)
       const actions = Array.isArray(e?.suggestedActions) ? e.suggestedActions : undefined
       setError({ message: msg, details, suggestedActions: actions })
     } finally {
-      if (version === requestVersion.current && startedContext === resultContext.current) setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -347,6 +341,9 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">表示中の探索結果と検証母集団は実行時の対象を保持しています。</Typography.Text>}
+
       {/* Top Header & Omnipresent Control Bar */}
       <Card size="small" style={{ background: '#fafafa' }}>
         {targets.control}
@@ -425,18 +422,6 @@ export const ModernSubgroupMiningView: React.FC = () => {
           </Col>
 
           <Col xs={24} md={4} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-            {selectedRowIds && selectedRowIds.length > 0 && (
-              <Checkbox
-                checked={filterBySelection}
-                onChange={(e) => {
-                  const checked = e.target.checked
-                  setFilterBySelection(checked)
-                }}
-                style={{ fontSize: 11, marginBottom: 4 }}
-              >
-                PCP選択行 ({selectedRowIds.length}件) に絞り込む
-              </Checkbox>
-            )}
             <Button
               type="primary"
               icon={<ThunderboltOutlined />}
@@ -886,7 +871,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                         target_col: targetCol,
                         subgroup_row_ids: selectedInsight.coverage.row_ids,
                       }
-                      navigate('/robustness', { state: { conclusion } })
+                      navigate('/robustness', { state: { conclusion, analysisInput: runInput, scopeSnapshot: runScope.snapshot } })
                     }}
                     data-testid="modern-send-to-robustness-btn"
                   >

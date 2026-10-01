@@ -1,4 +1,4 @@
-import { selectVariableManagerState, weightColumnCleared, weightColumnSet } from '../../app/store'
+import { selectEffectiveRowIds, selectVariableManagerState, weightColumnCleared, weightColumnSet } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import React, { useState } from 'react'
@@ -80,12 +80,15 @@ export const GlobalHeaderControlBar: React.FC = () => {
   const totalVarCount = globalVars.allVariables.length
   const activeVarCount = globalVars.activeVariableIds.length
 
-  const totalRowCount = obs?.totalRowIds?.length || selection.allRowIds.length
-  const activeRowCount = obs?.activeRowIds?.length || selection.activeRowIds.length
-  const selectedRowCount = obs?.selectedRowIds?.length ?? selection.selectedRowIds.length
+  const totalRowCount = selection.allRowIds.length
+  const activeRowCount = selection.activeRowIds.length
+  const selectedRowCount = selection.selectedRowIds.length
   const sampledRowCount = obs?.sampling?.sampledRowIds?.length || 0
 
   const currentScope = obs?.scopeMode || 'active'
+  const effectiveRows = useSelector(selectEffectiveRowIds)
+  const activeSet = new Set(selection.activeRowIds)
+  const outsideActiveCount = effectiveRows.reduce((n, id) => n + (activeSet.has(id) ? 0 : 1), 0)
 
   const numericVars = globalVars.allVariables.filter(
     (id) => globalVars.variableMeta[id]?.semanticType === 'numeric'
@@ -290,7 +293,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <Space size={6}>
           <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>
-            Rows Scope:
+            表示・次回分析対象:
           </Typography.Text>
           <Radio.Group
             size="small"
@@ -323,6 +326,12 @@ export const GlobalHeaderControlBar: React.FC = () => {
               All ({totalRowCount})
             </Radio.Button>
           </Radio.Group>
+          {outsideActiveCount > 0 && <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            Active外{outsideActiveCount}行は表示のみ。選択するには全復帰
+          </Typography.Text>}
+          {currentScope === 'sampled' && <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            seed {obs.sampling.seed ?? '未記録'} / 抽出元 {obs.sampling.sourceRowCount ?? '未記録'}行
+          </Typography.Text>}
         </Space>
 
         <Space size={4}>

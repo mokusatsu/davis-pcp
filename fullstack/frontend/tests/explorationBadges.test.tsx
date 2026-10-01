@@ -69,7 +69,7 @@ it('classic exploration hides p-values and shows exploration badge with verifica
     reducer: () => ({
       ...base,
       selection: { ...base.selection, datasetId: 'd', dataRevision: 1 },
-      globalObservations: { ...base.globalObservations, activeRowIds: [] },
+      globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     }),
     middleware: (g) => g({ serializableCheck: false }),
   })

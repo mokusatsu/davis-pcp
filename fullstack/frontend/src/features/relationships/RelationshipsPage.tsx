@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -20,15 +21,16 @@ interface MatrixResult {
 }
 
 function useRelationshipResult<T>(path: string, body: unknown | null) {
+  const viewActive = useAnalysisViewActive()
   const key = useMemo(() => body === null ? null : JSON.stringify(body), [body])
   const [state, setState] = useState<{ key: string; value?: T; error?: string } | null>(null)
   useEffect(() => {
-    if (!key) return
+    if (!viewActive || !key) return
     let current = true
     void api.post<T>(path, JSON.parse(key)).then(value => { if (current) setState({ key, value }) })
       .catch(error => { if (current) setState({ key, error: error.message || '取得に失敗しました。' }) })
     return () => { current = false }
-  }, [path, key])
+  }, [path, key, viewActive])
   return { value: state?.key === key ? state.value : undefined, error: state?.key === key ? state.error : undefined,
     loading: key !== null && state?.key !== key }
 }

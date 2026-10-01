@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..algorithms.distribution.fedf import compute_fedf
 from ..domain.errors import BizError
+from ..domain.context import check_revisions, collect_revisions
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
@@ -21,6 +22,8 @@ class FedfRequest(BaseModel):
     gridSize: int = 100
     rowIds: list[str] | None = None
     row_ids: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
 
 
 @router.post("/distribution/fedf")
@@ -31,8 +34,11 @@ def get_fedf(req: FedfRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    codebook = store.load_codebook(dataset_id) or {}
-    df = store.get_dataframe(dataset_id)
+    with store.lock(dataset_id):
+        codebook = store.load_codebook(dataset_id) or {}
+        revisions = collect_revisions(store.get_meta(dataset_id), codebook)
+        check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        df = store.get_dataframe(dataset_id)
     resolved_columns = req.columns if req.columns is not None else [c for c in df.columns if c != "__rowId__"]
     if resolved_columns:
         adapter = CodebookAdapter(df, codebook)
@@ -41,10 +47,11 @@ def get_fedf(req: FedfRequest) -> dict[str, Any]:
         if masked:
             df = df.with_columns(masked)
     wanted_rows = req.rowIds if req.row_ids is None else req.row_ids
-    return compute_fedf(
+    result = compute_fedf(
         df=df,
         columns=req.columns,
         mode=req.mode,
         grid_size=req.gridSize,
         row_ids=wanted_rows,
     )
+    return {**result, "datasetId": dataset_id, **revisions}

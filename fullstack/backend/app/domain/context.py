@@ -38,8 +38,10 @@ class AnalysisContext(BaseModel):
 
     @model_validator(mode="after")
     def _check_scope(self) -> "AnalysisContext":
-        if self.scope == "explicit" and self.rowIds is None:
-            raise ValueError("scope=explicit requires rowIds")
+        required = {"active": "activeRowIds", "selected": "selectedRowIds",
+                    "sampled": "sampledRowIds", "explicit": "rowIds"}.get(self.scope)
+        if required is not None and getattr(self, required) is None:
+            raise ValueError(f"scope={self.scope} requires {required}; [] means empty")
         if self.missingPolicy not in MISSING_POLICIES:
             raise ValueError(f"missingPolicy must be one of {MISSING_POLICIES}")
         return self
@@ -104,11 +106,15 @@ def resolve_scope(
     """
     current = [str(v) for v in df_row_ids]
     current_set = set(current)
+    required = {"active": "activeRowIds", "selected": "selectedRowIds",
+                "sampled": "sampledRowIds", "explicit": "rowIds"}.get(context.scope)
+    if required is not None and getattr(context, required) is None:
+        raise BizError("ANALYSIS_SCOPE_INCOMPLETE",
+                       f"scope={context.scope}では{required}は必須です。[]は0行を表します。",
+                       status_code=422)
     if context.scope == "all":
         return list(current)
     if context.scope == "active":
-        if context.activeRowIds is None:
-            return list(current)
         wanted = {str(v) for v in context.activeRowIds}
         return [v for v in current if v in wanted]
     if context.scope == "selected":
@@ -121,8 +127,6 @@ def resolve_scope(
         wanted = {str(v) for v in context.selectedRowIds}
         return [v for v in current if v in wanted]
     if context.scope == "sampled":
-        if context.sampledRowIds is None:
-            return list(current)
         wanted = {str(v) for v in context.sampledRowIds}
         return [v for v in current if v in wanted]
     # explicit
@@ -182,3 +186,14 @@ def filter_scope_frame(df: pl.DataFrame, scope_ids: list[str]) -> pl.DataFrame:
         return df
     wanted = set(str(v) for v in scope_ids)
     return df.filter(pl.col("__rowId__").is_in(list(wanted)))
+
+
+def resolve_row_ids(df: pl.DataFrame, dataset_id: str, row_ids: list[str] | None) -> list[str]:
+    """Legacy rowIds routes share the explicit-scope identity contract.
+
+    Only omission/null means all rows. An empty array is the empty scope;
+    foreign identities are rejected rather than silently widening the input.
+    """
+    context = AnalysisContext(datasetId=dataset_id,
+                              scope="all" if row_ids is None else "explicit", rowIds=row_ids)
+    return resolve_scope([str(v) for v in df["__rowId__"].to_list()], context)

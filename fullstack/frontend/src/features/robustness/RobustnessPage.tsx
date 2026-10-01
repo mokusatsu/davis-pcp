@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import CategoryBars from '../charts/CategoryBars'
 import Table from '../common/ColumnTable'
 import { QuestionTooltip, useQuestionText } from '../common/ColumnQuestionTooltip'
@@ -100,6 +101,9 @@ export default function RobustnessPage() {
   const [customConclusion, setCustomConclusion] = useState<any>(
     (location.state as any)?.conclusion || null
   )
+  const [sourceInput, setSourceInput] = useState<Record<string, unknown> | null>((location.state as any)?.analysisInput ?? null)
+  const [sourceScope, setSourceScope] = useState<AnalysisScopeSnapshot | null>((location.state as any)?.scopeSnapshot ?? null)
+  const [runError, setRunError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [data, setData] = useState<RobustnessResponse | null>(null)
   const [selectedConclusionId, setSelectedConclusionId] = useState<string | null>(null)
@@ -107,47 +111,58 @@ export default function RobustnessPage() {
   const [sensitivityLoading, setSensitivityLoading] = useState(false)
   const [sensitivityError, setSensitivityError] = useState<string | null>(null)
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
-  const inputContext = useMemo(() => JSON.stringify([datasetId, dataRevision, customConclusion]), [datasetId, dataRevision, customConclusion])
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const inputContext = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, customConclusion, sourceInput]), [datasetId, dataRevision, schemaRevision, customConclusion, sourceInput])
   const contextRef = useRef(inputContext)
   contextRef.current = inputContext
-  const requestVersion = useRef(0)
+  const runScope = useScopedRun(inputContext)
+  const sensitivityRun = useScopedRun(inputContext)
+  const sourceIsCurrent = !sourceInput || (sourceInput.datasetId === datasetId && sourceInput.expectedDataRevision === dataRevision && sourceInput.expectedSchemaRevision === schemaRevision)
 
   const fetchRobustness = async (targetConclusion = customConclusion, overrideDatasetId?: string) => {
     const effectiveDatasetId = overrideDatasetId ?? datasetId
     if (!effectiveDatasetId) return
-    const version = ++requestVersion.current
+    if (!sourceIsCurrent) { setRunError('探索時のデータ世代と一致しません。元の分析から再実行してください。'); return }
+    const ticket = runScope.begin(customConclusion && sourceScope ? sourceScope : undefined)
     const startedContext = contextRef.current
+    const isCurrent = () => ticket.isCurrent() && startedContext === contextRef.current
+    setRunError(null)
     setLoading(true)
     try {
       const payload: Record<string, any> = {
         datasetId: effectiveDatasetId,
+        rowIds: ticket.scope.rowIds, expectedDataRevision: dataRevision, expectedSchemaRevision: schemaRevision,
         bootstrapB: 100,
       }
       if (targetConclusion) {
         payload.conclusions = [targetConclusion]
       }
       const res = await api.post<RobustnessResponse>('/robustness/evaluate', payload)
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (!isCurrent()) return
+      ticket.commit()
       setData(res)
       if (res.conclusions.length > 0) {
         setSelectedConclusionId(res.conclusions[0].id)
       }
     } catch (err) {
-      console.error(err)
+      if (isCurrent()) setRunError((err as { message?: string }).message || '評価に失敗しました。')
     } finally {
-      if (version === requestVersion.current && startedContext === contextRef.current) setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }
 
   const runSensitivity = async () => {
     if (!datasetId || !customConclusion?.target_col) return
-    const version = ++requestVersion.current
+    if (!sourceIsCurrent) { setSensitivityError('探索時のデータ世代と一致しません。元の分析から再実行してください。'); return }
+    const ticket = sensitivityRun.begin(customConclusion && sourceScope ? sourceScope : undefined)
     const startedContext = contextRef.current
+    const isCurrent = () => ticket.isCurrent() && startedContext === contextRef.current
     setSensitivityLoading(true)
     setSensitivityError(null)
     try {
       const res = await api.post<SensitivityResponse>('/robustness/sensitivity', {
         datasetId,
+        scopeRowIds: ticket.scope.rowIds, expectedDataRevision: dataRevision, expectedSchemaRevision: schemaRevision,
         targetColumn: customConclusion.target_col,
         candidate: {
           type: customConclusion.type ?? 'subgroup_diff',
@@ -160,13 +175,14 @@ export default function RobustnessPage() {
         bootstrapB: 200,
         seed: 42,
       })
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (!isCurrent()) return
+      ticket.commit()
       setSensitivity(res)
     } catch (err: any) {
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (!isCurrent()) return
       setSensitivityError(err?.message || '感度分析の実行に失敗しました。')
     } finally {
-      if (version === requestVersion.current && startedContext === contextRef.current) setSensitivityLoading(false)
+      if (isCurrent()) setSensitivityLoading(false)
     }
   }
 
@@ -176,8 +192,9 @@ export default function RobustnessPage() {
   useEffect(() => {
     const incoming = (location.state as { conclusion?: unknown } | null)?.conclusion
     if (location.pathname.replace(/\/$/, '') === '/robustness' && incoming && incoming !== customConclusion) {
-      requestVersion.current += 1
       setCustomConclusion(incoming)
+      setSourceInput((location.state as any)?.analysisInput ?? null)
+      setSourceScope((location.state as any)?.scopeSnapshot ?? null)
     }
     // Only a navigation is a handoff; dismissing it must not restore it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,7 +202,6 @@ export default function RobustnessPage() {
 
   useEffect(() => {
     const snapshot = datasetId
-    requestVersion.current += 1
     setData(null)
     setSelectedConclusionId(null)
     setLoading(false)
@@ -195,9 +211,8 @@ export default function RobustnessPage() {
     if (snapshot) {
       void fetchRobustness(customConclusion, snapshot)
     }
-    return () => { requestVersion.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId, dataRevision, customConclusion])
+  }, [datasetId, dataRevision, schemaRevision, customConclusion, sourceInput])
 
   const globalVars = useSelector(selectOrdinaryVariables)
   // A conclusion about a variable excluded from the global active variables
@@ -267,6 +282,11 @@ export default function RobustnessPage() {
       style={{ padding: 16, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: 0 }}
       data-testid="robustness-page"
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {sourceInput && <Typography.Text type="secondary">探索結果の検証には探索時の母集団を固定して使用します。</Typography.Text>}
+      {runScope.dirty && <Typography.Text type="warning">現在の共通対象と異なる実行済み評価です。</Typography.Text>}
+      {runError && <Alert type="error" message={runError} />}
+
       {/* Inherited conclusion banner */}
       {customConclusion && (
         <Alert
@@ -274,7 +294,7 @@ export default function RobustnessPage() {
           showIcon
           closable
           onClose={() => {
-            setCustomConclusion(null)
+            setCustomConclusion(null); setSourceInput(null); setSourceScope(null)
           }}
           message="サブグループマイニングから引き継いだ結論を検証中"
           description={
@@ -283,7 +303,7 @@ export default function RobustnessPage() {
               <Button
                 size="small"
                 onClick={() => {
-                  setCustomConclusion(null)
+                  setCustomConclusion(null); setSourceInput(null); setSourceScope(null)
                 }}
               >
                 デフォルト全体結論に戻す
@@ -339,6 +359,7 @@ export default function RobustnessPage() {
 
       {(
         <Card size="small" style={{ marginBottom: 16 }} data-testid="sensitivity-comparison-panel">
+          <AnalysisScopeSummary snapshot={sensitivityRun.snapshot} label="次回の共通対象" />
           <Typography.Text strong style={{ fontSize: 14 }}>数値的外れ度に基づく感度分析</Typography.Text>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: '4px 0 12px' }}>
             baseline（全データ）と外れ値除外後のsensitivityを同じ効果量・CI方法で比較します。除外行の確認だけで、datasetや中央Selectionは自動で変更しません。

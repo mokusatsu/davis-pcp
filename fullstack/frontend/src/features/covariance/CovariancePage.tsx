@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { selectOrdinaryVariables } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -34,6 +35,7 @@ interface CovarianceResponse {
 export default function CovariancePage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const viewActive = useAnalysisViewActive()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
@@ -79,7 +81,7 @@ export default function CovariancePage() {
     setCovData(null)
     setSelectedCell(null)
     setError(null)
-    if (!datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !numericColumns.includes(c))) { setLoading(false); return }
+    if (!viewActive || !datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !numericColumns.includes(c))) { setLoading(false); return }
     setLoading(true)
     try {
       const res = await api.post<CovarianceResponse>('/statistics/covariance', {
@@ -95,7 +97,7 @@ export default function CovariancePage() {
     } finally {
       if (generation === requestGeneration.current) setLoading(false)
     }
-  }, [datasetId, selectedColumns, effectiveRowIds, schemaRevision, dataRevision, numericColumns])
+  }, [datasetId, selectedColumns, effectiveRowIds, schemaRevision, dataRevision, numericColumns, viewActive])
 
   useEffect(() => {
     void fetchCov()

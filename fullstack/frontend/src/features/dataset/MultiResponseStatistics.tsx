@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -11,6 +12,7 @@ import { getBrushOp } from '../selection/SelectionMenu'
 export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const entities = useSelector(selectVariableEntities)
   const { columns, schemaRevision, isLoading } = useCodebook()
@@ -34,6 +36,7 @@ export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }
   }, [key])
   useEffect(() => { setPage(1) }, [selection.datasetId])
   useEffect(() => {
+    if (!viewActive) return
     if (!selection.datasetId || !groupIds.length || isLoading) return
     let cancelled = false
     setLoading(true)
@@ -46,7 +49,7 @@ export default function MultiResponseStatistics({ rowIds }: { rowIds: string[] }
       .catch(error => { if (!cancelled) setError(error.message || 'MA集計に失敗しました。') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [key, selection.selectedRowIds, isLoading])
+  }, [viewActive, key, selection.selectedRowIds, isLoading])
 
   const select = async (groupId: string, optionColumnIds: string[], predicate: string, status?: string, goToPcp?: boolean) => {
     const version = ++matchVersion.current

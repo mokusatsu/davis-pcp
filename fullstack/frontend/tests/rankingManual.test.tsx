@@ -24,7 +24,7 @@ it('requires explicit execution and preserves an empty scope', async () => {
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
   }), middleware: g => g({ serializableCheck: false }) })
   const post = vi.spyOn(api, 'post').mockRejectedValue({ message: '対象データ行が0件です。' })
   const view = render(<Provider store={local}><MemoryRouter><FeatureRankingPage /></MemoryRouter></Provider>)

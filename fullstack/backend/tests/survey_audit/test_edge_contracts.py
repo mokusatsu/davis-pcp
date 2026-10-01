@@ -43,9 +43,15 @@ class EdgeContractTests(AuditCase):
         # 大きな取込の性能試験ではない。実sampling関数の入力件数ガードだけを検査。
         from app.api import observations
         ids=['r'+str(i) for i in range(100001)]
-        with patch.object(observations.store,'get_dataframe',return_value=pl.DataFrame({'__rowId__':ids})):
+        # Sampling now snapshots revisions along with its ordered population.
+        with patch.object(observations.store,'get_dataframe',return_value=pl.DataFrame({'__rowId__':ids})), \
+             patch.object(observations.store,'get_meta',return_value={'dataRevision':3,'schemaRevision':2}), \
+             patch.object(observations.store,'load_codebook',return_value={'schemaRevision':2}):
             r=self.ok(sample_observations,'synthetic',SamplingRequest(method='without_replacement',size=10,seed=42))
         self.assertEqual(r['sampleSize'],10)
+        self.assertEqual(r['sourceRowCount'],100001)
+        self.assertEqual(r['dataRevision'],3)
+        self.assertEqual(r['schemaRevision'],2)
 
     def test_PK05_codebook_json_roundtrip_restores_weight_and_design(self):
         d=fixture({'x':[1,2],'w':[1,2]}, {'w':{'role':'weight','scaleType':'ratio'}},weight=('w','survey'),design={'weightColumnId':'w'})

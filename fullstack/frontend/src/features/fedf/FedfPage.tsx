@@ -1,3 +1,5 @@
+import { useAnalysisViewActive, AnalysisScopeSummary } from '../selection/analysisScope'
+import { selectEffectiveRowIds } from '../../app/store'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
@@ -54,7 +56,10 @@ export default function FedfPage() {
   const questionText = useQuestionText()
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
-  const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
+  const activeRowIds = useSelector(selectEffectiveRowIds)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const viewActive = useAnalysisViewActive('/fedf')
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
   const data = useColumnarData(datasetId)
   const { getColor } = useRowColorResolver()
@@ -95,25 +100,35 @@ export default function FedfPage() {
     }
   }, [numericColumns, selectedColumns.length])
 
+  const liveKey = JSON.stringify([datasetId, dataRevision, schemaRevision, activeRowIds, selectedColumns, mode, viewActive])
+  const liveRef = useRef(liveKey)
+  liveRef.current = liveKey
+  const liveSequence = useRef(0)
+  useEffect(() => () => { liveSequence.current++ }, [])
   const fetchFedf = useCallback(async () => {
+    if (!viewActive) { setLoading(false); return }
     if (!datasetId || selectedColumns.length === 0) return
+    const startedKey = liveRef.current, version = ++liveSequence.current
+    const current = () => version === liveSequence.current && startedKey === liveRef.current
     setLoading(true)
     try {
       const res = await api.post<FedfResponse>('/distribution/fedf', {
-        datasetId,
+        datasetId, expectedDataRevision: dataRevision, expectedSchemaRevision: schemaRevision,
         columns: selectedColumns,
         mode,
         rowIds: activeRowIds,
       })
-      setFedfData(res)
+      if (current()) setFedfData(res)
     } catch (err) {
+      if (!current()) return
       console.error('Failed to fetch FEDF', err)
     } finally {
-      setLoading(false)
+      if (current()) setLoading(false)
     }
-  }, [datasetId, selectedColumns, mode, activeRowIds])
+  }, [datasetId, selectedColumns, mode, activeRowIds, dataRevision, schemaRevision, viewActive])
 
   useEffect(() => {
+    setFedfData(null)
     void fetchFedf()
   }, [fetchFedf])
 
@@ -234,6 +249,7 @@ export default function FedfPage() {
       data-testid="fedf-page"
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
+      <AnalysisScopeSummary />
       {/* Top Controls Card */}
         <div
           style={{

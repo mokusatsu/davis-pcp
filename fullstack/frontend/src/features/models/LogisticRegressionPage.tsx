@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import ModelScatter from './ModelScatter'
 import type { SeriesOption } from 'echarts'
 import OddsRatioForest, { formatOdds } from './OddsRatioForest'
@@ -151,14 +152,11 @@ export default function LogisticRegressionPage() {
   const [focusAxis, setFocusAxis] = useState<string>('')
   const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds,
     targetColumn, selectedFeatures, intercept, regularization, cValue])
-  const currentInput = useRef(inputKey)
-  currentInput.current = inputKey
-  const runVersion = useRef(0)
+  const runScope = useScopedRun(inputKey)
   useEffect(() => {
     setResult(null)
     setLoading(false)
-    return () => { runVersion.current++ }
-  }, [inputKey])
+  }, [runScope.identity])
 
   // Brush state on Sigmoid Plot
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -171,13 +169,13 @@ export default function LogisticRegressionPage() {
     }
     setLoading(true)
     setResult(null)
-    const version = ++runVersion.current
+    const ticket = runScope.begin()
     try {
       const res = await api.post<LogisticResponse>('/models/logistic', {
         datasetId: selection.datasetId,
         targetColumn,
         featureColumns: selectedFeatures,
-        activeRowIds: effectiveRowIds,
+        activeRowIds: ticket.scope.rowIds,
         expectedDataRevision: selection.dataRevision,
         expectedSchemaRevision: schemaRevision,
         intercept,
@@ -185,16 +183,17 @@ export default function LogisticRegressionPage() {
         cValue,
         cutoff,
       })
-      if (currentInput.current !== inputKey || version !== runVersion.current) return
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setResult(res)
       if (selectedFeatures.length > 0) {
         setFocusAxis(selectedFeatures[0])
       }
       message.success('ロジスティック回帰モデルを推定しました。')
     } catch (err: any) {
-      if (currentInput.current === inputKey && version === runVersion.current) message.error(err?.message || 'モデルの推定に失敗しました。')
+      if (ticket.isCurrent()) message.error(err?.message || 'モデルの推定に失敗しました。')
     } finally {
-      if (version === runVersion.current) setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -374,6 +373,9 @@ export default function LogisticRegressionPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="logistic-regression-page">
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
       {/* Control Card */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 12]} align="middle">
@@ -533,7 +535,7 @@ export default function LogisticRegressionPage() {
                         size="small"
                         value={focusAxis}
                         onChange={setFocusAxis}
-                        options={selectedFeatures.map((f) => ({ label: f, value: f }))}
+                        options={(result.features ?? []).map((f) => ({ label: f, value: f }))}
                         style={{ minWidth: 120 }}
                         data-testid="focus-axis-select"
                       />

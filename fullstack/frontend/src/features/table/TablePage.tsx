@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import { selectVariableEntities } from '../../app/store'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -17,6 +18,7 @@ type TableResult = { rows: { rowId: string; cells: Cell[] }[]; total: number; en
 
 export default function TablePage() {
   const dispatch = useDispatch()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
   const entitySelection = useSelector(selectVariableEntities)
@@ -85,6 +87,7 @@ export default function TablePage() {
       maskFilter === 'hasImputed' ? imputedRowIds.has(row.__rowId__ as string) : !imputedRowIds.has(row.__rowId__ as string))
   }, [result, maskFilter, imputedRowIds])
   useEffect(() => {
+    if (!viewActive) return
     if (!selection.datasetId || !columns.length) return
     let current = true
     setLoading(true)
@@ -99,7 +102,7 @@ export default function TablePage() {
       .catch(reason => { if (current) setError(reason.message || '表を取得できませんでした。') })
       .finally(() => { if (current) setLoading(false) })
     return () => { current = false }
-  }, [requestKey, columns.length])
+  }, [viewActive, requestKey, columns.length])
   const rows = displayRows
 
   const contextMenuItems = [
@@ -233,7 +236,7 @@ export default function TablePage() {
             />
             <Segmented
               data-testid="scope-filter"
-              options={[{ label: '全active行', value: 'all' }, { label: `選択のみ (${selection.selectedRowIds.length})`, value: 'selected' }]}
+              options={[{ label: '共通対象の全行', value: 'all' }, { label: `選択のみ・表示フィルター (${selection.selectedRowIds.length})`, value: 'selected' }]}
               value={scopeFilter}
               onChange={(v) => setScopeFilter(v as 'all' | 'selected')}
             />

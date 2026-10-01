@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -27,7 +28,7 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 export default function CorrespondenceAnalysisPage(): JSX.Element {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
@@ -45,16 +46,16 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   )
   const rowLabelOptions = useMemo(
     () => columns
-      .filter((c) => ['nominal', 'ordinal', 'binary', 'text', 'id'].includes(c.scaleType) && !c.multiResponseGroup
-        && (!hasGlobalSignal || activeSet.has(c.name)))
+      .filter((c) => ['nominal', 'ordinal', 'binary', 'text', 'id'].includes(c.scaleType) && !c.multiResponseGroup)
       .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
-    [columns, activeSet, hasGlobalSignal],
+    [columns],
   )
   const numericOptions = useMemo(
     () => columns
-      .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup)
+      .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup
+        && (!hasGlobalSignal || activeSet.has(c.name)))
       .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
-    [columns],
+    [columns, activeSet, hasGlobalSignal],
   )
 
   const [inputKind, setInputKind] = useState<'respondents' | 'contingency'>('respondents')
@@ -65,7 +66,6 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const [cellSemantics, setCellSemantics] = useState<'frequency' | 'mass'>('frequency')
   const [ack, setAck] = useState(false)
   const [mapScaling, setMapScaling] = useState<MapScaling>('symmetric')
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
 
@@ -73,7 +73,11 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const savedWeightType = weightConfig?.weightType ?? null
   const effectiveMissing = inputKind === 'contingency' ? 'exclude' : missingPolicy
 
-  const [result, setResult] = useState<CAResponse | null>(null)
+  const [completed, setCompleted] = useState<{ result: CAResponse; context: CAContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const result = completed?.result ?? null
+  const resultContext = completed?.context
+  const resultRef = useRef(result)
+  resultRef.current = result
   const [submittedKey, setSubmittedKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,16 +86,25 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const [selecting, setSelecting] = useState(false)
   const [selectInfo, setSelectInfo] = useState<string | null>(null)
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
+  useEffect(() => () => {
+    runSequence.current += 1
+    selectionSequence.current += 1
+  }, [])
   const svgRef = useRef<SVGSVGElement | null>(null)
 
+  const unavailableVariables = inputKind === 'respondents'
+    ? [rowVar, colVar].filter((id): id is string => Boolean(id) && !categoricalOptions.some(option => option.value === id))
+    : valueCols.filter(id => !numericOptions.some(option => option.value === id))
   const draftKey = JSON.stringify([datasetId, inputKind, rowVar, colVar, rowLabelCol, valueCols,
-    cellSemantics, ack, mapScaling, scope, effectiveMissing, weightChoice,
-    selection.dataRevision, schemaRevision])
+    cellSemantics, ack, mapScaling, analysisScope.scopeKey, effectiveMissing, weightChoice,
+    selection.dataRevision, schemaRevision, unavailableVariables])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   useEffect(() => {
     runSequence.current += 1
-    setResult(null)
+    selectionSequence.current += 1
+    setCompleted(null)
     setSubmittedKey('')
     setError(null)
     setLoading(false)
@@ -107,18 +120,16 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     datasetId: datasetId ?? '',
     expectedDataRevision: selection.dataRevision,
     expectedSchemaRevision: schemaRevision,
-    scope,
-    activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+    ...analysisScope.contextRows,
     weightMode: weightChoice,
     missingPolicy: effectiveMissing,
   })
 
-  const canRun = inputKind === 'respondents'
+  const canRun = unavailableVariables.length === 0 && (inputKind === 'respondents'
     ? Boolean(datasetId && rowVar && colVar && rowVar !== colVar)
     : Boolean(datasetId && rowLabelCol && valueCols.length >= 2
-      && !valueCols.includes(rowLabelCol ?? '') && (cellSemantics === 'mass' || ack))
+      && rowLabelOptions.some(option => option.value === rowLabelCol)
+      && !valueCols.includes(rowLabelCol ?? '') && (cellSemantics === 'mass' || ack)))
 
   const selectionRef = useRef(selection)
   selectionRef.current = selection
@@ -129,6 +140,10 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     if (!datasetId || !canRun) return
     const seq = ++runSequence.current
     const startedDataset = datasetId
+    const startedContext = captureAnalysisRunContext(buildContext())
+    const startedScope = analysisScope
+    selectionSequence.current += 1
+    setSelecting(false)
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     const startedKey = draftKey
@@ -144,12 +159,12 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
             cellSemantics,
             independentCountsAcknowledged: cellSemantics === 'frequency' ? ack : false,
           }
-      const res = await runCa(buildContext(), input, mapScaling)
+      const res = await runCa(startedContext, input, mapScaling)
       if (seq !== runSequence.current) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
-      setResult(res)
+      setCompleted({ result: res, context: startedContext, snapshot: startedScope })
       setSubmittedKey(startedKey)
       setMapScaling((res.details.mapScaling as MapScaling) ?? 'symmetric')
       setSelectedCats(new Set())
@@ -176,7 +191,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   }
 
   const handleSelect = async (): Promise<void> => {
-    if (!result || selectedCats.size === 0) return
+    if (!result || !resultContext || loading || shownStale || selectedCats.size === 0) return
     const ids = [...selectedCats]
     const isContingency = (result.config as { input?: { kind?: string } })?.input?.kind === 'contingency'
     if (isContingency) {
@@ -195,30 +210,33 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     }
     setSelecting(true)
     setSelectInfo(null)
-    const seq = ++runSequence.current
+    const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     try {
-      const res = await selectCaCategories(result.resultId, buildContext(), ids, between)
-      if (seq !== runSequence.current) return
+      const res = await selectCaCategories(result.resultId, resultContext, ids, between)
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
+      const active = new Set(selectionRef.current.activeRowIds)
+      const eligibleRows = res.rowIds.filter(id => active.has(id))
+      const outsideActive = res.rowIds.length - eligibleRows.length
       dispatch(selectionApplied({
-        rowIds: res.rowIds,
+        rowIds: eligibleRows,
         operation: getBrushOp(),
-        label: `CA選択 (${res.contextIntersectionCount}行, ${between === 'and' ? 'AND' : 'OR'})`,
+        label: `CA選択 (${eligibleRows.length}行, ${between === 'and' ? 'AND' : 'OR'})`,
       }))
-      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${res.contextIntersectionCount}`)
+      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
       message.error(apiErrorMessage(err, '選択の解決に失敗しました。'))
     } finally {
-      if (seq === runSequence.current) setSelecting(false)
+      if (seq === selectionSequence.current) setSelecting(false)
     }
   }
 
@@ -358,17 +376,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 )}
               </>
             )}
-            <Select
-              style={{ minWidth: 140 }}
-              value={scope}
-              onChange={(v) => setScope(v)}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Active' },
-                { value: 'selected', label: 'Selected' },
-                { value: 'sampled', label: 'Sampled' },
-              ]}
-            />
+            <AnalysisScopeSummary snapshot={completed?.snapshot} />
             <Select
               style={{ minWidth: 140 }}
               value={inputKind === 'contingency' ? 'exclude' : missingPolicy}
@@ -402,7 +410,9 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
             重み: {weightChoice === 'dataset' ? (savedWeightColumnId ? `データ設定（${savedWeightType ?? '種類未宣言'}）` : 'データ設定（なし）') : 'なし'}。分割表モードではdataset重みがあると二重ウェイトで実行できません。カテゴリ点に回答者のL1色は割り当てません。
           </Typography.Text>
-          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="設定が変更されています。結果は前回実行分です。" />}
+          {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
+          {inputKind === 'contingency' && <Typography.Text type="secondary">分割表の対象件数はカテゴリ行数です（回答者数ではありません）。</Typography.Text>}
+          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
         </Card>
       )}
       {error && <Alert type="error" message={error} />}
@@ -413,7 +423,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
             size="small"
             title={
               <Space>
-                <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
+                <Tag>この結果の対象: {completed?.snapshot.label} / rev {result.meta.dataRevision} (n={result.meta.scopeCount} {(result.config as { input?: { kind?: string } }).input?.kind === 'contingency' ? 'カテゴリ行' : '行'})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
                 <Tag>{result.meta.weightApplied ? `加重 (${result.meta.weightType ?? ''})` : '非加重'}</Tag>
                 {(result.meta.resultState === 'stale' || shownStale) && <Tag color="orange">stale（古い版）</Tag>}

@@ -28,14 +28,14 @@ function setup(scale: CodebookColumn['scaleType'] = 'ordinal') {
   const initial = store.getState()
   const state = { ...initial,
     selection: { ...initial.selection, datasetId: 'ds', allRowIds: fixture.rowIds, activeRowIds: fixture.rowIds, selectedRowIds: [] },
-    globalObservations: { ...initial.globalObservations, activeRowIds: fixture.rowIds, totalRowIds: fixture.rowIds },
+    globalObservations: { ...initial.globalObservations, scopeMode: 'sampled', sampling: { ...initial.globalObservations.sampling, sampledRowIds: fixture.rowIds } },
     globalVariables: { ...initial.globalVariables, activeEntities: [{ kind: 'column', columnId: 'q' }] },
     codebook: { ...initial.codebook, datasetId: 'ds', columns: [{ ...spec, scaleType: scale }] },
   }
   return configureStore({ reducer: (s = state, a: any) => {
     if (a.type === 'test/columns') return { ...s, codebook: { ...s.codebook, columns: a.payload } }
     if (a.type === 'test/entities') return { ...s, globalVariables: { ...s.globalVariables, activeEntities: a.payload } }
-    if (a.type === 'test/scope') return { ...s, globalObservations: { ...s.globalObservations, activeRowIds: a.payload } }
+    if (a.type === 'test/scope') return { ...s, globalObservations: { ...s.globalObservations, scopeMode: 'sampled', sampling: { ...s.globalObservations.sampling, sampledRowIds: a.payload } } }
     return s
   }, middleware: g => g({ serializableCheck: false }) })
 }

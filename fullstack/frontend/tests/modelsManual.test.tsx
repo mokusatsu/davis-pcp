@@ -20,7 +20,7 @@ it('sends only the explicit MA child and exact scope on manual execution', async
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
     globalVariables: { ...base.globalVariables, allVariables: ['a', 'b', 'score'],
       activeEntities: [{ kind: 'ma', groupId: 'q' }, { kind: 'column', columnId: 'score' }] },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, columns, multiResponseGroups: [{ groupId: 'q', label: 'Q' }] },
   }
   const local = configureStore({ reducer: () => state as any, middleware: g => g({ serializableCheck: false }) })

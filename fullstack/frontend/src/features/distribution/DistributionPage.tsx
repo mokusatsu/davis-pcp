@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
@@ -55,6 +56,7 @@ interface PanelData {
 export default function DistributionPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const pcp = useSelector((s: RootState) => s.pcp)
   const globalVars = useSelector(selectOrdinaryVariables)
@@ -136,6 +138,7 @@ export default function DistributionPage() {
   useEffect(() => { setCardPage(1) }, [selection.datasetId, cardsRoleFilter])
 
   useEffect(() => {
+    if (!viewActive) return
     if (viewMode !== 'cards' || !selection.datasetId || isCodebookLoading || !codebookColumns.length) return
     let cancelled = false
     const entities = JSON.parse(visibleKey) as { kind: 'ma' | 'column'; id: string }[]
@@ -174,7 +177,7 @@ export default function DistributionPage() {
       if (!cancelled) setSummaryError(error.message ?? '要約集計データの取得に失敗しました。')
     }).finally(() => { if (!cancelled) setLoadingSummaries(false) })
     return () => { cancelled = true }
-  }, [viewMode, selection.datasetId, effectiveRowIds, schemaRevision, visibleKey, selection.selectedRowIds, isCodebookLoading, codebookColumns.length, weightColumnId])
+  }, [viewActive, viewMode, selection.datasetId, effectiveRowIds, schemaRevision, visibleKey, selection.selectedRowIds, isCodebookLoading, codebookColumns.length, weightColumnId])
 
   const selectMa = async (groupId: string, optionColumnIds: string[], predicate: string, status?: string, goToPcp?: boolean) => {
     const generation = ++matchGeneration.current

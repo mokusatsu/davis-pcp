@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Modal, Tabs, Radio, InputNumber, Button, Space, Typography, Alert, message } from 'antd'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState, AppDispatch } from '../../app/store'
-import { samplingApplied, samplingCleared, rangeSelectionApplied, selectionApplied } from '../../app/store'
+import { samplingApplied, samplingCleared, rangeSelectionApplied } from '../../app/store'
 import { api } from '../../api/client'
 
 interface ObservationModalProps {
@@ -15,6 +15,11 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
   const obs = useSelector((s: RootState) => s.globalObservations)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const contextKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, selection.activeRowIds, open])
+  const contextRef = useRef(contextKey)
+  contextRef.current = contextKey
+  const requestVersion = useRef(0)
 
   // Sampling form state
   const [method, setMethod] = useState<'without_replacement' | 'with_replacement'>('without_replacement')
@@ -28,8 +33,23 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
   // Range form state (1-indexed inclusive)
   const [fromIndex, setFromIndex] = useState<number>(1)
   const [toIndex, setToIndex] = useState<number>(Math.min(100, selection.allRowIds.length || 100))
+  const [rangeSource, setRangeSource] = useState<'active' | 'all'>('active')
   const [rangeTarget, setRangeTarget] = useState<'active' | 'selected'>('active')
   const [rangeLoading, setRangeLoading] = useState(false)
+
+  useEffect(() => { requestVersion.current++; setSamplingLoading(false); setRangeLoading(false) }, [contextKey])
+  useEffect(() => {
+    if (!open || !obs.sampling.enabled) return
+    setMethod(obs.sampling.method)
+    setMode(obs.sampling.mode)
+    setSize(obs.sampling.size)
+    setRatio(obs.sampling.ratio * 100)
+    setSeed(obs.sampling.seed)
+    setTargetScope(obs.sampling.sourceScope ?? 'active')
+    // Refresh the draft only on opening; a pending request must not rewrite its own inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
 
   const candidatePool = targetScope === 'active' ? selection.activeRowIds : selection.allRowIds
   const totalCandidates = candidatePool.length
@@ -41,11 +61,15 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
       message.error('データセットが読み込まれていません。')
       return
     }
+    const version = ++requestVersion.current, startedContext = contextRef.current
+    const current = () => version === requestVersion.current && startedContext === contextRef.current
     setSamplingLoading(true)
     try {
       const payload: Record<string, unknown> = {
         method,
-        seed: seed ?? undefined,
+        seed: seed ?? null,
+        expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision,
         activeRowIds: targetScope === 'active' ? selection.activeRowIds : undefined,
       }
       if (mode === 'count') {
@@ -58,8 +82,17 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
         sampledRowIds: string[]
         sampledRowWeights: Record<string, number>
         sampleSize: number
+        seed: number
+        datasetId: string
+        dataRevision: number
+        schemaRevision: number
+        sourceScopeHash: string
+        sourceOrderHash: string
+        sourceRowCount: number
+        sampleId?: string
       }>(`/datasets/${selection.datasetId}/observations/sample`, payload)
 
+      if (!current()) return
       dispatch(
         samplingApplied({
           enabled: true,
@@ -67,7 +100,15 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
           mode,
           size: res.sampleSize,
           ratio: ratio / 100,
-          seed,
+          seed: res.seed,
+          sourceScope: targetScope,
+          sourceScopeHash: res.sourceScopeHash,
+          sourceOrderHash: res.sourceOrderHash,
+          sourceRowCount: res.sourceRowCount,
+          datasetId: res.datasetId,
+          dataRevision: res.dataRevision,
+          schemaRevision: res.schemaRevision,
+          sampleId: res.sampleId,
           sampledRowIds: res.sampledRowIds,
           sampledRowWeights: res.sampledRowWeights,
         })
@@ -75,10 +116,11 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
       message.success(`無作為サンプリング完了: ${res.sampleSize}行を抽出しました。`)
       onClose()
     } catch (err) {
+      if (!current()) return
       const error = err as { message: string }
       message.error(error.message || 'サンプリングに失敗しました。')
     } finally {
-      setSamplingLoading(false)
+      if (current()) setSamplingLoading(false)
     }
   }
 
@@ -91,6 +133,8 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
       message.warning('開始行番号は終了行番号以下である必要があります。')
       return
     }
+    const version = ++requestVersion.current, startedContext = contextRef.current
+    const current = () => version === requestVersion.current && startedContext === contextRef.current
     setRangeLoading(true)
     try {
       // Convert 1-indexed inclusive [from, to] to 0-indexed [from-1, to)
@@ -99,10 +143,13 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
         {
           fromIndex: Math.max(0, fromIndex - 1),
           toIndex: toIndex,
-          activeRowIds: targetScope === 'active' ? selection.activeRowIds : undefined,
+          activeRowIds: rangeSource === 'active' ? selection.activeRowIds : undefined,
+          expectedDataRevision: selection.dataRevision,
+          expectedSchemaRevision: schemaRevision,
         }
       )
 
+      if (!current()) return
       dispatch(
         rangeSelectionApplied({
           from: fromIndex,
@@ -111,20 +158,18 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
           asSelected: rangeTarget === 'selected',
         })
       )
-      if (rangeTarget === 'selected') {
-        dispatch(selectionApplied({ rowIds: res.rowIds, operation: 'replace', label: `行範囲${fromIndex}〜${toIndex}` }))
-      }
       message.success(
-        `行範囲指定完了: 行${fromIndex}〜${toIndex}（${res.count}行）を${
+        `行範囲指定完了: 行${fromIndex}〜${toIndex}（${rangeTarget === 'selected' ? res.rowIds.filter(id => selection.activeRowIds.includes(id)).length : res.count}行）を${
           rangeTarget === 'selected' ? '選択行' : '有効行'
         }に設定しました。`
       )
       onClose()
     } catch (err) {
+      if (!current()) return
       const error = err as { message: string }
       message.error(error.message || '行範囲指定に失敗しました。')
     } finally {
-      setRangeLoading(false)
+      if (current()) setRangeLoading(false)
     }
   }
 
@@ -143,6 +188,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
       data-testid="observation-modal"
     >
       <Tabs
+        key={defaultTab}
         defaultActiveKey={defaultTab}
         items={[
           {
@@ -159,7 +205,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                       data-testid="sampling-method-radio"
                     >
                       <Radio value="without_replacement">非復元抽出 (Without Replacement)</Radio>
-                      <Radio value="with_replacement">復元抽出 / ブートストラップ (With Replacement)</Radio>
+                      <Radio value="with_replacement" disabled>復元抽出 / ブートストラップ（未対応）</Radio>
                     </Radio.Group>
                   </div>
                 </div>
@@ -207,7 +253,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                       onChange={(v) => setSeed(v ?? undefined)}
                       data-testid="sampling-seed-input"
                     />{' '}
-                    <Typography.Text type="secondary">（数値を入力すると結果の再現性が保証されます）</Typography.Text>
+                    <Typography.Text type="secondary">（空欄は新しいシードを生成。抽出元と実効シードを保存します）</Typography.Text>
                   </div>
                 </div>
 
@@ -231,7 +277,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
                   {obs?.sampling?.enabled ? (
                     <Button danger onClick={handleClearSampling} data-testid="clear-sampling-btn">
-                      サンプリング解除
+                      サンプリング解除（Activeに戻る）
                     </Button>
                   ) : <div />}
                   <Space direction="horizontal">
@@ -279,11 +325,15 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                 </div>
 
                 <div>
+                  <Typography.Text strong>範囲の基準:</Typography.Text>
+                  <Radio.Group value={rangeSource} onChange={e => setRangeSource(e.target.value)}>
+                    <Radio value="active">現在のActive順</Radio><Radio value="all">全データの行順</Radio>
+                  </Radio.Group>
                   <Typography.Text strong>適用先:</Typography.Text>
                   <div style={{ marginTop: 4 }}>
                     <Radio.Group value={rangeTarget} onChange={(e) => setRangeTarget(e.target.value)}>
                       <Radio value="active">有効行 (Active Rows) に設定</Radio>
-                      <Radio value="selected">選択行 (Selected Rows / ハイライト) に設定</Radio>
+                      <Radio value="selected">選択行に設定（Active内の行だけをハイライト）</Radio>
                     </Radio.Group>
                   </div>
                 </div>

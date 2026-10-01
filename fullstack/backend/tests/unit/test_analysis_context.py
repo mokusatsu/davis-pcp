@@ -47,8 +47,22 @@ def test_resolve_scope_presets_intersect_current_rows():
     assert resolve_scope(current, ctx) == ["r2"]
     ctx = AnalysisContext(datasetId="d", scope="selected", selectedRowIds=["r3", "r1"])
     assert resolve_scope(current, ctx) == ["r1", "r3"]
-    ctx = AnalysisContext(datasetId="d", scope="sampled")
-    assert resolve_scope(current, ctx) == current
+    ctx = AnalysisContext(datasetId="d", scope="sampled", sampledRowIds=["r3", "r9"])
+    assert resolve_scope(current, ctx) == ["r3"]
+
+
+@pytest.mark.parametrize("scope,field", [
+    ("active", "activeRowIds"), ("selected", "selectedRowIds"),
+    ("sampled", "sampledRowIds"), ("explicit", "rowIds"),
+])
+def test_scope_requires_an_explicit_set_and_empty_never_means_all(scope, field):
+    with pytest.raises(ValueError):
+        AnalysisContext(datasetId="d", scope=scope)
+    assert resolve_scope(["r1", "r2"], AnalysisContext(datasetId="d", scope=scope, **{field: []})) == []
+    # The resolver also protects callers which use an unvalidated model.
+    with pytest.raises(BizError) as exc:
+        resolve_scope(["r1"], AnalysisContext.model_construct(datasetId="d", scope=scope))
+    assert exc.value.code == "ANALYSIS_SCOPE_INCOMPLETE"
 
 
 def test_resolve_scope_explicit_rejects_unknown_rows():

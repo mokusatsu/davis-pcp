@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -120,15 +121,22 @@ export default function SubgroupMiningPage() {
   const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
   const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, targets.attributes, targets.questions, alpha, minGroupSize]),
     [datasetId, dataRevision, schemaRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|'), alpha, minGroupSize])
-  const latestContext = useRef(context)
-  latestContext.current = context
-  const requestVersion = useRef(0)
+  const runScope = useScopedRun(context)
+  const [runInput, setRunInput] = useState<Record<string, unknown> | null>(null)
+  const verificationVersion = useRef(0)
+  const resultRef = useRef(miningResult)
+  resultRef.current = miningResult
+  const identityRef = useRef(runScope.identity)
+  identityRef.current = runScope.identity
+
 
   useEffect(() => {
-    requestVersion.current += 1
+    verificationVersion.current += 1
+    setRunInput(null)
+    setVerifying(false)
     setMiningResult(null); setSelectedInsightId(null); setLoading(false); setError(null)
     setVerificationResult(null); setVerificationInfo(null); setInferenceMode('exploration')
-  }, [context])
+  }, [runScope.identity])
 
   // The picker has to be filled before it is opened, or 独立データ指定 looks
   // like a dead option; the current dataset is filtered out by the modal.
@@ -142,12 +150,13 @@ export default function SubgroupMiningPage() {
   }, [])
 
   const runVerification = async (config: VerificationConfig) => {
-    if (!datasetId || !miningResult) return
+    if (!datasetId || !miningResult || !runInput) return
     if (!miningResult.candidateSetHash) {
       setError({ message: '候補集合が発行されていません。もう一度探索してください。' })
       return
     }
-    const version = ++requestVersion.current, startedContext = latestContext.current
+    const version = ++verificationVersion.current, sourceResult = miningResult, sourceIdentity = runScope.identity
+    const isCurrent = () => version === verificationVersion.current && resultRef.current === sourceResult && identityRef.current === sourceIdentity
     setVerifying(true)
     setError(null)
     try {
@@ -155,32 +164,28 @@ export default function SubgroupMiningPage() {
       // individual candidates would fail whenever an insight produced no
       // pinned contrast, and re-listing them invites re-discovery.
       const res = await api.post<MiningResult>('/mining/subgroups', {
-        datasetId,
-        attributeCols: targets.attributes,
-        questionCols: targets.questions,
-        rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
-        alpha,
-        minGroupSize,
+        ...runInput,
         analysisMode: 'verification',
         verificationConfig: config,
         candidateSetHash: miningResult.candidateSetHash,
       })
-      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      if (!isCurrent()) return
       setVerificationResult(res.results ?? null)
       setVerificationInfo(res.verification ?? null)
       setInferenceMode('verification')
       setVerificationModalOpen(false)
     } catch (err: any) {
-      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      if (!isCurrent()) return
       setError({ message: err?.message || '検証の実行に失敗しました。' })
     } finally {
-      if (version === requestVersion.current && startedContext === latestContext.current) setVerifying(false)
+      if (isCurrent()) setVerifying(false)
     }
   }
 
   const runMining = async () => {
     if (!datasetId || !targets.ready) return
-    const version = ++requestVersion.current, startedContext = latestContext.current
+    const ticket = runScope.begin()
+    verificationVersion.current++; setVerifying(false)
     setLoading(true)
     setError(null)
     // A new exploration pins a new candidate set, so a previous verification of
@@ -189,15 +194,18 @@ export default function SubgroupMiningPage() {
     setVerificationInfo(null)
     setInferenceMode('exploration')
     try {
-      const res = await api.post<MiningResult>('/mining/subgroups', {
+      const payload = {
         datasetId,
         attributeCols: targets.attributes,
         questionCols: targets.questions,
-        rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
+        rowIds: ticket.scope.rowIds, expectedSchemaRevision: schemaRevision, expectedDataRevision: dataRevision,
         alpha,
         minGroupSize,
-      })
-      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      }
+      const res = await api.post<MiningResult>('/mining/subgroups', payload)
+      if (!ticket.isCurrent()) return
+      ticket.commit()
+      setRunInput(payload)
       setMiningResult(res)
       if (res.insights.length > 0) {
         setSelectedInsightId(res.insights[0].id)
@@ -205,14 +213,14 @@ export default function SubgroupMiningPage() {
         setSelectedInsightId(null)
       }
     } catch (err: any) {
-      if (version !== requestVersion.current || startedContext !== latestContext.current) return
+      if (!ticket.isCurrent()) return
       console.error('Mining execution error', err)
       const msg = err?.message || err?.detail || '単変量マイニング処理中にエラーが発生しました。'
       const details = typeof err?.details === 'object' ? JSON.stringify(err.details, null, 2) : (err?.details ? String(err.details) : undefined)
       const actions = Array.isArray(err?.suggestedActions) ? err.suggestedActions : undefined
       setError({ message: msg, details, suggestedActions: actions })
     } finally {
-      if (version === requestVersion.current && startedContext === latestContext.current) setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -254,6 +262,9 @@ export default function SubgroupMiningPage() {
       }}
       data-testid="subgroup-mining-page"
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">表示中の探索結果と検証母集団は実行時の対象を保持しています。</Typography.Text>}
+
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'modern' | 'classic')}
@@ -609,7 +620,7 @@ export default function SubgroupMiningPage() {
                         compare_groups: compareGroups.length >= 2 ? compareGroups : undefined,
                         subgroup_row_ids: currentInsight.row_ids && compareGroups.length > 0 ? currentInsight.row_ids[compareGroups[0]] : undefined,
                       }
-                      navigate('/robustness', { state: { conclusion } })
+                      navigate('/robustness', { state: { conclusion, analysisInput: runInput, scopeSnapshot: runScope.snapshot } })
                     }}
                     data-testid="send-to-robustness-btn"
                   >

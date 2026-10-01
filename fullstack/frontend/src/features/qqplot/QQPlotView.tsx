@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import { selectOrdinaryVariables } from '../../app/store'
 import RowScatter from '../charts/RowScatter'
 import Select from '../common/ColumnSelect'
@@ -46,6 +47,7 @@ interface QQResponse {
 export default function QQPlotView() {
   const graphPopupContainer = useGraphPopupContainer('distribution/qq')
   const dispatch = useDispatch<AppDispatch>()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
@@ -70,6 +72,7 @@ export default function QQPlotView() {
   }, [numericColumns, selectedColumn])
 
   useEffect(() => {
+    if (!viewActive) return
     let cancelled = false
     setQqData(null)
     if (!selection.datasetId || !selectedColumn || !numericColumns.includes(selectedColumn)) { setLoading(false); return }
@@ -84,7 +87,7 @@ export default function QQPlotView() {
       .catch(() => { if (!cancelled) setQqData(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [selection.datasetId, selection.dataRevision, selectedColumn, effectiveRowIds, data, numericColumns])
+  }, [viewActive, selection.datasetId, selection.dataRevision, selectedColumn, effectiveRowIds, data, numericColumns])
 
   const width = 680
   const height = 440

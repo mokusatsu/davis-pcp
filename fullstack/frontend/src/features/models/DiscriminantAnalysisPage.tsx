@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import ModelScatter from './ModelScatter'
 import { CorrelationCircle } from './FamdFigure'
 import EChart from '../charts/EChart'
@@ -150,14 +151,11 @@ export default function DiscriminantAnalysisPage() {
   const [result, setResult] = useState<DiscriminantResponse | null>(null)
   const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, effectiveRowIds,
     targetColumn, selectedFeatures, method, shrinkage, priors, fEnter, fRemove])
-  const currentInput = useRef(inputKey)
-  currentInput.current = inputKey
-  const runVersion = useRef(0)
+  const runScope = useScopedRun(inputKey)
   useEffect(() => {
     setResult(null)
     setLoading(false)
-    return () => { runVersion.current++ }
-  }, [inputKey])
+  }, [runScope.identity])
 
   // Brush state on 2D Map
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -171,13 +169,13 @@ export default function DiscriminantAnalysisPage() {
     }
     setLoading(true)
     setResult(null)
-    const version = ++runVersion.current
+    const ticket = runScope.begin()
     try {
       const res = await api.post<DiscriminantResponse>('/models/discriminant', {
         datasetId: selection.datasetId,
         targetColumn,
         featureColumns: selectedFeatures,
-        activeRowIds: effectiveRowIds,
+        activeRowIds: ticket.scope.rowIds,
         expectedDataRevision: selection.dataRevision,
         expectedSchemaRevision: schemaRevision,
         method,
@@ -185,13 +183,14 @@ export default function DiscriminantAnalysisPage() {
         priors,
         stepwiseConfig: method === 'stepwise' ? { fEnter, fRemove, maxSteps: 20 } : undefined,
       })
-      if (version !== runVersion.current || currentInput.current !== inputKey) return
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setResult(res)
       message.success('判別分析を実行しました。')
     } catch (err: any) {
-      if (version === runVersion.current && currentInput.current === inputKey) message.error(err?.message || '判別分析の実行に失敗しました。')
+      if (ticket.isCurrent()) message.error(err?.message || '判別分析の実行に失敗しました。')
     } finally {
-      if (version === runVersion.current) setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -267,6 +266,9 @@ export default function DiscriminantAnalysisPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
       {/* Configuration Card */}
       {<Card size="small" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 12]} align="middle">

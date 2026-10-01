@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { message } from 'antd'
-import { store, globalObservationsSlice } from '../src/app/store'
+import { store, selectionReducer } from '../src/app/store'
 import { GraphExpansionProvider, useGraphExpansion } from '../src/features/common/GraphExpansion'
 import { useBrushOp, type BrushOperation } from '../src/features/selection/SelectionMenu'
 import { api } from '../src/api/client'
@@ -22,17 +22,17 @@ vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getCo
 vi.mock('../src/features/common/L1Legend', () => ({ default: () => null }))
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('preserves an empty scope and ignores a late response after scope changes', async () => {
+it('preserves an empty scope and ignores a late response after revision changes', async () => {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, targetVariableId: 'y', activeEntities: [{ kind: 'column', columnId: 'x' }, { kind: 'column', columnId: 'y' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, columns: [
       { name: 'x', columnId: 'x', role: 'question', scaleType: 'ratio' },
       { name: 'y', columnId: 'y', role: 'attribute', scaleType: 'nominal' }] } }
-  const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/scope'
-    ? { ...s, globalObservations: { ...s.globalObservations, activeRowIds: action.payload } } : s,
+  const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/revision' ? { ...s, selection: { ...s.selection, dataRevision: 4 } } : action.type === 'test/scope'
+    ? { ...s, globalObservations: { ...s.globalObservations, scopeMode: 'sampled', sampling: { ...s.globalObservations.sampling, sampledRowIds: action.payload } } } : s,
     middleware: get => get({ serializableCheck: false }) })
   let finish!: (result: any) => void
   const post = vi.spyOn(api, 'post').mockImplementation(() => new Promise(resolve => { finish = resolve }))
@@ -44,7 +44,7 @@ it('preserves an empty scope and ignores a late response after scope changes', a
   fireEvent.click(view.getByRole('button', { name: /判別分析.*実行|分析実行|Run/ }))
   await waitFor(() => expect(post).toHaveBeenCalledWith('/models/discriminant', expect.objectContaining({
     activeRowIds: [], featureColumns: ['x'], targetColumn: 'y', expectedDataRevision: 3, expectedSchemaRevision: 2 })))
-  act(() => { local.dispatch({ type: 'test/scope', payload: ['r7'] }) })
+  act(() => { local.dispatch({ type: 'test/revision' }) })
   await act(async () => { finish({ samples: [{ rowId: 'obsolete' }] }) })
   expect(success).not.toHaveBeenCalled()
   expect(view.queryByText('obsolete')).toBeNull()
@@ -54,7 +54,7 @@ it('admits only explicitly added MA choices and prevents same-parent leakage', a
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'score' }, { kind: 'ma', groupId: 'g' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, isLoading: false,
       columns: ['score', 'A', 'B'].map(name => ({ columnId: name, name, role: 'question',
@@ -110,9 +110,9 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
     codebook: { ...base.codebook, datasetId: 'd', columns: [
       { name: 'x', columnId: 'x', role: 'question', scaleType: 'ratio' },
       { name: 'y', columnId: 'y', role: 'attribute', scaleType: 'nominal' }] } }
-  state.globalObservations = { ...base.globalObservations, totalRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2', 'r3'], selectedRowIds: ['r1', 'r2'] }
+  state.selection = { ...state.selection, allRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2', 'r3'], activeRowIdSet: new Set(['r1', 'r2', 'r3']), selectedRowIds: ['r1', 'r2'] }
   const local = configureStore({ reducer: (current = state, action: any) => ({ ...current,
-    globalObservations: globalObservationsSlice.reducer(current.globalObservations, action) }), middleware: get => get({ serializableCheck: false }) })
+    selection: selectionReducer(current.selection, action) }), middleware: get => get({ serializableCheck: false }) })
   const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><GraphExpansionProvider><FocusControls /><OperationPicker /><DiscriminantAnalysisPage /></GraphExpansionProvider></Provider>)
   fireEvent.change(view.getByTestId('discriminant-target-select'), { target: { value: 'y' } })
@@ -152,17 +152,17 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
     fireEvent.change(operation, { target: { value: op } })
     rectangle()
     expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ operation: op, rowIds: ['r2'] }) }))
-    expect(local.getState().globalObservations.selectedRowIds).toEqual(expected)
+    expect(local.getState().selection.selectedRowIds).toEqual(expected)
   }
   const [firstX,firstY] = chart.convertToPixel({gridIndex:0}, series.data[0].value) as number[]
   fireEvent.pointerDown(svg, point(firstX, firstY))
   fireEvent.pointerUp(svg, point(firstX, firstY))
   fireEvent.change(operation, { target: { value: 'add' } })
   rectangle()
-  expect([...local.getState().globalObservations.selectedRowIds].sort()).toEqual(['r1', 'r2'])
+  expect([...local.getState().selection.selectedRowIds].sort()).toEqual(['r1', 'r2'])
   fireEvent.change(operation, { target: { value: 'subtract' } })
   rectangle()
-  expect(local.getState().globalObservations.selectedRowIds).toEqual(['r1'])
+  expect(local.getState().selection.selectedRowIds).toEqual(['r1'])
   fireEvent.change(operation, { target: { value: 'replace' } })
   dispatch.mockClear()
   fireEvent.pointerDown(svg, point(x, y))

@@ -34,7 +34,7 @@ function mount(node: React.ReactElement, weightColumnId: string | null = 'w') {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 2, selectedRowIds: [] },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r1', 'r2'], totalRowIds: ['r1', 'r2'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r1', 'r2'] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'ma', groupId: 'services' }], weightColumnId },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 3, isLoading: false,
       columns: [

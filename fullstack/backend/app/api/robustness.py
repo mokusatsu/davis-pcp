@@ -9,6 +9,7 @@ import polars as pl
 from ..algorithms.robustness.engine import evaluate_robustness
 from ..algorithms.robustness.sensitivity import run_sensitivity_analysis
 from ..domain.errors import BizError
+from ..domain.context import filter_scope_frame, resolve_row_ids
 from ..domain.weight_unsupported import weight_unsupported_block
 from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
@@ -29,6 +30,9 @@ class RobustnessRequest(BaseModel):
     top_influence_count: int | None = None
     qualityCol: str | None = None
     quality_col: str | None = None
+    rowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
 
 
 @router.post("/robustness/evaluate")
@@ -37,7 +41,15 @@ def run_robustness_evaluation(req: RobustnessRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        revisions = _collect_revisions(meta, store.load_codebook(dataset_id) or {})
+        _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        df = store.get_dataframe(dataset_id)
+        scope_ids = resolve_row_ids(df, dataset_id, req.rowIds)
+        df = filter_scope_frame(df, scope_ids)
+    if df.height == 0:
+        raise BizError("EMPTY_ANALYSIS_INPUT", "対象データ行が0件です。", status_code=422)
     fractions = req.removalFractions if req.removal_fractions is None else req.removal_fractions
     b_count = req.bootstrapB if req.bootstrap_b is None else req.bootstrap_b
     top_n = req.topInfluenceCount if req.top_influence_count is None else req.top_influence_count
@@ -51,7 +63,8 @@ def run_robustness_evaluation(req: RobustnessRequest) -> dict[str, Any]:
         top_influence_count=top_n if top_n is not None else 10,
         quality_col=q_col,
     )
-    return result
+    return {**result, "datasetId": dataset_id, **revisions,
+            "scopeHash": _scope_hash(scope_ids), "scopeCount": len(scope_ids)}
 
 
 class SensitivityCandidate(BaseModel):
@@ -109,6 +122,10 @@ def run_sensitivity(req: SensitivityRequest) -> dict[str, Any]:
         from ..domain.codebook_adapter import CodebookAdapter
 
         df = store.get_dataframe(dataset_id)
+        # Candidate membership is separate from the analysis population. Resolve
+        # the latter before excluding invalid values so unknown IDs still fail.
+        scope_ids = resolve_row_ids(df, dataset_id, req.scopeRowIds)
+        df = filter_scope_frame(df, scope_ids)
         try:
             adapter = CodebookAdapter(df, codebook)
             analysis = adapter.analysis_series(target)
@@ -117,10 +134,9 @@ def run_sensitivity(req: SensitivityRequest) -> dict[str, Any]:
             df = df.with_columns(analysis).filter(pl.col(target).is_not_null())
         except Exception:
             pass
-        scope_ids = req.scopeRowIds
-        if scope_ids is not None:
-            df = df.filter(pl.col("__rowId__").is_in(scope_ids))
         scope_hash = _scope_hash(df["__rowId__"].to_list())
+        if df.height == 0:
+            raise BizError("EMPTY_ANALYSIS_INPUT", "対象データ行が0件です。", status_code=422)
         group_column = candidate.groupColumn
         compare = candidate.compareGroups
         if candidate.rowIds:

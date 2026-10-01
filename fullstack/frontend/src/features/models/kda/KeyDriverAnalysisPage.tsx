@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../../selection/analysisScope'
 import ColumnQuestionTooltip, { useQuestionText } from '../../common/ColumnQuestionTooltip'
 import EChart from '../../charts/EChart'
 import Table from '../../common/ColumnTable'
@@ -65,6 +66,11 @@ export default function KeyDriverAnalysisPage() {
   const [drivers, setDrivers] = useState<string[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<KdaResponse | null>(null)
+  const runScope = useScopedRun(JSON.stringify([outcome, drivers]))
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const [runError, setRunError] = useState<string | null>(null)
+  useEffect(() => { setResult(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [whatIfDeltas, setWhatIfDeltas] = useState<Record<string, number>>({})
 
   // Fetch columns
@@ -91,13 +97,20 @@ export default function KeyDriverAnalysisPage() {
     const o = targetOutcome || outcome
     const d = targetDrivers || drivers
     if (!datasetId || !o || d.length === 0) return
+    const ticket = runScope.begin()
+    setRunError(null)
     setLoading(true)
     try {
       const res = await api.post<KdaResponse>('/models/kda', {
         datasetId,
+        rowIds: ticket.scope.rowIds,
+        expectedDataRevision: dataRevision,
+        expectedSchemaRevision: schemaRevision,
         outcome: o,
         drivers: d,
       })
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setResult(res)
       // reset what-if deltas
       const initialDeltas: Record<string, number> = {}
@@ -106,9 +119,9 @@ export default function KeyDriverAnalysisPage() {
       })
       setWhatIfDeltas(initialDeltas)
     } catch (err) {
-      console.error(err)
+      if (ticket.isCurrent()) setRunError((err as {message?: string}).message || '分析に失敗しました。')
     } finally {
-      setLoading(false)
+      if (ticket.isCurrent()) setLoading(false)
     }
   }
 
@@ -121,11 +134,6 @@ export default function KeyDriverAnalysisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns])
 
-  useEffect(() => {
-    if (datasetId && outcome && drivers.length > 0 && !result && !loading) {
-      void calculateKda()
-    }
-  }, [datasetId, outcome, drivers])
 
   // Compute what-if predicted change
   const predictedOutcome = useMemo(() => {
@@ -175,6 +183,9 @@ export default function KeyDriverAnalysisPage() {
       }}
       data-testid="kda-page"
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Alert type="info" message="現在の入力と異なる実行済み結果です。再実行すると更新されます。" />}
+      {runError && <Alert type="error" message={runError} />}
       {/* Configuration Header */}
       {(
         <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
@@ -189,7 +200,6 @@ export default function KeyDriverAnalysisPage() {
                   setOutcome(val)
                   const newD = columns.filter((c) => c !== val)
                   setDrivers(newD)
-                  void calculateKda(val, newD)
                 }}
                 options={columns.map((c) => ({ label: c, value: c }))}
               />
@@ -203,7 +213,6 @@ export default function KeyDriverAnalysisPage() {
                 value={drivers}
                 onChange={(vals) => {
                   setDrivers(vals)
-                  void calculateKda(outcome, vals)
                 }}
                 options={columns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
               />

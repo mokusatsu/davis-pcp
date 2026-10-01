@@ -10,6 +10,9 @@ from pydantic import BaseModel
 
 from ..algorithms.ordering.core import compute_order
 from ..domain.errors import BizError
+from ..domain.context import (
+    check_revisions, collect_revisions, filter_scope_frame, resolve_row_ids, scope_hash,
+)
 from ..domain.codebook_adapter import CodebookAdapter
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
@@ -24,13 +27,25 @@ class OrderingRequest(BaseModel):
     mode: str
     columns: list[str] | None = None
     manualOrder: list[str] | None = None
+    rowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
 
 
 @router.post("/orderings")
 def create_ordering(req: OrderingRequest) -> dict:
-    meta = store.get_meta(req.datasetId)
-    df = store.get_dataframe(req.datasetId)
-    adapter = CodebookAdapter(df, store.load_codebook(req.datasetId))
+    with store.lock(req.datasetId):
+        meta = store.get_meta(req.datasetId)
+        codebook = store.load_codebook(req.datasetId)
+        revisions = collect_revisions(meta, codebook)
+        check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        df = store.get_dataframe(req.datasetId)
+        scope_ids = resolve_row_ids(df, req.datasetId, req.rowIds)
+        df = filter_scope_frame(df, scope_ids)
+    statistical = req.mode in ("componentJar", "componentPaper", "permute", "correlation")
+    if statistical and df.height == 0:
+        raise BizError("EMPTY_ANALYSIS_INPUT", "対象データ行が0件です。", status_code=422)
+    adapter = CodebookAdapter(df, codebook)
     df = adapter.analysis_frame()
     schema_by_name = {c["name"]: c for c in meta["schema"]}
     for name in df.columns:
@@ -38,7 +53,12 @@ def create_ordering(req: OrderingRequest) -> dict:
         if spec:
             numeric = spec.get("scaleType") in ("ordinal", "interval", "ratio")
             schema_by_name[name] = {**schema_by_name.get(name, {}), "physicalType": "float" if numeric else "string", "semanticType": "numeric" if numeric else "categorical"}
-    columns = req.columns or [name for name, c in schema_by_name.items() if c["semanticType"] == "numeric"]
+    columns = req.columns if req.columns is not None else [
+        name for name, c in schema_by_name.items() if c["semanticType"] == "numeric"]
+    unknown = [name for name in columns if name not in df.columns]
+    if unknown:
+        raise BizError("COLUMN_NOT_FOUND", "ordering対象の列が存在しません。",
+                       status_code=422, details={"columns": unknown})
     non_numeric = [c for c in columns
                    if schema_by_name.get(c, {}).get("physicalType") not in ("float", "int")]
     constant = [schema_by_name[c] for c in columns if c in schema_by_name and schema_by_name[c].get("constant")]
@@ -56,8 +76,9 @@ def create_ordering(req: OrderingRequest) -> dict:
             suggested_actions=["数値軸を追加表示する", "NoOrderを使用する"],
         )
     subset = df.select(columns)
-    values = np.array([[np.nan if v is None else float(v) for v in subset[c].to_list()] for c in columns]).T
-    if np.isnan(values).any() and req.mode in ("permute", "componentJar", "componentPaper", "correlation"):
+    values = (np.array([[np.nan if v is None else float(v) for v in subset[c].to_list()]
+                       for c in columns]).T if statistical else np.empty((0, len(columns))))
+    if np.isnan(values).any() and statistical:
         col_means = np.nanmean(values, axis=0)
         idx = np.where(np.isnan(values))
         values[idx] = np.take(col_means, idx[1])
@@ -83,7 +104,10 @@ def create_ordering(req: OrderingRequest) -> dict:
         "candidateScores": [c.get("score") for c in result.get("candidates", [])],
         "iterationTrace": result.get("trace", []),
         "datasetFingerprint": meta["fingerprint"],
-        "schemaRevision": meta.get("schemaRevision", 1),
+        "datasetId": req.datasetId,
+        **revisions,
+        "scopeHash": scope_hash(scope_ids),
+        "scopeCount": len(scope_ids),
         "createdAt": now_iso(),
         "runtimeMs": round(runtime_ms, 3),
     }

@@ -49,7 +49,7 @@ it('renders MDI and permutation as separate columns with warnings and tooltips',
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
   }), middleware: g => g({ serializableCheck: false }) })
   vi.spyOn(api, 'post').mockResolvedValue(payload)
   const view = render(<Provider store={local}><MemoryRouter><FeatureRankingPage /></MemoryRouter></Provider>)
@@ -74,7 +74,7 @@ it('shows teacher-only notice instead of zero bars when permutation is unavailab
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
   }), middleware: g => g({ serializableCheck: false }) })
   vi.spyOn(api, 'post').mockResolvedValue({
     ...payload,

@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -30,7 +31,7 @@ export default function LinearRegressionPage(): JSX.Element {
   const { openWhenAvailable } = useGraphExpansion()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
@@ -76,13 +77,16 @@ export default function LinearRegressionPage(): JSX.Element {
   const [intercept, setIntercept] = useState(true)
   const [covariance, setCovariance] = useState<'auto' | 'hc3' | 'classical' | 'taylor'>('auto')
   const [confidenceLevel, setConfidenceLevel] = useState(0.95)
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
   const [tab, setTab] = useState('figure')
   const [diagField, setDiagField] = useState<'fitted' | 'residual' | 'leverage'>('fitted')
 
-  const [result, setResult] = useState<LRResponse | null>(null)
+  const [completed, setCompleted] = useState<{ result: LRResponse; context: LRContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const result = completed?.result ?? null
+  const resultContext = completed?.context
+  const resultRef = useRef(result)
+  resultRef.current = result
   const [submittedKey, setSubmittedKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,7 +99,6 @@ export default function LinearRegressionPage(): JSX.Element {
   const [rowsResultId, setRowsResultId] = useState<string | null>(null)
   const rowsReady = !rowsLoading && !rowsError && rowsResultId !== null
     && result !== null && rowsResultId === result.resultId
-  const [predictScope, setPredictScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('all')
   const [predictInterval, setPredictInterval] = useState<'none' | 'mean_ci' | 'individual_pi'>('mean_ci')
   const [predicting, setPredicting] = useState(false)
   const [predictError, setPredictError] = useState<string | null>(null)
@@ -104,6 +107,8 @@ export default function LinearRegressionPage(): JSX.Element {
   const [, setPredictTotal] = useState(0)
   const [predictResultId, setPredictResultId] = useState<string | null>(null)
   const [predictId, setPredictId] = useState<string | null>(null)
+  const [predictionContext, setPredictionContext] = useState<LRContext | null>(null)
+  const [predictionScope, setPredictionScope] = useState<AnalysisScopeSnapshot | null>(null)
   const [matSource, setMatSource] = useState('fit')
   const [matField, setMatField] = useState('fitted')
   const matFieldsFor = (source: string): string[] => {
@@ -120,14 +125,33 @@ export default function LinearRegressionPage(): JSX.Element {
   const [matName, setMatName] = useState('LR_FITTED')
   const [saving, setSaving] = useState(false)
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
+  const predictionSequence = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      runSequence.current += 1
+      selectionSequence.current += 1
+      predictionSequence.current += 1
+    }
+  }, [])
   const svgRef = useRef<SVGSVGElement | null>(null)
 
-  const draftKey = JSON.stringify([datasetId, target, numSel, catSel, ordinalAck, references, interactions, intercept, covariance, confidenceLevel, scope, missingPolicy, weightChoice, selection.dataRevision, schemaRevision])
+  const unavailableVariables = [
+    ...(target && !targetOptions.some(option => option.value === target) ? [target] : []),
+    ...numSel.filter(id => !numericOptions.some(option => option.value === id)),
+    ...catSel.filter(id => !categoricalOptions.some(option => option.value === id)),
+  ]
+  const draftKey = JSON.stringify([datasetId, target, numSel, catSel, ordinalAck, references, interactions, intercept, covariance, confidenceLevel, analysisScope.scopeKey, missingPolicy, weightChoice, selection.dataRevision, schemaRevision, unavailableVariables])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   useEffect(() => {
     runSequence.current += 1
-    setResult(null)
+    predictionSequence.current += 1
+    selectionSequence.current += 1
+    setCompleted(null)
     setSubmittedKey('')
     setError(null)
     setLoading(false)
@@ -144,6 +168,9 @@ export default function LinearRegressionPage(): JSX.Element {
     setPredictTotal(0)
     setPredictResultId(null)
     setPredictId(null)
+    setPredictionContext(null)
+    setPredictionScope(null)
+    setPredicting(false)
     setPredictInfo(null)
     setPredictError(null)
     setMatSource('fit')
@@ -162,21 +189,26 @@ export default function LinearRegressionPage(): JSX.Element {
     datasetId: datasetId ?? '',
     expectedDataRevision: selection.dataRevision,
     expectedSchemaRevision: schemaRevision,
-    scope,
-    activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+    ...analysisScope.contextRows,
     weightMode: weightChoice,
     missingPolicy,
   })
 
   const predictorIds = useMemo(() => [...numSel, ...catSel], [numSel, catSel])
-  const canRun = Boolean(datasetId && target && predictorIds.length >= 1 && !predictorIds.includes(target ?? ''))
+  const canRun = Boolean(datasetId && target && predictorIds.length >= 1 && !predictorIds.includes(target ?? '') && unavailableVariables.length === 0)
 
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !target || !canRun) return
     const seq = ++runSequence.current
     const startedDataset = datasetId
+    const startedContext = captureAnalysisRunContext(buildContext())
+    const startedScope = analysisScope
+    selectionSequence.current += 1
+    setSelecting(false)
+    predictionSequence.current += 1
+    setPredicting(false)
+    const startedDataRevision = selection.dataRevision
+    const startedSchemaRevision = schemaRevision
     setLoading(true)
     setError(null)
     try {
@@ -192,9 +224,10 @@ export default function LinearRegressionPage(): JSX.Element {
         }),
         ...catSel.map((id) => ({ columnId: id, kind: 'categorical' as const, referenceCategory: references[id] ?? null })),
       ]
-      const res = await runLinearRegression(buildContext(), target, predictors, interactions, intercept, covariance, confidenceLevel)
-      if (runSequence.current !== seq || selectionRef.current.datasetId !== startedDataset) return
-      setResult(res)
+      const res = await runLinearRegression(startedContext, target, predictors, interactions, intercept, covariance, confidenceLevel)
+      if (runSequence.current !== seq || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision || schemaRef.current !== startedSchemaRevision) return
+      setCompleted({ result: res, context: startedContext, snapshot: startedScope })
       setSubmittedKey(draftKey)
       setTab('figure')
       setRows([])
@@ -203,6 +236,9 @@ export default function LinearRegressionPage(): JSX.Element {
       setPredictTotal(0)
       setPredictResultId(null)
       setPredictId(null)
+      setPredictionContext(null)
+      setPredictionScope(null)
+      setPredicting(false)
       setPredictInfo(null)
       setPredictError(null)
       setMatSource('fit')
@@ -210,17 +246,20 @@ export default function LinearRegressionPage(): JSX.Element {
         const fields = res.capabilities.materializeFitFields
         return fields.includes(f) ? f : (fields[0] ?? '')
       })
-      void fetchRows(res.resultId)
+      void fetchRows(res.resultId, startedContext)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (runSequence.current !== seq || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRevision || schemaRef.current !== startedSchemaRevision) return
       setError(apiErrorMessage(err, '重回帰分析に失敗しました。'))
     } finally {
       if (runSequence.current === seq) setLoading(false)
     }
   }
 
-  const fetchRows = async (resultId: string): Promise<void> => {
+  const fetchRows = async (resultId: string, context: LRContext): Promise<void> => {
     const seq = runSequence.current
+    const isCurrent = () => runSequence.current === seq && selectionRef.current.datasetId === context.datasetId
+      && selectionRef.current.dataRevision === context.expectedDataRevision && schemaRef.current === context.expectedSchemaRevision
     setRowsLoading(true)
     setRowsError(null)
     try {
@@ -229,16 +268,17 @@ export default function LinearRegressionPage(): JSX.Element {
       let total = 0
       while (offset !== null) {
         const page = await fetchLinearRegressionRows(resultId, offset, 5000)
+        if (!isCurrent()) return
         total = page.total
         out.push(...page.rows)
         offset = page.nextOffset
       }
-      if (runSequence.current !== seq) return
+      if (!isCurrent()) return
       setRows(out)
       setRowsTotal(total)
       setRowsResultId(resultId)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (!isCurrent()) return
       setRows([])
       setRowsResultId(null)
       setRowsError(apiErrorMessage(err, '行の取得に失敗しました。'))
@@ -261,7 +301,7 @@ export default function LinearRegressionPage(): JSX.Element {
   const highlightedSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
 
   const handleToggle = async (rowId: string): Promise<void> => {
-    if (!result || !datasetId || !rowsReady) {
+    if (!result || !resultContext || loading || !datasetId || !rowsReady) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
     }
@@ -270,31 +310,34 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
       return
     }
-    const seq = runSequence.current
+    const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
     setSelecting(true)
     try {
-      const res = await selectLinearRegression(result.resultId, buildContext(), {
+      const res = await selectLinearRegression(result.resultId, resultContext, {
         kind: 'row_ids', rowIds: [rowId],
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
-      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || '重回帰 図の点選択' }))
-      setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
+      const active = new Set(selectionRef.current.activeRowIds)
+      const eligibleRows = res.rowIds.filter(id => active.has(id))
+      const outsideActive = res.rowIds.length - eligibleRows.length
+      dispatch(selectionApplied({ rowIds: eligibleRows, operation: getBrushOp(), label: res.selectionLabel || '重回帰 図の点選択' }))
+      setSelectInfo(`一致${res.matchedCount} / 適用${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === seq) setSelecting(false)
     }
   }
 
   const handleBrush = async (bounds: { x: [number, number]; y: [number, number] }): Promise<void> => {
-    if (!result || !datasetId) return
+    if (!result || !resultContext || loading || !datasetId) return
     if (!rowsReady) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
@@ -304,65 +347,75 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
       return
     }
-    const seq = runSequence.current
+    const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
     setSelecting(true)
     setSelectInfo(null)
     try {
-      const res = await selectLinearRegression(result.resultId, buildContext(), {
+      const res = await selectLinearRegression(result.resultId, resultContext, {
         kind: 'diagnostic_rectangle',
         xField: diagField === 'leverage' ? 'leverage' : diagField,
         yField: 'residual',
         xBounds: bounds.x, yBounds: bounds.y,
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
-      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || '重回帰 診断図の選択' }))
-      setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
+      const active = new Set(selectionRef.current.activeRowIds)
+      const eligibleRows = res.rowIds.filter(id => active.has(id))
+      const outsideActive = res.rowIds.length - eligibleRows.length
+      dispatch(selectionApplied({ rowIds: eligibleRows, operation: getBrushOp(), label: res.selectionLabel || '重回帰 診断図の選択' }))
+      setSelectInfo(`一致${res.matchedCount} / 適用${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === seq) setSelecting(false)
     }
   }
 
   const handlePredict = async (): Promise<void> => {
-    if (!datasetId || !result) return
-    const seq = ++runSequence.current
-    const startedDataset = datasetId
+    if (!datasetId || !result || loading || stale) return
+    const seq = ++predictionSequence.current
+    const startedResultId = result.resultId
+    const context = captureAnalysisRunContext(buildContext())
+    const snapshot = analysisScope
+    const isCurrent = () => seq === predictionSequence.current
+      && resultRef.current?.resultId === startedResultId
+      && selectionRef.current.datasetId === context.datasetId
+      && selectionRef.current.dataRevision === context.expectedDataRevision
+      && schemaRef.current === context.expectedSchemaRevision
     setPredicting(true)
     setPredictError(null)
     setPredictInfo(null)
+    setPredictRows([])
+    setPredictId(null)
+    setPredictionContext(null)
+    setPredictionScope(null)
+    setPredictResultId(null)
+    setMatSource('fit')
     try {
-      const pctx: LRContext = {
-        datasetId, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
-        scope: predictScope,
-        activeRowIds: predictScope === 'active' ? selection.activeRowIds : undefined,
-        selectedRowIds: predictScope === 'selected' ? selection.selectedRowIds : undefined,
-        sampledRowIds: predictScope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-        weightMode: weightChoice, missingPolicy,
-      }
-      const res = await predictLinearRegression(result.resultId, pctx, predictInterval, true)
-      if (runSequence.current !== seq || selectionRef.current.datasetId !== startedDataset) return
+      const res = await predictLinearRegression(startedResultId, context, predictInterval, true)
+      if (!isCurrent()) return
       const out: LRPredictRow[] = []
       let offset: number | null = 0
       let total = 0
       while (offset !== null) {
-        const page = await fetchLinearRegressionPredictions(result.resultId, res.predictionId, offset, 5000)
+        const page = await fetchLinearRegressionPredictions(startedResultId, res.predictionId, offset, 5000)
+        if (!isCurrent()) return
         total = page.total
         out.push(...page.rows)
         offset = page.nextOffset
       }
-      if (runSequence.current !== seq) return
       setPredictRows(out)
       setPredictTotal(total)
-      setPredictResultId(result.resultId)
+      setPredictResultId(startedResultId)
       setPredictId(res.predictionId)
+      setPredictionContext(context)
+      setPredictionScope(snapshot)
       const ev = res.summary.evaluation
       setPredictInfo(`成功${res.summary.successfulPredictions}/${res.summary.requestedCount}` + (ev && ev.metrics ? ` RMSE=${ev.metrics.rmse === null ? '—' : ev.metrics.rmse.toFixed(4)}` : ''))
       setMatSource(res.predictionId)
@@ -371,26 +424,33 @@ export default function LinearRegressionPage(): JSX.Element {
         return fields.includes(f) ? f : (fields[0] ?? '')
       })
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (!isCurrent()) return
       setPredictError(apiErrorMessage(err, '予測に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setPredicting(false)
+      if (seq === predictionSequence.current) setPredicting(false)
     }
   }
 
   const handleSave = async (): Promise<void> => {
-    if (!datasetId || !result) return
+    if (!datasetId || !result || stale || loading) return
+    const context = matSource === 'fit' ? resultContext
+      : matSource === predictId && predictResultId === result.resultId ? predictionContext : null
+    if (!context) return
+    const startedDataset = datasetId
+    const startedResultId = result.resultId
     setSaving(true)
     try {
-      const res = await materializeLinearRegression(result.resultId, buildContext(), matSource, [{ sourceField: matField, name: matName }], `lr-${result.resultId}-${matSource}-${matField}-${matName}`)
+      const res = await materializeLinearRegression(startedResultId, context, matSource, [{ sourceField: matField, name: matName }], `lr-${result.resultId}-${matSource}-${matField}-${matName}`)
+      if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
       message.success(`保存しました: ${res.createdColumns.map((c) => c.name).join(', ')}`)
       invalidateColumnarCache()
       dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
       await dispatch(fetchCodebookThunk(datasetId))
     } catch (err) {
+      if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
       message.error(apiErrorMessage(err, '保存に失敗しました。'))
     } finally {
-      setSaving(false)
+      if (mounted.current) setSaving(false)
     }
   }
 
@@ -416,12 +476,7 @@ export default function LinearRegressionPage(): JSX.Element {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '8px 16px', alignItems: 'start' }}>
           <Space wrap style={{ gridColumn: '1 / -1' }}>
             <span>対象:</span>
-            <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
-              <Radio.Button value="all">全体</Radio.Button>
-              <Radio.Button value="active">Active</Radio.Button>
-              <Radio.Button value="selected">Selected</Radio.Button>
-              <Radio.Button value="sampled">標本</Radio.Button>
-            </Radio.Group>
+            <AnalysisScopeSummary snapshot={completed?.snapshot} />
             <span>重み:</span>
             <Radio.Group value={weightChoice} onChange={(e) => setWeightChoice(e.target.value)}>
               <Radio.Button value="dataset">データ設定</Radio.Button>
@@ -492,9 +547,10 @@ export default function LinearRegressionPage(): JSX.Element {
             ]} />
             <span>信頼水準:</span>
             <InputNumber value={confidenceLevel} onChange={(v) => setConfidenceLevel(typeof v === 'number' ? v : 0.95)} min={0.01} max={0.99} step={0.01} />
-            <Button type="primary" onClick={() => void handleRun()} disabled={!canRun} loading={loading}>実行</Button>
-            {dirty && <Tag color="orange">設定が変更されています。結果は前回実行分です</Tag>}
+            <Button data-testid="lr-run" type="primary" onClick={() => void handleRun()} disabled={!canRun} loading={loading}>実行</Button>
+            {dirty && <Tag color="orange">対象または設定が変更されています。結果は前回実行分です</Tag>}
           </Space>
+          {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
           {!canRun && <Typography.Text type="secondary">目的変数1列・説明変数1つ以上（目的変数と重複不可）を選択してください。</Typography.Text>}
         </div>
       </Card>
@@ -508,6 +564,7 @@ export default function LinearRegressionPage(): JSX.Element {
           extra={<span>共分散={s?.covarianceMethod} 参照df={s?.referenceDf === null || s?.referenceDf === undefined ? '—' : s.referenceDf}</span>}
         >
           <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Typography.Text>この結果の対象: {completed?.snapshot.label} {result.meta.scopeCount ?? completed?.snapshot.count}行 / 有効 {result.meta.fitCount ?? '—'}行</Typography.Text>
             {stale && <Alert type="warning" message="古い版の結果です（stale）。保存・予測・選択はできません。" showIcon />}
             {(s?.rSquaredType === 'uncentered') && <Alert type="info" message="切片なしのため R²・調整済R² は非中心化です。" showIcon />}
             {(result.meta.weightType === 'survey') && <Alert type="info" message="survey 近似: PSU未指定時は回答者を独立単位とした近似です。調整済R²・AIC/BICは提供しません。" showIcon />}
@@ -604,19 +661,14 @@ export default function LinearRegressionPage(): JSX.Element {
                   <Space direction="vertical" style={{ width: '100%' }} size="small">
                     <Space wrap>
                       <span>予測対象:</span>
-                      <Radio.Group value={predictScope} onChange={(e) => setPredictScope(e.target.value)}>
-                        <Radio.Button value="all">全体</Radio.Button>
-                        <Radio.Button value="active">Active</Radio.Button>
-                        <Radio.Button value="selected">Selected</Radio.Button>
-                        <Radio.Button value="sampled">標本</Radio.Button>
-                      </Radio.Group>
+                      <AnalysisScopeSummary label="次回予測の対象" snapshot={predictionScope} />
                       <span>区間:</span>
                       <SelectSetting value={predictInterval} onChange={setPredictInterval} style={{ width: 200 }} options={[
                         { value: 'none', label: '点予測のみ' },
                         { value: 'mean_ci', label: '平均CI' },
                         { value: 'individual_pi', label: '個別PI' },
                       ]} />
-                      <Button onClick={() => void handlePredict()} loading={predicting}>予測・評価</Button>
+                      <Button onClick={() => void handlePredict()} disabled={stale || loading} loading={predicting}>予測・評価</Button>
                       {predictInfo && predictResultId === result.resultId && <Typography.Text>{predictInfo}</Typography.Text>}
                     </Space>
                     {predictError && <Alert type="error" message={predictError} showIcon />}
@@ -664,7 +716,7 @@ export default function LinearRegressionPage(): JSX.Element {
                         style={{ width: 200 }}
                         placeholder="LR_FITTED"
                       />
-                      <Button onClick={() => void handleSave()} loading={saving}>表示結果の列へ保存</Button>
+                      <Button onClick={() => void handleSave()} disabled={stale || loading || (matSource !== 'fit' && (!predictionContext || predictResultId !== result.resultId))} loading={saving}>表示結果の列へ保存</Button>
                       <Button
                         onClick={() => { setTab('figure'); openWhenAvailable('linear-regression/diagnostics') }}
                       >

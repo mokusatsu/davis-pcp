@@ -18,7 +18,7 @@ it('starts with six ordinary variables, expands only a requested MA child, and d
   const columns = [...Array.from({ length: 8 }, (_, index) => ({ columnId: `x${index}`, name: `x${index}`, role: 'question', scaleType: 'ratio' })),
     ...['a', 'b'].map(name => ({ columnId: name, name, role: 'question', scaleType: 'nominal', multiResponseGroup: 'q' }))]
   const initial = { ...base, selection: { ...base.selection, datasetId: 'd', allRowIds: ['r'], activeRowIds: ['r'], selectedRowIds: [] },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r'], totalRowIds: ['r'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r'] } },
     globalVariables: { ...base.globalVariables, activeEntities: null }, pcp: { ...base.pcp, colorBy: null },
     codebook: { ...base.codebook, datasetId: 'd', columns, schemaRevision: 1 } } as any
   const local = configureStore({ reducer: (state = initial, action: any) => action.type === 'highlight'

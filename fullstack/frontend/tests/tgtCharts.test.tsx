@@ -201,7 +201,7 @@ function pageStore(activeRows: string[]) {
   const base = store.getState()
   return configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'tour-dataset', allRowIds: rowIds, activeRowIds: activeRows },
-    globalObservations: { ...base.globalObservations, activeRowIds: activeRows, totalRowIds: rowIds },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: activeRows } },
     globalVariables: { ...base.globalVariables, datasetId: 'tour-dataset', activeEntities: null },
     codebook: { ...base.codebook, datasetId: 'tour-dataset', columns: ['x', 'y', 'z'].map(name => ({
       name, columnId: name, role: 'question', scaleType: 'ratio', categoryOrder: [], missingCodes: [], valueLabels: {}, multiResponseGroup: null })) },

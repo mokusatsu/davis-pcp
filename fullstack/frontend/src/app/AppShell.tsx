@@ -1,5 +1,7 @@
+import { createAnalysisWorkspaceSnapshot, readAnalysisWorkspaceSnapshot } from '../features/selection/workspaceSession'
+import { analysisWorkspaceRestored } from './store'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Badge, Button, ConfigProvider, Dropdown, Grid, Input, Layout, List, Menu, Modal,
@@ -10,7 +12,7 @@ import {
   BarChartOutlined, ClearOutlined, DownloadOutlined, FileTextOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch, VariableMetaItem } from './store'
-import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, statsScopeSet, variablesInitialized } from './store'
+import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, observationScopeChanged, variablesInitialized } from './store'
 import { api, downloadExport } from '../api/client'
 import { normalizePageKey, useGraphExpansion } from '../features/common/GraphExpansion'
 import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar'
@@ -224,6 +226,7 @@ export default function AppShell() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   }, [location.pathname])
   const selection = useSelector((s: RootState) => s.selection)
+  const workspaceStore = useStore<RootState>()
   const mainContentRef = useRef<HTMLDivElement>(null)
   const { notifyRoute, session: graphSession } = useGraphExpansion()
   // Router 内の AppShell から正規化 pageKey と datasetId を共通部へ通知する
@@ -320,12 +323,7 @@ export default function AppShell() {
 
   const saveSession = async () => {
     if (!selection.datasetId) return
-    const state = {
-      selectedRowIds: selection.selectedRowIds,
-      activeRowIds: selection.activeRowIds,
-      groups: selection.groups,
-      savedAt: new Date().toISOString(),
-    }
+    const state = { ...createAnalysisWorkspaceSnapshot(workspaceStore.getState()), savedAt: new Date().toISOString() }
     if (currentSessionId) {
       try {
         const updated = await api.put<{ revision: number }>(`/sessions/${currentSessionId}`, { state })
@@ -341,7 +339,11 @@ export default function AppShell() {
             cancelText: 'コピーとして保存',
             onOk: async () => {
               const server = await api.get<{ state: unknown }>(`/sessions/${currentSessionId}`)
-              notificationApi.info({ message: 'サーバー状態を再読込しました。' })
+              try {
+                const restored = readAnalysisWorkspaceSnapshot(server.state, workspaceStore.getState())
+                dispatch(analysisWorkspaceRestored(restored))
+                notificationApi.info({ message: '共通分析対象を再読込しました。' })
+              } catch (error) { notificationApi.warning({ message: String(error) }) }
               return server
             },
             onCancel: () => { void saveAsCopy() },
@@ -365,7 +367,7 @@ export default function AppShell() {
     const created = await api.post<{ sessionId: string; revision: number }>('/sessions', {
       name: `${sessionName || 'Session'} (copy)`,
       datasetId: selection.datasetId,
-      state: { selectedRowIds: selection.selectedRowIds, activeRowIds: selection.activeRowIds, groups: selection.groups },
+      state: createAnalysisWorkspaceSnapshot(workspaceStore.getState()),
     })
     setCurrentSessionId(created.sessionId)
     setRevision(created.revision)
@@ -418,7 +420,7 @@ export default function AppShell() {
         icon={<BarChartOutlined />}
         disabled={!selectedCount}
         onClick={() => {
-          dispatch(statsScopeSet('selected'))
+          dispatch(observationScopeChanged('selected'))
           navigate('/statistics')
         }}
         data-testid="sidebar-stats-button"

@@ -1,3 +1,4 @@
+import { AnalysisViewActivityContext } from '../features/selection/analysisScope'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -139,7 +140,7 @@ export default function KeepAliveOutlet() {
               flex: 1,
             }}
           >
-            <Component />
+            <AnalysisViewActivityContext.Provider value={isActive}><Component /></AnalysisViewActivityContext.Provider>
           </div>
         )
       })}

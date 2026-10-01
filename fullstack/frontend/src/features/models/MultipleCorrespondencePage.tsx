@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -27,7 +28,7 @@ const VAR_COLORS = ['#1890ff', '#52c41a', '#fa8c16', '#722ed1', '#eb2f96', '#13c
 export default function MultipleCorrespondencePage(): JSX.Element {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
@@ -58,7 +59,6 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   const [variables, setVariables] = useState<string[]>([])
   const [maMode, setMaMode] = useState<'ordinary_only' | 'explicit_binary_options'>('ordinary_only')
   const [inertiaAdjustment, setInertiaAdjustment] = useState<'raw' | 'benzecri'>('raw')
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
   const [axisX, setAxisX] = useState(1)
@@ -66,7 +66,11 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   const [overlay, setOverlay] = useState(false)
   const [tab, setTab] = useState('individuals')
 
-  const [result, setResult] = useState<MCAResponse | null>(null)
+  const [completed, setCompleted] = useState<{ result: MCAResponse; context: MCAContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const result = completed?.result ?? null
+  const resultContext = completed?.context
+  const resultRef = useRef(result)
+  resultRef.current = result
   const [submittedKey, setSubmittedKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,16 +83,29 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
   const [matAxis, setMatAxis] = useState(1)
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      runSequence.current += 1
+      selectionSequence.current += 1
+    }
+  }, [])
   const svgIndRef = useRef<SVGSVGElement | null>(null)
   const svgCatRef = useRef<SVGSVGElement | null>(null)
 
-  const draftKey = JSON.stringify([datasetId, variables, maMode, inertiaAdjustment, scope, missingPolicy,
-    weightChoice, selection.dataRevision, schemaRevision])
+  const eligibleVariables = maMode === 'ordinary_only' ? ordinaryOptions : [...ordinaryOptions, ...maOptions]
+  const unavailableVariables = variables.filter(id => !eligibleVariables.some(option => option.value === id))
+  const draftKey = JSON.stringify([datasetId, variables, maMode, inertiaAdjustment, analysisScope.scopeKey, missingPolicy,
+    weightChoice, selection.dataRevision, schemaRevision, unavailableVariables])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   useEffect(() => {
     runSequence.current += 1
-    setResult(null)
+    selectionSequence.current += 1
+    setCompleted(null)
     setSubmittedKey('')
     setError(null)
     setLoading(false)
@@ -111,32 +128,33 @@ export default function MultipleCorrespondencePage(): JSX.Element {
     datasetId: datasetId ?? '',
     expectedDataRevision: selection.dataRevision,
     expectedSchemaRevision: schemaRevision,
-    scope,
-    activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+    ...analysisScope.contextRows,
     weightMode: weightChoice,
     missingPolicy,
   })
 
-  const canRun = Boolean(datasetId && variables.length >= 2)
+  const canRun = Boolean(datasetId && variables.length >= 2 && unavailableVariables.length === 0)
 
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !canRun) return
     const seq = ++runSequence.current
     const startedDataset = datasetId
+    const startedContext = captureAnalysisRunContext(buildContext())
+    const startedScope = analysisScope
+    selectionSequence.current += 1
+    setSelecting(false)
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     const startedKey = draftKey
     setLoading(true)
     setError(null)
     try {
-      const res = await runMca(buildContext(), variables, maMode, inertiaAdjustment)
+      const res = await runMca(startedContext, variables, maMode, inertiaAdjustment)
       if (seq !== runSequence.current) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
-      setResult(res)
+      setCompleted({ result: res, context: startedContext, snapshot: startedScope })
       setSubmittedKey(startedKey)
       setSelectedCats(new Set())
       setSelectInfo(null)
@@ -144,7 +162,8 @@ export default function MultipleCorrespondencePage(): JSX.Element {
       setAxisY(Math.min(2, res.summary.rank))
       message.success('多重対応分析を実行しました。')
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (seq !== runSequence.current || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev || schemaRef.current !== startedSchemaRev) return
       setError(apiErrorMessage(err, '分析に失敗しました。'))
     } finally {
       if (seq === runSequence.current) setLoading(false)
@@ -180,6 +199,8 @@ export default function MultipleCorrespondencePage(): JSX.Element {
     let cancelled = false
     setRowsLoading(true)
     setRowsError(null)
+    setRows([])
+    setRowsMeta(null)
     void (async () => {
       const all: { rowId: string; coordinates: number[] }[] = []
       let offset = 0
@@ -213,30 +234,33 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   }
 
   const handleSelect = async (selector: { kind: 'categories'; categoryIds: string[]; betweenVariables: 'and' | 'or' } | { kind: 'rectangle'; axes: number[]; bounds: [number, number][] } | { kind: 'row_ids'; rowIds: string[] }): Promise<void> => {
-    if (!result) return
+    if (!result || !resultContext || loading || shownStale) return
     setSelecting(true)
     setSelectInfo(null)
-    const seq = ++runSequence.current
+    const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     try {
-      const res = await selectMca(result.resultId, buildContext(), selector)
-      if (seq !== runSequence.current) return
+      const res = await selectMca(result.resultId, resultContext, selector)
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
+      const active = new Set(selectionRef.current.activeRowIds)
+      const eligibleRows = res.rowIds.filter(id => active.has(id))
+      const outsideActive = res.rowIds.length - eligibleRows.length
       dispatch(selectionApplied({
-        rowIds: res.rowIds,
+        rowIds: eligibleRows,
         operation: getBrushOp(),
-        label: `${res.selectionLabel} (${res.contextIntersectionCount}行)`,
+        label: `${res.selectionLabel} (${eligibleRows.length}行)`,
       }))
-      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${res.contextIntersectionCount}`)
+      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       message.error(apiErrorMessage(err, '選択の解決に失敗しました。'))
     } finally {
-      if (seq === runSequence.current) setSelecting(false)
+      if (seq === selectionSequence.current) setSelecting(false)
     }
   }
 
@@ -331,17 +355,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
               onChange={(v) => setVariables(v as string[])}
               options={ordinaryOptions}
             />
-            <Select
-              style={{ minWidth: 150 }}
-              value={scope}
-              onChange={(v) => setScope(v)}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Active' },
-                { value: 'selected', label: 'Selected' },
-                { value: 'sampled', label: 'Sampled' },
-              ]}
-            />
+            <AnalysisScopeSummary snapshot={completed?.snapshot} />
             <Select
               style={{ minWidth: 150 }}
               value={missingPolicy}
@@ -398,7 +412,8 @@ export default function MultipleCorrespondencePage(): JSX.Element {
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
             ordinalは数値間隔を仮定しないカテゴリとして扱います。MA親・count・未解決仮想列は拒否します。MA子は明示選択のみ採用し、非選択もカテゴリです。surveyの推測統計・有意軸は表示しません。
           </Typography.Text>
-          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="設定が変更されています。結果は前回実行分です。" />}
+          {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
+          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
         </Card>
       )}
       {error && <Alert type="error" message={error} />}
@@ -409,7 +424,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
             size="small"
             title={
               <Space>
-                <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
+                <Tag>この結果の対象: {completed?.snapshot.label} / rev {result.meta.dataRevision} (n={result.meta.scopeCount})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
                 <Tag>{result.meta.weightApplied ? `加重(${result.meta.weightType})` : '非加重'}</Tag>
                 {shownStale && <Tag color="orange">stale（古い版）</Tag>}
@@ -423,6 +438,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                 <Alert key={i} type={w.code === 'MA_OPTION_BLOCK_WEIGHTING' ? 'info' : 'warning'} message={`${w.code}: ${w.message}`} showIcon />
               ))}
             </Space>
+            {selectInfo && <Tag>{selectInfo}</Tag>}
             <Tabs
               activeKey={tab}
               onChange={setTab}
@@ -542,7 +558,6 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                         <Button loading={selecting} disabled={selectedCats.size === 0 || shownStale} onClick={() => void handleSelect({ kind: 'categories', categoryIds: [...selectedCats], betweenVariables: between })}>
                           原行IDへ解決して選択 ({selectedCats.size})
                         </Button>
-                        {selectInfo && <Tag>{selectInfo}</Tag>}
                       </Space>
                     </div>
                   ),
@@ -613,20 +628,23 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                       <span>軸</span>
                       <Select value={matAxis} onChange={setMatAxis} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: `第${i + 1}軸` }))} style={{ minWidth: 120 }} />
                       <Button
-                        disabled={shownStale}
+                        disabled={shownStale || loading || !resultContext}
                         onClick={() => {
                           void (async () => {
+                            if (!resultContext || shownStale || loading) return
+                            const startedDataset = datasetId
                             try {
                               const res = await api.post<{ createdColumns: { name: string }[]; writtenRowCount: number; dataRevision: number; schemaRevision: number }>(
                                 `/analysis-results/${result!.resultId}/materialize`,
                                 {
-                                  context: buildContext(),
+                                  context: resultContext,
                                   source: 'fit',
                                   columns: [{ sourceField: `coordinate:${matAxis}`, name: `MCA${matAxis}`, label: `MCA第${matAxis}軸` }],
                                   idempotencyKey: `${result!.resultId}-fit-${matAxis}`,
                                 },
                               )
                               // M004: 中央の版・コードブック・Tableデータを更新する。
+                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
                               if (datasetId) {
                                 invalidateColumnarCache()
                                 dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
@@ -634,6 +652,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                               }
                               message.success(`MCA${matAxis}を保存しました（${res.writtenRowCount}行）。新列がTableに表示されます。`)
                             } catch (err) {
+                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
                               message.error(apiErrorMessage(err, '保存に失敗しました。'))
                             }
                           })()

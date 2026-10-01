@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -156,21 +157,27 @@ export default function CrosstabPage() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const { columns, schemaRevision, weightConfig, surveyDesign } = useCodebook()
   const [rowVariable, setRowVariable] = useState<string | null>(null)
   const [colVariable, setColVariable] = useState<string | null>(null)
   const [weightColumn, setWeightColumn] = useState<string | null>(null)
   const [inference, setInference] = useState<'auto' | 'rao_scott'>('auto')
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [mode, setMode] = useState<DisplayMode>('rowPct')
   const [result, setResult] = useState<CrosstabResponse | null>(null)
+  const [resultInput, setResultInput] = useState<{
+    context: Record<string, unknown>; rowVariableId: string; colVariableId: string;
+    inputKey: string; label: string; count: number; dataKey: string;
+  } | null>(null)
+  const resultInputRef = useRef(resultInput)
+  resultInputRef.current = resultInput
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cellLoading, setCellLoading] = useState(false)
   const requestVersion = useRef(0)
-  const contextRef = useRef('')
+  const selectionSequence = useRef(0)
+  const dataKeyRef = useRef('')
   const datasetId = selection.datasetId
 
   const globalVars = useSelector(selectOrdinaryVariables)
@@ -240,63 +247,52 @@ export default function CrosstabPage() {
     }
   }, [dispatch, selectedWeight, columns, designForWeight])
 
-  const scopeIds = useMemo(() => {
-    if (scope === 'all') return null
-    if (scope === 'selected') return selection.selectedRowIds
-    if (scope === 'sampled') return obs.sampling.sampledRowIds
-    return null
-  }, [scope, selection.selectedRowIds, obs.sampling.sampledRowIds])
-
-  const inputContext = useMemo(() => JSON.stringify([
-    datasetId, rowVariable, colVariable, weightColumn, scope, missingPolicy,
-    selection.dataRevision, schemaRevision, inference,
-    scope === 'active' ? selection.activeRowIds : scopeIds,
-    selection.selectedRowIds,
-  ]), [datasetId, rowVariable, colVariable, weightColumn, scope, missingPolicy,
-    selection.dataRevision, schemaRevision, inference, selection.activeRowIds,
-    selection.selectedRowIds, scopeIds])
-  contextRef.current = inputContext
+  const dataKey = JSON.stringify([datasetId, selection.dataRevision, schemaRevision])
+  dataKeyRef.current = dataKey
+  const inputContext = JSON.stringify([datasetId, rowVariable, colVariable, weightColumn,
+    analysisScope.scopeKey, missingPolicy, selection.dataRevision, schemaRevision, inference])
+  const dirty = resultInput !== null && resultInput.inputKey !== inputContext
+  const stale = result !== null && (result.meta.datasetId !== datasetId
+    || result.meta.dataRevision !== selection.dataRevision || result.meta.schemaRevision !== schemaRevision)
   const runCrosstab = useCallback(async () => {
-    if (!datasetId || !rowVariable || !colVariable) return
+    if (!datasetId || !rowVariable || !colVariable || analysisScope.count === 0) return
     const version = ++requestVersion.current
-    const startedContext = inputContext
-    contextRef.current = startedContext
+    selectionSequence.current += 1
+    setCellLoading(false)
+    const input = {
+      context: captureAnalysisRunContext({ datasetId, expectedDataRevision: selection.dataRevision,
+        expectedSchemaRevision: schemaRevision, ...analysisScope.contextRows,
+        weightMode: weightColumn ? 'column' : 'none', weightColumn, missingPolicy }),
+      rowVariableId: rowVariable, colVariableId: colVariable,
+      inputKey: inputContext, label: analysisScope.label, count: analysisScope.count, dataKey,
+    }
     setLoading(true)
     setError(null)
     try {
       const res = await api.post<CrosstabResponse>('/summaries/crosstab', {
-        context: {
-          datasetId,
-          expectedDataRevision: selection.dataRevision,
-          expectedSchemaRevision: schemaRevision,
-          scope,
-          activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-          selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-          sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-          weightMode: weightColumn ? 'column' : 'none',
-          weightColumn,
-          missingPolicy,
-        },
-        rowVariableId: rowVariable,
-        colVariableId: colVariable,
+        context: input.context,
+        rowVariableId: input.rowVariableId,
+        colVariableId: input.colVariableId,
         includeRowIds: true,
         maxRowIdsPerCell: 10000,
         // 'auto' lets the server decide from the weight's declared meaning; a
         // survey weight silently gets no p-value rather than a wrong one.
         inference,
       })
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (version !== requestVersion.current || input.dataKey !== dataKeyRef.current) return
       setResult(res)
+      setResultInput(input)
     } catch (err) {
-      if (version !== requestVersion.current || startedContext !== contextRef.current) return
+      if (version !== requestVersion.current || input.dataKey !== dataKeyRef.current) return
       setError(apiErrorMessage(err, '集計に失敗しました。'))
       setResult(null)
+      setResultInput(null)
     } finally {
-      if (version === requestVersion.current && startedContext === contextRef.current) setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
-  }, [datasetId, rowVariable, colVariable, weightColumn, scope, missingPolicy,
-    selection.dataRevision, selection.activeRowIds, selection.selectedRowIds,
-    obs.sampling.sampledRowIds, schemaRevision, scopeIds, inputContext, inference])
+  }, [datasetId, rowVariable, colVariable, weightColumn, missingPolicy,
+    selection.dataRevision, schemaRevision, analysisScope.contextRows, analysisScope.scopeKey,
+    analysisScope.label, analysisScope.count, inputContext, inference, dataKey])
 
   // Switching the test on must actually run it — the button's whole promise is
   // that the design-based result appears, and the request now differs.
@@ -309,9 +305,19 @@ export default function CrosstabPage() {
 
   useEffect(() => {
     requestVersion.current += 1
+    selectionSequence.current += 1
     setResult(null)
+    setResultInput(null)
+    setLoading(false)
+    setCellLoading(false)
     setError(null)
+    return () => { requestVersion.current += 1; selectionSequence.current += 1; resultInputRef.current = null }
   }, [datasetId])
+
+  useEffect(() => {
+    selectionSequence.current += 1
+    setCellLoading(false)
+  }, [selection.dataRevision, schemaRevision])
 
   // An undo/revert can remove columns, and the global active variables can
   // exclude them; drop selections that no longer exist instead of letting
@@ -334,44 +340,37 @@ export default function CrosstabPage() {
   }, [result])
 
   const handleCellClick = useCallback(async (cell: CrosstabCell, operation: 'add' | 'replace' | 'toggle') => {
-    if (!datasetId || !result) return
+    if (!datasetId || !result || !resultInput || loading) return
+    if (stale) { message.warning('古い版の結果です。再集計してから選択してください。'); return }
+    const input = resultInput
+    const version = requestVersion.current
+    const selectionSeq = ++selectionSequence.current
     setCellLoading(true)
     try {
       let rowIds = cell.rowIds
       if (cell.rowIdsTruncated) {
         const full = await api.post<{ rowIds: string[] }>('/summaries/crosstab/cell-row-ids', {
-          context: {
-            datasetId,
-            expectedDataRevision: result.meta.dataRevision,
-            expectedSchemaRevision: result.meta.schemaRevision,
-            scope: result.meta.scope,
-            activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-            selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-            sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-            rowIds: scope !== 'all' && scope !== 'active' && scope !== 'selected' && scope !== 'sampled' ? (scopeIds ?? undefined) : undefined,
-            weightMode: weightColumn ? 'column' : 'none',
-            weightColumn: weightColumn ?? undefined,
-            missingPolicy,
-          },
-          rowVariableId: rowVariable,
-          colVariableId: colVariable,
+          context: input.context,
+          rowVariableId: input.rowVariableId,
+          colVariableId: input.colVariableId,
           rowCategoryId: cell.rowCategoryId,
           colCategoryId: cell.colCategoryId,
         })
         rowIds = full.rowIds
       }
+      if (selectionSequence.current !== selectionSeq || version !== requestVersion.current || input !== resultInputRef.current || input.dataKey !== dataKeyRef.current) return
       dispatch(selectionApplied({
         rowIds,
         operation,
         label: `Crosstab ${cell.rowLabel} × ${cell.colLabel} (${rowIds.length}行)`,
       }))
     } catch (err) {
+      if (selectionSequence.current !== selectionSeq || version !== requestVersion.current || input !== resultInputRef.current || input.dataKey !== dataKeyRef.current) return
       message.error(err instanceof Error ? err.message : '行IDの取得に失敗しました。')
     } finally {
-      setCellLoading(false)
+      if (selectionSequence.current === selectionSeq) setCellLoading(false)
     }
-  }, [datasetId, result, weightColumn, missingPolicy, rowVariable, colVariable, dispatch,
-    scope, scopeIds, selection.activeRowIds, selection.selectedRowIds, obs.sampling.sampledRowIds])
+  }, [datasetId, result, resultInput, stale, loading, dispatch])
 
   const handleExport = useCallback(() => {
     if (!result) return
@@ -418,21 +417,10 @@ export default function CrosstabPage() {
               placeholder="ウェイトなし"
               allowClear
               value={weightColumn}
-              onChange={(v) => { setWeightColumn(v ?? null); setResult(null); if (!v) setInference('auto') }}
+              onChange={(v) => { setWeightColumn(v ?? null); setResult(null); setResultInput(null); if (!v) setInference('auto') }}
               options={weightOptions}
             />
-            <Select
-              data-testid="crosstab-scope"
-              style={{ minWidth: 140 }}
-              value={scope}
-              onChange={(v) => setScope(v)}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Active' },
-                { value: 'selected', label: 'Selected' },
-                { value: 'sampled', label: 'Sampled' },
-              ]}
-            />
+            <AnalysisScopeSummary label="次回の集計対象" />
             <Select
               data-testid="crosstab-missing-policy"
               style={{ minWidth: 180 }}
@@ -450,7 +438,7 @@ export default function CrosstabPage() {
               loading={loading}
               // An undeclared weight cannot be used at all, so asking the server
               // only to be told so would waste the round trip.
-              disabled={!rowVariable || !colVariable || Boolean(selectedWeight && !declaredType)}
+              disabled={!rowVariable || !colVariable || analysisScope.count === 0 || Boolean(selectedWeight && !declaredType)}
               onClick={() => void runCrosstab()}
             >
               集計実行
@@ -538,6 +526,9 @@ export default function CrosstabPage() {
                     { value: 'totalPct', label: 'Total %' },
                   ]}
                 />
+                {resultInput && <Tag data-testid="crosstab-result-scope">この結果の対象: {resultInput.label} {resultInput.count}行（実行時）</Tag>}
+                {dirty && <Tag color="orange">対象・設定が変更されています。結果は前回実行分です</Tag>}
+                {stale && <Tag color="red">古い版の結果です。再集計してください</Tag>}
                 <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
                 {result.meta.weightApplied
                   ? (

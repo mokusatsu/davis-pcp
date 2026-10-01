@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 from ..algorithms.pra.engine import evaluate_penalty_reward
 from ..domain.errors import BizError
+from ..domain.context import (
+    check_revisions, collect_revisions, filter_scope_frame, resolve_row_ids, scope_hash,
+)
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
@@ -25,6 +28,9 @@ class PraRequest(BaseModel):
     neutralPoint: float | None = None
     neutral_point: float | None = None
     alpha: float = 0.05
+    rowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
 
 
 @router.post("/pra/evaluate")
@@ -33,8 +39,15 @@ def run_pra_evaluation(req: PraRequest) -> dict[str, Any]:
     if not dataset_id:
         raise BizError("DATASET_ID_REQUIRED", "datasetId は必須です。")
 
-    df = store.get_dataframe(dataset_id)
-    meta = store.get_meta(dataset_id)
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        revisions = collect_revisions(meta, store.load_codebook(dataset_id))
+        check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        df = store.get_dataframe(dataset_id)
+        scope_ids = resolve_row_ids(df, dataset_id, req.rowIds)
+        df = filter_scope_frame(df, scope_ids)
+    if df.height == 0:
+        raise BizError("EMPTY_ANALYSIS_INPUT", "対象データ行が0件です。", status_code=422)
     schema = meta.get("schema", [])
 
     s_min = req.scaleMin if req.scale_min is None else req.scale_min
@@ -52,6 +65,7 @@ def run_pra_evaluation(req: PraRequest) -> dict[str, Any]:
             neutral_point=neutral,
             alpha=req.alpha,
         )
-        return result
+        return {**result, "datasetId": dataset_id, **revisions,
+                "scopeHash": scope_hash(scope_ids), "scopeCount": len(scope_ids)}
     except ValueError as e:
         raise BizError("PRA_EXECUTION_ERROR", str(e), status_code=400)

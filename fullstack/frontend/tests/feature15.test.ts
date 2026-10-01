@@ -70,7 +70,7 @@ describe('Feature 15: Global Variable & Observation Selection Suite', () => {
     // Select row_1 and row_2
     store.dispatch(selectionApplied({ rowIds: ['row_1', 'row_2'], operation: 'replace', label: 'Test Select' }))
     state = store.getState()
-    expect(state.globalObservations.selectedRowIds).toEqual(['row_1', 'row_2'])
+    expect(state.selection.selectedRowIds).toEqual(['row_1', 'row_2'])
 
     // Switch scope to 'selected'
     store.dispatch(observationScopeChanged('selected'))
@@ -81,7 +81,7 @@ describe('Feature 15: Global Variable & Observation Selection Suite', () => {
     // Empty selected scope remains empty rather than expanding to active rows
     store.dispatch(selectionCleared())
     state = store.getState()
-    expect(state.globalObservations.selectedRowIds).toHaveLength(0)
+    expect(state.selection.selectedRowIds).toHaveLength(0)
     expect(state.globalObservations.scopeMode).toBe('selected')
 
         expect(selectEffectiveRowIds(state)).toEqual([])
@@ -119,7 +119,7 @@ describe('Feature 15: Global Variable & Observation Selection Suite', () => {
       })
     )
     state = store.getState()
-    expect(state.globalObservations.activeRowIds).toEqual(['row_0', 'row_1', 'row_2', 'row_3'])
+    expect(state.selection.activeRowIds).toEqual(['row_0', 'row_1', 'row_2', 'row_3'])
     expect(selectEffectiveRowIds(state)).toEqual(['row_0', 'row_1', 'row_2', 'row_3'])
   })
 })

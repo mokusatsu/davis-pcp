@@ -17,14 +17,14 @@ function setup() {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 2, selectedRowIds: [] },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r2', 'r7', 'r9'], totalRowIds: ['r2', 'r7', 'r9'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r2', 'r7', 'r9'] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'ma', groupId: 'services' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 3, isLoading: false,
       columns: [{ columnId: 'A', name: 'A', role: 'question', scaleType: 'nominal', multiResponseGroup: 'services' },
         { columnId: 'area', name: 'Area', label: '地域', role: 'attribute', scaleType: 'nominal' }],
       multiResponseGroups: [{ groupId: 'services', label: '利用サービス' }] } }
   const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/scope'
-    ? { ...s, globalObservations: { ...s.globalObservations, activeRowIds: action.payload } } : s,
+    ? { ...s, globalObservations: { ...s.globalObservations, scopeMode: 'sampled', sampling: { ...s.globalObservations.sampling, sampledRowIds: action.payload } } } : s,
     middleware: get => get({ serializableCheck: false }) })
   const dispatch = vi.spyOn(local, 'dispatch')
   const post = vi.spyOn(api, 'post').mockImplementation(async path => path.endsWith('/matches') ? { rowIds: ['r9'] } as any

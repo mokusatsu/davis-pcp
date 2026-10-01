@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { Select as AntSelect } from 'antd'
@@ -112,26 +113,23 @@ export default function ClustersPage() {
     numericColumns, categoricalColumns, classColumn, method, k, seed, linkage, distance, acuity, cutoff, alphaSmooth, numWeight])
   const [resultInput, setResultInput] = useState<{ resultId: string; key: string } | null>(null)
   const resultMatchesInput = stored && resultInput?.resultId === stored.resultId && resultInput.key === inputKey
-  const currentInput = useRef(inputKey)
-  currentInput.current = inputKey
-  const runVersion = useRef(0)
+  const runScope = useScopedRun(inputKey)
   useEffect(() => {
     setRunning(false)
     setError(null)
-    return () => { runVersion.current++ }
-  }, [inputKey])
+  }, [runScope.identity])
 
   const theme = vizTheme(false)
 
   const runClustering = async () => {
     if (!selection.datasetId) return
-    const version = ++runVersion.current
+    const ticket = runScope.begin()
     setRunning(true)
     setError(null)
     try {
       const response = await api.post<ClusterResponse>('/clusters', {
         datasetId: selection.datasetId,
-        activeRowIds,
+        activeRowIds: ticket.scope.rowIds,
         expectedDataRevision: selection.dataRevision,
         expectedSchemaRevision: schemaRevision,
         method,
@@ -148,7 +146,8 @@ export default function ClustersPage() {
         alphaSmooth,
         numWeight,
       })
-      if (version !== runVersion.current || currentInput.current !== inputKey) return
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       // Stable group slots: cluster label -> fixed color slot (entity-stable).
       const clusters = Array.from({ length: response.k }, (_, label) => ({
         groupId: `cluster-${response.resultId}-${label}`,
@@ -163,9 +162,9 @@ export default function ClustersPage() {
       dispatch(clusterResultStored(response))
       message.success(`クラスタリング完了 (${response.k}クラスタ、平均シルエット ${response.silhouette?.mean?.toFixed(3) ?? '—'})`)
     } catch (err) {
-      if (version === runVersion.current && currentInput.current === inputKey) setError(err as { message: string })
+      if (ticket.isCurrent()) setError(err as { message: string })
     } finally {
-      if (version === runVersion.current) setRunning(false)
+      if (ticket.isCurrent()) setRunning(false)
     }
   }
 
@@ -182,6 +181,9 @@ export default function ClustersPage() {
       data-testid="clusters-page"
       style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowX: 'hidden' }}
     >
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
         <Card size="small" style={{ background: '#fafafa' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>

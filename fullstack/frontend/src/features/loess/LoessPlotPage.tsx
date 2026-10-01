@@ -1,3 +1,5 @@
+import { useAnalysisViewActive, AnalysisScopeSummary } from '../selection/analysisScope'
+import { selectEffectiveRowIds } from '../../app/store'
 import { CHART_MARKERS, pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -51,7 +53,10 @@ export default function LoessPlotPage() {
   const graphPopupContainer = useGraphPopupContainer('loess/main')
   const dispatch = useDispatch()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
-  const activeRowIds = useSelector((s: RootState) => s.selection.activeRowIds)
+  const activeRowIds = useSelector(selectEffectiveRowIds)
+  const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
+  const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const viewActive = useAnalysisViewActive('/loess')
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
   const data = useColumnarData(datasetId)
   const { getColor } = useRowColorResolver()
@@ -89,12 +94,20 @@ export default function LoessPlotPage() {
     }
   }, [numericColumns, xCol, yCol])
 
+  const liveKey = JSON.stringify([datasetId, dataRevision, schemaRevision, activeRowIds, xCol, yCol, span, degree, viewActive])
+  const liveRef = useRef(liveKey)
+  liveRef.current = liveKey
+  const liveSequence = useRef(0)
+  useEffect(() => () => { liveSequence.current++ }, [])
   const fetchLoess = useCallback(async () => {
+    if (!viewActive) { setLoading(false); return }
     if (!datasetId || !xCol || !yCol) return
+    const startedKey = liveRef.current, version = ++liveSequence.current
+    const current = () => version === liveSequence.current && startedKey === liveRef.current
     setLoading(true)
     try {
       const res = await api.post<LoessResponse>('/regression/loess', {
-        datasetId,
+        datasetId, expectedDataRevision: dataRevision, expectedSchemaRevision: schemaRevision,
         xCol,
         yCol,
         span,
@@ -102,15 +115,17 @@ export default function LoessPlotPage() {
         nPoints: 80,
         rowIds: activeRowIds,
       })
-      setLoessData(res)
+      if (current()) setLoessData(res)
     } catch (err) {
+      if (!current()) return
       console.error('Failed to fetch LOESS', err)
     } finally {
-      setLoading(false)
+      if (current()) setLoading(false)
     }
-  }, [datasetId, xCol, yCol, span, degree, activeRowIds])
+  }, [datasetId, xCol, yCol, span, degree, activeRowIds, dataRevision, schemaRevision, viewActive])
 
   useEffect(() => {
+    setLoessData(null)
     void fetchLoess()
   }, [fetchLoess])
 
@@ -219,6 +234,7 @@ export default function LoessPlotPage() {
       data-testid="loess-page"
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
+      <AnalysisScopeSummary />
       {/* Top Controls Card */}
         <div
           style={{

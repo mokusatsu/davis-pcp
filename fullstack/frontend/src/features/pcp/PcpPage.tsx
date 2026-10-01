@@ -1,3 +1,4 @@
+import { useScopedRun } from '../selection/analysisScope'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import MaAxisPicker from './MaAxisPicker'
 import { Select as AntSelect } from 'antd'
@@ -106,6 +107,8 @@ export default function PcpPage() {
   const pcp = useSelector((s: RootState) => s.pcp)
   const { columns: codebookColumns, formatValueLabel } = useCodebook()
   const globalVars = useSelector(selectOrdinaryVariables)
+  const orderingRun = useScopedRun()
+  const orderingSchemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
   const globalEntities = useSelector(selectVariableEntities)
   const maGroups = globalEntities.items.filter(item => item.entity.kind === 'ma' && globalEntities.selected.has(item.key))
     .map(item => ({ groupId: item.name, label: item.label }))
@@ -148,6 +151,7 @@ export default function PcpPage() {
   const [diagnostics, setDiagnostics] = useState<OrderingDiagnostics | null>(null)
   const [orderError, setOrderError] = useState<{ message: string; suggestedActions: string[] } | null>(null)
   const [orderingLoading, setOrderingLoading] = useState(false)
+  useEffect(() => { setOrderingLoading(false) }, [orderingRun.identity])
   const [firstFrameRendered, setFirstFrameRendered] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const exportSvg = useCallback(() => {
@@ -732,6 +736,8 @@ export default function PcpPage() {
 
   const runOrdering = async (mode: string) => {
     if (!selection.datasetId) return
+    const ticket = orderingRun.begin()
+    setOrderingLoading(false)
     dispatch(pcpStateChanged({ orderMode: mode }))
     if (mode === 'manual' || mode === 'database') {
       setDiagnostics(null)
@@ -746,8 +752,12 @@ export default function PcpPage() {
     try {
       const result = await api.post<OrderingDiagnostics & { outputColumnIds: string[] }>('/orderings', {
         datasetId: selection.datasetId,
+        rowIds: ticket.scope.rowIds, columns: globalVars.activeVariableIds,
+        expectedDataRevision: selection.dataRevision, expectedSchemaRevision: orderingSchemaRevision,
         mode,
       })
+      if (!ticket.isCurrent()) return
+      ticket.commit()
       setDiagnostics({ ...result })
       setOrderError(null)
       dispatch(pcpStateChanged({
@@ -757,14 +767,17 @@ export default function PcpPage() {
         ],
       }))
     } catch (error) {
+      if (!ticket.isCurrent()) return
       const err = error as { message: string; suggestedActions?: string[] }
       setOrderError({ message: err.message, suggestedActions: err.suggestedActions ?? [] })
     } finally {
-      setOrderingLoading(false)
+      if (ticket.isCurrent()) setOrderingLoading(false)
     }
   }
 
   const moveAxis = (key: string, targetIndex: number) => {
+    orderingRun.begin()
+    setOrderingLoading(false)
     const visible = pcp.order.filter((k) => pcp.visibleColumns.includes(k))
     const from = visible.indexOf(key)
     if (from < 0) return

@@ -63,7 +63,7 @@ it('discards an older handoff response and resets to default conclusions once', 
   expect(view.getByText('second candidate')).toBeInTheDocument()
   fireEvent.click(view.getByText('デフォルト全体結論に戻す'))
   await waitFor(() => expect(post).toHaveBeenCalledTimes(4))
-  expect(post).toHaveBeenLastCalledWith('/robustness/evaluate', { datasetId: 'd', bootstrapB: 100 })
+  expect(post).toHaveBeenLastCalledWith('/robustness/evaluate', expect.objectContaining({ datasetId: 'd', bootstrapB: 100, rowIds: [], expectedDataRevision: 1, expectedSchemaRevision: 1 }))
   expect(view.queryByTestId('inherited-conclusion-alert')).not.toBeInTheDocument()
   await waitFor(() => expect(view.container.querySelector('.ant-spin-spinning')).toBeNull())
 })

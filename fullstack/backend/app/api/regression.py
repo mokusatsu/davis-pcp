@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..algorithms.regression.loess import compute_loess
 from ..domain.errors import BizError
+from ..domain.context import check_revisions, collect_revisions
 from ..storage.dataset_store import DatasetStore
 
 router = APIRouter()
@@ -25,6 +26,8 @@ class LoessRequest(BaseModel):
     nPoints: int = 100
     rowIds: list[str] | None = None
     row_ids: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
 
 
 @router.post("/regression/loess")
@@ -40,8 +43,11 @@ def get_loess(req: LoessRequest) -> dict[str, Any]:
 
     from ..domain.codebook_adapter import CodebookAdapter
 
-    codebook = store.load_codebook(dataset_id) or {}
-    df = store.get_dataframe(dataset_id)
+    with store.lock(dataset_id):
+        codebook = store.load_codebook(dataset_id) or {}
+        revisions = collect_revisions(store.get_meta(dataset_id), codebook)
+        check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        df = store.get_dataframe(dataset_id)
     wanted_rows = req.rowIds if req.row_ids is None else req.row_ids
     if x_col in df.columns and y_col in df.columns:
         adapter = CodebookAdapter(df, codebook)
@@ -50,7 +56,7 @@ def get_loess(req: LoessRequest) -> dict[str, Any]:
             adapter.analysis_series(y_col).alias(y_col),
         ])
 
-    return compute_loess(
+    result = compute_loess(
         df=df,
         x_col=x_col,
         y_col=y_col,
@@ -59,3 +65,4 @@ def get_loess(req: LoessRequest) -> dict[str, Any]:
         n_points=req.nPoints,
         row_ids=wanted_rows,
     )
+    return {**result, "datasetId": dataset_id, **revisions}

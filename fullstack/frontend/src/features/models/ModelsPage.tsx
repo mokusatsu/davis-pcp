@@ -1,9 +1,10 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import EChart from '../charts/EChart'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Alert, Button, Card, Col, Descriptions, InputNumber, Row, Segmented, Space, Spin, Statistic, Tag, Typography, message,
@@ -78,8 +79,6 @@ export default function ModelsPage() {
   const globalVariables = useSelector(selectOrdinaryVariables)
   const entities = useSelector(selectVariableEntities)
   const { columns: codebookColumns, schemaRevision } = useCodebook()
-  const contextRef = useRef('')
-  const requestVersion = useRef(0)
   const [modelType, setModelType] = useState<'decision_tree' | 'random_forest'>('decision_tree')
   const [target, setTarget] = useState<string | null>(null)
   const [chosen, setChosen] = useState<{ datasetId: string; names: string[]; children: string[] } | null>(null)
@@ -107,17 +106,15 @@ export default function ModelsPage() {
   const numericColumns = (current?.names ?? []).filter(name => featureCandidates.some(c => c.name === name))
   const inputContext = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, numericColumns,
     targetValue, modelType, maxDepth, nEstimators])
-  contextRef.current = inputContext
+  const runScope = useScopedRun(inputContext)
   useEffect(() => {
-    requestVersion.current++
     setResult(null); setRunning(false); setError(null); dispatch(modelResultStored(null))
-  }, [inputContext, dispatch])
+  }, [runScope.identity, dispatch])
 
   const runModel = async () => {
     if (!selection.datasetId || !targetValue || !numericColumns.length) return
-    const context = contextRef.current
-    const version = ++requestVersion.current
-    const isCurrent = () => context === contextRef.current && version === requestVersion.current
+    const ticket = runScope.begin()
+    const isCurrent = ticket.isCurrent
     setRunning(true)
     setError(null)
     try {
@@ -130,11 +127,12 @@ export default function ModelsPage() {
         maxDepth,
         nEstimators,
         seed: 42,
-        rowIds,
+        rowIds: ticket.scope.rowIds,
         expectedSchemaRevision: schemaRevision,
         expectedDataRevision: selection.dataRevision,
       })
       if (!isCurrent()) return
+      ticket.commit()
       setResult(response)
       dispatch(modelResultStored(response))
       message.success(`${modelType === 'decision_tree' ? '決定木' : 'ランダムフォレスト'}学習完了`)
@@ -170,6 +168,9 @@ export default function ModelsPage() {
 
   return (
     <div data-testid="models-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%' }}>
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
       {(
         <Card size="small" style={{ background: '#fafafa' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
@@ -284,7 +285,7 @@ export default function ModelsPage() {
             <Card size="small">
               <Statistic
                 title="モデル構造"
-                value={result.modelType === 'decision_tree' ? `葉数: ${result.leafCount ?? '—'}` : `決定木: ${nEstimators}本`}
+                value={result.modelType === 'decision_tree' ? `葉数: ${result.leafCount ?? '—'}` : `決定木: ${result.diagnostics.nEstimators ?? result.treeStructures?.length ?? '—'}本`}
                 prefix={<BranchesOutlined />}
                 valueStyle={{ fontSize: 14 }}
               />

@@ -23,7 +23,7 @@ function testStore() {
   const state = store.getState()
   return configureStore({ reducer: () => ({ ...state,
     selection: { ...state.selection, datasetId: 'ds', allRowIds: fixture.rowIds, activeRowIds: fixture.rowIds },
-    globalObservations: { ...state.globalObservations, activeRowIds: fixture.rowIds, totalRowIds: fixture.rowIds },
+    globalObservations: { ...state.globalObservations, scopeMode: 'sampled', sampling: { ...state.globalObservations.sampling, sampledRowIds: fixture.rowIds } },
     codebook: { ...state.codebook, datasetId: 'ds', columns: [spec] },
   }) })
 }

@@ -16,7 +16,7 @@ it('requests Table entities in shared order without changing off-page selection'
   const state = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 1, selectedRowIds: ['outside'] },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'x' }, { kind: 'ma', groupId: 'q' }] },
-    globalObservations: { ...base.globalObservations, activeRowIds: ['r1', 'outside'] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: ['r1', 'outside'] } },
     codebook: { ...base.codebook, datasetId: 'd', columns, multiResponseGroups: [{ groupId: 'q', label: 'Q' }] },
   }
   const local = configureStore({ reducer: () => state as any, middleware: g => g({ serializableCheck: false }) })

@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import CategoryBars from '../charts/CategoryBars'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
@@ -18,6 +19,7 @@ import { mosaicPathLabel } from './types'
 
 export default function LineMosaicPage() {
   const dispatch = useDispatch<AppDispatch>()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
@@ -49,6 +51,7 @@ export default function LineMosaicPage() {
   currentInput.current = inputKey
   const [resultKey, setResultKey] = useState<string | null>(null)
   useEffect(() => {
+    if (!viewActive) return
     let cancelled = false
     setSelectedCell(null)
     setError(null)
@@ -75,7 +78,7 @@ export default function LineMosaicPage() {
       setError(e.message || 'モザイクプロットの集計に失敗しました。')
     }).finally(() => { if (!cancelled && currentInput.current === inputKey) setLoading(false) })
     return () => { cancelled = true }
-  }, [inputKey])
+  }, [viewActive, inputKey])
 
   if (!selection.datasetId) {
     return (

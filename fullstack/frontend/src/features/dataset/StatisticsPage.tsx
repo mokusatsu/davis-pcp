@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, useAnalysisViewActive } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
@@ -8,10 +9,10 @@ import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Card, Col, Dropdown, Empty, Pagination, Row, Segmented, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { Button, Card, Col, Dropdown, Empty, Pagination, Row, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
-import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, statsScopeSet, selectEffectiveRowIds } from '../../app/store'
+import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { graphEngine } from '../../engine/graphClient'
@@ -92,7 +93,8 @@ export default function StatisticsPage() {
   const histDragRef = useRef<{ column: string; x1: number; x2: number } | null>(null)
   const histSvgRefs = useRef(new Map<string, SVGSVGElement>())
 
-  const statsScope = useSelector((s: RootState) => s.selection.statsScope)
+  const analysisScope = useAnalysisScope()
+  const viewActive = useAnalysisViewActive()
   const expandedHistogramGraphId = expandedColumn ? `statistics/histogram/${expandedColumn}` : null
 
   useEffect(() => {
@@ -120,14 +122,13 @@ export default function StatisticsPage() {
   /** Scope-filtered row indexes (active or selected), shared by stats + histograms. */
   const scopedIndexes = useMemo(() => {
     if (!data) return []
-    const scopeSet = statsScope === 'selected' ? new Set(selection.selectedRowIds) : null
     const effectiveSet = new Set(effectiveRowIds)
     const out: number[] = []
     for (let i = 0; i < data.rowIds.length; i += 1) {
-      if (scopeSet ? scopeSet.has(data.rowIds[i]) : effectiveSet.has(data.rowIds[i])) out.push(i)
+      if (effectiveSet.has(data.rowIds[i])) out.push(i)
     }
     return out
-  }, [data, statsScope, selection.selectedRowIds, effectiveRowIds])
+  }, [data, effectiveRowIds])
 
   const targetSchema = useMemo(() => {
     if (!data) return []
@@ -149,6 +150,7 @@ export default function StatisticsPage() {
   const [stats, setStats] = useState<StatsRow[]>([])
   const [loadingStats, setLoadingStats] = useState(false)
   useEffect(() => {
+    if (!viewActive) return
     if (!data || !scopedIndexes.length) { setStats([]); setLoadingStats(false); return }
     let cancelled = false
     setLoadingStats(true)
@@ -214,7 +216,7 @@ export default function StatisticsPage() {
       if (!cancelled) setLoadingStats(false)
     })
     return () => { cancelled = true }
-  }, [data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel])
+  }, [viewActive, data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel])
 
   const numericColumns = useMemo(
     () => targetSchema.filter((c) => columnValues[c.name].numeric).map((c) => c.name),
@@ -231,7 +233,7 @@ export default function StatisticsPage() {
   // time so hundreds of columns never mount simultaneously (max-depth guard).
   const PAGE_SIZE = 12
   const [columnPage, setColumnPage] = useState(1)
-  useEffect(() => { setColumnPage(1) }, [selection.datasetId, statsScope])
+  useEffect(() => { setColumnPage(1) }, [selection.datasetId, analysisScope.scopeKey])
   const pageCount = Math.max(1, Math.ceil(targetSchema.length / PAGE_SIZE))
   const currentColumnPage = Math.min(columnPage, pageCount)
   const visibleColumnNames = useMemo(
@@ -272,22 +274,12 @@ export default function StatisticsPage() {
           <Row gutter={[12, 8]} align="middle" justify="space-between">
             <Col>
               <Space wrap align="center">
-                <Segmented
-                  data-testid="stats-scope"
-                  size="small"
-                  options={[{ label: '有効データ全体', value: 'active' }, { label: '選択行のみ', value: 'selected' }]}
-                  value={statsScope}
-                  onChange={(v) => dispatch(statsScopeSet(v as 'active' | 'selected'))}
-                />
+                <AnalysisScopeSummary />
               </Space>
             </Col>
             <Col>
               <Space size={6}>
-                <Tag color={statsScope === 'selected' ? 'blue' : 'default'} style={{ margin: 0 }}>
-                  {statsScope === 'selected'
-                    ? `選択中 ${selection.selectedRowIds.length} 行を集計`
-                    : `有効データ ${selection.activeRowIds.length} 行を集計`}
-                </Tag>
+                <Tag style={{ margin: 0 }}>{analysisScope.label} {analysisScope.count}行を集計</Tag>
                 {pcpColorBy && (
                   <Tag color="purple" style={{ margin: 0 }}>
                     色分け: <ColumnQuestionTooltip nameOrId={pcpColorBy!}>{pcpColorBy}</ColumnQuestionTooltip>
@@ -324,7 +316,7 @@ export default function StatisticsPage() {
             <Card size="small">
               <Statistic
                 title="集計スコープ"
-                value={statsScope === 'selected' ? '選択行のみ' : '有効データ全体'}
+                value={analysisScope.label}
                 prefix={<FilterOutlined />}
                 valueStyle={{ fontSize: 15 }}
               />
@@ -343,18 +335,18 @@ export default function StatisticsPage() {
         </Row>
 
       <L1Legend />
-      <MultiResponseStatistics rowIds={statsScope === 'selected' ? selection.selectedRowIds : effectiveRowIds} />
+      <MultiResponseStatistics rowIds={effectiveRowIds} />
       {loadingStats && (
         <Card size="small" style={{ textAlign: 'center', padding: '30px 20px', background: '#fafafa', borderRadius: 8 }}>
           <Spin size="large" tip="記述統計量を集計中..." />
         </Card>
       )}
 
-      {statsScope === 'selected' && !selection.selectedRowIds.length ? (
+      {effectiveRowIds.length === 0 ? (
         <Empty
           data-testid="stats-empty-selected"
           style={{ marginTop: 40 }}
-          description="行が選択されていません。PCPや各グラフ、またはテーブルで行を選択してください。"
+          description="共通対象が0行です。上部の対象設定または行選択をご確認ください。"
         />
       ) : (
         <>
@@ -370,7 +362,7 @@ export default function StatisticsPage() {
           )}
           <Card
               size="small"
-              title={<span style={{ fontSize: 13, fontWeight: 600 }}>記述統計量サマリー（{statsScope === 'selected' ? '選択行' : '有効データ'}）</span>}
+              title={<span style={{ fontSize: 13, fontWeight: 600 }}>記述統計量サマリー（{analysisScope.label}）</span>}
               style={{ boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}
             >
               <Table<StatsRow>

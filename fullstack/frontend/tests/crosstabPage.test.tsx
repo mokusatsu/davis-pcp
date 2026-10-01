@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -135,11 +135,15 @@ const raoScottPayload = responseBody({
 function localStore(codebook: Record<string, unknown> = {}) {
   const base = store.getState()
   const state: any = { ...base,
-    selection: { ...base.selection, datasetId: 'd', dataRevision: 2, activeRowIds: ['r1', 'r2'], selectedRowIds: [] },
+    selection: { ...base.selection, datasetId: 'd', dataRevision: 2, allRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2'], selectedRowIds: [] },
     globalObservations: { ...base.globalObservations, activeRowIds: ['r1', 'r2'], sampling: { sampledRowIds: [] } },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 1, weightConfig: null, surveyDesign: null, ...codebook },
   }
   const local = configureStore({ reducer: (s = state, action: any) => {
+    if (action.type === 'test/scope') return { ...s,
+      globalObservations: { ...s.globalObservations, scopeMode: action.payload.scope,
+        sampling: { ...s.globalObservations.sampling, sampledRowIds: action.payload.sampledRowIds ?? s.globalObservations.sampling.sampledRowIds } },
+      selection: { ...s.selection, ...(action.payload.selection ?? {}) } }
     // The weight declaration lives on the dataset, so it has to survive in the
     // store for the page to stop asking for it.
     if (typeof action?.type === 'string' && action.type.startsWith('codebook/')) {
@@ -297,4 +301,144 @@ it('omits the absent denominator degrees of freedom and its comma', async () => 
   await waitFor(() => expect(view.getByText('df=2.00')).toBeTruthy())
   expect(view.container.textContent).not.toContain('undefined')
   expect(view.container.textContent).not.toContain('df=2.00,')
+})
+
+it.each(['all', 'active', 'selected', 'sampled'])('uses the shared %s target with one canonical row array', async scope => {
+  const local = localStore()
+  local.dispatch({ type: 'test/scope', payload: { scope, selectedRowIds: [], sampledRowIds: ['r3'], selection: { selectedRowIds: ['r1'] } } })
+  const post = vi.spyOn(api, 'post').mockResolvedValue(payload)
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  expect(view.queryByTestId('crosstab-scope')).toBeNull()
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+  const context = (post.mock.calls[0][1] as any).context
+  expect(context.scope).toBe(scope)
+  const fields = ['rowIds', 'activeRowIds', 'selectedRowIds', 'sampledRowIds'].filter(key => key in context)
+  expect(fields).toEqual(scope === 'all' ? [] : [`${scope}RowIds`])
+  if (scope !== 'all') expect(context[fields[0]]).toEqual(scope === 'active' ? ['r1', 'r2'] : scope === 'selected' ? ['r1'] : ['r3'])
+})
+
+it('retains the submitted target and variable pair when a completed cell is queried after common scope changes', async () => {
+  const local = localStore()
+  local.dispatch({ type: 'test/scope', payload: { scope: 'selected', selection: { selectedRowIds: ['r1', 'r2'] } } })
+  const post = vi.spyOn(api, 'post').mockResolvedValue(responseBody({ cells: [{ ...payload.cells[0], rowIdsTruncated: true }] }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await view.findByTestId('crosstab-result-scope')
+  const original = structuredClone((post.mock.calls[0][1] as any).context)
+  act(() => { local.dispatch({ type: 'test/scope', payload: { scope: 'sampled', sampledRowIds: ['r3'], selection: { selectedRowIds: [] } } }) })
+  fireEvent.change(view.getByTestId('crosstab-row-variable'), { target: { value: 'col' } })
+  fireEvent.change(view.getByTestId('crosstab-col-variable'), { target: { value: 'row' } })
+  expect(post).toHaveBeenCalledTimes(1)
+  expect(view.getByTestId('crosstab-result-scope')).toHaveTextContent('Selected')
+  expect(view.getByTestId('crosstab-result-scope')).toHaveTextContent('2行')
+  expect(view.getByText('対象・設定が変更されています。結果は前回実行分です')).toBeTruthy()
+  post.mockResolvedValue({ rowIds: ['r1', 'r2'] })
+  fireEvent.click(view.getByTestId('crosstab-cell-a-x'))
+  fireEvent.click(await view.findByText('選択を置換'))
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+  expect(post.mock.calls[1][1]).toMatchObject({ context: original, rowVariableId: 'row', colVariableId: 'col' })
+})
+
+it('publishes an in-flight result with its original target and prevents empty Selected from falling back to All', async () => {
+  const local = localStore()
+  let resolve!: (value: any) => void
+  const post = vi.spyOn(api, 'post').mockImplementation(() => new Promise(done => { resolve = done }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  act(() => { local.dispatch({ type: 'test/scope', payload: { scope: 'selected', selection: { selectedRowIds: [] } } }) })
+  await act(async () => { resolve(payload) })
+  expect(view.getByTestId('crosstab-result-scope')).toHaveTextContent('Active')
+  expect(view.getByTestId('crosstab-run')).toBeDisabled()
+  expect(post).toHaveBeenCalledTimes(1)
+})
+
+it('discards a pending cell lookup after the dataset changes', async () => {
+  const local = localStore()
+  const post = vi.spyOn(api, 'post').mockResolvedValue(responseBody({ cells: [{ ...payload.cells[0], rowIdsTruncated: true }] }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await view.findByTestId('crosstab-cell-a-x')
+  let resolve!: (value: any) => void
+  post.mockImplementation(() => new Promise(done => { resolve = done }))
+  const dispatch = vi.spyOn(local, 'dispatch')
+  fireEvent.click(view.getByTestId('crosstab-cell-a-x'))
+  fireEvent.click(await view.findByText('選択を置換'))
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+  act(() => { local.dispatch({ type: 'test/scope', payload: { scope: 'active', selection: { datasetId: 'new-dataset', dataRevision: 3 } } }) })
+  await act(async () => { resolve({ rowIds: ['r1', 'r2'] }) })
+  expect(dispatch.mock.calls.filter(([action]) => action.type === selectionApplied.type)).toHaveLength(0)
+})
+
+it('invalidates a pending cell lookup when the old dataset page is unmounted', async () => {
+  const local = localStore()
+  const post = vi.spyOn(api, 'post').mockResolvedValue(responseBody({ cells: [{ ...payload.cells[0], rowIdsTruncated: true }] }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await view.findByTestId('crosstab-cell-a-x')
+  let resolve!: (value: any) => void
+  post.mockImplementation(() => new Promise(done => { resolve = done }))
+  const dispatch = vi.spyOn(local, 'dispatch')
+  fireEvent.click(view.getByTestId('crosstab-cell-a-x'))
+  fireEvent.click(await view.findByText('選択を置換'))
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+  view.unmount()
+  await act(async () => { resolve({ rowIds: ['r1', 'r2'] }) })
+  expect(dispatch.mock.calls.filter(([action]) => action.type === selectionApplied.type)).toHaveLength(0)
+})
+
+it('keeps the latest truncated-cell Replace when two cell lookups arrive out of order', async () => {
+  const local = localStore()
+  const dispatch = vi.spyOn(local, 'dispatch')
+  const post = vi.spyOn(api, 'post').mockResolvedValue(responseBody({
+    rowCategories: [{ id: 'a', label: 'A', order: 0 }, { id: 'b', label: 'B', order: 1 }],
+    cells: [
+      { ...payload.cells[0], rowIdsTruncated: true },
+      { ...payload.cells[0], rowCategoryId: 'b', rowLabel: 'B', rowIdsTruncated: true },
+    ],
+  }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await view.findByTestId('crosstab-cell-a-x')
+  const pending: Array<(value: any) => void> = []
+  post.mockImplementation(() => new Promise<any>(resolve => { pending.push(resolve) }))
+  fireEvent.click(view.getByTestId('crosstab-cell-a-x'))
+  fireEvent.click(await view.findByRole('menuitem', { name: '選択を置換' }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  fireEvent.click(view.getByTestId('crosstab-cell-b-x'))
+  fireEvent.click(await view.findByRole('menuitem', { name: '選択を置換' }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  expect(post.mock.calls[2][1]).toMatchObject({ rowCategoryId: 'b' })
+  await act(async () => { pending[1]({ rowIds: ['r2'] }) })
+  await act(async () => { pending[0]({ rowIds: ['r1'] }) })
+  const actions = dispatch.mock.calls.map(([action]) => action).filter(action => action.type === selectionApplied.type)
+  expect(actions).toHaveLength(1)
+  expect(actions[0].payload).toMatchObject({ rowIds: ['r2'], operation: 'replace' })
+  expect(view.queryByText('行ID取得中…')).toBeNull()
+})
+
+it.each(['revision', 'fit'])('invalidates pending truncated-cell selections on %s changes', async change => {
+  const local = localStore()
+  const post = vi.spyOn(api, 'post').mockResolvedValue(responseBody({ cells: [{ ...payload.cells[0], rowIdsTruncated: true }] }))
+  const view = render(<Provider store={local}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await view.findByTestId('crosstab-cell-a-x')
+  let resolve!: (value: any) => void
+  post.mockImplementationOnce(() => new Promise<any>(done => { resolve = done }))
+  const dispatch = vi.spyOn(local, 'dispatch')
+  fireEvent.click(view.getByTestId('crosstab-cell-a-x'))
+  fireEvent.click(await view.findByRole('menuitem', { name: '選択を置換' }))
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+  if (change === 'fit') fireEvent.click(view.getByTestId('crosstab-run'))
+  else act(() => { local.dispatch({ type: 'test/scope', payload: { scope: 'active', selection: { dataRevision: 3 } } }) })
+  await act(async () => { resolve({ rowIds: ['r1', 'r2'] }) })
+  expect(dispatch.mock.calls.filter(([action]) => action.type === selectionApplied.type)).toHaveLength(0)
+  expect(view.queryByText('行ID取得中…')).toBeNull()
 })

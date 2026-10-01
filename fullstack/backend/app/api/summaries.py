@@ -6,13 +6,14 @@ from typing import Any
 import numpy as np
 import polars as pl
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from ..algorithms.summaries.core import correlation_matrix_df, summarize
 from ..storage.dataset_store import DatasetStore
 from ..domain.codebook_adapter import CodebookAdapter
 from ..domain.codebook_adapter import normalize_code
 from ..domain.errors import BizError
+from ..domain.context import ScopeName
 from ..domain.analysis_columns import resolve_analysis_columns
 from ..domain.survey_weight import (
     WEIGHT_UNSUPPORTED_MESSAGE,
@@ -247,7 +248,7 @@ class CrosstabContext(BaseModel):
     datasetId: str
     expectedDataRevision: int
     expectedSchemaRevision: int
-    scope: str = "all"
+    scope: ScopeName = "all"
     rowIds: list[str] | None = None
     activeRowIds: list[str] | None = None
     selectedRowIds: list[str] | None = None
@@ -256,6 +257,14 @@ class CrosstabContext(BaseModel):
     weightMode: str | None = None
     weightType: str | None = None
     missingPolicy: str = "exclude"
+
+    @model_validator(mode="after")
+    def check_scope_ids(self) -> "CrosstabContext":
+        required = {"active": "activeRowIds", "selected": "selectedRowIds",
+                    "sampled": "sampledRowIds", "explicit": "rowIds"}.get(self.scope)
+        if required is not None and getattr(self, required) is None:
+            raise ValueError(f"scope={self.scope} requires {required}; [] means empty")
+        return self
 
 
 class CrosstabRequest(BaseModel):
@@ -304,9 +313,6 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         codebook = store.load_codebook(context.datasetId) or {}
         revisions = collect_revisions(meta, codebook)
         check_revisions(revisions, context.expectedSchemaRevision, context.expectedDataRevision)
-        if context.scope == "explicit" and not context.rowIds:
-            raise BizError("ANALYSIS_CONTEXT_INCOMPLETE", "scope=explicitではrowIdsは必須です。",
-                           status_code=422)
         if context.missingPolicy not in ("exclude", "include_missing", "separate_not_applicable"):
             raise BizError("CROSSTAB_MISSING_POLICY", "missingPolicy が不正です。",
                            status_code=422)
@@ -369,8 +375,7 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
                                    __import__("app.domain.context", fromlist=["AnalysisContext"])
                                    .AnalysisContext(**context.model_dump()))
-        df = df.filter(pl.col("__rowId__").is_in(scope_ids)) if scope_ids else df.filter(
-            pl.col("__rowId__").is_in(["__none__"]))
+        df = df.filter(pl.col("__rowId__").is_in(scope_ids))
         weights: list[float | None] | None = None
         weight_missing = 0
         weight_status = "omitted"
@@ -445,8 +450,7 @@ def crosstab_cell_row_ids(req: CrosstabCellRequest) -> dict:  # noqa: C901
         scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
                                    __import__("app.domain.context", fromlist=["AnalysisContext"])
                                    .AnalysisContext(**context.model_dump()))
-        df = df.filter(pl.col("__rowId__").is_in(scope_ids)) if scope_ids else df.filter(
-            pl.col("__rowId__").is_in(["__none__"]))
+        df = df.filter(pl.col("__rowId__").is_in(scope_ids))
         row_spec = _crosstab_spec(codebook, req.rowVariableId)
         col_spec = _crosstab_spec(codebook, req.colVariableId)
         row_vals, _ = _crosstab_split_missing(df[row_name].to_list(), row_spec,

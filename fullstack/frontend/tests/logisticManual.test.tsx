@@ -24,14 +24,14 @@ function setup() {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds: ['r2'] },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'score' }, { kind: 'ma', groupId: 'g' }] },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, isLoading: false,
       columns: ['score', 'A', 'B'].map(name => ({ columnId: name, name, role: 'question',
         scaleType: name === 'score' ? 'ratio' : 'nominal', multiResponseGroup: name === 'score' ? null : 'g' })),
       multiResponseGroups: [{ groupId: 'g', label: 'サービス' }] } }
-  const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/scope'
-    ? { ...s, globalObservations: { ...s.globalObservations, activeRowIds: action.payload } } : s,
+  const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/revision' ? { ...s, selection: { ...s.selection, dataRevision: 4 } } : action.type === 'test/scope'
+    ? { ...s, globalObservations: { ...s.globalObservations, scopeMode: 'sampled', sampling: { ...s.globalObservations.sampling, sampledRowIds: action.payload } } } : s,
     middleware: get => get({ serializableCheck: false }) })
   const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><LogisticRegressionPage /></Provider>)
@@ -61,7 +61,7 @@ it('requires explicit MA choices, excludes same-parent features and preserves em
   expect(post).toHaveBeenCalledTimes(1)
 })
 
-it('discards responses after scope changes and unmount', async () => {
+it('discards responses after revision changes and unmount', async () => {
   let finish!: (value: any) => void
   const post = vi.spyOn(api, 'post').mockImplementation(() => new Promise(resolve => { finish = resolve }))
   const success = vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
@@ -70,12 +70,12 @@ it('discards responses after scope changes and unmount', async () => {
   fireEvent.change(view.getByTestId('logistic-target-select'), { target: { value: 'A' } })
   fireEvent.change(view.getByTestId('logistic-features-select'), { target: { value: 'score' } })
   fireEvent.click(view.getByTestId('run-logistic-btn'))
-  act(() => { local.dispatch({ type: 'test/scope', payload: ['r9'] }) })
+  act(() => { local.dispatch({ type: 'test/revision' }) })
   await act(async () => { finish({ samples: [{ rowId: 'obsolete' }] }) })
   expect(success).not.toHaveBeenCalled()
   expect(view.queryByTestId('coefficients-table')).toBeNull()
   fireEvent.click(view.getByTestId('run-logistic-btn'))
-  expect(post).toHaveBeenLastCalledWith('/models/logistic', expect.objectContaining({ activeRowIds: ['r9'] }))
+  expect(post).toHaveBeenLastCalledWith('/models/logistic', expect.objectContaining({ activeRowIds: [], expectedDataRevision: 4 }))
   view.unmount()
   await act(async () => { finish({ samples: [{ rowId: 'after-unmount' }] }) })
   expect(success).not.toHaveBeenCalled()

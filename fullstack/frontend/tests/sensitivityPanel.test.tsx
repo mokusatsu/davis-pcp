@@ -35,7 +35,7 @@ function localStore() {
     reducer: () => ({
       ...base,
       selection: { ...base.selection, datasetId: 'd', dataRevision: 1 },
-      globalObservations: { ...base.globalObservations, activeRowIds: [] },
+      globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     }),
     middleware: (g) => g({ serializableCheck: false }),
   })

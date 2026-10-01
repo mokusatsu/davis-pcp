@@ -1,9 +1,10 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { useSelector } from 'react-redux'
 import { Alert, Button, Radio, Segmented, Space, Typography, message } from 'antd'
-import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
+import { PlayCircleOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -37,16 +38,13 @@ export default function PcaPage() {
   const [viewMode, setViewMode] = useState<'biplot' | 'matrix'>('biplot')
 
   const context = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, selectedColumns, useCorrelation])
-  const contextRef = useRef(context)
-  contextRef.current = context
-  const requestVersion = useRef(0)
+  const runScope = useScopedRun(context)
   useEffect(() => {
-    requestVersion.current++
     setPcaData(null); setLoading(false); setError(null)
-  }, [context])
+  }, [runScope.identity])
 
   const runPca = useCallback(
-    async (rowSubset?: string[]) => {
+    async () => {
       if (!selection.datasetId) return
       if (selectedColumns.length < 2) {
         message.warning('PCAには2つ以上の数値変数を選択してください。')
@@ -54,18 +52,19 @@ export default function PcaPage() {
       }
       setLoading(true)
       setError(null)
-      const version = ++requestVersion.current, startedContext = contextRef.current
-      const isCurrent = () => version === requestVersion.current && startedContext === contextRef.current
+      const ticket = runScope.begin()
+      const isCurrent = ticket.isCurrent
       try {
         const res = await api.post<PcaResponse>('/models/pca', {
           datasetId: selection.datasetId,
           columns: selectedColumns,
           useCorrelation,
-          rowIds: rowSubset === undefined ? rowIds : rowIds.filter(id => rowSubset.includes(id)),
+          rowIds: ticket.scope.rowIds,
           expectedSchemaRevision: schemaRevision,
           expectedDataRevision: selection.dataRevision,
         })
         if (!isCurrent()) return
+        ticket.commit()
         setPcaData(res)
         setSelectedX(0)
         setSelectedY(Math.min(1, (res.nComponents || res.eigenvalues.length) - 1))
@@ -77,7 +76,7 @@ export default function PcaPage() {
         if (isCurrent()) setLoading(false)
       }
     },
-    [selection.datasetId, selection.dataRevision, schemaRevision, rowIds, selectedColumns, useCorrelation]
+    [selection.datasetId, selection.dataRevision, schemaRevision, rowIds, selectedColumns, useCorrelation, runScope]
   )
 
   const handleComponentSelectFromScree = (compIndex: number) => {
@@ -89,7 +88,6 @@ export default function PcaPage() {
     }
   }
 
-  const hasSelectedRows = selection.selectedRowIds.length > 0
 
   return (
     <div
@@ -135,18 +133,12 @@ export default function PcaPage() {
             >
               PCA実行
             </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              loading={loading}
-              disabled={!hasSelectedRows || selectedColumns.length < 2}
-              onClick={() => void runPca(selection.selectedRowIds)}
-              data-testid="pca-run-subset-button"
-            >
-              選択サブセットで再実行 ({selection.selectedRowIds.length}行)
-            </Button>
+
           </Space>
         </div>
 
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Alert type="info" message="実行時の対象・設定を保持しています。現在の入力で計算するには再実行してください。" />}
       {error && (
         <Alert
           type="error"

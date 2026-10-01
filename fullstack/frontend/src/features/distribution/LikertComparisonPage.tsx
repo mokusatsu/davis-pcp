@@ -1,3 +1,4 @@
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import EChart, { escapeHtml } from '../charts/EChart'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -22,6 +23,7 @@ type Basis = 'unweighted' | 'weighted'
 
 export default function LikertComparisonPage() {
   const dispatch = useDispatch()
+  const viewActive = useAnalysisViewActive()
   const selection = useSelector((s: RootState) => s.selection)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
@@ -55,6 +57,7 @@ export default function LikertComparisonPage() {
   const [resultKey, setResultKey] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!viewActive) return
     let cancelled = false
     setError(null)
     setMatchError(null)
@@ -82,7 +85,7 @@ export default function LikertComparisonPage() {
       setError(err.message ?? 'Likert集計の取得に失敗しました。')
     }).finally(() => { if (!cancelled && currentInput.current === inputKey) setLoading(false) })
     return () => { cancelled = true }
-  }, [inputKey])
+  }, [viewActive, inputKey])
 
   const rows: LikertRow[] = useMemo(() => {
     if (!payload || resultKey !== inputKey) return []

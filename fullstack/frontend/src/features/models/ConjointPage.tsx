@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -40,23 +41,23 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   if (typeof msg !== 'string' || !msg) return fallback
   return typeof code === 'string' && code ? `${msg}（${code}）` : msg
 }
-type ScopeKind = 'all' | 'active' | 'selected' | 'sampled' | 'explicit'
+type ConjointInputSnapshot = { context: ConjointContext; scopeKey: string; label: string; count: number }
 
 export default function ConjointPage(): JSX.Element {
   const { openWhenAvailable } = useGraphExpansion()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
   const { getColor } = useRowColorResolver()
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
   const selectionRef = useRef(selection)
   selectionRef.current = selection
   const schemaRef = useRef(schemaRevision)
   schemaRef.current = schemaRevision
-  const [scope, setScope] = useState<ScopeKind>('all')
   const [mode, setMode] = useState<'ratings' | 'choice' | 'ranking'>('choice')
   const [respondentCol, setRespondentCol] = useState<string | null>(null)
   const [taskCol, setTaskCol] = useState<string | null>(null)
@@ -76,6 +77,8 @@ export default function ConjointPage(): JSX.Element {
   const [priceAttr, setPriceAttr] = useState<string | null>(null)
   const [includeWtp, setIncludeWtp] = useState(false)
   const [result, setResult] = useState<ConjointResponse | null>(null)
+  const [resultInput, setResultInput] = useState<ConjointInputSnapshot | null>(null)
+  const [predictionInput, setPredictionInput] = useState<ConjointInputSnapshot | null>(null)
   const resultRef = useRef<ConjointResponse | null>(null)
   resultRef.current = result
   const [rowsResultId, setRowsResultId] = useState<string | null>(null)
@@ -97,7 +100,6 @@ export default function ConjointPage(): JSX.Element {
   const [simulating, setSimulating] = useState(false)
   const [simError, setSimError] = useState<string | null>(null)
   const simSequence = useRef(0)
-  const [predictScope, setPredictScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('all')
   // G006-05: 予測は fit の runSequence と独立した世代を使う。
   const predSequence = useRef(0)
   const [predicting, setPredicting] = useState(false)
@@ -111,7 +113,7 @@ export default function ConjointPage(): JSX.Element {
   const [matField, setMatField] = useState('probability')
   const [matName, setMatName] = useState('CJ_PROB')
   const [saving, setSaving] = useState(false)
-  const [expandInfo, setExpandInfo] = useState<ConjointExpandScopeResponse | null>(null)
+  const [expandInfo, setExpandInfo] = useState<(ConjointExpandScopeResponse & { originScopeKey: string }) | null>(null)
   const [expandError, setExpandError] = useState<string | null>(null)
   const expandSequence = useRef(0)
   const diagSequence = useRef(0)
@@ -151,12 +153,15 @@ export default function ConjointPage(): JSX.Element {
 
   useEffect(() => {
     runSequence.current += 1
+    selectionSequence.current += 1
     predSequence.current += 1
     simSequence.current += 1
     expandSequence.current += 1
     diagSequence.current += 1
     saveSequence.current += 1
     setResult(null)
+    setResultInput(null)
+    setPredictionInput(null)
     setSubmittedKey('')
     setError(null)
     setInputErrors([])
@@ -204,6 +209,7 @@ export default function ConjointPage(): JSX.Element {
     // グローバル副作用(message・store dispatch)を防げない。
     return () => {
       runSequence.current += 1
+      selectionSequence.current += 1
       predSequence.current += 1
       simSequence.current += 1
       expandSequence.current += 1
@@ -212,14 +218,32 @@ export default function ConjointPage(): JSX.Element {
     }
   }, [datasetId])
 
+  // Keep completed results visible as stale while refusing late old-revision work.
+  useEffect(() => {
+    runSequence.current += 1
+    selectionSequence.current += 1
+    predSequence.current += 1
+    simSequence.current += 1
+    expandSequence.current += 1
+    diagSequence.current += 1
+    setLoading(false)
+    setRowsLoading(false)
+    setPredicting(false)
+    setSimulating(false)
+    setExpanding(false)
+    setSelecting(false)
+    setDiagLoading(false)
+  }, [selection.dataRevision, schemaRevision])
+
+  const matchesContext = (context: ConjointContext) => selectionRef.current.datasetId === context.datasetId
+    && selectionRef.current.dataRevision === context.expectedDataRevision
+    && schemaRef.current === context.expectedSchemaRevision
+
   const buildContext = (): ConjointContext => ({
     datasetId: datasetId ?? '',
     expectedDataRevision: selection.dataRevision ?? 1,
     expectedSchemaRevision: schemaRevision ?? 1,
-    scope,
-    activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+    ...analysisScope.contextRows,
     weightMode,
     missingPolicy: 'exclude',
   })
@@ -251,7 +275,7 @@ export default function ConjointPage(): JSX.Element {
 
   const draftKey = JSON.stringify([datasetId, mode, respondentCol, taskCol, altCol, responseCol,
     catAttrs, linAttrs, refLevels, utilLo, utilHi, availCol, optOutCol,
-    ratingEffects, weightMode, priceAttr, includeWtp, scope,
+    ratingEffects, weightMode, priceAttr, includeWtp, analysisScope.scopeKey,
     selection.dataRevision, schemaRevision])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
   // G009-01: 両方空欄は省略、両方入力かつ下限＜上限は有効、
@@ -267,7 +291,7 @@ export default function ConjointPage(): JSX.Element {
     && attributes.length >= 1
     && !(new Set([...catAttrs, ...linAttrs]).size !== catAttrs.length + linAttrs.length)
     && !Object.values(mappingColumns).some((v) => attributes.some((a) => a.columnId === v))
-    && rangeValid)
+    && rangeValid && analysisScope.count > 0)
 
   const handleRun = async (explicitIds?: string[]): Promise<void> => {
     if (!datasetId) return
@@ -289,13 +313,20 @@ export default function ConjointPage(): JSX.Element {
     setInputErrors(errs)
     if (errs.length || !canRun) return
     const seq = ++runSequence.current
+    selectionSequence.current += 1
+    setSelecting(false)
     const startedDataset = datasetId
+    const startedDataRev = selection.dataRevision
+    const startedSchemaRev = schemaRevision
+    const current = () => runSequence.current === seq && selectionRef.current.datasetId === startedDataset
+      && selectionRef.current.dataRevision === startedDataRev && schemaRef.current === startedSchemaRev
     // G007-02/07/G008-03: fit開始時に旧予測・診断を失効させ、
     // 待機表示を解除する。診断の世代・結果IDも初期化する。
     predSequence.current += 1
     diagSequence.current += 1
     setPredicting(false)
     setPredictInfo(null)
+    setPredictionInput(null)
     setPredictRows([])
     setPredictResultId(null)
     setPredictId(null)
@@ -312,20 +343,22 @@ export default function ConjointPage(): JSX.Element {
       const ctx = explicitIds
         ? {
             ...buildContext(), scope: 'explicit' as const,
-            rowIds: explicitIds,
+            rowIds: [...explicitIds],
             activeRowIds: undefined, selectedRowIds: undefined,
             sampledRowIds: undefined,
           }
         : buildContext()
+      const input: ConjointInputSnapshot = { context: captureAnalysisRunContext(ctx), scopeKey: analysisScope.scopeKey,
+        label: explicitIds ? `${analysisScope.label}からタスク全体へ拡張` : analysisScope.label, count: explicitIds?.length ?? analysisScope.count }
       const res = await runConjoint(
-        ctx, mode, { ...mappingColumns }, attributes, ratingEffects,
+        input.context, mode, { ...mappingColumns }, attributes, ratingEffects,
         priceAttr,
       )
-      if (runSequence.current !== seq
-        || selectionRef.current.datasetId !== startedDataset) return
+      if (!current()) return
       setRows([])
       setRowsResultId(null)
       setResult(res)
+      setResultInput(input)
       setSubmittedKey(draftKey)
       setTab('figure')
       setMatSource('fit')
@@ -333,19 +366,20 @@ export default function ConjointPage(): JSX.Element {
         const fields = res.capabilities.materializeFitFields
         return fields.includes(f) ? f : (fields[0] ?? '')
       })
-      void fetchRows(res.resultId, seq)
+      void fetchRows(res.resultId, seq, input.context)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (!current()) return
       setError(apiErrorMessage(err, 'コンジョイント分析に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setLoading(false)
+      if (current()) setLoading(false)
     }
   }
 
   // G006-05: 行取得は開始した fit 世代にひもづける。行取得中の予測開始で
   // 無効化されないよう、fit 世代だけを見る（予測は独立世代）。
-  const fetchRows = async (resultId: string, fitSeq: number): Promise<void> => {
+  const fetchRows = async (resultId: string, fitSeq: number, context: ConjointContext): Promise<void> => {
     const seq = fitSeq
+    const current = () => runSequence.current === seq && matchesContext(context)
     setRowsLoading(true)
     setRowsError(null)
     try {
@@ -354,21 +388,22 @@ export default function ConjointPage(): JSX.Element {
       let total = 0
       while (offset !== null) {
         const pg: { total: number; nextOffset: number | null; rows: ConjointFitRow[] } = await fetchConjointRows(resultId, offset, 5000)
+        if (!current()) return
         total = pg.total
         out.push(...pg.rows)
         offset = pg.nextOffset
       }
-      if (runSequence.current !== seq) return
+      if (!current()) return
       setRows(out)
       setRowsTotal(total)
       setRowsResultId(resultId)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (!current()) return
       setRows([])
       setRowsResultId(null)
       setRowsError(apiErrorMessage(err, '行の取得に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setRowsLoading(false)
+      if (current()) setRowsLoading(false)
     }
   }
 
@@ -377,22 +412,23 @@ export default function ConjointPage(): JSX.Element {
       setExpandError('回答者・タスク・代替案・応答の各列を選択してください。')
       return
     }
+    if (analysisScope.count === 0) { setExpandError('共通対象は0行です。上部で対象を変更してください。'); return }
     const eseq = ++expandSequence.current
     const startedDataset = datasetId
     setExpandError(null)
     setExpanding(true)
     try {
-      const ctxSnapshot = buildContext()
+      const ctxSnapshot = captureAnalysisRunContext(buildContext())
       const res = await expandConjointScope(ctxSnapshot, { ...mappingColumns })
       if (expandSequence.current !== eseq
-        || selectionRef.current.datasetId !== startedDataset) return
+        || selectionRef.current.datasetId !== startedDataset || !matchesContext(ctxSnapshot)) return
       // G006-11: 拡張元の条件を保持し、設定変更時に失効させる。
       setExpandInfo({
         ...res,
+        expandedRowIds: [...res.expandedRowIds],
+        originScopeKey: analysisScope.scopeKey,
         mapping: { ...mappingColumns },
-        scopeSnapshot: JSON.stringify({
-          scope, ids: scope === 'all' ? null : ctxSnapshot,
-        }),
+        scopeSnapshot: JSON.stringify([ctxSnapshot.weightMode, ctxSnapshot.missingPolicy]),
         dataRevision: selection.dataRevision ?? 1,
         schemaRevision,
       })
@@ -405,7 +441,7 @@ export default function ConjointPage(): JSX.Element {
   }
 
   const handleToggle = async (rowId: string): Promise<void> => {
-    if (!result || !datasetId || !rowsReady) {
+    if (!result || !resultInput || !datasetId || !rowsReady || loading) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
     }
@@ -415,30 +451,31 @@ export default function ConjointPage(): JSX.Element {
       return
     }
     const seq = runSequence.current
+    const selectionSeq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
     setSelecting(true)
     try {
-      const res = await selectConjoint(result.resultId, buildContext(), {
+      const res = await selectConjoint(result.resultId, resultInput!.context, {
         kind: 'row_ids', rowIds: [rowId],
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
       dispatch(selectionApplied({ rowIds: res.rowIds, operation: 'toggle', label: res.selectionLabel || 'コンジョイント 図の点選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
     }
   }
 
   const handleRespondentSelect = async (respondentId: string): Promise<void> => {
-    if (!result || !datasetId || !rowsReady) {
+    if (!result || !resultInput || !datasetId || !rowsReady || loading) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
     }
@@ -448,30 +485,32 @@ export default function ConjointPage(): JSX.Element {
       return
     }
     const seq = runSequence.current
+    const selectionSeq = ++selectionSequence.current
+    const operation = getBrushOp()
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
     setSelecting(true)
     try {
-      const res = await selectConjoint(result.resultId, buildContext(), {
+      const res = await selectConjoint(result.resultId, resultInput!.context, {
         kind: 'respondents', respondentIds: [respondentId],
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
-      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || 'コンジョイント 回答者の全タスク選択' }))
+      dispatch(selectionApplied({ rowIds: res.rowIds, operation, label: res.selectionLabel || 'コンジョイント 回答者の全タスク選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
     }
   }
 
   const handleBrush = async (bounds: { x: [number, number]; y: [number, number] }): Promise<void> => {
-    if (!result || !datasetId) return
+    if (!result || !resultInput || !datasetId || loading) return
     if (!rowsReady) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
@@ -482,6 +521,8 @@ export default function ConjointPage(): JSX.Element {
       return
     }
     const seq = runSequence.current
+    const selectionSeq = ++selectionSequence.current
+    const operation = getBrushOp()
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
@@ -505,20 +546,20 @@ export default function ConjointPage(): JSX.Element {
           return fx >= bounds.x[0] && fx <= bounds.x[1] && fy >= bounds.y[0] && fy <= bounds.y[1]
         })
         .map((r) => r.rowId)
-      const res = await selectConjoint(result.resultId, buildContext(), {
+      const res = await selectConjoint(result.resultId, resultInput!.context, {
         kind: 'row_ids', rowIds: inBox,
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
-      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: res.selectionLabel || 'コンジョイント 図の範囲選択' }))
+      dispatch(selectionApplied({ rowIds: res.rowIds, operation, label: res.selectionLabel || 'コンジョイント 図の範囲選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${res.contextIntersectionCount}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
     }
   }
 
@@ -586,58 +627,47 @@ export default function ConjointPage(): JSX.Element {
     // G008-02: 再分析中に開始した旧モデル予測を失効させる。開始した fit
     // 世代・版を保持し、runSequence.current・ref と比較する。予測ボタンは
     // stale・loading 中も旧結果で押せるため、入口で fit 世代を記録する。
-    if (!datasetId || !result) return
+    if (!datasetId || !result || !resultInput || !matchesContext(resultInput.context) || loading || analysisScope.count === 0) return
     const seq = ++predSequence.current
     const startedDataset = datasetId
     const startedResultId = result.resultId
     const startedFitSeq = runSequence.current
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
+    const current = () => predSequence.current === seq && runSequence.current === startedFitSeq
+      && selectionRef.current.datasetId === startedDataset && resultRef.current?.resultId === startedResultId
+      && selectionRef.current.dataRevision === startedDataRev && schemaRef.current === startedSchemaRev
     setPredicting(true)
     setPredictError(null)
     setPredictInfo(null)
     try {
-      const pctx: ConjointContext = {
-        datasetId, expectedDataRevision: selection.dataRevision,
-        expectedSchemaRevision: schemaRevision,
-        scope: predictScope,
-        activeRowIds: predictScope === 'active' ? selection.activeRowIds : undefined,
-        selectedRowIds: predictScope === 'selected' ? selection.selectedRowIds : undefined,
-        sampledRowIds: predictScope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-        weightMode, missingPolicy: 'exclude',
-      }
-      const res = await predictConjoint(startedResultId, pctx)
+      const input: ConjointInputSnapshot = { context: captureAnalysisRunContext(buildContext()), scopeKey: analysisScope.scopeKey, label: analysisScope.label, count: analysisScope.count }
+      const res = await predictConjoint(startedResultId, input.context)
       // G008-02: 開始した fit 世代・版・モデルと現在値を照合する。
       // 同じレンダーのクロージャ同士ではなく runSequence.current・ref を使う。
-      if (predSequence.current !== seq
-        || runSequence.current !== startedFitSeq
-        || selectionRef.current.datasetId !== startedDataset
-        || result?.resultId !== startedResultId
-        || selectionRef.current.dataRevision !== startedDataRev
-        || schemaRef.current !== startedSchemaRev) return
+      if (!current()) return
       const out: ConjointPredictRow[] = []
       let offset: number | null = 0
       let total = 0
       while (offset !== null) {
         const page = await fetchConjointPredictions(startedResultId, res.predictionId, offset, 5000)
+        if (!current()) return
         total = page.total
         out.push(...page.rows)
         offset = page.nextOffset
       }
       // G008-02: 行取得後・失敗時も開始世代・モデル・版を照合する。
       // 保存元は現在のモデルと一致する場合だけ遷移させる。
-      if (predSequence.current !== seq
-        || runSequence.current !== startedFitSeq
-        || selectionRef.current.datasetId !== startedDataset
-        || result?.resultId !== startedResultId) return
+      if (!current()) return
       setPredictRows(out)
       setPredictTotal(total)
       setPredictResultId(startedResultId)
       setPredictId(res.predictionId)
+      setPredictionInput(input)
       const ev = res.summary.evaluation
-      setPredictInfo(`成功${res.summary.successfulPredictions}/${res.summary.requestedCount}`
+      setPredictInfo(`この予測の対象: ${input.label} ${input.count}行（実行時） / 成功${res.summary.successfulPredictions}/${res.summary.requestedCount}`
         + (ev ? ` 回答者重複${ev.fitOverlapRespondentCount}（行重複${ev.fitOverlapCount}）` : ''))
-      if (result?.resultId === startedResultId) {
+      if (resultRef.current?.resultId === startedResultId) {
         setMatSource(res.predictionId)
         setMatField((f) => {
           const fields = result.capabilities.materializePredictionFields
@@ -645,12 +675,10 @@ export default function ConjointPage(): JSX.Element {
         })
       }
     } catch (err) {
-      if (predSequence.current !== seq
-        || runSequence.current !== startedFitSeq) return
+      if (!current()) return
       setPredictError(apiErrorMessage(err, '予測に失敗しました。'))
     } finally {
-      if (predSequence.current === seq
-        && runSequence.current === startedFitSeq) setPredicting(false)
+      if (current()) setPredicting(false)
     }
   }
 
@@ -697,12 +725,14 @@ export default function ConjointPage(): JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     if (!datasetId || !result) return
+    const input = matSource === 'fit' ? resultInput : predictId === matSource && predictResultId === result.resultId ? predictionInput : null
+    if (!input) return
     const seq = ++saveSequence.current
     const startedDataset = datasetId
     const startedResultId = result.resultId
     setSaving(true)
     try {
-      const res = await materializeConjoint(result.resultId, buildContext(), matSource,
+      const res = await materializeConjoint(result.resultId, input.context, matSource,
         [{ sourceField: matField, name: matName }], `cj-${result.resultId}-${matSource}-${matField}-${matName}`)
       // B023-01: 現在datasetの判定に、unmount済みインスタンスのrefを
       // 使わない。KeepAliveOutletはdatasetIdをkeyに子を作り直すため、
@@ -817,13 +847,7 @@ export default function ConjointPage(): JSX.Element {
               <Radio.Button value="choice" title="各選択タスクで1つだけ選んだ代替案から効用を推定（条件付きロジット）">選択</Radio.Button>
               <Radio.Button value="ranking" title="各タスクの全代替案の完全順位から効用を推定（逐次選択ロジット）">順位</Radio.Button>
             </Radio.Group>
-            <span>対象:</span>
-            <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
-              <Radio.Button value="all">全体</Radio.Button>
-              <Radio.Button value="active">Active</Radio.Button>
-              <Radio.Button value="selected">Selected</Radio.Button>
-              <Radio.Button value="sampled">標本</Radio.Button>
-            </Radio.Group>
+            <AnalysisScopeSummary label="次回の分析対象" />
             <span>重み:</span>
             <SelectSetting
               value={weightMode}
@@ -837,7 +861,7 @@ export default function ConjointPage(): JSX.Element {
             <Button
               size="small"
               loading={expanding}
-              disabled={!respondentCol || !taskCol || !altCol || !responseCol}
+              disabled={!respondentCol || !taskCol || !altCol || !responseCol || analysisScope.count === 0}
               onClick={() => void handleExpandScope()}
             >
               タスク全体へ拡張
@@ -977,9 +1001,8 @@ export default function ConjointPage(): JSX.Element {
               && expandInfo.mapping['taskId'] === taskCol
               && expandInfo.mapping['alternativeId'] === altCol
               && expandInfo.mapping['response'] === responseCol
-            const sameScope = expandInfo.scopeSnapshot === JSON.stringify({
-              scope, ids: scope === 'all' ? null : buildContext(),
-            })
+            const sameScope = expandInfo.originScopeKey === analysisScope.scopeKey
+              && expandInfo.scopeSnapshot === JSON.stringify([weightMode, 'exclude'])
             const valid = sameMapping && sameScope
               && expandInfo.dataRevision === selection.dataRevision
               && expandInfo.schemaRevision === schemaRevision
@@ -1024,6 +1047,7 @@ export default function ConjointPage(): JSX.Element {
               {result.summary.mode === 'ranking' ? ' ranking の行確率は第1位確率です' : ''}
             </Typography.Text>
             <Typography.Text type="secondary">
+              {resultInput && <span data-testid="conjoint-result-scope">この結果の対象: {resultInput.label} {resultInput.count}行（実行時） / </span>}
               対象: {result.meta.scope}（scope {result.meta.scopeCount}行中有効{result.meta.fitCount}行・除外{result.meta.excludedCount}行）
               除外内訳: {Object.entries(result.meta.exclusionCounts ?? {}).map(([k, v]) => `${k}=${v}`).join(', ') || 'なし'}
               ・重み: {result.meta.weightApplied ? `あり（${result.meta.weightType ?? ''}）` : 'なし（回答者単位で適用）'}
@@ -1222,14 +1246,8 @@ export default function ConjointPage(): JSX.Element {
                 children: (
                   <Space direction="vertical" style={{ width: '100%' }} size="small">
                     <Space wrap>
-                      <span>予測対象:</span>
-                      <Radio.Group value={predictScope} onChange={(e) => setPredictScope(e.target.value)}>
-                        <Radio.Button value="all">全体</Radio.Button>
-                        <Radio.Button value="active">Active</Radio.Button>
-                        <Radio.Button value="selected">Selected</Radio.Button>
-                        <Radio.Button value="sampled">標本</Radio.Button>
-                      </Radio.Group>
-                      <Button onClick={() => void handlePredict()} loading={predicting} disabled={stale || loading}>予測・評価</Button>
+                      <AnalysisScopeSummary label="次回の予測対象" />
+                      <Button onClick={() => void handlePredict()} loading={predicting} disabled={stale || loading || analysisScope.count === 0}>予測・評価</Button>
                       {predictInfo && predictResultId === result.resultId && <Typography.Text>{predictInfo}</Typography.Text>}
                     </Space>
                     {predictError && <Alert type="error" message={predictError} showIcon />}

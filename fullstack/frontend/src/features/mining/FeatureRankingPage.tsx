@@ -1,3 +1,4 @@
+import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { CHART_MARKERS } from '../charts/markerStyle'
 import EChart from '../charts/EChart'
 import { importanceBarsOption, rankingBarsOption, rankingScatterOption } from './rankingCharts'
@@ -6,7 +7,7 @@ import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import {
   Card,
@@ -154,16 +155,13 @@ export default function FeatureRankingPage() {
   const [result, setResult] = useState<FeatureRankingResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const inputContext = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision,
-    effectiveRowIds, targetColumn, selectedFeatures, selectedMethods])
-  const contextRef = useRef(inputContext)
-  contextRef.current = inputContext
-  const requestVersion = useRef(0)
+    effectiveRowIds, targetColumn, selectedFeatures, selectedMethods, usePermutation])
+  const runScope = useScopedRun(inputContext)
   useEffect(() => {
-    requestVersion.current++
     setResult(null)
     setError(null)
     setLoading(false)
-  }, [inputContext])
+  }, [runScope.identity])
 
   // Initialize targets and features
   useEffect(() => {
@@ -180,22 +178,22 @@ export default function FeatureRankingPage() {
     }
     setLoading(true)
     setError(null)
-    const version = ++requestVersion.current
-    const startedContext = contextRef.current
-    const isCurrent = () => version === requestVersion.current && startedContext === contextRef.current
+    const ticket = runScope.begin()
+    const isCurrent = ticket.isCurrent
     try {
       const resp = await api.post<FeatureRankingResponse>('/mining/feature-ranking', {
         datasetId: selection.datasetId,
         targetColumn: targetColumn || undefined,
         featureColumns: selectedFeatures,
         methods: selectedMethods,
-        activeRowIds: effectiveRowIds,
+        activeRowIds: ticket.scope.rowIds,
         expectedSchemaRevision: schemaRevision,
         expectedDataRevision: selection.dataRevision,
         usePermutationImportance: usePermutation,
         seed: 42,
       })
       if (!isCurrent()) return
+      ticket.commit()
       setResult(resp)
       setTopK(resp.suggestedTopK || Math.min(resp.rankings.length, 3))
       message.success(`特徴量ランキング計算完了 (${resp.executionTimeMs}ms)`)
@@ -369,6 +367,9 @@ export default function FeatureRankingPage() {
 
   return (
     <div data-testid="feature-ranking-page" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <AnalysisScopeSummary snapshot={runScope.snapshot} />
+      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
+
       {/* Top Configuration Card */}
       <Card size="small" title="特徴量ランキング・選択設定 (Feature Ranking Configuration)" data-testid="ranking-config-card">
         <Row gutter={[16, 12]} align="middle">

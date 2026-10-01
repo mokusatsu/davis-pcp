@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -30,7 +31,7 @@ const NUMERIC_COLOR = '#fa8c16'
 export default function FamdPage(): JSX.Element {
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
-  const obs = useSelector((s: RootState) => s.globalObservations)
+  const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
   const { columns, schemaRevision } = codebook
   const datasetId = selection.datasetId
@@ -61,7 +62,6 @@ export default function FamdPage(): JSX.Element {
 
   const [numericVars, setNumericVars] = useState<string[]>([])
   const [categoricalVars, setCategoricalVars] = useState<string[]>([])
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('active')
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
   const [axisX, setAxisX] = useState(1)
@@ -69,7 +69,11 @@ export default function FamdPage(): JSX.Element {
   const [overlay, setOverlay] = useState(false)
   const [tab, setTab] = useState('individuals')
 
-  const [result, setResult] = useState<FAMDResponse | null>(null)
+  const [completed, setCompleted] = useState<{ result: FAMDResponse; context: FAMDContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const result = completed?.result ?? null
+  const resultContext = completed?.context
+  const resultRef = useRef(result)
+  resultRef.current = result
   const [submittedKey, setSubmittedKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +85,6 @@ export default function FamdPage(): JSX.Element {
   const [rowsTotal, setRowsTotal] = useState(0)
   const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
   const [matAxis, setMatAxis] = useState(1)
-  const [predictScope, setPredictScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('all')
   const [predicting, setPredicting] = useState(false)
   const [predictError, setPredictError] = useState<string | null>(null)
   const [predictInfo, setPredictInfo] = useState<string | null>(null)
@@ -89,13 +92,27 @@ export default function FamdPage(): JSX.Element {
   const [predictRows, setPredictRows] = useState<{ rowId: string; coordinates: (number | null)[]; predictionStatus: string }[]>([])
   const [predictTotal, setPredictTotal] = useState(0)
   const [predictOk, setPredictOk] = useState(0)
-  const [predictMeta, setPredictMeta] = useState<{ datasetId: string; resultId: string; axes: number[] } | null>(null)
+  const [predictMeta, setPredictMeta] = useState<{ datasetId: string; resultId: string; predictionId: string; axes: number[]; context: FAMDContext; snapshot: AnalysisScopeSnapshot } | null>(null)
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
+  const predictionSequence = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      runSequence.current += 1
+      selectionSequence.current += 1
+      predictionSequence.current += 1
+    }
+  }, [])
   const svgIndRef = useRef<SVGSVGElement | null>(null)
   const svgCatRef = useRef<SVGSVGElement | null>(null)
 
-  const draftKey = JSON.stringify([datasetId, numericVars, categoricalVars, scope, missingPolicy,
-    weightChoice, selection.dataRevision, schemaRevision])
+  const unavailableVariables = [...numericVars.filter(id => !numericOptions.some(option => option.value === id)),
+    ...categoricalVars.filter(id => !categoricalOptions.some(option => option.value === id))]
+  const draftKey = JSON.stringify([datasetId, numericVars, categoricalVars, analysisScope.scopeKey, missingPolicy,
+    weightChoice, selection.dataRevision, schemaRevision, unavailableVariables])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   const clearPredictState = (): void => {
@@ -111,7 +128,9 @@ export default function FamdPage(): JSX.Element {
 
   useEffect(() => {
     runSequence.current += 1
-    setResult(null)
+    predictionSequence.current += 1
+    selectionSequence.current += 1
+    setCompleted(null)
     setSubmittedKey('')
     setError(null)
     setLoading(false)
@@ -135,58 +154,34 @@ export default function FamdPage(): JSX.Element {
     datasetId: datasetId ?? '',
     expectedDataRevision: selection.dataRevision,
     expectedSchemaRevision: schemaRevision,
-    scope,
-    activeRowIds: scope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: scope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: scope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
+    ...analysisScope.contextRows,
     weightMode: weightChoice,
     missingPolicy,
   })
 
-  const canRun = Boolean(datasetId && numericVars.length >= 1 && categoricalVars.length >= 1)
-
-  const buildPredictContext = (): FAMDContext => ({
-    datasetId: datasetId ?? '',
-    expectedDataRevision: selection.dataRevision,
-    expectedSchemaRevision: schemaRevision,
-    scope: predictScope,
-    activeRowIds: predictScope === 'active' ? selection.activeRowIds : undefined,
-    selectedRowIds: predictScope === 'selected' ? selection.selectedRowIds : undefined,
-    sampledRowIds: predictScope === 'sampled' ? obs.sampling.sampledRowIds : undefined,
-    weightMode: weightChoice,
-    missingPolicy,
-  })
+  const canRun = Boolean(datasetId && numericVars.length >= 1 && categoricalVars.length >= 1 && unavailableVariables.length === 0)
 
   const handlePredict = async (): Promise<void> => {
-    if (!datasetId || !result) return
-    const seq = ++runSequence.current
-    const startedDataset = datasetId
+    if (!datasetId || !result || loading || shownStale) return
+    const seq = ++predictionSequence.current
     const startedResultId = result.resultId
+    const context = captureAnalysisRunContext(buildContext())
+    const snapshot = analysisScope
     const requestedAxes = [...wantAxes]
+    const isCurrent = () => seq === predictionSequence.current
+      && resultRef.current?.resultId === startedResultId
+      && selectionRef.current.datasetId === context.datasetId
+      && selectionRef.current.dataRevision === context.expectedDataRevision
+      && schemaRef.current === context.expectedSchemaRevision
+    clearPredictState()
     setPredicting(true)
-    setPredictError(null)
-    setPredictInfo(null)
-    setPredictWarnings([])
-    setPredictRows([])
-    setPredictMeta(null)
     try {
       const res = await api.post<{
         predictionId: string
         summary: { requestedCount: number; successfulPredictions: number; statusCounts: Record<string, number> }
         meta: { warnings?: { code: string; message: string }[] }
-      }>(
-        `/analysis-results/${startedResultId}/predict`,
-        { context: buildPredictContext(), options: {} },
-      )
-      if (seq !== runSequence.current || selectionRef.current.datasetId !== startedDataset) {
-        setPredicting(false)
-        return
-      }
-      const summary = res.summary
-      setPredictTotal(summary.requestedCount)
-      setPredictOk(summary.successfulPredictions)
-      setPredictInfo(`成功 ${summary.successfulPredictions}/${summary.requestedCount}`)
-      setPredictWarnings(res.meta?.warnings ?? [])
+      }>(`/analysis-results/${startedResultId}/predict`, { context, options: {} })
+      if (!isCurrent()) return
       const all: { rowId: string; coordinates: (number | null)[]; predictionStatus: string }[] = []
       let offset = 0
       for (;;) {
@@ -194,25 +189,23 @@ export default function FamdPage(): JSX.Element {
           rows: { rowId: string; coordinates: (number | null)[]; predictionStatus: string }[]
           nextOffset: number | null
         }>(`/analysis-results/${startedResultId}/predictions/${res.predictionId}/rows?offset=${offset}&limit=5000&axes=${requestedAxes.join(',')}`)
-        if (seq !== runSequence.current || selectionRef.current.datasetId !== startedDataset) {
-          setPredicting(false)
-          return
-        }
+        if (!isCurrent()) return
         all.push(...page.rows)
         if (page.nextOffset === null || page.nextOffset === undefined) break
         offset = page.nextOffset
       }
-      if (seq !== runSequence.current || selectionRef.current.datasetId !== startedDataset) {
-        setPredicting(false)
-        return
-      }
       setPredictRows(all)
-      setPredictMeta({ datasetId: startedDataset, resultId: startedResultId, axes: requestedAxes })
+      setPredictMeta({ datasetId: context.datasetId, resultId: startedResultId, predictionId: res.predictionId,
+        axes: requestedAxes, context, snapshot })
+      setPredictTotal(res.summary.requestedCount)
+      setPredictOk(res.summary.successfulPredictions)
+      setPredictInfo(`成功 ${res.summary.successfulPredictions}/${res.summary.requestedCount}`)
+      setPredictWarnings(res.meta?.warnings ?? [])
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (!isCurrent()) return
       setPredictError(apiErrorMessage(err, '射影に失敗しました。'))
     } finally {
-      if (seq === runSequence.current) setPredicting(false)
+      if (seq === predictionSequence.current) setPredicting(false)
     }
   }
 
@@ -220,18 +213,24 @@ export default function FamdPage(): JSX.Element {
     if (!datasetId || !canRun) return
     const seq = ++runSequence.current
     const startedDataset = datasetId
+    const startedContext = captureAnalysisRunContext(buildContext())
+    const startedScope = analysisScope
+    selectionSequence.current += 1
+    setSelecting(false)
+    predictionSequence.current += 1
+    clearPredictState()
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     const startedKey = draftKey
     setLoading(true)
     setError(null)
     try {
-      const res = await runFamd(buildContext(), numericVars, categoricalVars)
+      const res = await runFamd(startedContext, numericVars, categoricalVars)
       if (seq !== runSequence.current) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
-      setResult(res)
+      setCompleted({ result: res, context: startedContext, snapshot: startedScope })
       setSubmittedKey(startedKey)
       setSelectedCats(new Set())
       setSelectInfo(null)
@@ -240,7 +239,8 @@ export default function FamdPage(): JSX.Element {
       clearPredictState()
       message.success('混合データ因子分析を実行しました。')
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (seq !== runSequence.current || selectionRef.current.datasetId !== startedDataset
+        || selectionRef.current.dataRevision !== startedDataRev || schemaRef.current !== startedSchemaRev) return
       setError(apiErrorMessage(err, '分析に失敗しました。'))
     } finally {
       if (seq === runSequence.current) setLoading(false)
@@ -272,6 +272,8 @@ export default function FamdPage(): JSX.Element {
     let cancelled = false
     setRowsLoading(true)
     setRowsError(null)
+    setRows([])
+    setRowsMeta(null)
     void (async () => {
       const all: { rowId: string; coordinates: number[] }[] = []
       let offset = 0
@@ -304,30 +306,33 @@ export default function FamdPage(): JSX.Element {
     })
   }
   const handleSelect = async (selector: { kind: 'categories'; categoryIds: string[]; betweenVariables: 'and' | 'or' } | { kind: 'rectangle'; axes: number[]; bounds: [number, number][] } | { kind: 'row_ids'; rowIds: string[] }): Promise<void> => {
-    if (!result) return
+    if (!result || !resultContext || loading || shownStale) return
     setSelecting(true)
     setSelectInfo(null)
-    const seq = ++runSequence.current
+    const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRev = selectionRef.current.dataRevision
     const startedSchemaRev = schemaRef.current
     try {
-      const res = await selectFamd(result.resultId, buildContext(), selector)
-      if (seq !== runSequence.current) return
+      const res = await selectFamd(result.resultId, resultContext, selector)
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       if (selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRev
         || schemaRef.current !== startedSchemaRev) return
+      const active = new Set(selectionRef.current.activeRowIds)
+      const eligibleRows = res.rowIds.filter(id => active.has(id))
+      const outsideActive = res.rowIds.length - eligibleRows.length
       dispatch(selectionApplied({
-        rowIds: res.rowIds,
+        rowIds: eligibleRows,
         operation: getBrushOp(),
-        label: `${res.selectionLabel} (${res.contextIntersectionCount}行)`,
+        label: `${res.selectionLabel} (${eligibleRows.length}行)`,
       }))
-      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${res.contextIntersectionCount}`)
+      setSelectInfo(`一致 ${res.matchedCount} / 適用 ${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
-      if (seq !== runSequence.current) return
+      if (seq !== selectionSequence.current || resultRef.current?.resultId !== result.resultId) return
       message.error(apiErrorMessage(err, '選択の解決に失敗しました。'))
     } finally {
-      if (seq === runSequence.current) setSelecting(false)
+      if (seq === selectionSequence.current) setSelecting(false)
     }
   }
   const resultStale = result !== null
@@ -435,17 +440,7 @@ export default function FamdPage(): JSX.Element {
               onChange={(v) => setCategoricalVars(v as string[])}
               options={categoricalOptions}
             />
-            <Select
-              style={{ minWidth: 150 }}
-              value={scope}
-              onChange={(v) => setScope(v)}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Active' },
-                { value: 'selected', label: 'Selected' },
-                { value: 'sampled', label: 'Sampled' },
-              ]}
-            />
+            <AnalysisScopeSummary snapshot={completed?.snapshot} />
             <Select
               style={{ minWidth: 150 }}
               value={missingPolicy}
@@ -481,7 +476,8 @@ export default function FamdPage(): JSX.Element {
               数値列とカテゴリ列をそれぞれ1つ以上選択してください。
             </Typography.Text>
           )}
-          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="設定が変更されています。結果は前回実行分です。" />}
+          {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
+          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
         </Card>
       )}
       {error && <Alert type="error" message={error} />}
@@ -492,7 +488,7 @@ export default function FamdPage(): JSX.Element {
             size="small"
             title={
               <Space>
-                <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
+                <Tag>この結果の対象: {completed?.snapshot.label} / rev {result.meta.dataRevision} (n={result.meta.scopeCount})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
                 <Tag>{result.meta.weightApplied ? `加重(${result.meta.weightType})` : '非加重'}</Tag>
                 {shownStale && <Tag color="orange">stale（古い版）</Tag>}
@@ -505,6 +501,7 @@ export default function FamdPage(): JSX.Element {
                 <Alert key={i} type="warning" message={`${w.code}: ${w.message}`} showIcon />
               ))}
             </Space>
+            {selectInfo && <Tag>{selectInfo}</Tag>}
             <Tabs
               activeKey={tab}
               onChange={setTab}
@@ -623,7 +620,6 @@ export default function FamdPage(): JSX.Element {
                         <Button loading={selecting} disabled={selectedCats.size === 0 || shownStale} onClick={() => void handleSelect({ kind: 'categories', categoryIds: [...selectedCats], betweenVariables: between })}>
                           原行IDへ解決して選択 ({selectedCats.size})
                         </Button>
-                        {selectInfo && <Tag>{selectInfo}</Tag>}
                       </Space>
                     </div>
                   ),
@@ -742,18 +738,8 @@ export default function FamdPage(): JSX.Element {
                       </Typography.Text>
                       <Space wrap align="center">
                         <span>対象</span>
-                        <Select
-                          style={{ minWidth: 130 }}
-                          value={predictScope}
-                          onChange={(v) => setPredictScope(v)}
-                          options={[
-                            { value: 'all', label: 'All' },
-                            { value: 'active', label: 'Active' },
-                            { value: 'selected', label: 'Selected' },
-                            { value: 'sampled', label: 'Sampled' },
-                          ]}
-                        />
-                        <Button type="primary" loading={predicting} disabled={!result || shownStale} onClick={() => void handlePredict()}>
+                        <AnalysisScopeSummary label="次回射影の対象" snapshot={predictMeta?.snapshot} />
+                        <Button type="primary" loading={predicting} disabled={!result || shownStale || loading} onClick={() => void handlePredict()}>
                           射影を実行
                         </Button>
                         {predictInfo && <Tag>{predictInfo}</Tag>}
@@ -806,19 +792,22 @@ export default function FamdPage(): JSX.Element {
                       <span>軸</span>
                       <Select value={matAxis} onChange={setMatAxis} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: `第${i + 1}軸` }))} style={{ minWidth: 120 }} />
                       <Button
-                        disabled={shownStale}
+                        disabled={shownStale || loading || !resultContext}
                         onClick={() => {
                           void (async () => {
+                            if (!resultContext || shownStale || loading) return
+                            const startedDataset = datasetId
                             try {
                               const res = await api.post<{ createdColumns: { name: string }[]; writtenRowCount: number; dataRevision: number; schemaRevision: number }>(
                                 `/analysis-results/${result!.resultId}/materialize`,
                                 {
-                                  context: buildContext(),
+                                  context: resultContext,
                                   source: 'fit',
                                   columns: [{ sourceField: `coordinate:${matAxis}`, name: `FAMD${matAxis}`, label: `FAMD第${matAxis}軸` }],
                                   idempotencyKey: `${result!.resultId}-fit-${matAxis}`,
                                 },
                               )
+                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
                               if (datasetId) {
                                 invalidateColumnarCache()
                                 dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
@@ -826,6 +815,7 @@ export default function FamdPage(): JSX.Element {
                               }
                               message.success(`FAMD${matAxis}を保存しました（${res.writtenRowCount}行）。新列がTableに表示されます。`)
                             } catch (err) {
+                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
                               message.error(apiErrorMessage(err, '保存に失敗しました。'))
                             }
                           })()

@@ -1,3 +1,4 @@
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { CHART_MARKERS, pointEmphasis } from '../charts/markerStyle'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -85,7 +86,7 @@ export default function FactorAnalysisPage(): JSX.Element {
   const [paIter, setPaIter] = useState<number>(500)
   const [sensEnabled, setSensEnabled] = useState<boolean>(false)
   const [sensAck, setSensAck] = useState<boolean>(false)
-  const [scope, setScope] = useState<'all' | 'active' | 'selected' | 'sampled'>('all')
+  const analysisScope = useAnalysisScope()
   // E013 2nd round: default to the dataset setting so a configured
   // weight is refused (FA_WEIGHT_UNSUPPORTED) before the user explicitly
   // opts into an unweighted run; an explicit none is a separate trial.
@@ -93,6 +94,8 @@ export default function FactorAnalysisPage(): JSX.Element {
   const [tab, setTab] = useState<string>('loadings')
 
   const [result, setResult] = useState<EFAResponse | null>(null)
+  const [resultInput, setResultInput] = useState<{ context: EFAContext; scopeKey: string; label: string; count: number } | null>(null)
+  const [predictionInfo, setPredictionInfo] = useState<string | null>(null)
   const [submittedKey, setSubmittedKey] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,18 +114,23 @@ export default function FactorAnalysisPage(): JSX.Element {
   const [figY, setFigY] = useState<number>(2)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const runSequence = useRef(0)
+  const selectionSequence = useRef(0)
+  const predictionSequence = useRef(0)
   const selectionRef = useRef(selection)
   selectionRef.current = selection
   const schemaRef = useRef(schemaRevision)
   schemaRef.current = schemaRevision
-  const obs = useSelector((s: RootState) => s.globalObservations)
 
-  const draftKey = JSON.stringify([datasetId, items, treat, reverse, ack, correlation, extraction, nFactors, compareText, rotation, scoreMethod, paEnabled, paIter, sensEnabled, sensAck, scope, weightMode, selection.dataRevision, schemaRevision])
+  const draftKey = JSON.stringify([datasetId, items, treat, reverse, ack, correlation, extraction, nFactors, compareText, rotation, scoreMethod, paEnabled, paIter, sensEnabled, sensAck, analysisScope.scopeKey, weightMode, selection.dataRevision, schemaRevision])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   useEffect(() => {
     runSequence.current += 1
+    selectionSequence.current += 1
+    predictionSequence.current += 1
     setResult(null)
+    setResultInput(null)
+    setPredictionInfo(null)
     setSubmittedKey('')
     setError(null)
     setInputErrors([])
@@ -133,19 +141,28 @@ export default function FactorAnalysisPage(): JSX.Element {
     setSelectInfo(null)
     setItems([])
     setLoading(false)
+    setSelecting(false)
+    return () => { runSequence.current += 1; selectionSequence.current += 1; predictionSequence.current += 1 }
   }, [datasetId])
 
-  const buildContext = (): EFAContext => {
-    const base: EFAContext = {
-      datasetId: datasetId ?? '', expectedDataRevision: selection.dataRevision ?? 1,
-      expectedSchemaRevision: schemaRevision ?? 1, scope,
-      weightMode, missingPolicy: 'exclude',
-    }
-    if (scope === 'active') base.activeRowIds = [...selection.activeRowIds]
-    if (scope === 'selected') base.selectedRowIds = [...selection.selectedRowIds]
-    if (scope === 'sampled') base.sampledRowIds = [...obs.sampling.sampledRowIds]
-    return base
-  }
+  // Revision changes retain the old result for inspection but cancel pending work.
+  useEffect(() => {
+    runSequence.current += 1
+    selectionSequence.current += 1
+    predictionSequence.current += 1
+    setLoading(false)
+    setSelecting(false)
+  }, [selection.dataRevision, schemaRevision])
+
+  const matchesContext = (context: EFAContext) => selectionRef.current.datasetId === context.datasetId
+    && selectionRef.current.dataRevision === context.expectedDataRevision
+    && schemaRef.current === context.expectedSchemaRevision
+
+  const buildContext = (): EFAContext => ({
+    datasetId: datasetId ?? '', expectedDataRevision: selection.dataRevision ?? 1,
+    expectedSchemaRevision: schemaRevision ?? 1, ...analysisScope.contextRows,
+    weightMode, missingPolicy: 'exclude',
+  })
 
   const variables = useMemo(() => items.map((id) => {
     const c = colById.get(id)
@@ -162,10 +179,10 @@ export default function FactorAnalysisPage(): JSX.Element {
   }), [items, treat, reverse, ack, colById])
 
   const compareFactors = useMemo(() => compareText.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v >= 1).map((v) => Math.floor(v)), [compareText])
-  const canRun = items.length >= 3 && Boolean(datasetId)
+  const canRun = items.length >= 3 && Boolean(datasetId) && analysisScope.count > 0
 
   const handleRun = async (): Promise<void> => {
-    if (!datasetId) return
+    if (!datasetId || analysisScope.count === 0) return
     const errs: string[] = []
     if (items.length < 3) errs.push('項目を3つ以上選択してください。')
     for (const v of variables) {
@@ -176,19 +193,25 @@ export default function FactorAnalysisPage(): JSX.Element {
     setInputErrors(errs)
     if (errs.length) return
     const seq = ++runSequence.current
+    selectionSequence.current += 1
+    setSelecting(false)
+    predictionSequence.current += 1
     setLoading(true)
     setError(null)
     setComparison(null)
+    setPredictionInfo(null)
+    const input = { context: captureAnalysisRunContext(buildContext()), scopeKey: analysisScope.scopeKey, label: analysisScope.label, count: analysisScope.count }
+    const current = () => runSequence.current === seq && matchesContext(input.context)
     try {
       const res = await runEFA({
         method: 'efa', schemaVersion: 'factor_extensions.1',
-        context: buildContext(), variables, correlation, extraction,
+        context: input.context, variables, correlation, extraction,
         nFactors, compareFactors, rotation, scoreMethod,
         parallelAnalysis: { enabled: paEnabled, iterations: paIter, quantile: 0.95, seed: 42 },
         sensitivityAnalysis: { enabled: sensEnabled, approximationAcknowledged: sensAck },
         uniquenessLower: 0.005, nStarts: 5, maxIterations: 2000, seed: 42,
       })
-      if (runSequence.current !== seq) return
+      if (!current()) return
       // E009: clear stale rows BEFORE fetching the new result's rows, so a
       // failed fetch never leaves the previous figure on screen. Clamp the
       // figure axes and the save factor into the new factor range (1-factor
@@ -197,6 +220,7 @@ export default function FactorAnalysisPage(): JSX.Element {
       setRowsTotal(0)
       setRowsResultId(null)
       setResult(res)
+      setResultInput(input)
       setSubmittedKey(draftKey)
       const nq = res.summary.nFactors ?? 1
       setFigX((x) => (x >= 1 && x <= nq ? x : 1))
@@ -213,9 +237,10 @@ export default function FactorAnalysisPage(): JSX.Element {
         void (async () => {
           for (let i = 0; i < 120; i++) {
             await new Promise((r) => setTimeout(r, 2000))
-            if (runSequence.current !== seq) return
+            if (!current()) return
             try {
               const c = await fetchEFAComparison(cid) as Record<string, unknown>
+              if (!current()) return
               setComparison(c)
               if (c.status !== 'running' && c.status !== 'queued') return
             } catch {
@@ -226,7 +251,7 @@ export default function FactorAnalysisPage(): JSX.Element {
       }
       if (res.capabilities.rows) {
         const all = await fetchAllEFARows(res.resultId)
-        if (runSequence.current !== seq) return
+        if (!current()) return
         setRows(all)
         setRowsTotal(all.length)
         setRowsResultId(res.resultId)
@@ -236,15 +261,15 @@ export default function FactorAnalysisPage(): JSX.Element {
         setRowsResultId(res.resultId)
       }
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (!current()) return
       setError(apiErrorMessage(err, '実行に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setLoading(false)
+      if (current()) setLoading(false)
     }
   }
 
   const handleBrush = async (bounds: { x: [number, number]; y: [number, number] }): Promise<void> => {
-    if (!result || !datasetId) return
+    if (!result || !resultInput || !datasetId || loading) return
     if (!rowsReady) {
       setSelectInfo('行の取得が完了してから選択してください。')
       return
@@ -255,6 +280,8 @@ export default function FactorAnalysisPage(): JSX.Element {
       return
     }
     const seq = runSequence.current
+    const selectionSeq = ++selectionSequence.current
+    const operation = getBrushOp()
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
@@ -273,63 +300,76 @@ export default function FactorAnalysisPage(): JSX.Element {
         : [bounds.x, bounds.y]
       if (sameAxis && bb[0][0] > bb[0][1]) {
         setSelectInfo('一致0（X/Y範囲の共通部分が空です）')
-        if (runSequence.current === seq) setSelecting(false)
+        if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
         return
       }
-      const res = await selectEFA(result.resultId, buildContext(), {
+      const res = await selectEFA(result.resultId, resultInput!.context, {
         kind: 'rectangle', axes, bounds: bb,
       })
-      if (runSequence.current !== seq
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
       if (result.resultId !== startedResultId) return
-      dispatch(selectionApplied({ rowIds: res.rowIds, operation: getBrushOp(), label: 'EFA因子得点の選択' }))
+      dispatch(selectionApplied({ rowIds: res.rowIds, operation, label: 'EFA因子得点の選択' }))
       setSelectInfo(`一致${res.matchedCount}`)
     } catch (err) {
-      if (runSequence.current !== seq) return
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq) return
       setSelectInfo(apiErrorMessage(err, '選択に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setSelecting(false)
+      if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
     }
   }
 
   const handleToggleScore = async (rowId: string): Promise<void> => {
-    if (!result || !datasetId || !rowsReady) return
+    if (!result || !resultInput || !datasetId || !rowsReady || loading) return
+    if (!matchesContext(resultInput.context)) { setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。'); return }
     const seq = runSequence.current
+    const selectionSeq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
     const startedSchemaRevision = schemaRevision
+    setSelecting(true)
     try {
-      const res = await selectEFA(result.resultId, buildContext(), { kind: 'row_ids', rowIds: [rowId] })
-      if (runSequence.current !== seq
+      const res = await selectEFA(result.resultId, resultInput!.context, { kind: 'row_ids', rowIds: [rowId] })
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq
         || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision
         || schemaRef.current !== startedSchemaRevision) return
       dispatch(selectionApplied({ rowIds: res.rowIds, operation: 'toggle', label: 'EFA因子得点の選択' }))
     } catch (err) {
+      if (selectionSequence.current !== selectionSeq || runSequence.current !== seq) return
       message.error(apiErrorMessage(err, '選択に失敗しました。'))
+    } finally {
+      if (selectionSequence.current === selectionSeq && runSequence.current === seq) setSelecting(false)
     }
   }
 
   const handlePredict = async (): Promise<void> => {
-    if (!result) return
+    if (!result || !resultInput || !matchesContext(resultInput.context) || analysisScope.count === 0 || loading) return
+    const seq = runSequence.current
+    const predictionSeq = ++predictionSequence.current
+    const context = captureAnalysisRunContext(buildContext())
+    const targetLabel = `${analysisScope.label} ${analysisScope.count}行`
     try {
-      const res = await predictEFA(result.resultId, buildContext())
+      const res = await predictEFA(result.resultId, context)
+      if (runSequence.current !== seq || predictionSequence.current !== predictionSeq || selectionRef.current.datasetId !== context.datasetId || selectionRef.current.dataRevision !== context.expectedDataRevision || schemaRef.current !== context.expectedSchemaRevision) return
+      setPredictionInfo(`この予測の対象: ${targetLabel}（実行時）`)
       message.success('予測を作成しました: ' + (res as { predictionId: string }).predictionId)
     } catch (err) {
+      if (runSequence.current !== seq || predictionSequence.current !== predictionSeq) return
       message.error(apiErrorMessage(err, '予測に失敗しました。'))
     }
   }
 
   const handleSave = async (): Promise<void> => {
-    if (!result || !datasetId) return
+    if (!result || !resultInput || !datasetId || !matchesContext(resultInput.context)) return
     setSaving(true)
     try {
       // E010: the saved factor and the output column name are chosen
       // separately; renaming the column never changes which scores persist.
       const field = 'score:' + matFactor
-      const res = await materializeEFA(result.resultId, buildContext(), 'fit', [{ source: field, name: matName }], 'efa-' + result.resultId + '-' + field)
+      const res = await materializeEFA(result.resultId, resultInput!.context, 'fit', [{ source: field, name: matName }], 'efa-' + result.resultId + '-' + field)
       message.success('保存しました: ' + matName)
       invalidateColumnarCache()
       const r = res as { dataRevision?: number }
@@ -384,13 +424,7 @@ export default function FactorAnalysisPage(): JSX.Element {
       <Card title="探索的因子分析（EFA）" size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="small">
           <Space wrap>
-            <span>対象:</span>
-            <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
-              <Radio.Button value="all">全体</Radio.Button>
-              <Radio.Button value="active">Active</Radio.Button>
-              <Radio.Button value="selected">Selected</Radio.Button>
-              <Radio.Button value="sampled">標本</Radio.Button>
-            </Radio.Group>
+            <AnalysisScopeSummary label="次回の分析対象" />
             <Tag>非加重・完全ケースのみ</Tag>
           </Space>
           <Space wrap>
@@ -475,6 +509,8 @@ export default function FactorAnalysisPage(): JSX.Element {
       {result && (
         <Card size="small" title={'結果: ' + result.resultId} extra={<span>解={s?.solutionStatus} 推論={s?.inferenceStatus}</span>}>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
+            {resultInput && <Tag data-testid="efa-result-scope">この結果の対象: {resultInput.label} {resultInput.count}行（実行時） / 有効{result.meta.fitCount}行</Tag>}
+            {predictionInfo && <Typography.Text>{predictionInfo}</Typography.Text>}
             {stale && <Alert type="warning" message="古い版の結果です。保存・予測・選択はできません。" showIcon />}
             {maskStale && <Alert type="warning" message={'補完マスクが更新されています（結果mask ' + String(fitMaskRev) + ' / 現在 ' + String(liveMaskRev) + '）。再実行してください。'} showIcon />}
             <Space wrap>
@@ -695,11 +731,12 @@ export default function FactorAnalysisPage(): JSX.Element {
                   )}
                   <L1Legend />
                   <Space wrap>
-                    <Button disabled={!result.capabilities.rows} onClick={() => void handlePredict()}>予測</Button>
+                    <AnalysisScopeSummary label="次回の予測対象" />
+                    <Button disabled={stale || loading || analysisScope.count === 0 || !result.capabilities.rows} onClick={() => void handlePredict()}>予測</Button>
                     <span>保存する因子:</span>
                     <SelectSetting value={matFactor} onChange={setMatFactor} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
                     <Input value={matName} onChange={(e) => setMatName(e.target.value)} style={{ width: 160 }} placeholder="保存列名" />
-                    <Button disabled={!result.capabilities.rows} loading={saving} onClick={() => void handleSave()}>派生列保存</Button>
+                    <Button disabled={stale || loading || !result.capabilities.rows} loading={saving} onClick={() => void handleSave()}>派生列保存</Button>
                   </Space>
                   <Table
                     columns={[{ title: 'rowId', dataIndex: 'rowId', key: 'rowId' }, { title: '得点', dataIndex: 'scores', key: 'scores' }]}

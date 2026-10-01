@@ -16,7 +16,7 @@ it('renders cards without Arrow data and uses canonical server matches for selec
   const selected = ['r1']
   const local = configureStore({ reducer: () => ({ ...state,
     selection: { ...state.selection, datasetId: 'ds', allRowIds: selected, activeRowIds: selected, selectedRowIds: selected },
-    globalObservations: { ...state.globalObservations, activeRowIds: selected, totalRowIds: selected },
+    globalObservations: { ...state.globalObservations, scopeMode: 'sampled', sampling: { ...state.globalObservations.sampling, sampledRowIds: selected } },
     codebook: { ...state.codebook, datasetId: 'ds', schemaRevision: 2, columns: [{ columnId: 'q', name: 'Q', label: '満足度', role: 'question', scaleType: 'nominal', valueLabels: { '1': '満足' }, missingCodes: [], categoryOrder: ['1'] }] },
   }) as any })
   const dispatch = vi.spyOn(local, 'dispatch')

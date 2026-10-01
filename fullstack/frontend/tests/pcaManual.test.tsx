@@ -21,7 +21,7 @@ it('runs PCA manually with ordinary columns and preserves empty scope', async ()
   const state = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
     globalVariables: { ...base.globalVariables, allVariables: ['x', 'y', 'ma'], activeEntities: null },
-    globalObservations: { ...base.globalObservations, activeRowIds: [] },
+    globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 2, columns },
   }
   const local = configureStore({ reducer: () => state as any, middleware: g => g({ serializableCheck: false }) })

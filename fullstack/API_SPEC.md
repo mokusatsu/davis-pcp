@@ -43,3 +43,27 @@ OpenAPI: `GET /api/openapi.json` (Swagger UI: `/api/docs`) を正本とする。
 | GET | /api/v1/jobs[/{jid}] | job状態(polling fallback) |
 | POST | /api/v1/jobs/{jid}/cancel | cancel(terminal状態は不変) |
 | WS | /api/v1/ws/jobs/{jid}/events | progress broadcast |
+
+## 共通分析対象と実行時snapshot
+
+UIの All / Active / Selected / Sampled は共通ヘッダーで選択する。表示用フィルターと、計算開始時に固定した解析対象を区別する。選択ハイライトの変更だけで実行済みモデルを再学習しない。
+
+- `AnalysisContextV2` は `datasetId`、`expectedDataRevision`、`expectedSchemaRevision`、`scope` を持つ
+- `active` / `selected` / `sampled` / `explicit` はそれぞれ `activeRowIds` / `selectedRowIds` / `sampledRowIds` / `rowIds` が必須。`[]` は空対象であり、省略や全体を意味しない
+- `all` は現在のdataset全行。その他の対象を勝手にAllへ拡張しない
+- revision不一致は `ANALYSIS_INPUT_STALE` (409)。`scope=explicit` や追加した `rowIds` 契約に不明rowIdを含む場合は `ANALYSIS_SCOPE_UNKNOWN_ROW` (422)
+- 集計の空対象は0件結果、学習・推定の空対象は手法固有の不足エラーを返す。クロス集計の `explicit: []` とセル行ID取得は空結果を返す
+- `/analysis-results/{id}/select` とfit結果の列保存は当該runのcontextを使う。予測は予測開始時の共通対象を別snapshotで持ち、予測結果の列保存にもそのsnapshotを使う
+- `/pra/evaluate`、`/robustness/evaluate`、`/orderings` は `rowIds` とrevision期待値に対応。省略時は全体、`[]` は全体に戻さない
+- `/robustness/sensitivity` の `scopeRowIds` は比較母集団、`candidate.rowIds` はその中の候補群であり別の意味
+- `/regression/loess`、`/distribution/fedf` は共通 `rowIds` とrevision期待値を送る。通常サーバーと静的Pyodide版で同じPython APIを利用する
+
+### 標本作成
+
+`POST /datasets/{id}/observations/sample` の `seed` 省略は既定42、`seed: null` は新しい実効seedを生成する。応答には `seed`、`sourceScopeHash`、`sourceOrderHash`、`sourceRowCount`、`sampleId`、data/schema revisionを含める。実際の標本rowIdsとともに保存する。母集団の行順も再現条件に含む。
+
+非復元抽出のみ対応。復元抽出は `SAMPLING_REPLACEMENT_UNSUPPORTED` (422) とし、抽出回数を調査ウェイトへ読み替えない。標本作成および行範囲APIにもrevision期待値を渡せる。
+
+### セッション
+
+セッションstateの追加項目 `workspaceVersion: 1` に、共通行source、使用変数、Active/Selected、標本provenanceを保存する。復元はdataset/revisions/行・列ID/標本記録を検証してから単一actionで適用する。不足する旧記録を推測して補完しない。既存sessionを削除したり、新しい結果履歴UIを導入したりはしない。

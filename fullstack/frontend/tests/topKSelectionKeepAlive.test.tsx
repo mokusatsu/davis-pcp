@@ -52,7 +52,7 @@ function localStore() {
     reducer: () => ({
       ...base,
       selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds: ['r1'] },
-      globalObservations: { ...base.globalObservations, activeRowIds: [] },
+      globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
       globalVariables: {
         ...base.globalVariables,
         datasetId: 'd',

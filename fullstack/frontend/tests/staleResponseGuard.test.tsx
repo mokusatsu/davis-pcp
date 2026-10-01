@@ -38,7 +38,7 @@ function localStore() {
   const selectionBase = { ...base.selection }
   let selection = { ...selectionBase, datasetId: 'd1', dataRevision: 1 }
   return configureStore({
-    reducer: (state: any = { ...base, selection, globalObservations: { ...base.globalObservations, activeRowIds: [] } }, action: any) => {
+    reducer: (state: any = { ...base, selection, globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } } }, action: any) => {
       if (action.type === 'selection/datasetLoaded') {
         selection = { ...selection, datasetId: action.payload.datasetId, dataRevision: action.payload.dataRevision ?? 1 }
         return { ...state, selection }
