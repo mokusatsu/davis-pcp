@@ -13,6 +13,7 @@ export function kanoOption(attributes: PraAttribute[], selected: string | null, 
     xAxis: { type: 'value', name: '低評価側係数 β_low', nameLocation: 'middle', nameGap: 35, min: extent => Math.min(0, extent.min), max: extent => Math.max(0, extent.max) },
     yAxis: { type: 'value', name: '高評価側係数 β_high', nameLocation: 'middle', nameGap: 50, min: extent => Math.min(0, extent.min), max: extent => Math.max(0, extent.max) },
     series: Object.entries(COLORS).map(([classification, color]) => ({
+      itemStyle: { color },
       type: 'scatter', name: attributes.find(a => a.classification === classification)?.class_label ?? classification,
       data: attributes.filter(a => a.classification === classification).map(a => ({
         name: a.name, value: [a.penalty.coef, a.reward.coef], description: description(a),
@@ -33,6 +34,7 @@ export function praImpactOption(attributes: PraAttribute[], selected: string | n
     xAxis: { type: 'value', name: '目的変数に対する係数 β', nameLocation: 'middle', nameGap: 28 },
     yAxis: { type: 'category', inverse: true, data: attributes.map(a => a.label), axisLabel: { width: 130, overflow: 'truncate' } },
     series: (['penalty', 'reward'] as const).map(key => ({
+      itemStyle: { color: key === 'penalty' ? '#ff4d4f' : '#52c41a' },
       type: 'bar', name: key === 'penalty' ? '低評価側係数 β_low' : '高評価側係数 β_high', barMaxWidth: 18,
       data: attributes.map(a => ({ name: a.name, value: a[key].coef, description: description(a),
         itemStyle: { color: key === 'penalty' ? '#ff4d4f' : '#52c41a',

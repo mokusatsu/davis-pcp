@@ -113,3 +113,34 @@ it('uses each ranking method color for the rendered legend and bars, independent
     })
   } finally { chart.dispose() }
 })
+
+it('matches PRA legend swatches to signed bars and Kano points without changing linked selection', async () => {
+  const { init } = await import('echarts')
+  for (const kind of ['impact', 'kano'] as const) {
+    const chart = init(null, undefined, { renderer: 'svg', ssr: true, width: 900, height: 450 })
+    try {
+      chart.setOption({ animation: false, ...(kind === 'impact' ? praImpactOption(attributes, null, ['r3']) : kanoOption(attributes, null, ['r3'])) })
+      const model = (chart as any).getModel()
+      const legendView = (chart as any).getViewOfComponentModel(model.getComponent('legend'))
+      const legendItems: any[] = []
+      legendView.group.traverse((el: any) => { if (el.__legendDataIndex != null) legendItems[el.__legendDataIndex] = el })
+      const colors = kind === 'impact' ? ['#ff4d4f', '#52c41a'] : ['#d4380d', '#1677ff', '#389e0d', '#8c8c8c']
+      colors.forEach((color, index) => {
+        const icon = legendItems[index].children().find((el: any) => el.type !== 'text' && el.style?.fill === color)
+        expect(icon, `${kind} legend${index}`).toBeDefined()
+        const data = model.getSeriesByIndex(index).getData()
+        expect(data.getVisual('style').fill).toBe(color)
+        for (let row = 0; row < data.count(); row++) expect(data.getItemVisual(row, 'style').fill).toBe(color)
+      })
+      if (kind === 'impact') {
+        const series = chart.getOption().series as any[]
+        expect(series.map(s => s.data.map((d: any) => d.value))).toEqual([[2.5, -6], [-3, 5]])
+        expect(series[0].data.map((d: any) => d.itemStyle.borderWidth)).toEqual([0, 2])
+      } else {
+        const points = (chart.getOption().series as any[]).flatMap(s => s.data)
+        expect(points.find(p => p.name === 'second').value).toEqual([-6, 5])
+        expect(points.find(p => p.name === 'second').itemStyle.borderWidth).toBe(3)
+      }
+    } finally { chart.dispose() }
+  }
+})
