@@ -332,7 +332,7 @@ export default function ModelsPage() {
                 >
                   <EChart height={Math.max(220, Object.keys(result.featureImportance).length * 32 + 70)} ariaLabel="特徴量重要度"
                     option={{ grid: { left: 150, right: 70, top: 20, bottom: 35 }, tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; return p ? `${questionText(p.name)}\n重要度: ${p.value}` : '' } },
-                      xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true, axisLabel: { formatter: (name: string) => truncateText(name, 16) },
+                      xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true, axisLabel: { width: 140 },
                         data: Object.entries(result.featureImportance).sort((a,b) => b[1]-a[1]).map(([name]) => name) },
                       series: [{ type: 'bar', itemStyle: { color: '#3b82f6' },
                         data: Object.entries(result.featureImportance).sort((a,b) => b[1]-a[1]).map(([,value]) => value),

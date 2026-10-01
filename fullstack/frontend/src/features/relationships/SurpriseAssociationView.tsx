@@ -21,7 +21,6 @@ import MaAxisPicker from '../pcp/MaAxisPicker'
 import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
-import { truncateText } from '../../utils/textUtils'
 
 function CorrectedVTip() {
   return (
@@ -145,7 +144,7 @@ export default function SurpriseAssociationView() {
   const heatmapHeaderHeight = 160
   const heatmapWidth = Math.max(400, heatmapLabelWidth + heatmapColumnCount * heatmapCellWidth)
   const heatmapHeight = Math.max(300, heatmapHeaderHeight + heatmapColumnCount * heatmapCellHeight)
-  const quadrant = { left: 40, right: 460, top: 28, bottom: 320 }
+  const quadrant = { left: 92, right: 460, top: 28, bottom: 320 }
 
   const handleSelectLiftRowsInPcp = (pair: PairItem) => {
     if (pair.top_lift?.row_ids?.length) {
@@ -293,7 +292,7 @@ export default function SurpriseAssociationView() {
                       <text x={(quadrant.left + quadrant.right) / 2} y={392} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
                         意外性スコア (Unexpectedness) →
                       </text>
-                      <text x={14} y={(quadrant.top + quadrant.bottom) / 2} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151" transform={`rotate(-90 14 ${(quadrant.top + quadrant.bottom) / 2})`}>
+                      <text data-label-width={72} data-label-lines={3} x={8} y={(quadrant.top + quadrant.bottom) / 2} dominantBaseline="middle" textAnchor="start" fontSize={12} fontWeight={600} fill="#374151">
                         関連強度 (|補正V|) →
                       </text>
 
@@ -304,9 +303,8 @@ export default function SurpriseAssociationView() {
                         const r = isSelected ? 8 : 6
                         const fill = isSelected ? '#2a78d6' : (p.surprise.unexpectedness > 0.5 && p.strength > 0.5 ? '#722ed1' : '#1677ff')
                         const fullLabel = `${p.x.name} × ${p.y.name}`
-                        const label = `${truncateText(p.x.name, 12)} × ${truncateText(p.y.name, 12)}`
-                        const labelWidth = Array.from(label).length * 6
-                        const labelOnRight = cx + 10 + labelWidth <= quadrant.right - 4
+                        const labelOnRight = cx < (quadrant.left + quadrant.right) / 2
+                        const labelWidth = Math.min(180, (labelOnRight ? quadrant.right - cx : cx - quadrant.left) - 14)
 
                         return (
                           <g key={p.id} onClick={() => setSelectedPairId(p.id)} style={{ cursor: 'pointer' }}>
@@ -321,8 +319,10 @@ export default function SurpriseAssociationView() {
                             />
                             {isSelected && (
                               <text
+                                data-label-width={labelWidth}
+                                data-label-lines={2}
                                 x={labelOnRight ? cx + 10 : cx - 10}
-                                y={cy + 4}
+                                y={Math.max(quadrant.top + 28, Math.min(quadrant.bottom, cy + 4))}
                                 textAnchor={labelOnRight ? 'start' : 'end'}
                                 fontSize={11}
                                 fontWeight="bold"
@@ -332,7 +332,7 @@ export default function SurpriseAssociationView() {
                                 strokeWidth={3}
                               >
                                 <title>{fullLabel}</title>
-                                {label}
+                                {fullLabel}
                               </text>
                             )}
                           </g>

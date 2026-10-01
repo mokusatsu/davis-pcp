@@ -1,5 +1,4 @@
 import ColumnQuestionTooltip, { useQuestionText } from '../../common/ColumnQuestionTooltip'
-import { truncateText } from '../../../utils/textUtils'
 import EChart from '../../charts/EChart'
 import Table from '../../common/ColumnTable'
 import Select from '../../common/ColumnSelect'
@@ -302,7 +301,7 @@ export default function KeyDriverAnalysisPage() {
                       option={{ grid: { left: 170, right: 60, top: 20, bottom: 45 },
                         tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; const d = p && result.drivers[p.dataIndex]; return d ? `${questionText(d.name)}\n重要度: ${d.importance_pct}%\n方向: ${d.direction}` : '' } },
                         xAxis: { type: 'value', min: 0, max: 100, name: '重要度 (%)', nameLocation: 'middle', nameGap: 28 },
-                        yAxis: { type: 'category', inverse: true, data: result.drivers.map((d,i) => `#${i+1} ${truncateText(d.label, 16)}\n${d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}`) },
+                        yAxis: { type: 'category', inverse: true, data: result.drivers.map((d,i) => `#${i+1} ${d.label}\n${d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}`) },
                         series: [{ type: 'bar', data: result.drivers.map((d,i) => ({ value: d.importance_pct,
                           itemStyle: { color: i === 0 ? '#faad14' : d.direction >= 0 ? '#1677ff' : '#ff4d4f' } })),
                           label: { show: true, position: 'right', color: '#333', formatter: (p:any) => `${Number(p.value).toFixed(1)}%` } }] }} />

@@ -2,7 +2,7 @@ import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { type FC } from 'react'
 import { Card, Typography } from 'antd'
-import { truncateText } from '../../utils/textUtils'
+import { chartLabelLineHeight } from '../../utils/chartLabelLayout'
 
 interface ProjectionCircleProps {
   columns: string[]
@@ -47,17 +47,11 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
           const endX = center + aVal * radius
           const endY = center - bVal * radius // Invert Y for canvas/svg
           const color = colors[idx % colors.length]
-          const label = truncateText(col, 10)
-          const labelWidth = Array.from(label).length * 9
-          const fitsRight = endX + 4 + labelWidth <= size - 4
-          const fitsLeft = endX - 4 - labelWidth >= 4
-          const textAnchor = aVal >= 0
-            ? (fitsRight ? 'start' : 'end')
-            : (fitsLeft ? 'end' : 'start')
-          const labelX = textAnchor === 'start'
-            ? (aVal >= 0 && fitsRight ? endX + 4 : 4)
-            : (aVal >= 0 && !fitsRight ? size - 4 : endX - 4)
-          const labelY = Math.max(10, Math.min(size - 4, endY + (bVal >= 0 ? -4 : 10)))
+          const labelWidth = Math.min(100, Math.max(endX - 8, size - endX - 8))
+          const textAnchor = endX > center ? 'end' : 'start'
+          const labelX = textAnchor === 'start' ? Math.min(endX + 4, size - labelWidth - 4) : Math.max(endX - 4, labelWidth + 4)
+          const labelY = Math.max(chartLabelLineHeight(9) * 2 + 4, Math.min(size - 4, endY + (bVal >= 0 ? -4 : 10)))
+
 
           return (
             <g key={col}>
@@ -74,6 +68,8 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
               <circle cx={endX} cy={endY} r={3} fill={color} />
               {/* Label */}
               <ColumnQuestionTooltip nameOrId={col} svg><text
+                data-label-width={labelWidth}
+                data-label-lines={2}
                 x={labelX}
                 y={labelY}
                 fill={color}
@@ -82,7 +78,7 @@ export const ProjectionCircle: FC<ProjectionCircleProps> = ({ columns, alpha, be
                 textAnchor={textAnchor}
               >
                 <title>{col}</title>
-                {label}
+                {col}
               </text></ColumnQuestionTooltip>
             </g>
           )

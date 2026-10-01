@@ -1,3 +1,4 @@
+import { findGraphElement } from './graphElement'
 import {
   createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type ReactNode,
@@ -121,8 +122,8 @@ export function GraphExpansionProvider({ children }: { children: ReactNode }) {
       const focusOrigin = () => {
         const origin = (current.originButton && document.contains(current.originButton))
           ? current.originButton
-          : document.querySelector<HTMLElement>(`[data-testid="graph-expand-${current.graphId}"]`)
-            ?? document.querySelector<HTMLElement>(`[data-graph-origin="${current.graphId}"]`)
+          : findGraphElement('data-testid', `graph-expand-${current.graphId}`)
+            ?? findGraphElement('data-graph-origin', current.graphId)
         if (origin) {
           try { origin.focus() } catch { /* focus 失敗は無視 */ }
         }
@@ -158,7 +159,7 @@ export function GraphExpansionProvider({ children }: { children: ReactNode }) {
       host: entry.host,
       returnSlot: entry.slot,
       originButton: entry.originButton
-        ?? document.querySelector<HTMLElement>(`[data-graph-origin="${entry.graphId}"]`),
+        ?? findGraphElement('data-graph-origin', entry.graphId),
       normalScroll: { left: scroller?.scrollLeft ?? 0, top: scroller?.scrollTop ?? 0 },
     }
   }, [viewportOf])

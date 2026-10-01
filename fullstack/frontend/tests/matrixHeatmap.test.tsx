@@ -55,7 +55,7 @@ it.each([
   ['Covariance', 560, 400, 4],
   ['Surprise associations', 400, 300, 4],
   ['many-column Relationships', 884, 636, 12],
-] as const)('preserves usable cells for %s with truncated long axis labels', (_name, width, height, count) => {
+] as const)('preserves usable cells for %s with horizontal wrapped long axis labels', (_name, width, height, count) => {
   const labels = Array.from({ length: count }, (_, index) => `Question ${index}: a long survey question label requiring truncation`)
   const matrix = labels.map((_, row) => labels.map((_, col) => row === col ? 1 : .5))
   const view = render(<MatrixHeatmap labels={labels} matrix={matrix} height={height} title="Matrix" testId="matrix" />)
@@ -65,7 +65,10 @@ it.each([
   expect(cellWidth).toBeGreaterThanOrEqual(45)
   expect(cellHeight).toBeGreaterThanOrEqual(28)
   expect(host.innerHTML).not.toMatch(/NaN|Infinity/)
-  expect(host.textContent).toContain('...')
+  expect(host.textContent).toContain('…')
+  const axes = chart.getOption()
+  expect((axes.xAxis as any[])[0].axisLabel.rotate).toBe(0)
+  expect((axes.yAxis as any[])[0].axisLabel.rotate).toBe(0)
   expect((chart.getOption().visualMap as any[])[0]).toMatchObject({ min: -1, max: 1, orient: 'horizontal', bottom: 0 })
 })
 
@@ -96,4 +99,24 @@ it('keeps null cells, escaped tooltips, pair clicks and selection highlighting a
   expect(next.find((cell: any) => cell.row === 0 && cell.col === 1).itemStyle.borderWidth).toBe(1)
   expect(next.find((cell: any) => cell.row === 1 && cell.col === 0).itemStyle.borderWidth).toBe(3)
   expect(host.querySelector('row')).toBeNull()
+})
+
+
+it.each([[320, 260, 2], [388, 300, 4], [600, 440, 4], [900, 620, 12]])('bounds horizontal label glyphs at %ipx × %ipx for %i variables', (width, height, count) => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(height)
+  const labels = Array.from({ length: count }, (_, i) => `label_${i}_${'long_source_identifier_'.repeat(6)}`)
+  const matrix = labels.map((_, r) => labels.map((_, c) => r === c ? 1 : .5))
+  const view = render(<MatrixHeatmap labels={labels} matrix={matrix} height={height} title="Matrix" testId="bounded-matrix" />)
+  const chart = getInstanceByDom(view.getByTestId('bounded-matrix'))!
+  const texts = chart.getZr().storage.getDisplayList().filter((item: any) => item.type === 'tspan' && /[a-z]/.test(item.style.text))
+  expect(texts.length).toBeGreaterThan(count * 2)
+  for (const text of texts) {
+    const rect = text.getBoundingRect().clone()
+    if (text.transform) rect.applyTransform(text.transform)
+    expect(rect.x).toBeGreaterThanOrEqual(-.01)
+    expect(rect.x + rect.width).toBeLessThanOrEqual(width + .01)
+    expect(rect.y).toBeGreaterThanOrEqual(-.01)
+    expect(rect.y + rect.height).toBeLessThanOrEqual(height + .01)
+  }
 })

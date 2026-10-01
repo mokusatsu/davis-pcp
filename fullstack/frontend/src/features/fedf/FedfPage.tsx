@@ -14,7 +14,6 @@ import { useBrushOp } from '../selection/SelectionMenu'
 import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
-import { truncateText } from '../../utils/textUtils'
 
 interface FedfCurvePoint {
   quantile: number
@@ -347,13 +346,15 @@ export default function FedfPage() {
                     <g key={col} data-testid={`fedf-axis-${idx}`}>
                       {/* Column Title and Presets */}
                       <ColumnQuestionTooltip nameOrId={col} svg><text
+                        data-label-width={AXIS_SPACING - 12}
+                        data-label-lines={2}
                         x={xBase + AXIS_WIDTH / 2}
                         y={PLOT_TOP - 70}
                         textAnchor="middle"
                         style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                       >
 
-                        {truncateText(col, 14)}
+                        {col}
                       </text></ColumnQuestionTooltip>
 
                       {/* Presets stay inside this axis, even when many columns

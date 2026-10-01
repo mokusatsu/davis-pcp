@@ -16,7 +16,6 @@ import { vizTheme, l1Color, signedNoiseViz } from '../../theme/viz'
 import { useBrushOp } from '../selection/SelectionMenu'
 import GraphPanel from '../common/GraphPanel'
 import { getSvgPoint } from '../../utils/svgCoordinates'
-import { truncateText } from '../../utils/textUtils'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import QQPlotView from '../qqplot/QQPlotView'
 import EmptyStatePanel from '../common/EmptyStatePanel'
@@ -376,8 +375,8 @@ export default function DistributionPage() {
         const right = left + verticalSlotWidth
         intersectsPanel = rxHi >= left && rxLo <= right
         // Match renderVertical scaleY: v = min + ((innerBottom - y)/span)*(range).
-        // Plot area y ∈ [34, height-46], clamped; y grows downward = value grows up.
-        const innerTop = 34
+        // Plot area y ∈ [46, height-46], clamped; y grows downward = value grows up.
+        const innerTop = 46
         const innerBottom = height - 46
         const cLo = Math.min(innerBottom, Math.max(innerTop, ryLo))
         const cHi = Math.min(innerBottom, Math.max(innerTop, ryHi))
@@ -461,7 +460,7 @@ export default function DistributionPage() {
       const rowSpacing = (panelHeight - 22) / Math.max(1, nGroups)
       return (
         <g key={panel.column}>
-          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{truncateText(panel.column, 24)}</text></ColumnQuestionTooltip>
+          <ColumnQuestionTooltip nameOrId={panel.column} svg><text data-label-width={innerRight - innerLeft} data-label-lines={2} x={innerLeft} y={titleY} fontSize={12} fontWeight={600} fill="#374151">{panel.column}</text></ColumnQuestionTooltip>
           <line x1={innerLeft} y1={panelTop + panelHeight - 12} x2={innerRight} y2={panelTop + panelHeight - 12} stroke="#c3c2b7" strokeWidth={1} />
           {[panel.min, (panel.min + panel.max) / 2, panel.max].map((tick, ti) => (
             <g key={ti}>
@@ -475,9 +474,9 @@ export default function DistributionPage() {
             return (
               <g key={JSON.stringify([panel.column, group.code])}>
                 {group.key && (
-                  <text x={112} y={centerY + 3} textAnchor="end" fontSize={10} fill="#52514e">
+                  <text data-label-width={104} data-label-lines={Math.max(1, Math.min(3, Math.floor((rowSpacing - 4) / 13)))} x={112} y={centerY} dominantBaseline="middle" textAnchor="end" fontSize={10} fill="#52514e">
                     <title>{group.key}</title>
-                    {truncateText(group.key.replace(/Iris-/, ''), 12)}
+                    {group.key.replace(/Iris-/, '')}
                   </text>
                 )}
                 {stats && (
@@ -523,18 +522,18 @@ export default function DistributionPage() {
     panelRows.map((panel) => {
       const slot = numericColumns.indexOf(panel.column)
       const slotWidth = (plotRight - plotLeft) / numericColumns.length
-      const innerTop = 34
+      const innerTop = 46
       const innerBottom = height - 46
       const scaleY = (value: number) =>
         innerBottom - ((value - panel.min) / (panel.max - panel.min || 1)) * (innerBottom - innerTop)
       const slotLeft = plotLeft + slot * slotWidth
       const nGroups = panel.groups.length
       const colSpacing = (slotWidth - 16) / Math.max(1, nGroups)
-      const titleLength = Math.max(4, Math.floor((slotWidth - 16) / 10))
+
       return (
         <g key={panel.column}>
-          <ColumnQuestionTooltip nameOrId={panel.column} svg><text x={slotLeft + slotWidth / 2} y={18} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
-            {truncateText(panel.column, titleLength)}
+          <ColumnQuestionTooltip nameOrId={panel.column} svg><text data-label-width={Math.max(12, slotWidth - 16)} data-label-lines={2} x={slotLeft + slotWidth / 2} y={31} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">
+            {panel.column}
           </text></ColumnQuestionTooltip>
           <line x1={slotLeft + 8} y1={innerTop} x2={slotLeft + 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
           <line x1={slotLeft + 8} y1={innerBottom} x2={slotLeft + slotWidth - 8} y2={innerBottom} stroke="#c3c2b7" strokeWidth={1} />
@@ -550,8 +549,9 @@ export default function DistributionPage() {
             return (
               <g key={JSON.stringify([panel.column, group.code])}>
                 {group.key && (
-                  <text x={centerX} y={height - 30} textAnchor="middle" fontSize={9} fill="#52514e">
-                    {group.key.replace(/Iris-/, '').slice(0, 6)}
+                  <text data-label-width={Math.max(10, colSpacing - 4)} data-label-lines={2} x={centerX} y={height - 10} textAnchor="middle" fontSize={9} fill="#52514e">
+                    <title>{group.key}</title>
+                    {group.key.replace(/Iris-/, '')}
                   </text>
                 )}
                 {stats && (

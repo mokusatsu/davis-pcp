@@ -1,6 +1,5 @@
 import EChart from '../charts/EChart'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
-import { truncateText } from '../../utils/textUtils'
 import type { EChartsOption } from 'echarts'
 import type { CoefficientItem } from './LogisticRegressionPage'
 
@@ -20,7 +19,7 @@ export function oddsForestOption(items: CoefficientItem[], labels: Readonly<Reco
     } },
     xAxis: { type: 'value', min: lo - pad, max: hi + pad, name: 'オッズ比（対数目盛）', nameLocation: 'middle', nameGap: 35,
       axisLabel: { showMinLabel: false, showMaxLabel: false, hideOverlap: true, formatter: (v: number) => Math.abs(v) < 1e-10 ? '1' : `10^${Number(v.toPrecision(3))}` } },
-    yAxis: { type: 'category', inverse: true, data: items.map(r => r.name), axisLabel: { formatter: (name: string) => truncateText(name, 16) } },
+    yAxis: { type: 'category', inverse: true, data: items.map(r => r.name), axisLabel: { width: 140 } },
     series: [{ type: 'custom', data: items.map((r, i) => [r.logOddsRatio / Math.LN10, i, r.logCiLower / Math.LN10, r.logCiUpper / Math.LN10]),
       renderItem: (_params: any, api: any) => {
         const mid = api.coord([api.value(0), api.value(1)]), low = api.coord([api.value(2), api.value(1)]), high = api.coord([api.value(3), api.value(1)])

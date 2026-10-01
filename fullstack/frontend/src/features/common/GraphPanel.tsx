@@ -1,3 +1,4 @@
+import { findGraphElement } from './graphElement'
 import {
   createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode,
@@ -157,7 +158,7 @@ export default function GraphPanel({
       available,
       pageKey: '',
       datasetId: null,
-      originButton: document.querySelector<HTMLElement>(`[data-graph-origin="${graphId}"]`),
+      originButton: findGraphElement('data-graph-origin', graphId),
     })
     return () => unregister(graphId, host)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,7 +170,7 @@ export default function GraphPanel({
     if (!host) return
     updateEntry(graphId, host, {
       title, available,
-      originButton: document.querySelector<HTMLElement>(`[data-graph-origin="${graphId}"]`),
+      originButton: findGraphElement('data-graph-origin', graphId),
     })
   }, [graphId, title, available, updateEntry])
 

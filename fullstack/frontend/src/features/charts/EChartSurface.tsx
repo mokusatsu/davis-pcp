@@ -3,6 +3,7 @@ import { Children, Fragment, forwardRef, isValidElement, useContext, useEffect, 
 import { graphic, type EChartsOption } from 'echarts'
 import { createFromString } from 'zrender/lib/tool/path.js'
 import EChart from './EChart'
+import { chartLabelLineHeight, wrapChartLabel } from '../../utils/chartLabelLayout'
 import { ReactReduxContext } from 'react-redux'
 
 // GraphicComponent has no built-in SVG path shape (custom series does). Register
@@ -34,7 +35,7 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
     const p = node.props
     if (node.type === Fragment || typeof node.type !== 'string') {
       const question = p.question ?? questions[p.nameOrId]
-      return Children.toArray(p.children).flatMap((child, i) => convert(child, `${path}.${i}`, { ...inherited, ...(question ? { __davisTitle: `${p.nameOrId ?? ''} — ${question}` } : {}) }))
+      return Children.toArray(p.children).flatMap((child, i) => convert(child, `${path}.${i}`, { ...inherited, ...(p.nameOrId || question ? { __davisTitle: question && question !== p.nameOrId ? (p.nameOrId ? `${p.nameOrId} — ${question}` : String(question)) : String(p.nameOrId) } : {}) }))
     }
     if (node.type === 'title' || node.type === 'desc') return []
     const sourceStyle = { ...inherited, ...p, ...p.style }
@@ -55,7 +56,11 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
     if (title) item.tooltip = { formatter: () => textContent(title.props.children, true), renderMode: 'richText', confine: true }
     const handlers: Record<string, string> = { onClick: 'onclick', onDoubleClick: 'ondblclick', onMouseEnter: 'onmouseover', onMouseLeave: 'onmouseout', onMouseMove: 'onmousemove', onMouseDown: 'onmousedown', onMouseUp: 'onmouseup' }
     for (const [reactName, zrName] of Object.entries(handlers)) if (p[reactName]) item[zrName] = (event: any) => eventBridge(p[reactName], event)
-    item.info = { selectable: Boolean(p.onClick || p['data-selectable']), title: title ? textContent(title.props.children, true) : sourceStyle.__davisTitle }
+    const rawText = node.type === 'text' ? textContent(p.children) : undefined
+    const explicitTitle = title ? textContent(title.props.children, true) : undefined
+    const fullTitle = [sourceStyle.__davisTitle, explicitTitle].filter((value, index, values) => value && values.indexOf(value) === index).join('\n')
+    item.info = { selectable: Boolean(p.onClick || p['data-selectable']), title: fullTitle || (p['data-label-width'] ? rawText : undefined), fullText: rawText }
+
     switch (node.type) {
       case 'g':
         item.type = 'group'; delete item.style
@@ -72,12 +77,13 @@ export function geometryToGraphic(children: ReactNode, eventBridge: (handler: Fu
       case 'path': item.type = 'davisStatisticalPath'; item.shape = { pathData: p.d ?? '' }; break
       case 'polygon': case 'polyline': item.shape = { points: String(p.points ?? '').trim().split(/\s+/).map(pair => pair.split(',').map(Number)) }; break
       case 'text':
-        item.style = { ...style, text: textContent(p.children),
+        item.style = { ...style, text: p['data-label-width'] ? wrapChartLabel(rawText ?? '', Number(p['data-label-width']), Number(p['data-label-lines'] ?? 2), Number(sourceStyle.fontSize ?? 12), `${sourceStyle.fontWeight ?? 'normal'} ${sourceStyle.fontSize ?? 12}px ${sourceStyle.fontFamily ?? 'sans-serif'}`).join('\n') : rawText,
           x: +p.x || 0, y: +p.y || 0,
           fontSize: Number(sourceStyle.fontSize ?? 12), fontFamily: sourceStyle.fontFamily ?? 'sans-serif',
           fontWeight: sourceStyle.fontWeight ?? 'normal',
+          ...(p['data-label-width'] ? { lineHeight: chartLabelLineHeight(Number(sourceStyle.fontSize ?? 12)) } : {}),
           align: sourceStyle.textAnchor === 'middle' ? 'center' : sourceStyle.textAnchor === 'end' ? 'right' : 'left',
-          verticalAlign: sourceStyle.dominantBaseline === 'middle' ? 'middle' : 'bottom' }
+          verticalAlign: sourceStyle.dominantBaseline === 'middle' ? 'middle' : sourceStyle.dominantBaseline === 'hanging' ? 'top' : 'bottom' }
         break
       default: throw new Error(`Unsupported statistical geometry: ${node.type}`)
     }
@@ -184,7 +190,8 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
   }
   const autoHeight = style?.height === 'auto' || (!height && !style?.height)
   return <div ref={host} tabIndex={0} aria-label={`${props['aria-label'] ?? props['data-testid'] ?? '統計グラフ'}。矢印キーでマークを移動、Enterで選択`}
-    onFocus={() => setTip(keyboardMark?.info?.title ?? null)} onBlur={() => setTip(null)}
+    onFocus={event => { if (event.target === event.currentTarget) setTip(keyboardMark?.info?.title ?? null) }}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTip(null) }}
     onKeyDown={event => {
       if (event.key.startsWith('Arrow') && accessibilityMarks.length) {
         event.preventDefault()
@@ -203,7 +210,13 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
     onMouseLeave={() => setTip(null)}>
     <EChart option={option} height="100%" chartRef={chart} svgRef={svg} ariaLabel={props['aria-label'] ?? props['data-testid'] ?? '統計グラフ'}
       onReady={instance => { instance.on('finished', () => transferLatest.current()); instance.on('mouseover', (event: any) => setTip(event.info?.title ?? null)) }} style={{ minHeight: 0 }} />
-    {tip && <div role="tooltip" aria-live="polite" style={{ position: 'absolute', left: 12, bottom: 4, pointerEvents: 'none', background: '#fff', border: '1px solid #ddd', padding: 6, fontSize: 12, maxWidth: '95%', whiteSpace: 'pre-wrap', zIndex: 10 }}>{tip}</div>}
+    {tip && <div role="tooltip" aria-live="polite" tabIndex={0}
+      onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()} onMouseMove={event => event.stopPropagation()} onMouseUp={event => event.stopPropagation()}
+      onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
+      onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { host.current?.focus(); setTip(null) } }}
+      style={{ position: 'absolute', left: 12, bottom: 4, pointerEvents: 'auto', background: '#fff', border: '1px solid #ddd', padding: 6, fontSize: 12,
+        boxSizing: 'border-box', maxWidth: 'calc(100% - 24px)', maxHeight: 'min(50vh, 100%)', overflow: 'auto', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', zIndex: 10 }}>{tip}</div>}
   </div>
 })
 export default EChartSurface

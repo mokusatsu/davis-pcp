@@ -21,6 +21,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { normalizedRect, type Rect } from './brush'
 import { graphEngine } from '../../engine/graphClient'
 import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
+import { buildPcpLabelLayout } from '../../engine/pcpLabelLayout'
 import { pcpSvg } from '../../engine/pcpSvgExport'
 import { downloadBlob } from '../charts/chartExport'
 import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes } from './usePcpPipeline'
@@ -276,6 +277,12 @@ export default function PcpPage() {
     activeRowIndexes: drawRowIndexes,
   })
 
+  const axisLabelLayout = useMemo(() => geometry ? buildPcpLabelLayout({
+    orientation: pcp.orientation, axisPos: geometry.axisPos, bounds: geometry.bounds,
+    axes: orderedVisibleAxes.map(axis => ({ ...axis, isCategorical: axis.type === 'categorical' })),
+    reversed: Object.fromEntries(orderedVisibleAxes.map(axis => [axis.key, Boolean(axis.isReversed) !== Boolean(pcp.reversed[axis.key])])),
+  }) : null, [geometry, orderedVisibleAxes, pcp.orientation, pcp.reversed])
+
   /** Handlers must always see the latest geometry even when a stale event
    *  closure survives a React bailout — closures over `geometry` went stale
    *  (hover/brush dead after remount), so input paths read through this ref. */
@@ -463,6 +470,7 @@ export default function PcpPage() {
       bounds: geometry.bounds,
       imputedAxes: imputedAxes.size > 0 ? imputedAxes : undefined,
       axes: axesSpec,
+      labelLayout: axisLabelLayout ?? undefined,
       reversed: Object.fromEntries(orderedVisibleAxes.map(a => [a.key, Boolean(a.isReversed) !== Boolean(pcp.reversed[a.key])])),
       style: {
         showContext: pcp.showContext,
@@ -516,7 +524,7 @@ export default function PcpPage() {
     lastPaintedSpecRef.current = { datasetKey, spec }
     setFirstFrameRendered(true)
     }
-  }, [geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme, viewScaleState, viewDprState, viewRevisionState, datasetKey])
+  }, [axisLabelLayout, geometry, rowColorSlots, selectedFlags, hoveredGeometryRow, orderedVisibleAxes, pcp.orientation, pcp.reversed, pcp.showContext, pcp.lineOpacity, pcp.lineWidth, frameSize, simplification, theme, viewScaleState, viewDprState, viewRevisionState, datasetKey])
 
   useEffect(() => { void renderPlot() }, [renderPlot])
 
@@ -1051,28 +1059,24 @@ export default function PcpPage() {
             onPointerLeave={() => { dispatch(hoverAction(null)); setTooltip(null) }}
             onDoubleClick={() => dispatch(selectionCleared())}
           >
-            {geometry && orderedVisibleAxes.map((axis, index) => {
-              const horizontal = pcp.orientation === 'horizontal'
-              const anchor = geometry.axisPos[index]
-              const hit = <rect x={horizontal ? -130 : geometry.bounds.left - 130}
-                  y={horizontal ? -10 : anchor - 10}
-                  transform={horizontal ? `translate(${anchor}, ${geometry.bounds.bottom + 8}) rotate(-45)` : undefined}
-                  width={130} height={22} fill="transparent" aria-label={axis.label} />
+            {axisLabelLayout?.axes.map(label => {
+              const axis = orderedVisibleAxes[label.axisIndex]
+              const hit = <rect data-testid={`pcp-axis-label-${axis.key}`} x={label.x} y={label.y}
+                width={label.width} height={label.height} fill="transparent" aria-label={axis.label}
+                onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}>
+                <title>{axis.label}</title>
+              </rect>
               return availableMaAxes.some(item => item.key === axis.key)
-                ? <g key={axis.key}><title>{axis.label}</title>{hit}</g>
+                ? <g key={axis.key}>{hit}</g>
                 : <ColumnQuestionTooltip key={axis.key} nameOrId={axis.key} svg>{hit}</ColumnQuestionTooltip>
             })}
-            {geometry && orderedVisibleAxes.flatMap((axis, index) => (axis.categories ?? []).map((code, i) => {
-              let t = (axis.categories?.length ?? 0) <= 1 ? 0.5 : i / (axis.categories!.length - 1)
-              if (Boolean(axis.isReversed) !== Boolean(pcp.reversed[axis.key])) t = 1 - t
-              const horizontal = pcp.orientation === 'horizontal'
-              const x = horizontal ? geometry.axisPos[index] - 95 : geometry.bounds.left + t * (geometry.bounds.right - geometry.bounds.left) - 40
-              const y = horizontal ? geometry.bounds.bottom - t * (geometry.bounds.bottom - geometry.bounds.top) - 8 : geometry.axisPos[index] - 20
-              const label = axis.valueLabels?.[code] ?? code
-              return <rect key={`${axis.key}-${code}`} data-testid={`pcp-tick-${axis.key}-${code}`} data-code={code} data-label={label}
-                x={x} y={y} width={88} height={16} fill="transparent" aria-label={`${axis.label}: ${label} (${code})`}
-                onPointerDown={e => e.stopPropagation()}><title>{`${axis.label}: ${label} (${code})`}</title></rect>
-            }))}
+            {axisLabelLayout?.ticks.map(label => {
+              const axis = orderedVisibleAxes[label.axisIndex]
+              const detail = `${axis.label}: ${label.fullText}${axis.type === 'categorical' ? ` (${label.code})` : ''}`
+              return <rect key={`${axis.key}-${label.code}`} data-testid={`pcp-tick-${axis.key}-${label.code}`} data-code={label.code} data-label={label.fullText}
+                x={label.x} y={label.y} width={label.width} height={label.height} fill="transparent" aria-label={detail}
+                onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}><title>{detail}</title></rect>
+            })}
             <rect ref={brushRectRef} fill="rgba(42,120,214,0.15)" strokeWidth={1.5} style={{ pointerEvents: 'none' }} stroke="#2a78d6" visibility="hidden" />
           </svg>
           {/* v1-style on-axis controls: move/reverse buttons near each axis.

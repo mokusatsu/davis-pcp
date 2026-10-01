@@ -23,7 +23,7 @@ export const ScreePlot: FC<ScreePlotProps> = ({
   const width = 800
   const chartHeight = 240
   const panelHeight = chartHeight + 28
-  const margin = { top: 30, right: 60, bottom: 40, left: 60 }
+  const margin = { top: 30, right: 100, bottom: 40, left: 96 }
   const plotW = width - margin.left - margin.right
   const plotH = chartHeight - margin.top - margin.bottom
 
@@ -204,13 +204,15 @@ export const ScreePlot: FC<ScreePlotProps> = ({
             0
           </text>
           <text
-            x={-margin.top - plotH / 2}
-            y={margin.left - 34}
+            data-label-width={margin.left - 30}
+            data-label-lines={3}
+            x={4}
+            y={margin.top + plotH / 2}
             fill="#374151"
             fontSize={12}
             fontWeight={600}
-            transform="rotate(-90)"
-            textAnchor="middle"
+            dominantBaseline="middle"
+            textAnchor="start"
           >
             固有値 (λ)
           </text>
@@ -224,13 +226,15 @@ export const ScreePlot: FC<ScreePlotProps> = ({
             0%
           </text>
           <text
-            x={margin.top + plotH / 2}
-            y={-(margin.left + plotW + 36)}
+            data-label-width={margin.right - 30}
+            data-label-lines={3}
+            x={width - 4}
+            y={margin.top + plotH / 2}
             fill="#d97706"
             fontSize={12}
             fontWeight={600}
-            transform="rotate(90)"
-            textAnchor="middle"
+            dominantBaseline="middle"
+            textAnchor="end"
           >
             累積寄与率 (%)
           </text>

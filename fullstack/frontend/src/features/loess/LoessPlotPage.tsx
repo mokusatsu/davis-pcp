@@ -14,7 +14,6 @@ import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { getSvgPoint } from '../../utils/svgCoordinates'
-import { truncateText } from '../../utils/textUtils'
 
 interface LoessPoint {
   id: string
@@ -133,7 +132,7 @@ export default function LoessPlotPage() {
   }
 
   // Layout metrics
-  const MARGIN_LEFT = 70
+  const MARGIN_LEFT = 166
   const MARGIN_RIGHT = 40
   const MARGIN_TOP = 30
   const MARGIN_BOTTOM = 60
@@ -448,23 +447,27 @@ export default function LoessPlotPage() {
 
                 {/* Axis Labels */}
                 <ColumnQuestionTooltip nameOrId={xCol} svg><text
+                  data-label-width={PLOT_WIDTH}
+                  data-label-lines={2}
                   x={MARGIN_LEFT + PLOT_WIDTH / 2}
-                  y={MARGIN_TOP + PLOT_HEIGHT + 44}
+                  y={MARGIN_TOP + PLOT_HEIGHT + 56}
                   textAnchor="middle"
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
 
-                  {truncateText(xCol, 20)}
+                  {xCol}
                 </text></ColumnQuestionTooltip>
                 <ColumnQuestionTooltip nameOrId={yCol} svg><text
-                  x={20}
+                  data-label-width={MARGIN_LEFT - 58}
+                  data-label-lines={3}
+                  x={8}
                   y={MARGIN_TOP + PLOT_HEIGHT / 2}
-                  textAnchor="middle"
-                  transform={`rotate(-90 20 ${MARGIN_TOP + PLOT_HEIGHT / 2})`}
+                  textAnchor="start"
+                  dominantBaseline="middle"
                   style={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
                 >
 
-                  {truncateText(yCol, 20)}
+                  {yCol}
                 </text></ColumnQuestionTooltip>
 
                 {/* Drag Box Selection Overlay */}

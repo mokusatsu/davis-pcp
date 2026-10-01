@@ -1,3 +1,4 @@
+import { buildPcpLabelLayout } from './pcpLabelLayout'
 import { renderPcp, type PcpDrawingContext, type PcpRenderSpec } from './pcpRenderer'
 
 type Matrix = [number, number, number, number, number, number]
@@ -107,6 +108,9 @@ export function pcpSvg(spec: PcpRenderSpec): string {
   if (spec.width <= 0 || spec.height <= 0) throw new Error('PCP SVG requires a visible viewport')
   const width = number(spec.width), height = number(spec.height)
   const context = new SvgDrawingContext()
-  renderPcp(context, { ...spec, dpr: 1 })
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Parallel coordinates plot"><title>Parallel coordinates plot</title><defs><clipPath id="pcp-viewport"><rect width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#pcp-viewport)">${context.elements.join('')}</g></svg>`
+  const labelLayout = spec.labelLayout ?? buildPcpLabelLayout(spec)
+  renderPcp(context, { ...spec, labelLayout, dpr: 1 })
+  const labels = spec.axes.map((axis, axisIndex) => ({ key: axis.key, label: axis.label, valueLabels: axis.valueLabels, min: axis.min, max: axis.max,
+    ticks: labelLayout.ticks.filter(tick => tick.axisIndex === axisIndex).map(tick => ({ value: tick.code, label: tick.fullText })) }))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Parallel coordinates plot"><title>Parallel coordinates plot</title><metadata id="pcp-full-labels">${xml(JSON.stringify(labels))}</metadata><defs><clipPath id="pcp-viewport"><rect width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#pcp-viewport)">${context.elements.join('')}</g></svg>`
 }

@@ -3,6 +3,7 @@ import { useContext, useEffect, useRef, useState, useSyncExternalStore, type CSS
 import * as echarts from 'echarts'
 import Eventful from 'zrender/lib/core/Eventful.js'
 import { downloadChartSvg } from './chartExport'
+import { layoutCategoryAxes } from './categoryAxisLayout'
 import { ReactReduxContext } from 'react-redux'
 import type { ECharts, EChartsOption } from 'echarts'
 
@@ -42,6 +43,17 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
   events.current = onEvents
   ready.current = onReady
   const eventNames = Object.keys(onEvents ?? {}).sort().join('|')
+  const rawOption = useRef(option)
+  rawOption.current = option
+  const labelViewport = useRef('')
+  const relayoutCategories = (chart: ECharts) => {
+    const key = `${chart.getWidth()}x${chart.getHeight()}`
+    if (labelViewport.current === key) return
+    labelViewport.current = key
+    const source = rawOption.current
+    const laidOut = layoutCategoryAxes(source, chart.getWidth(), chart.getHeight())
+    if (laidOut !== source) chart.setOption({ grid: laidOut.grid, xAxis: laidOut.xAxis, yAxis: laidOut.yAxis }, { lazyUpdate: false })
+  }
 
   useEffect(() => {
     const element = container.current
@@ -56,6 +68,7 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     const resize = () => {
       if (!chart.isDisposed() && element.clientWidth > 0 && element.clientHeight > 0) {
         chart.resize({ animation: { duration: 0 } })
+        relayoutCategories(chart)
         syncSvg()
       }
     }
@@ -80,8 +93,10 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
 
   useEffect(() => {
     const chart=instance.current, element=container.current
-    if(chart && !chart.isDisposed() && element && element.clientWidth>0 && element.clientHeight>0)
+    if(chart && !chart.isDisposed() && element && element.clientWidth>0 && element.clientHeight>0) {
       chart.resize({animation:{duration:0}})
+      relayoutCategories(chart)
+    }
   },[viewportKey])
 
   useEffect(() => {
@@ -114,10 +129,20 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
       })
     }
     legendKey.current = key
+    const tooltips = option.tooltip ? (Array.isArray(option.tooltip) ? option.tooltip : [option.tooltip]).map(tooltip => ({
+      ...tooltip,
+      // Full labels remain readable without growing the graph's scroll extent.
+      ...(tooltip.renderMode !== 'richText' ? { confine: true, enterable: true,
+        className: [tooltip.className, 'davis-chart-tooltip'].filter(Boolean).join(' '), extraCssText:
+        `${tooltip.extraCssText ?? ''}; max-width: min(420px, 80vw); max-height: 50vh; white-space: normal; overflow-wrap: anywhere; overflow: auto` } : {}),
+    })) : undefined
+    const laidOut = layoutCategoryAxes(option, chart.getWidth(), chart.getHeight())
+    labelViewport.current = `${chart.getWidth()}x${chart.getHeight()}`
     chart.setOption({
       animation: false,
       aria: { enabled: true, label: { description: ariaLabel } },
-      ...option,
+      ...laidOut,
+      ...(tooltips ? { tooltip: tooltips } : {}),
       ...(legend ? { legend } : {}),
       ...(dataZoom ? { dataZoom } : {}),
       ...(series ? { series } : {}),
@@ -133,7 +158,16 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     const chart = instance.current
     if (!chart) return
     const handlers = eventNames.split('|').filter(Boolean).map(name => {
-      const handler = (params: unknown) => events.current?.[name]?.(params, chart)
+      const handler = (params: any) => {
+        // Label tooltips must not masquerade as series marks in selection handlers.
+        // Preserve explicitly interactive axes (the BarChart's category selector).
+        if (params?.componentType === 'xAxis' || params?.componentType === 'yAxis') {
+          const source = rawOption.current[params.componentType as 'xAxis' | 'yAxis']
+          const axes = Array.isArray(source) ? source : [source]
+          if (!axes[params.componentIndex ?? 0]?.triggerEvent) return
+        }
+        events.current?.[name]?.(params, chart)
+      }
       chart.on(name, handler)
       return { name, handler }
     })
@@ -141,6 +175,10 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
   }, [eventNames, chartRef, svgRef, renderer, effectiveDpr])
 
   const retainNativeControl = (event: MouseEvent<HTMLDivElement>) => {
+    // Long full-text tooltips can be scrolled without starting a chart brush.
+    if (event.target instanceof Element && event.target.closest('.davis-chart-tooltip')) {
+      event.stopPropagation(); return
+    }
     const chart = instance.current, element = container.current
     if (!chart || chart.isDisposed() || !element) return
     const rect = element.getBoundingClientRect()

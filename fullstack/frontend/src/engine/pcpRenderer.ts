@@ -4,7 +4,7 @@
  * per-row cost is one Path2D segment add instead of a styled stroke call.
  */
 import { vizTheme, composedColor } from '../theme/viz'
-import { truncateText } from '../utils/textUtils'
+import { buildPcpLabelLayout, pcpAxisTickValues, type PcpLabelLayout } from './pcpLabelLayout'
 
 export function tracePcpRow(ctx: Pick<CanvasRenderingContext2D, 'moveTo' | 'lineTo'>, points: Float64Array, base: number, nAxes: number) {
   let connected = false
@@ -31,6 +31,8 @@ export interface PcpRenderSpec {
   bounds: { left: number; right: number; top: number; bottom: number }
   axes: { key: string; label: string; isCategorical: boolean; min: number; max: number; categories?: string[]; valueLabels?: Record<string, string> }[]
   reversed: Record<string, boolean>
+  /** Precomputed with the same font metrics as the interactive hit regions. */
+  labelLayout?: PcpLabelLayout
   style: {
     showContext: boolean
     lineOpacity: number
@@ -332,14 +334,6 @@ export function renderPcp(ctx: PcpDrawingContext, spec: PcpRenderSpec): void {
   ctx.lineWidth = 1
   ctx.font = '10px sans-serif'
 
-  const resolveTickRawLabel = (axis: PcpRenderSpec['axes'][number], value: number): string => {
-    const rawCode = axis.isCategorical ? String(axis.categories?.[value] ?? value) : String(Number(value))
-    const mapped = axis.valueLabels?.[rawCode]
-    if (mapped !== undefined) return mapped
-    if (axis.isCategorical) return rawCode
-    return Number(value).toFixed(1)
-  }
-
   for (let a = 0; a < nAxes; a += 1) {
     const axis = spec.axes[a]
     const anchor = spec.axisPos[a]
@@ -350,9 +344,7 @@ export function renderPcp(ctx: PcpDrawingContext, spec: PcpRenderSpec): void {
       ctx.moveTo(anchor, bounds.top)
       ctx.lineTo(anchor, bounds.bottom)
       ctx.stroke()
-      const ticks = axis.isCategorical
-        ? (axis.categories ?? []).map((_, i) => i)
-        : Array.from({ length: 5 }, (_, i) => axis.min + ((axis.max - axis.min) * i) / 4)
+      const ticks = pcpAxisTickValues(axis)
       for (const value of ticks) {
         let t = axis.max === axis.min ? 0.5 : (value - axis.min) / (axis.max - axis.min)
         if (spec.reversed[axis.key]) t = 1 - t
@@ -361,30 +353,13 @@ export function renderPcp(ctx: PcpDrawingContext, spec: PcpRenderSpec): void {
         ctx.moveTo(anchor - 4, y)
         ctx.lineTo(anchor + 4, y)
         ctx.stroke()
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'middle'
-        const rawLabel = resolveTickRawLabel(axis, value)
-        const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
-        ctx.fillText(label, anchor - 7, y)
       }
-      ctx.save()
-      ctx.translate(anchor, bounds.bottom + 8)
-      ctx.rotate(-Math.PI / 4)
-      ctx.textAlign = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = theme.inkPrimary
-      ctx.font = '700 11px system-ui, sans-serif'
-      ctx.fillText(truncateText(axis.label, 18), 0, 0)
-      ctx.restore()
-      ctx.font = '10px sans-serif'
     } else {
       ctx.beginPath()
       ctx.moveTo(bounds.left, anchor)
       ctx.lineTo(bounds.right, anchor)
       ctx.stroke()
-      const ticks = axis.isCategorical
-        ? (axis.categories ?? []).map((_, i) => i)
-        : Array.from({ length: 5 }, (_, i) => axis.min + ((axis.max - axis.min) * i) / 4)
+      const ticks = pcpAxisTickValues(axis)
       for (const value of ticks) {
         let t = axis.max === axis.min ? 0.5 : (value - axis.min) / (axis.max - axis.min)
         if (spec.reversed[axis.key]) t = 1 - t
@@ -393,19 +368,17 @@ export function renderPcp(ctx: PcpDrawingContext, spec: PcpRenderSpec): void {
         ctx.moveTo(x, anchor - 3)
         ctx.lineTo(x, anchor + 3)
         ctx.stroke()
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'bottom'
-        const rawLabel = resolveTickRawLabel(axis, value)
-        const label = axis.isCategorical ? truncateText(rawLabel, 8) : rawLabel
-        ctx.fillText(label, x, anchor - 4)
       }
-      ctx.textAlign = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = theme.inkPrimary
-      ctx.font = '700 11px system-ui, sans-serif'
-      ctx.fillText(truncateText(axis.label, 14), bounds.left - 10, anchor)
-      ctx.font = '10px sans-serif'
     }
+  }
+  const labelLayout = spec.labelLayout ?? buildPcpLabelLayout(spec)
+  for (const label of [...labelLayout.ticks, ...labelLayout.axes]) {
+    ctx.fillStyle = label.kind === 'axis' ? theme.inkPrimary : theme.inkMuted
+    ctx.font = label.kind === 'axis' ? `700 ${label.fontSize}px system-ui, sans-serif` : `${label.fontSize}px sans-serif`
+    ctx.textAlign = label.align
+    ctx.textBaseline = 'top'
+    const x = label.x + (label.align === 'right' ? label.width : label.width / 2)
+    label.lines.forEach((line, index) => ctx.fillText(line, x, label.y + index * label.lineHeight))
   }
   ctx.globalAlpha = 1
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { truncateText } from '../src/utils/textUtils'
 import { getSvgPoint } from '../src/utils/svgCoordinates'
+import { buildPcpLabelLayout } from '../src/engine/pcpLabelLayout'
 import { renderPcp, type PcpRenderSpec } from '../src/engine/pcpRenderer'
 import { vizTheme } from '../src/theme/viz'
 
@@ -78,7 +79,7 @@ describe('getSvgPoint coordinate conversion', () => {
   })
 })
 
-describe('pcpRenderer with rotated & truncated labels', () => {
+describe('pcpRenderer with horizontal multiline labels', () => {
   it('renders horizontal axes without error and formats long labels', () => {
     const fills: string[] = []
     const transforms: any[] = []
@@ -119,7 +120,7 @@ describe('pcpRenderer with rotated & truncated labels', () => {
       axes: [
         {
           key: 'var1',
-          label: 'とても長いアンケートの設問タイトル1（満足度）',
+          label: 'とても長いアンケートの設問タイトル1（満足度）'.repeat(4),
           isCategorical: false,
           min: 0,
           max: 100,
@@ -147,12 +148,12 @@ describe('pcpRenderer with rotated & truncated labels', () => {
 
     renderPcp(ctx, spec)
 
-    // The long label should be truncated
-    const truncatedFound = fills.some((f) => f.includes('…'))
-    expect(truncatedFound).toBe(true)
+    const layout = buildPcpLabelLayout(spec)
+    expect(layout.axes[0].lines.length).toBe(2)
+    expect(layout.axes[0].fullText).toBe(spec.axes[0].label)
+    for (const label of [...layout.axes, ...layout.ticks]) for (const line of label.lines) expect(fills).toContain(line)
+    expect(transforms.some(transform => transform.angle !== undefined)).toBe(false)
+    expect(ctx.rotate).not.toHaveBeenCalled()
 
-    // A rotation transform should have been applied for axis label (-Math.PI / 4)
-    const rotateCalled = transforms.some((t) => t.angle && Math.abs(t.angle - -Math.PI / 4) < 0.001)
-    expect(rotateCalled).toBe(true)
   })
 })

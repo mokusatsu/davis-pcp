@@ -13,7 +13,6 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { useBrushOp } from '../selection/SelectionMenu'
 import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useColumnarData } from '../pcp/useDatasetColumns'
-import { truncateText } from '../../utils/textUtils'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import MultiResponseBarChart from './MultiResponseBarChart'
 
@@ -172,7 +171,7 @@ export default function BarChartPage() {
       splitLine: { lineStyle: { color: '#f3f4f6' } } },
     // Category codes are distinct even when the displayed labels match.
     yAxis: { type: 'category', inverse: true, triggerEvent: true, data: barData.map(item => item.category),
-      axisLabel: { width: 230, overflow: 'truncate', formatter: (code: string) => truncateText(formatValueLabel(selectedColumn, code), 18) },
+      axisLabel: { width: 230, overflow: 'truncate', formatter: (code: string) => formatValueLabel(selectedColumn, code) },
       axisLine: { show: false }, axisTick: { show: false } },
     tooltip: { show: false },
     series: [

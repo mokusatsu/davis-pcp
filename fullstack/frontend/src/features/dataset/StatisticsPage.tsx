@@ -19,7 +19,6 @@ import { getBrushOp } from '../selection/SelectionMenu'
 import GraphPanel from '../common/GraphPanel'
 import { useGraphExpansion } from '../common/GraphExpansion'
 import { getSvgPoint } from '../../utils/svgCoordinates'
-import { truncateText } from '../../utils/textUtils'
 import { normalizeCode, useCodebook } from './useCodebookColumn'
 import { QuestionCard } from '../distribution/QuestionCard'
 import MultiResponseStatistics from './MultiResponseStatistics'
@@ -533,11 +532,11 @@ export default function StatisticsPage() {
                     onPointerMove={histOnPointerMove}
                     onPointerUp={histOnPointerUp}
                   >
-                    <ColumnQuestionTooltip nameOrId={column} svg><text x={histWidth / 2} y={16} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{truncateText(column, 24)}</text></ColumnQuestionTooltip>
+                    <ColumnQuestionTooltip nameOrId={column} svg><text data-label-width={histWidth - 32} data-label-lines={2} x={histWidth / 2} y={32} textAnchor="middle" fontSize={12} fontWeight={600} fill="#374151">{column}</text></ColumnQuestionTooltip>
                     {groupBins.map((bins, gi) =>
                       bins.map((count, bi) => {
                         if (!count) return null
-                        const h = (count / maxCount) * (histHeight - 44)
+                        const h = (count / maxCount) * (histHeight - 64)
                         const x = 22 + bi * barW
                         const color = domain && gi < domain.codes.length ? l1Color(theme, gi) : theme.contextLine
                         const isSelectedBin = isBinHighlighted(bi)

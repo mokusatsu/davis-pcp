@@ -204,3 +204,21 @@ describe('GraphExpansion session', () => {
     void vi
   })
 })
+
+
+describe('Graph IDs containing raw dataset names', () => {
+  it.each(['column_<tag>&"quoted"', "column_[bracket]\\backslash'", 'column_改行\n#.?=名前'])('opens and closes a literal graph ID: %s', async name => {
+    const graphId = `distribution/${name}`
+    render(<Provider store={store}><GraphExpansionProvider>
+      <GraphPanel graphId={graphId} title={name} intrinsicSize={{ width: 400, height: 250 }}>
+        <div data-testid="literal-graph-content">{name}</div>
+      </GraphPanel>
+    </GraphExpansionProvider></Provider>)
+    const origin = screen.getByRole('button', { name: /を拡大表示$/ })
+    fireEvent.click(origin)
+    await waitFor(() => expect(screen.getByTestId('graph-expansion-dock')).toContainElement(screen.getByTestId('literal-graph-content')))
+    fireEvent.click(screen.getByTestId('graph-expansion-exit'))
+    await waitFor(() => expect(screen.queryByTestId('graph-expansion-bar')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /を拡大表示$/ })).toHaveFocus())
+  })
+})

@@ -6,6 +6,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
 import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 import PcpPage from '../src/features/pcp/PcpPage'
+import { buildPcpLabelLayout } from '../src/engine/pcpLabelLayout'
 import { pcpSvg } from '../src/engine/pcpSvgExport'
 import { rowColor, type PcpRenderSpec } from '../src/engine/pcpRenderer'
 import { vizTheme } from '../src/theme/viz'
@@ -63,7 +64,7 @@ const paths = (svg: SVGSVGElement) => [...svg.querySelectorAll('path')]
 const theme = vizTheme(false)
 
 describe('native PCP vector export', () => {
-  it('exports horizontal paths and rotated axis labels with the same L1/L2 colors', () => {
+  it('exports horizontal paths and unrotated axis labels with the same L1/L2 colors', () => {
     const input = spec()
     const svg = parse(input)
     expect(svg.getAttribute('width')).toBe('360')
@@ -76,9 +77,9 @@ describe('native PCP vector export', () => {
     expect(context.map(path => path.getAttribute('stroke'))).toEqual([rowColor(input, 0), rowColor(input, 2)])
     expect(context.every(path => path.getAttribute('stroke-linecap') === 'round')).toBe(true)
     const axisLabel = [...svg.querySelectorAll('text')].find(text => text.textContent === 'A')!
-    expect(axisLabel.getAttribute('transform')).toBe('matrix(0.707107 -0.707107 0.707107 0.707107 40 188)')
+    expect(axisLabel.getAttribute('transform')).toBe('matrix(1 0 0 1 0 0)')
     expect(axisLabel.getAttribute('style')).toContain('700 11px system-ui, sans-serif')
-    expect(axisLabel.getAttribute('text-anchor')).toBe('end')
+    expect(axisLabel.getAttribute('text-anchor')).toBe('middle')
     expect(axisLabel.getAttribute('opacity')).toBe('1')
   })
 
@@ -142,13 +143,15 @@ describe('native PCP vector export', () => {
     expect(paths(svg).some(path => path.getAttribute('d') === 'M40 40 L320 40')).toBe(true)
     const texts = [...svg.querySelectorAll('text')]
     const firstTick = texts.find(text => text.textContent === '0.0')!
-    expect(firstTick.getAttribute('x')).toBe('320')
-    expect(firstTick.getAttribute('y')).toBe('36')
+    const layout = buildPcpLabelLayout(input)
+    const tickLayout = layout.ticks[0]
+    expect(Number(firstTick.getAttribute('x'))).toBe(tickLayout.x + tickLayout.width / 2)
+    expect(Number(firstTick.getAttribute('y'))).toBe(tickLayout.y)
     expect(firstTick.getAttribute('text-anchor')).toBe('middle')
-    expect(firstTick.getAttribute('dominant-baseline')).toBe('text-after-edge')
+    expect(firstTick.getAttribute('dominant-baseline')).toBe('text-before-edge')
     const label = texts.find(text => text.textContent === 'A')!
-    expect(label.getAttribute('x')).toBe('30')
-    expect(label.getAttribute('y')).toBe('40')
+    expect(Number(label.getAttribute('x'))).toBe(layout.axes[0].x + layout.axes[0].width)
+    expect(Number(label.getAttribute('y'))).toBe(layout.axes[0].y)
     expect(label.getAttribute('transform')).toBe('matrix(1 0 0 1 0 -35)')
   })
 
@@ -162,8 +165,8 @@ describe('native PCP vector export', () => {
     expect(svg.querySelectorAll('svg')).toHaveLength(0)
     const texts = [...svg.querySelectorAll('text')].map(text => text.textContent)
     expect(texts).toContain('A<&"\'')
-    expect(texts).toContain('<svg/>')
-    expect(texts).toContain('&"\'>')
+    expect(texts.join('')).toContain('<svg/>')
+    expect(texts.join('')).toContain('&"\'>')
   })
 
   it('retains the current deterministic subset, selected rows and cluster widths', () => {
@@ -257,6 +260,13 @@ describe('PCP SVG control lifecycle', () => {
     expect(downloaded).toContain('M40 140 L180 60 L320 100')
     expect(downloaded).not.toContain('<image')
     expect(pageStore.getState().selection.selectedRowIds).toEqual(['r1'])
+    const layout = buildPcpLabelLayout(geometry)
+    for (const label of layout.axes) {
+      const hit = view.getByTestId(`pcp-axis-label-${geometry.axes[label.axisIndex].key}`)
+      for (const key of ['x', 'y', 'width', 'height'] as const) expect(Number(hit.getAttribute(key))).toBe(label[key])
+      expect(hit.getAttribute('transform')).toBeNull()
+      expect(hit).toHaveAttribute('aria-label', geometry.axes[label.axisIndex].label)
+    }
 
     fireEvent.click(view.getByTestId('graph-expand-pcp/main'))
     const dialog = await view.findByRole('dialog')

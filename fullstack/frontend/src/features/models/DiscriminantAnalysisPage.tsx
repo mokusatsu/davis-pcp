@@ -1,4 +1,3 @@
-import { truncateText } from '../../utils/textUtils'
 import ModelScatter from './ModelScatter'
 import { CorrelationCircle } from './FamdFigure'
 import EChart from '../charts/EChart'
@@ -495,7 +494,7 @@ export default function DiscriminantAnalysisPage() {
                     <Typography.Text strong style={{ fontSize: 12 }}>LD1 負荷量 (1D Mode)</Typography.Text>
                     <EChart height={Math.max(220, result.loadings.length * 32 + 60)} ariaLabel="LD1 負荷量"
                       option={{ grid: { left: 110, right: 40, top: 20, bottom: 35 }, tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; return p ? `${questionText(p.name)}\nLD1: ${p.value}` : '' } },
-                        xAxis: { type: 'value', min: -1, max: 1 }, yAxis: { type: 'category', inverse: true, data: result.loadings.map(l => l.variable), axisLabel: { formatter: (name: string) => truncateText(name, 16) } },
+                        xAxis: { type: 'value', min: -1, max: 1 }, yAxis: { type: 'category', inverse: true, data: result.loadings.map(l => l.variable), axisLabel: { width: 140 } },
                         series: [{ type: 'bar', data: result.loadings.map(l => ({ value: l.ld1, itemStyle: { color: l.ld1 >= 0 ? '#1890ff' : '#fa8c16' } })),
                           label: { show: true, formatter: (p: any) => Number(p.value).toFixed(3) } }] }} />
                   </div>

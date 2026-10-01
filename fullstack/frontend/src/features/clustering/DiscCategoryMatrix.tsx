@@ -80,7 +80,7 @@ export default function DiscCategoryMatrix({
             option={{
               grid: { left: 110, right: 35, top: 25, bottom: 95 },
               tooltip: { trigger: 'item', renderMode: 'richText', formatter: (p: any) => p.data?.description ?? '' },
-              xAxis: { type: 'category', data: matrixData.categories, axisLabel: { rotate: 30, interval: 0, width: 100, overflow: 'truncate' } },
+              xAxis: { type: 'category', data: matrixData.categories, axisLabel: { interval: 0, width: 100, overflow: 'truncate' } },
               yAxis: { type: 'category', inverse: true, data: matrixData.categories, axisLabel: { width: 90, overflow: 'truncate' } },
               visualMap: { min: 0, max: 1, calculable: false, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#ffffff', '#1d4ed8'] } },
               series: [{ type: 'heatmap', data: matrixData.matrix.flatMap((row, i) => row.map((value, j) => ({

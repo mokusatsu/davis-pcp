@@ -61,7 +61,7 @@ export function famdRelationOption(
   return { grid: { left: 150, right: 30, top: 40, bottom: 40 }, legend: { top: 4, left: 'center' },
     tooltip: { trigger: 'axis', renderMode: 'richText' },
     xAxis: { type: 'value', min: 0, max: 1 }, yAxis: { type: 'category', inverse: true,
-      axisLabel: { formatter: (name: string) => truncateText(name, 12) },
+      axisLabel: { width: 130 },
       data: relations.map(v => `${names.get(v.variableId) ?? v.variableId}（${v.kind === 'numeric' ? 'r²' : 'η²'}）`) },
     series: axes.map((axis, i) => ({ type: 'bar' as const, name: `第${axis}軸`,
       itemStyle: { color: i === 0 ? '#1890ff' : '#fa8c16' }, data: relations.map(v => v.relationStrength[axis - 1] ?? 0) })),

@@ -128,3 +128,26 @@ it('preserves native tree roam while keeping controlled collapse and resetting n
   view.rerender(<EChart option={{ series: [{ ...option.series[0], data: [{ id: 'new-root', name: 'new tree' }] }] }} testId="tree" resetKey="a" />)
   expect((chart.getOption().series as any)[0].zoom).toBe(1)
 })
+
+it('confines long full-label details and permits scrolling without starting a chart brush', () => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const pointer = vi.fn(), mouse = vi.fn(), fullLabel = 'UnbrokenIdentifier'.repeat(100)
+  const view = render(<EChartSurface width={300} height={200} data-testid="long-details" onPointerDown={pointer} onMouseDown={mouse}>
+    <text x={20} y={40} data-label-width={120}><title>{fullLabel}</title>{fullLabel}</text>
+  </EChartSurface>)
+  const host = view.getByTestId('long-details')
+  fireEvent.focus(host)
+  const tip = view.getByRole('tooltip')
+  expect(tip).toHaveTextContent(fullLabel)
+  expect(tip).toHaveStyle({ overflowWrap: 'anywhere', overflow: 'auto', maxWidth: 'calc(100% - 24px)', maxHeight: 'min(50vh, 100%)', pointerEvents: 'auto' })
+  expect(tip).toHaveAttribute('tabindex', '0')
+  fireEvent.pointerDown(tip, { clientX: 20, clientY: 20, button: 0 })
+  fireEvent.mouseDown(tip, { clientX: 20, clientY: 20, button: 0 })
+  expect(pointer).not.toHaveBeenCalled()
+  expect(mouse).not.toHaveBeenCalled()
+  fireEvent.blur(host, { relatedTarget: tip })
+  fireEvent.focus(tip)
+  expect(view.getByRole('tooltip')).toBe(tip)
+  fireEvent.keyDown(tip, { key: 'Escape' })
+  expect(view.queryByRole('tooltip')).toBeNull()
+})
