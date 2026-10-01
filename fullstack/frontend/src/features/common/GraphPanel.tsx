@@ -78,7 +78,7 @@ export default function GraphPanel({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const slotRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const [viewport, setViewport] = useState({ width: 0, height: 0 })
+  const [viewport, setViewport] = useState({ width: 0, height: 0, outerWidth: 0, outerHeight: 0 })
   const [dpr, setDpr] = useState(() => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1))
   const active = session?.graphId === graphId
   const zoom: GraphZoom = active ? session!.zoom : null
@@ -103,26 +103,41 @@ export default function GraphPanel({
     let raf = 0
     const RO = ResizeObserver
     const ro = new RO((entries) => {
-      const rect = entries[0]?.contentRect
+      const entry = entries[0]
+      const rect = entry?.contentRect
       if (!rect) return
+      // Fit must use the space allocated by the parent, not the content box
+      // reduced by our own scrollbars. Otherwise a caption/margin overflowing
+      // an intrinsic-size estimate can make Fit repeatedly shrink enough to
+      // remove a scrollbar and then grow enough to bring it straight back.
+      // The viewport has no border/padding, so its border box is that stable
+      // allocation. Keep content-box dimensions separately for responsive PCP
+      // and the actual visible scroll area.
+      const box = entry.borderBoxSize?.[0]
+      const outerWidth = box?.inlineSize ?? rect.width
+      const outerHeight = box?.blockSize ?? rect.height
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         setViewport((prev) => {
           if (rect.width === 0 || rect.height === 0) return prev
-          if (Math.floor(prev.width) === Math.floor(rect.width) && Math.floor(prev.height) === Math.floor(rect.height)) return prev
-          return { width: rect.width, height: rect.height }
+          if (Math.floor(prev.width) === Math.floor(rect.width) && Math.floor(prev.height) === Math.floor(rect.height)
+            && Math.floor(prev.outerWidth) === Math.floor(outerWidth) && Math.floor(prev.outerHeight) === Math.floor(outerHeight)) return prev
+          return { width: rect.width, height: rect.height, outerWidth, outerHeight }
         })
       })
     })
-    ro.observe(el)
+    // Watch the box that drives layout: intrinsic Fit must still receive a
+    // genuine outer resize even if a scrollbar change leaves the content box
+    // unchanged. Normal cards and responsive PCP follow usable content space.
+    ro.observe(el, { box: active && sizing === 'intrinsic' ? 'border-box' : 'content-box' })
     return () => { cancelAnimationFrame(raf); ro.disconnect() }
-  }, [])
+  }, [active, sizing])
 
   // F005-02: 座標系世代 = 寸法・DPR・zoom の通し番号。リサイズ・DPR変更・
   // 倍率変更で変わり、ドラッグ開始時と確定時を比較して取消しを判定する。
   const coordGen = useMemo(
-    () => `${Math.round(viewport.width)}x${Math.round(viewport.height)}@${dpr}x${zoom === null ? 'fit' : String(zoom)}`,
-    [viewport.width, viewport.height, dpr, zoom],
+    () => `${Math.floor(viewport.width)}x${Math.floor(viewport.height)}/${Math.floor(viewport.outerWidth)}x${Math.floor(viewport.outerHeight)}@${dpr}x${zoom === null ? 'fit' : String(zoom)}`,
+    [viewport.width, viewport.height, viewport.outerWidth, viewport.outerHeight, dpr, zoom],
   )
 
   useEffect(() => {
@@ -160,14 +175,13 @@ export default function GraphPanel({
 
   const fitScale = useMemo(() => {
     if (sizing === 'responsive') return 1
-    if (!viewport.width || !viewport.height) return 1
-    // Fit must stay inside the available whole pixels. Rounding a 598.59px
-    // viewport up to a 599px extent adds a scrollbar; its reduced content box
-    // then changes fit again, repeatedly cancelling in-progress selections.
+    if (!viewport.outerWidth || !viewport.outerHeight) return 1
     // Leave the fractional remainder unused, including for the scaled surface
-    // itself, rather than merely rounding down its surrounding extent.
-    return Math.min(Math.max(1, Math.floor(viewport.width)) / logical.width,
-      Math.max(1, Math.floor(viewport.height)) / logical.height)
+    // itself. A 598.59px allocation must never produce a 599px fitted extent.
+    // Use the stable outer box above; actual overflowing children and manual
+    // zoom can still create scrollbars without those scrollbars changing Fit.
+    return Math.min(Math.max(1, Math.floor(viewport.outerWidth)) / logical.width,
+      Math.max(1, Math.floor(viewport.outerHeight)) / logical.height)
   }, [sizing, viewport, logical])
 
   const z = zoom ?? 1
@@ -195,12 +209,17 @@ export default function GraphPanel({
         minHeight: logical.height,
       }
     }
+    const scaledWidth = Math.round(logical.width * scale)
+    const scaledHeight = Math.round(logical.height * scale)
     return {
-      // extent も整数pxに寄せる（responsive の小数 viewport が 1px はみ出しの源）。
-      width: Math.max(Math.floor(viewport.width), Math.round(logical.width * scale)),
-      height: Math.max(Math.floor(viewport.height), Math.round(logical.height * scale)),
+      // An expanded intrinsic extent owns only the scaled chart dimensions.
+      // A viewport-sized minimum would still feed scrollbar size back into
+      // layout when a child's margin collapses outside this extent, even with
+      // a stable Fit scale. Overflow stays visible and genuinely scrollable.
+      width: sizing === 'intrinsic' ? scaledWidth : Math.max(Math.floor(viewport.width), scaledWidth),
+      height: sizing === 'intrinsic' ? scaledHeight : Math.max(Math.floor(viewport.height), scaledHeight),
     }
-  }, [viewport, logical, scale, normalIntrinsic, normalSurfaceWidth])
+  }, [sizing, viewport, logical, scale, normalIntrinsic, normalSurfaceWidth])
 
   const viewportValue = useMemo<GraphViewport>(() => ({
     logicalWidth: logical.width,

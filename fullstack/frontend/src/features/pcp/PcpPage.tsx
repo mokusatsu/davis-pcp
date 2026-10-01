@@ -520,68 +520,14 @@ export default function PcpPage() {
 
   useEffect(() => { void renderPlot() }, [renderPlot])
 
-  const [measureNode, setMeasureNode] = useState<HTMLDivElement | null>(null)
-  // 共通 viewport を frame とみなす。plot-frame 自体はスクロールしないため、
-  // frameSize・スクロールオフセットは共通 viewport から取得する。
-  // 従来の frame 計測は GraphPanel 外の単体利用時のみ残す。
-  useEffect(() => {
-    const frame = measureNode
-    if (!frame) return
-    const viewportEl = frame.closest('[data-testid^="graph-viewport-"]') as HTMLElement | null
-    if (viewportEl) {
-      frameNodeRef.current = viewportEl as unknown as HTMLDivElement
-      const measureViewport = () => {
-        const width = Math.max(1, viewportEl.clientWidth)
-        const height = Math.max(1, viewportEl.clientHeight)
-        setFrameSize(prev => (prev.width !== width || prev.height !== height ? { width, height } : prev))
-        return width > 1
-      }
-      if (!measureViewport()) {
-        const raf = requestAnimationFrame(function tick() {
-          if (!measureViewport()) requestAnimationFrame(tick)
-        })
-        return () => cancelAnimationFrame(raf)
-      }
-      const observer = new ResizeObserver(measureViewport)
-      observer.observe(viewportEl)
-      return () => observer.disconnect()
-    }
-    // GraphPanel 外のフォールバック（従来の frame 計測）
-    const measure = () => {
-      const width = Math.max(1, frame.clientWidth)
-      const height = Math.max(1, frame.clientHeight)
-      setFrameSize(prev => (prev.width !== width || prev.height !== height ? { width, height } : prev))
-      return width > 1
-    }
-    const observer = new ResizeObserver(measure)
-    observer.observe(frame)
-    let raf = 0
-    let tries = 0
-    const tick = () => {
-      tries += 1
-      if (measure() || tries >= 120) return
-      raf = requestAnimationFrame(tick)
-    }
-    if (!measure()) raf = requestAnimationFrame(tick)
-    const interval = setInterval(measure, 500)
-    const recheck = () => { measure() }
-    document.addEventListener('visibilitychange', recheck)
-    window.addEventListener('resize', recheck)
-    window.addEventListener('focus', recheck)
-    return () => {
-      observer.disconnect()
-      cancelAnimationFrame(raf)
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', recheck)
-      window.removeEventListener('resize', recheck)
-      window.removeEventListener('focus', recheck)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureNode, selection.datasetId])
-
+  const [frameElement, setFrameElement] = useState<HTMLDivElement | null>(null)
+  // GraphPanel/PcpPlotViewport is the sole owner of logical dimensions. A second
+  // observer reading integer clientWidth/clientHeight rounded fractional boxes
+  // up again, making the canvas exceed the floored surface and reintroducing
+  // scrollbar → resize → repaint feedback. Keep only the scroll-container ref.
   /** 共通 viewport のスクロールで再描画する。plot-frame 自体はスクロールしない。 */
   useEffect(() => {
-    const frame = measureNode
+    const frame = frameElement
     if (!frame) return
     const scroller = (frame.closest('[data-testid^="graph-viewport-"]') as HTMLDivElement | null) ?? frame
     frameNodeRef.current = scroller
@@ -595,10 +541,11 @@ export default function PcpPage() {
     }
     scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {
+      frameNodeRef.current = null
       scroller.removeEventListener('scroll', onScroll)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [measureNode])
+  }, [frameElement])
 
   const eventPoint = (event: React.PointerEvent | React.MouseEvent): { x: number; y: number } => {
     const overlay = overlayRef.current
@@ -1053,7 +1000,7 @@ export default function PcpPage() {
         >
         <PcpPlotViewport onSize={onViewportSize} />
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
-        <div ref={setMeasureNode} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', outline: '1px solid #e5e7eb', outlineOffset: -1, borderRadius: 6, background: '#ffffff', overflow: 'visible', userSelect: 'none' }}>
+        <div ref={setFrameElement} data-testid="plot-frame" style={{ flex: 1, minHeight: 320, height: '100%', outline: '1px solid #e5e7eb', outlineOffset: -1, borderRadius: 6, background: '#ffffff', overflow: 'visible', userSelect: 'none' }}>
           <div data-testid="plot-canvas-area" style={{ position: 'relative', width: isPlotLoading ? '100%' : (isVertical ? '100%' : Math.max(virtualWidth, 1)), height: isPlotLoading ? '100%' : (isVertical ? Math.max(virtualHeight, 1) : '100%'), minWidth: '100%', minHeight: '100%', overflow: 'visible' }}>
           {orderingLoading && (
             <div

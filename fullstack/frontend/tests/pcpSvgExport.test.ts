@@ -193,7 +193,16 @@ describe('native PCP vector export', () => {
 })
 
 function pageSetup() {
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      if (target.getAttribute('data-testid') === 'graph-viewport-pcp/main')
+        this.callback([{ target, contentRect: { width: 360, height: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+    }
+    disconnect() {} unobserve() {}
+  })
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(360)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(240)
   const context = Object.fromEntries(['setTransform', 'clearRect', 'drawImage', 'save', 'restore',
