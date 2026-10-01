@@ -309,6 +309,8 @@ export default function FamdPage(): JSX.Element {
     if (!result || !resultContext || loading || shownStale) return
     setSelecting(true)
     setSelectInfo(null)
+    // Preserve the interaction's operation while row IDs are resolved.
+    const operation = getBrushOp()
     const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRev = selectionRef.current.dataRevision
@@ -324,7 +326,7 @@ export default function FamdPage(): JSX.Element {
       const outsideActive = res.rowIds.length - eligibleRows.length
       dispatch(selectionApplied({
         rowIds: eligibleRows,
-        operation: getBrushOp(),
+        operation,
         label: `${res.selectionLabel} (${eligibleRows.length}行)`,
       }))
       setSelectInfo(`一致 ${res.matchedCount} / 適用 ${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)

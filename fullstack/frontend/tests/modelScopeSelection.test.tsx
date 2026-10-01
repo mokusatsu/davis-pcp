@@ -24,7 +24,8 @@ vi.mock('../src/features/common/GraphPanel', () => ({ default: ({ children, cont
   useGraphViewport: () => ({ logicalWidth: 600, logicalHeight: 400, scale: 1, zoom: null, dpr: 1, revision: 0 }) }))
 vi.mock('../src/features/common/L1Legend', () => ({ default: () => null }))
 vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getColor: () => '#1677ff' }) }))
-vi.mock('../src/features/selection/SelectionMenu', () => ({ default: () => null, getBrushOp: () => 'add' }))
+const brushSelection = vi.hoisted(() => ({ operation: 'add' as 'add' | 'replace' | 'subtract' | 'toggle' }))
+vi.mock('../src/features/selection/SelectionMenu', () => ({ default: () => null, getBrushOp: () => brushSelection.operation }))
 vi.mock('../src/features/models/caFigure', () => ({ default: ({ onToggle }: any) => <button data-testid="ca-point" onClick={() => onToggle('cat-a')}>CA point</button> }))
 vi.mock('../src/features/models/McaFigure', async original => ({ ...await original<any>(), default: ({ onToggle, testId, points }: any) =>
   <button data-testid={testId} onClick={() => onToggle(points[0]?.id ?? 'r2')}>MCA point</button> }))
@@ -61,6 +62,7 @@ function response(path: string, body: any, id = 'fit-1'): any {
 }
 const post = vi.fn(), get = vi.fn()
 beforeEach(() => {
+  brushSelection.operation = 'add'
   post.mockReset(); get.mockReset()
   vi.spyOn(api, 'post').mockImplementation(post); vi.spyOn(api, 'get').mockImplementation(get)
   post.mockImplementation(async (path: string, body: any) => {
@@ -139,12 +141,21 @@ for (const test of cases) {
     const { view, local, run } = setup(test)
     await run()
     if (test.name !== 'CA') await waitFor(() => expect(get.mock.calls.some(([path]) => path.includes('/rows?'))).toBe(true))
+    const dispatch = vi.spyOn(local, 'dispatch')
     act(() => local.dispatch({ type: 'test/selection', payload: ['r3', 'r6'] }))
     expect(view.getByText(/対象または設定が変更されています/)).toBeInTheDocument()
     for (let i = 0; i < 2; i++) {
       if (test.name !== 'CA' || i === 0) fireEvent.click(view.getByTestId(test.point))
       if (test.name === 'CA') fireEvent.click(view.getByRole('button', { name: /原行IDへ解決して選択/ }))
       await waitFor(() => expect(selectCalls()).toHaveLength(i + 1))
+      // A recorded request is only the start of selection. Wait for its result
+      // to apply before trying again; CA intentionally ignores clicks while its
+      // resolve button is loading (including Ant Design's internal effect).
+      await waitFor(() => expect(dispatch.mock.calls.filter(([action]: any) =>
+        action.type === 'selection/selectionApplied')).toHaveLength(i + 1))
+      if (test.name === 'CA') await waitFor(() => expect(view.getByRole('button', {
+        name: /原行IDへ解決して選択/,
+      })).not.toHaveClass('ant-btn-loading'))
     }
     for (const [path, body] of selectCalls()) {
       expect(path).toBe('/analysis-results/fit-1/select')
@@ -166,6 +177,67 @@ function deferred<T = any>() {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail })
   return { promise, resolve, reject }
 }
+it('CA blocks duplicate pending resolve clicks and allows repeated completed selections against the saved population', async () => {
+  const pending = [deferred(), deferred()], fallback = post.getMockImplementation()!
+  let resolution = 0
+  post.mockImplementation((path, body) => path.endsWith('/select') ? pending[resolution++].promise : fallback(path, body))
+  const { view, local, run } = setup(cases[0])
+  await run()
+  const dispatch = vi.spyOn(local, 'dispatch')
+  act(() => local.dispatch({ type: 'test/selection', payload: ['r3', 'r6'] }))
+  fireEvent.click(view.getByTestId('ca-point'))
+  const resolveButton = () => view.getByRole('button', { name: /原行IDへ解決して選択/ })
+  for (let i = 0; i < pending.length; i++) {
+    fireEvent.click(resolveButton())
+    await waitFor(() => expect(resolveButton()).toHaveClass('ant-btn-loading'))
+    expect(selectCalls()).toHaveLength(i + 1)
+    fireEvent.click(resolveButton())
+    expect(selectCalls()).toHaveLength(i + 1)
+    expect(dispatch.mock.calls.filter(([action]: any) => action.type === 'selection/selectionApplied')).toHaveLength(i)
+    const selectedRow = i === 0 ? 'r2' : 'r4'
+    await act(async () => pending[i].resolve({ rowIds: [selectedRow], matchedCount: 1,
+      contextIntersectionCount: 1, selectionLabel: 'original result' }))
+    await waitFor(() => expect(resolveButton()).not.toHaveClass('ant-btn-loading'))
+    expect(dispatch.mock.calls.filter(([action]: any) => action.type === 'selection/selectionApplied')).toHaveLength(i + 1)
+    expect(local.getState().selection.selectedRowIds).toContain(selectedRow)
+  }
+  expect(local.getState().selection.selectedRowIds).toEqual(['r3', 'r6', 'r2', 'r4'])
+  for (const [path, body] of selectCalls()) {
+    expect(path).toBe('/analysis-results/fit-1/select')
+    expect(body.context).toMatchObject({ scope: 'selected', selectedRowIds: ['r2', 'r4'] })
+    expect(body.selector).toMatchObject({ kind: 'categories', categoryIds: ['cat-a'] })
+  }
+  expect(post.mock.calls.filter(([path]) => path === cases[0].path)).toHaveLength(1)
+})
+
+const operations = ['add', 'replace', 'subtract', 'toggle'] as const
+for (const test of cases) {
+  const interactions = test.name === 'LR'
+    ? [{ point: test.point, label: 'point', kind: 'row_ids' }, { point: 'lr-brush', label: 'brush', kind: 'diagnostic_rectangle' }]
+    : [{ point: test.point, label: 'point', kind: test.name === 'CA' ? 'categories' : 'row_ids' }]
+  for (const interaction of interactions) it.each(operations)(`${test.name} ${interaction.label} captures the %s operation before a pending selection reply`, async operation => {
+    const pending = deferred(), fallback = post.getMockImplementation()!
+    post.mockImplementation((path, body) => path.endsWith('/select') ? pending.promise : fallback(path, body))
+    const { view, local, run } = setup(test)
+    const dispatch = vi.spyOn(local, 'dispatch')
+    await run()
+    if (test.name !== 'CA') await waitFor(() => expect(get.mock.calls.some(([path]) => path.includes('/rows?'))).toBe(true))
+    brushSelection.operation = operation
+    fireEvent.click(view.getByTestId(interaction.point))
+    if (test.name === 'CA') fireEvent.click(view.getByRole('button', { name: /原行IDへ解決して選択/ }))
+    await waitFor(() => expect(selectCalls()).toHaveLength(1))
+    brushSelection.operation = operations[(operations.indexOf(operation) + 1) % operations.length]
+    await act(async () => pending.resolve({ rowIds: ['r2'], matchedCount: 1,
+      contextIntersectionCount: 1, selectionLabel: 'captured operation' }))
+    await waitFor(() => expect(dispatch.mock.calls.filter(([action]: any) => action.type === 'selection/selectionApplied')).toHaveLength(1))
+    const action = dispatch.mock.calls.find(([action]: any) => action.type === 'selection/selectionApplied')![0] as any
+    expect(action.payload).toMatchObject({ operation, rowIds: ['r2'] })
+    expect(selectCalls()[0][1]).toMatchObject({ context: { scope: 'selected', selectedRowIds: ['r2', 'r4'] },
+      selector: { kind: interaction.kind } })
+    expect(post.mock.calls.filter(([path]) => path === test.path)).toHaveLength(1)
+  })
+}
+
 for (const test of cases) {
   it(`${test.name} accepts a started fit after live scope changes and keeps its original snapshot`, async () => {
     const pending = deferred(), fallback = post.getMockImplementation()!

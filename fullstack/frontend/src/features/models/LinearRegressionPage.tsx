@@ -310,6 +310,8 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
       return
     }
+    // Preserve the interaction's operation while row IDs are resolved.
+    const operation = getBrushOp()
     const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
@@ -326,7 +328,7 @@ export default function LinearRegressionPage(): JSX.Element {
       const active = new Set(selectionRef.current.activeRowIds)
       const eligibleRows = res.rowIds.filter(id => active.has(id))
       const outsideActive = res.rowIds.length - eligibleRows.length
-      dispatch(selectionApplied({ rowIds: eligibleRows, operation: getBrushOp(), label: res.selectionLabel || '重回帰 図の点選択' }))
+      dispatch(selectionApplied({ rowIds: eligibleRows, operation, label: res.selectionLabel || '重回帰 図の点選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
       if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId) return
@@ -347,6 +349,8 @@ export default function LinearRegressionPage(): JSX.Element {
       setSelectInfo('結果の版が現在のデータと一致しません。再実行してください。')
       return
     }
+    // Preserve the interaction's operation while row IDs are resolved.
+    const operation = getBrushOp()
     const seq = ++selectionSequence.current
     const startedDataset = datasetId
     const startedDataRevision = selection.dataRevision
@@ -367,7 +371,7 @@ export default function LinearRegressionPage(): JSX.Element {
       const active = new Set(selectionRef.current.activeRowIds)
       const eligibleRows = res.rowIds.filter(id => active.has(id))
       const outsideActive = res.rowIds.length - eligibleRows.length
-      dispatch(selectionApplied({ rowIds: eligibleRows, operation: getBrushOp(), label: res.selectionLabel || '重回帰 診断図の選択' }))
+      dispatch(selectionApplied({ rowIds: eligibleRows, operation, label: res.selectionLabel || '重回帰 診断図の選択' }))
       setSelectInfo(`一致${res.matchedCount} / 適用${eligibleRows.length}${outsideActive ? ` / Active外 ${outsideActive}行` : ''}`)
     } catch (err) {
       if (selectionSequence.current !== seq || resultRef.current?.resultId !== result.resultId) return
