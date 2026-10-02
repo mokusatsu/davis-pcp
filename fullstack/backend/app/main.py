@@ -34,6 +34,7 @@ from .api import correspondence as correspondence_api
 from .api import mca as mca_api
 from .api import famd as famd_api
 from .api import linear_regression as linear_regression_api
+from .api import regularized_regression as regularized_regression_api
 from .api import factor_analysis as factor_analysis_api
 from .api import conjoint as conjoint_api
 from .api import analysis_results as analysis_results_api
@@ -96,6 +97,7 @@ app.include_router(correspondence_api.router, prefix="/api/v1")
 app.include_router(mca_api.router, prefix="/api/v1")
 app.include_router(famd_api.router, prefix="/api/v1")
 app.include_router(linear_regression_api.router, prefix="/api/v1")
+app.include_router(regularized_regression_api.router, prefix="/api/v1")
 app.include_router(factor_analysis_api.router, prefix="/api/v1")
 app.include_router(conjoint_api.router, prefix="/api/v1")
 app.include_router(analysis_results_api.router, prefix="/api/v1")

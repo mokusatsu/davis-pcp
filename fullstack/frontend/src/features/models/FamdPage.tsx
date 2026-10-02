@@ -44,14 +44,14 @@ export default function FamdPage(): JSX.Element {
     () => columns
       .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, name: c.name, questionName: c.name, questionText: c.label })),
     [columns, activeSet, hasGlobalSignal],
   )
   const categoricalOptions = useMemo(
     () => columns
       .filter((c) => ['nominal', 'ordinal'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, name: c.name, questionName: c.name, questionText: c.label })),
     [columns, activeSet, hasGlobalSignal],
   )
   const nameById = useMemo(() => {

@@ -134,19 +134,19 @@ export default function ConjointPage(): JSX.Element {
   const idOptions = useMemo(
     () => columns
       .filter((c) => !c.multiResponseGroup)
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
   const categoricalOptions = useMemo(
     () => columns
       .filter((c) => ['nominal', 'ordinal'].includes(c.scaleType) && !c.multiResponseGroup)
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
   const linearOptions = useMemo(
     () => columns
       .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup)
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
 

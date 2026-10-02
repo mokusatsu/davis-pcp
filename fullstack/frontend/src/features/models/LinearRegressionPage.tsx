@@ -21,6 +21,7 @@ import {
   selectLinearRegression, type LRContext, type LRPredictRow,
 } from './lrApi'
 import LinearRegressionFigure from './LinearRegressionFigure'
+import RegularizedRegressionPanel from './RegularizedRegressionPanel'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -29,6 +30,19 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 export default function LinearRegressionPage(): JSX.Element {
+  const [method, setMethod] = useState<'ols' | 'regularized'>('ols')
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Space wrap><span>回帰の方法:</span>
+      <Radio.Group aria-label="回帰の方法" value={method} onChange={event => setMethod(event.target.value)}>
+        <Radio.Button value="ols">通常の重回帰（OLS）</Radio.Button>
+        <Radio.Button value="regularized">正則化回帰</Radio.Button>
+      </Radio.Group>
+    </Space>
+    {method === 'ols' ? <OrdinaryLinearRegressionPanel /> : <RegularizedRegressionPanel />}
+  </div>
+}
+
+function OrdinaryLinearRegressionPanel(): JSX.Element {
   const { openWhenAvailable } = useGraphExpansion()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
@@ -45,21 +59,21 @@ export default function LinearRegressionPage(): JSX.Element {
     () => columns
       .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label, name: c.name })),
     [columns, activeSet, hasGlobalSignal],
   )
   const numericOptions = useMemo(
     () => columns
       .filter((c) => ['interval', 'ratio', 'ordinal'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name, scaleType: c.scaleType })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label, name: c.name, scaleType: c.scaleType })),
     [columns, activeSet, hasGlobalSignal],
   )
   const categoricalOptions = useMemo(
     () => columns
       .filter((c) => ['nominal', 'ordinal'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label, name: c.name })),
     [columns, activeSet, hasGlobalSignal],
   )
   const colById = useMemo(() => {

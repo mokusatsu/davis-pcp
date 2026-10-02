@@ -42,20 +42,20 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     () => columns
       .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.name, label: c.name, name: c.name, questionName: c.name, questionText: c.label })),
     [columns, activeSet, hasGlobalSignal],
   )
   const rowLabelOptions = useMemo(
     () => columns
       .filter((c) => ['nominal', 'ordinal', 'binary', 'text', 'id'].includes(c.scaleType) && !c.multiResponseGroup)
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
   const numericOptions = useMemo(
     () => columns
       .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns, activeSet, hasGlobalSignal],
   )
 

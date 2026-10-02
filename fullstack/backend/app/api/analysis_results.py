@@ -93,6 +93,8 @@ def get_result(result_id):
         summary = {"rank": int(arrays["eigenvalues"].shape[0]), "eigenvalues": [float(v) for v in arrays["eigenvalues"].tolist()]}
         details = {"note": "full details available from POST /models/ca response or export"}
     payload = {"status": "success", "resultId": result_id, "method": manifest.get("method"), "meta": meta, "config": manifest.get("config"), "capabilities": manifest.get("capabilities"), "summary": summary, "details": details, "unavailableReasons": manifest.get("unavailableReasons", {})}
+    if manifest.get("method") == "regularized_regression":
+        payload["portableModel"] = manifest["portableModel"]
     check_json_finite(payload)
     return payload
 
@@ -284,6 +286,9 @@ def get_result_rows(result_id: str, offset: int = 0, limit: int = 5000, axes: st
 
     manifest = result_store.load_manifest(result_id)
     meta, stale, cur = _stale_state(manifest)
+    if manifest.get("method") == "regularized_regression":
+        from .regularized_regression import rr_rows
+        return rr_rows(result_id, manifest, meta, offset, limit, axes)
     if manifest.get("method") == "linear_regression":
         return _lr_rows(result_id, manifest, meta, offset, limit, axes)
     if manifest.get("method") == "conjoint":
@@ -361,6 +366,9 @@ def predict_result(result_id: str, payload: dict = Body(...)):
     except ValidationError:
         _err("ANALYSIS_REQUEST_INVALID", "bad predict", 422)
     manifest = result_store.load_manifest(result_id)
+    if manifest.get("method") == "regularized_regression":
+        from .regularized_regression import rr_predict
+        return rr_predict(result_id, manifest, req)
     if manifest.get("method") == "mca":
         return _mca_predict(result_id, manifest, req)
     if manifest.get("method") == "famd":
@@ -630,6 +638,11 @@ def get_prediction_rows(result_id: str, prediction_id: str, offset: int = 0, lim
                         axes: str | None = None):
     manifest = result_store.load_manifest(result_id)
     meta, stale, cur = _stale_state(manifest)
+    if manifest.get("method") == "regularized_regression":
+        from .regularized_regression import rr_prediction_rows
+        if axes is not None:
+            _err("ANALYSIS_REQUEST_INVALID", "回帰では axes を指定できません。", 422)
+        return rr_prediction_rows(result_id, manifest, meta, prediction_id, offset, limit)
     if manifest.get("method") == "linear_regression":
         from ..api.linear_regression import lr_prediction_rows as _lr_rows
 
@@ -867,6 +880,9 @@ def export_result(result_id: str, payload: dict = Body(...)):
     allowed = set((manifest.get("capabilities") or {}).get("exportTables", [])) | {"members"}
     if req.table not in allowed:
         _err("ANALYSIS_EXPORT_UNSUPPORTED", "bad table", 422)
+    if manifest.get("method") == "regularized_regression":
+        from .regularized_regression import rr_export_table
+        return rr_export_table(manifest, meta, result_id, req)
     if manifest.get("method") == "efa" and req.table in (
             "variables", "diagnostics", "parallel_analysis", "factor_comparisons",
             "rows"):

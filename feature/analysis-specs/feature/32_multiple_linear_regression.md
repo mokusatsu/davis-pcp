@@ -6,6 +6,8 @@
 
 連続目的変数を複数の数値・カテゴリ説明変数で説明する線形モデルを追加する。既存のLOESS、ロジスティック回帰、KDAとは別機能とする。OLSを基本とし、frequencyウェイトによる複製同値推定とsurveyウェイトによる加重推定・設計分散に対応する。逆分散を入力する精度WLS、時系列誤差、混合効果、GLM、ステップワイズ、正則化は本版に含めない。
 
+正則化の追加は別契約の [Feature 035](35_regularized_regression.md) を参照する。本書のOLS推論・保存仕様は変更しない。
+
 ## 2. 入力・モデル設定
 
 目的変数はinterval/ratioの1列。説明変数は数値/カテゴリの構造化リストで選ぶ。ordinalはカテゴリ扱いを初期値とし、数値扱いには`ordinalAsNumericAcknowledged=true`と`score=ordered_rank`を明示する。数値として扱ったordinalはカテゴリ順に1〜K、逆転項目ならK+1-rankとする。等間隔を仮定したことをモデル式に表示する。

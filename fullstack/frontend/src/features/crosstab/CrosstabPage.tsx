@@ -190,19 +190,19 @@ export default function CrosstabPage() {
     () => columns
       .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || globalVars.activeVariableIds.includes(c.name)))
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns, globalVars.activeVariableIds, hasGlobalSignal],
   )
   const weightOptions = useMemo(
     () => columns
       .filter((c) => c.role === 'weight' && ['interval', 'ratio'].includes(c.scaleType))
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
   const designOptions = useMemo(
     () => columns
       .filter((c) => !c.multiResponseGroup)
-      .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
 

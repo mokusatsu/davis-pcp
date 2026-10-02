@@ -42,13 +42,13 @@ export default function MultipleCorrespondencePage(): JSX.Element {
     () => columns
       .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
         && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.columnId, label: c.label ? `${c.label} (${c.name})` : c.name, name: c.name })),
+      .map((c) => ({ value: c.columnId, label: c.name, questionName: c.name, questionText: c.label })),
     [columns, activeSet, hasGlobalSignal],
   )
   const maOptions = useMemo(
     () => columns
       .filter((c) => c.multiResponseGroup && c.scaleType === 'nominal')
-      .map((c) => ({ value: c.columnId, label: `${c.label ?? c.name} [MA]` })),
+      .map((c) => ({ value: c.columnId, label: `${c.name} [MA]`, questionName: c.name, questionText: c.label })),
     [columns],
   )
   const nameById = useMemo(() => {

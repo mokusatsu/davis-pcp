@@ -143,7 +143,7 @@ export default function ImputationModal({
       columns
         .filter((c) => !c.multiResponseGroup && c.role !== 'weight'
           && ['interval', 'ratio'].includes(c.scaleType))
-        .map((c) => ({ value: c.name, label: c.label ? `${c.label} (${c.name})` : c.name })),
+        .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
     [columns],
   )
 

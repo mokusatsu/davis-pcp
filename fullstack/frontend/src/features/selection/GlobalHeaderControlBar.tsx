@@ -291,7 +291,9 @@ export const GlobalHeaderControlBar: React.FC = () => {
               }}
               options={weightCandidates.map((c) => ({
                 value: c.columnId,
-                label: `${c.label || c.name} (${c.name})`,
+                label: c.name,
+                questionName: c.name,
+                questionText: c.label,
               }))}
               data-testid="global-weight-select"
             />
