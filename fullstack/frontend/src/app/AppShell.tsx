@@ -452,7 +452,7 @@ export default function AppShell() {
   )
 
   return (
-    <Layout style={{ height: '100vh', minHeight: '100vh', display: 'flex', flexDirection: 'column' }} data-testid="app-shell">
+    <Layout style={{ height: '100dvh', minHeight: 0, display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: 'auto' }} data-testid="app-shell">
       {notificationHolder}
       <Layout.Header style={{
         background: '#fff',
@@ -579,11 +579,15 @@ export default function AppShell() {
         />
         {selection.datasetId && <GlobalHeaderControlBar />}
       </Layout.Header>
-      <Layout.Content style={{
+      <Layout.Content data-testid="analysis-workspace" style={{
         padding: 12,
         display: 'flex', gap: 4,
         flex: 1,
-        minHeight: 0,
+        // Keep the usual single analysis scroller when the header fits. At
+        // browser zoom / short window heights the shell can scroll the header
+        // away instead of shrinking the analysis viewport to zero.
+        minHeight: 'min(320px, 100dvh)',
+        minWidth: 0,
         overflow: 'hidden',
       }}>
         <div ref={mainContentRef} role="main" aria-label="分析画面" tabIndex={-1} style={{ flex: 1, minWidth: 0, overflowX: 'hidden', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>

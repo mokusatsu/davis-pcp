@@ -1,4 +1,5 @@
-/* Base reset to ensure 100vh layout without window-level scrollbars */
+/* Window scroll is owned by AppShell. It normally stays viewport-sized, but
+   remains scrollable when a wrapped header and usable analysis area exceed it. */
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -130,4 +131,3 @@ svg[width="40"], svg:not([data-testid]) {
   line-height: 1.5;
   margin-block: 2px;
 }
-

@@ -204,8 +204,10 @@ export default function PenaltyRewardPage() {
       {/* Header controls */}
       {(
         <Card size="small" style={{ marginBottom: 12 }}>
-          <Row gutter={[16, 12]} align="middle">
-            <Col xs={24} md={8}>
+          {/* Wrap by the card's usable width, including an open sidebar, rather
+              than the window-width breakpoints used by the result grid. */}
+          <div data-testid="pra-controls" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '12px 16px' }}>
+            <div style={{ flex: '2 1 220px', minWidth: 0, maxWidth: '100%' }}>
               <Typography.Text strong>総合評価 / アウトカム (Outcome):</Typography.Text>
               <Select
                 data-testid="pra-outcome-select"
@@ -218,8 +220,8 @@ export default function PenaltyRewardPage() {
                 }}
                 options={columns.map((c) => ({ label: c, value: c }))}
               />
-            </Col>
-            <Col xs={24} md={12}>
+            </div>
+            <div style={{ flex: '3 1 260px', minWidth: 0, maxWidth: '100%' }}>
               <Typography.Text strong>評価属性バッテリー (Attributes):</Typography.Text>
               <Select
                 mode="multiple"
@@ -231,20 +233,20 @@ export default function PenaltyRewardPage() {
                 }}
                 options={columns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
               />
-            </Col>
-            <Col xs={24} md={4} style={{ textAlign: 'right' }}>
+            </div>
+            <div style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '100%', textAlign: 'right' }}>
               <Button
                 type="primary"
                 icon={<ThunderboltOutlined />}
                 loading={loading}
                 onClick={() => void runEvaluation()}
                 data-testid="pra-run-btn"
-                style={{ marginTop: 22, width: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                style={{ width: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
               >
                 三因子分析を実行
               </Button>
-            </Col>
-          </Row>
+            </div>
+          </div>
         </Card>
       )}
 

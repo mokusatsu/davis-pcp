@@ -258,7 +258,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
       }}
     >
       {/* Left: Global Variables */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div data-testid="global-variable-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
         <Popover
           content={varPopoverContent}
           title="共通アクティブ変数選択"
@@ -271,29 +271,31 @@ export const GlobalHeaderControlBar: React.FC = () => {
           <Button
             size="small"
             data-testid="global-var-btn"
-            style={{ fontWeight: 500 }}
+            style={{ fontWeight: 500, minWidth: 0, maxWidth: '100%' }}
           >
-            <AppstoreOutlined /> Variables: [ {activeVarCount} / {totalVarCount} 項目選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} <DownOutlined style={{ fontSize: 10 }} /> ]
+            <AppstoreOutlined /> <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>Variables: [ {activeVarCount} / {totalVarCount} 項目選択中 {activeVarPreview.length > 0 && <span>({activeVarPreview.map((name, index) => <span key={name}>{index > 0 ? ', ' : ''}<ColumnQuestionTooltip nameOrId={name} tabIndex={-1} /></span>)}{activeVarCount > 2 ? '...' : ''})</span>} ]</span> <DownOutlined style={{ fontSize: 10, flexShrink: 0 }} />
           </Button>
         </Popover>
-        <Space size={4} align="center">
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>ウェイト:</Typography.Text>
-          <Select
-            size="small"
-            style={{ minWidth: 140 }}
-            placeholder="未選択"
-            allowClear
-            value={weightColumnId ?? undefined}
-            onChange={(value) => {
-              if (!value) dispatch(weightColumnCleared())
-              else dispatch(weightColumnSet({ columnId: value as string, datasetId: selection.datasetId ?? undefined }))
-            }}
-            options={weightCandidates.map((c) => ({
-              value: c.columnId,
-              label: `${c.label || c.name} (${c.name})`,
-            }))}
-            data-testid="global-weight-select"
-          />
+        <div data-testid="global-weight-controls" style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>ウェイト:</Typography.Text>
+            <Select
+              size="small"
+              style={{ minWidth: 140 }}
+              placeholder="未選択"
+              allowClear
+              value={weightColumnId ?? undefined}
+              onChange={(value) => {
+                if (!value) dispatch(weightColumnCleared())
+                else dispatch(weightColumnSet({ columnId: value as string, datasetId: selection.datasetId ?? undefined }))
+              }}
+              options={weightCandidates.map((c) => ({
+                value: c.columnId,
+                label: `${c.label || c.name} (${c.name})`,
+              }))}
+              data-testid="global-weight-select"
+            />
+          </div>
           <Popover
             content={colorPopoverContent}
             title="色分け"
@@ -305,13 +307,13 @@ export const GlobalHeaderControlBar: React.FC = () => {
               色分け（{colorBy ? 'L1' : ''}{colorBy && l2Active ? '＋' : ''}{l2Active ? 'L2' : ''}{!colorBy && !l2Active ? 'なし' : ''}） <DownOutlined style={{ fontSize: 10 }} />
             </Button>
           </Popover>
-        </Space>
+        </div>
       </div>
 
       {/* Center/Right: Global Observations & Scopes */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Space size={6}>
-          <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+        <div data-testid="global-scope-controls" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>
             表示・次回分析対象:
           </Typography.Text>
           <Radio.Group
@@ -319,6 +321,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
             value={currentScope}
             onChange={(e) => dispatch(observationScopeChanged(e.target.value))}
             data-testid="observation-scope-group"
+            style={{ display: 'flex', flexWrap: 'wrap', rowGap: 4 }}
           >
             <Radio.Button value="active" data-testid="scope-active">
               Active ({activeRowCount})
@@ -351,7 +354,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           {currentScope === 'sampled' && <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             seed {obs.sampling.seed ?? '未記録'} / 抽出元 {obs.sampling.sourceRowCount ?? '未記録'}行
           </Typography.Text>}
-        </Space>
+        </div>
 
         <Space size={4} wrap>
           <Button
