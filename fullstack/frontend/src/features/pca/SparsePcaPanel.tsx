@@ -54,8 +54,7 @@ export default function SparsePcaPanel() {
   const [notice, setNotice] = useState<string | null>(null)
   const [axes, setAxes] = useState<number[]>([1, 2])
   const [rowsState, setRowsState] = useState<{ key: string; rows: SparsePcaRow[]; total: number } | null>(null)
-  const [rowsLoading, setRowsLoading] = useState(false)
-  const [rowsError, setRowsError] = useState<string | null>(null)
+  const [rowsFailure, setRowsFailure] = useState<{ key: string; message: string } | null>(null)
   const [rowsRetry, setRowsRetry] = useState(0)
   const [tablePage, setTablePage] = useState(1)
   const [exportTable, setExportTable] = useState<SparsePcaExportTable>('manifest')
@@ -83,6 +82,10 @@ export default function SparsePcaPanel() {
   const rowsKey = JSON.stringify([identity, result?.resultId, axes])
   const rowsRequest = useRequestIdentity(JSON.stringify([rowsKey, active]))
   const rows = rowsState?.key === rowsKey ? rowsState.rows : []
+  const rowsError = rowsFailure?.key === rowsKey ? rowsFailure.message : null
+  // Derive pending state synchronously: an axis change must hide the previous
+  // coordinates before the fetching effect starts, without closing the graph.
+  const rowsLoading = Boolean(active && result && rowsState?.key !== rowsKey && !rowsError)
   const currentView = useRef({ identity, active, resultId: result?.resultId, exportTable })
   currentView.current = { identity, active, resultId: result?.resultId, exportTable }
 
@@ -91,14 +94,14 @@ export default function SparsePcaPanel() {
     setCompleted(null); setRowsState(null); setError(null); setNotice(null)
   }, [datasetId])
   useEffect(() => {
-    setWaitingForRun(false); setRowsLoading(false); setRowsError(null)
+    setWaitingForRun(false); setRowsFailure(null)
     if (!active) runRequest.invalidate()
   }, [identity, active])
 
   useEffect(() => {
     if (!active || !result || rowsState?.key === rowsKey) return
     const isCurrent = rowsRequest.begin()
-    setRowsLoading(true); setRowsError(null); setTablePage(1)
+    setRowsFailure(null); setTablePage(1)
     const load = async () => {
       const collected: SparsePcaRow[] = []
       let offset = 0, expectedTotal: number | null = null
@@ -116,8 +119,7 @@ export default function SparsePcaPanel() {
         }
         if (collected.length !== expectedTotal || new Set(collected.map(row => row.rowId)).size !== collected.length) throw new Error('得点の全行を取得できませんでした。再取得してください。')
         if (isCurrent()) setRowsState({ key: rowsKey, rows: collected, total: expectedTotal })
-      } catch (failure) { if (isCurrent()) setRowsError(failureMessage(failure)) }
-      finally { if (isCurrent()) setRowsLoading(false) }
+      } catch (failure) { if (isCurrent()) setRowsFailure({ key: rowsKey, message: failureMessage(failure) }) }
     }
     void load()
     return () => rowsRequest.invalidate()
@@ -147,7 +149,7 @@ export default function SparsePcaPanel() {
       if (!isCurrent()) return
       setCompleted({ identity, result: response, request, scope: capturedScope, draftKey })
       setAxes(response.summary.nComponents === 1 ? [1] : [1, 2])
-      setRowsState(null); setRowsError(null); setExportTable('manifest')
+      setRowsState(null); setRowsFailure(null); setExportTable('manifest')
     } catch (failure) { if (isCurrent()) setError(failureMessage(failure)) }
     finally { if (mounted.current && isCurrent()) setWaitingForRun(false) }
   }
@@ -219,9 +221,8 @@ export default function SparsePcaPanel() {
         }}>結果を閉じる</Button>
       </Space>
       <SparsePcaResultTables result={result} />
-      {rowsLoading && <Typography.Text role="status">得点の全行を取得しています…</Typography.Text>}
-      {rowsError && <Alert type="error" message={rowsError} action={<Button onClick={() => setRowsRetry(previous => previous + 1)}>再取得</Button>} />}
-      <SparsePcaScorePlot result={result} rows={rows} axes={axes} onAxes={setAxes} available={active && !rowsLoading && !rowsError} />
+      <SparsePcaScorePlot result={result} rows={rows} axes={axes} onAxes={setAxes} available={active}
+        loading={rowsLoading} error={rowsError} onRetry={() => { setRowsFailure(null); setRowsRetry(previous => previous + 1) }} />
       <Card size="small" title={`得点一覧（${rowsState?.key === rowsKey ? rowsState.total : 0}行・表示軸）`}>
         <Table<SparsePcaRow> data-testid="sparse-pca-rows" size="small" rowKey="rowId" dataSource={rows} loading={rowsLoading}
           columns={[{ title: 'rowId', dataIndex: 'rowId' }, ...axes.map((axis, index) => ({ title: `SP${axis}`, key: `SP${axis}`,
