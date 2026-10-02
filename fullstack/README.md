@@ -52,6 +52,8 @@ frontendを事前ビルドし、FastAPIが同一origin (http://127.0.0.1:8420) �
 
 共通: 中央selection state(全ビュー即時伝播)、選択行サイドバー(折りたたみ可・右寄せボタン)、session保存(SQLite + optimistic concurrency + revision token)、CSV/Parquet/Arrow export(CSV formula injection neutralization付き)。
 
+PCAページでは通常PCAと独立したSparsePCAも利用できる。非加重の疎な再構成係数、得点計算係数、直接相関、得点図、保存結果のCSV/JSON出力に対応する。設定と指標の意味・計算上限は [SparsePCA](docs/SPARSE_PCA.md) を参照。
+
 ## import対応形式
 
 CSV / TSV / Parquet / Arrow IPC(Feather) / ARFF / SQLite(.db/.sqlite のtable選択) / 組込みIris sample。

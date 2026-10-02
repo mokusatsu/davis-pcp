@@ -75,6 +75,8 @@ def _stale_state(manifest):
             raise BizError("ANALYSIS_RESULT_NOT_FOUND", "dataset deleted", status_code=404)
         raise
     stale = (cur_rev["dataRevision"] != meta.get("dataRevision") or cur_rev["schemaRevision"] != meta.get("schemaRevision"))
+    if manifest.get("method") == "sparse_pca":
+        stale = stale or store.mask_revision(ds) != meta.get("maskRevision")
     out_meta = dict(meta)
     out_meta["currentDataRevision"] = cur_rev["dataRevision"]
     out_meta["currentSchemaRevision"] = cur_rev["schemaRevision"]
@@ -126,6 +128,9 @@ def select_result(result_id: str, payload: dict = Body(...)):
     if sel.kind not in allowed_kinds:
         _err("ANALYSIS_SELECTOR_UNSUPPORTED", "この結果では未対応のselectorです。", 422,
              details={"allowedKinds": sorted(allowed_kinds)})
+    if manifest.get("method") == "sparse_pca":
+        from .sparse_pca import sparse_pca_select
+        return sparse_pca_select(result_id, manifest, req)
     if manifest.get("method") == "efa":
         from ..api.factor_analysis import efa_select_ids as _efa_select
 
@@ -286,6 +291,9 @@ def get_result_rows(result_id: str, offset: int = 0, limit: int = 5000, axes: st
 
     manifest = result_store.load_manifest(result_id)
     meta, stale, cur = _stale_state(manifest)
+    if manifest.get("method") == "sparse_pca":
+        from .sparse_pca import sparse_pca_rows
+        return sparse_pca_rows(result_id, manifest, meta, offset, limit, axes)
     if manifest.get("method") == "regularized_regression":
         from .regularized_regression import rr_rows
         return rr_rows(result_id, manifest, meta, offset, limit, axes)
@@ -880,6 +888,9 @@ def export_result(result_id: str, payload: dict = Body(...)):
     allowed = set((manifest.get("capabilities") or {}).get("exportTables", [])) | {"members"}
     if req.table not in allowed:
         _err("ANALYSIS_EXPORT_UNSUPPORTED", "bad table", 422)
+    if manifest.get("method") == "sparse_pca":
+        from .sparse_pca import sparse_pca_export
+        return sparse_pca_export(manifest, meta, result_id, req)
     if manifest.get("method") == "regularized_regression":
         from .regularized_regression import rr_export_table
         return rr_export_table(manifest, meta, result_id, req)

@@ -19,13 +19,15 @@ export interface RowScatterProps {
   colorOf?: (rowId: string) => string
   clickOperation?: 'toggle' | 'menu'
   ariaLabel?: string
+  /** A score strip: y=0 is layout only, never a second analytical component. */
+  oneDimensional?: boolean
   onReady?: (chart: ECharts) => void
 }
 export function rowsInRange(points: RowPoint[], x: number[], y: number[]): string[] {
   return [...new Set(points.filter(p => p.x >= Math.min(...x) && p.x <= Math.max(...x) && p.y >= Math.min(...y) && p.y <= Math.max(...y)).map(p => p.rowId))]
 }
 
-export default function RowScatter({ points, xName, yName, testId, height = 420, option, colorOf, onReady, clickOperation = 'toggle', ariaLabel }: RowScatterProps) {
+export default function RowScatter({ points, xName, yName, testId, height = 420, option, colorOf, onReady, clickOperation = 'toggle', ariaLabel, oneDimensional = false }: RowScatterProps) {
   const viewportKey=JSON.stringify(useGraphViewport())
   const dispatch = useDispatch()
   const { getColor, selectionColor } = useRowColorResolver()
@@ -81,7 +83,8 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
   const leaveKeyboard = () => { if (keyboardHover.current) { keyboardHover.current = false; dispatch(hovered(null)) } }
   useEffect(() => { leaveKeyboard() }, [pointsKey])
   useEffect(() => () => leaveKeyboard(), [])
-  return <div tabIndex={0} role="group" aria-label={`${xName} × ${yName}。矢印キーで行を移動、Enterで選択`}
+  const axisDescription = oneDimensional ? `${xName}（1次元）` : `${xName} × ${yName}`
+  return <div tabIndex={0} role="group" aria-label={`${axisDescription}。矢印キーで行を移動、Enterで選択`}
     onFocus={event => { if (event.target === event.currentTarget && keyboardPoint) { keyboardHover.current = true; dispatch(hovered(keyboardPoint.rowId)) } }}
     onBlur={leaveKeyboard}
     onPointerDown={event => {
@@ -122,8 +125,8 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
         setKeyboardIndex(index); keyboardHover.current = true; dispatch(hovered(finite[index].rowId))
       } else if ((event.key === 'Enter' || event.key === ' ') && keyboardPoint) { event.preventDefault(); selectPoint(keyboardPoint.rowId) }
       else if (event.key === 'Escape') leaveKeyboard()
-    }} style={{ width: '100%', height, position: 'relative' }}>
-    <EChart fitPointMarkers chartRef={chartRef} option={chartOption} height="100%" testId={testId} ariaLabel={ariaLabel ?? `${xName} × ${yName}`} onReady={onReady} />
-    <span aria-live="polite" style={{ position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardPoint ? `rowId ${keyboardPoint.rowId}, ${xName} ${keyboardPoint.x}, ${yName} ${keyboardPoint.y}` : 'データなし'}</span>
+    }} style={{ width: '100%', height, position: 'relative', userSelect: 'none' }}>
+    <EChart fitPointMarkers chartRef={chartRef} option={chartOption} height="100%" testId={testId} ariaLabel={ariaLabel ?? axisDescription} onReady={onReady} />
+    <span aria-live="polite" style={{ position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardPoint ? `rowId ${keyboardPoint.rowId}, ${xName} ${keyboardPoint.x}${oneDimensional ? '' : `, ${yName} ${keyboardPoint.y}`}` : 'データなし'}</span>
   </div>
 }
