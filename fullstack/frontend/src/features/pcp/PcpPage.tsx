@@ -22,7 +22,8 @@ import type { PcpAxis } from './usePcpPipeline'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { normalizedRect, type Rect } from './brush'
 import { graphEngine } from '../../engine/graphClient'
-import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
+import type { PcpRenderSpec } from '../../engine/pcpRenderer'
+import { PcpPaintClient } from '../../engine/pcpPaintClient'
 import { buildPcpLabelLayout } from '../../engine/pcpLabelLayout'
 import { pcpSvg } from '../../engine/pcpSvgExport'
 import { downloadBlob } from '../charts/chartExport'
@@ -39,58 +40,6 @@ import EmptyStatePanel from '../common/EmptyStatePanel'
 /** Palette tokens as a plain array for the packed-slot color resolver. */
 function buildPalette(theme: ReturnType<typeof vizTheme>): string[] {
   return [...l1Palette(theme)]
-}
-
-/** Paint the spec on an OffscreenCanvas inside the shared graph worker.
- *  Falls back to main-thread painting when Workers are unavailable.
- *  The offscreen canvas is NOT transferred — it stays owned by this thread so
- *  the previous frame remains visible until the new paint completes (no blank
- *  flash between renders). */
-async function paintOnWorker(offscreen: OffscreenCanvas, spec: PcpRenderSpec): Promise<void> {
-  const w = ensurePaintWorker()
-  if (!w) throw new Error('paint worker unavailable')
-  const id = ++paintRequestId
-  return new Promise((resolve, reject) => {
-    const entry = paintPending.get(id)
-    void entry
-    paintPending.set(id, { resolve, reject })
-    w.postMessage({ id, op: 'renderPcp', canvas: offscreen, spec })
-  })
-}
-
-let paintWorker: Worker | null = null
-let paintRequestBroken = false
-let paintRequestId = 0
-const paintPending = new Map<number, { resolve: () => void; reject: (e: Error) => void }>()
-
-function ensurePaintWorker(): Worker | null {
-  if (paintWorker) return paintWorker
-  if (paintRequestBroken) return null
-  try {
-    paintWorker = new Worker(new URL('../../engine/graph.worker.ts', import.meta.url), { type: 'module' })
-    paintWorker.onmessage = (event: MessageEvent) => {
-      const data = event.data as { id: number; ok: boolean; error?: string }
-      const entry = paintPending.get(data.id)
-      if (entry) {
-        paintPending.delete(data.id)
-        if (data.ok) entry.resolve()
-        else entry.reject(new Error(data.error ?? 'worker paint failed'))
-      }
-    }
-    paintWorker.onerror = () => {
-      paintRequestBroken = true
-      paintWorker = null
-      for (const [, entry] of paintPending) entry.reject(new Error('paint worker crashed'))
-      paintPending.clear()
-    }
-    // The OffscreenCanvas transfers away after first use; keep one canvas per
-    // request instead — a fresh worker per page mount is acceptable here since
-    // the module-level singleton below persists across renders.
-    return paintWorker
-  } catch {
-    paintRequestBroken = true
-    return null
-  }
 }
 
 export interface OrderingDiagnostics {
@@ -125,8 +74,15 @@ export default function PcpPage() {
     ...(pcp.colorBy && codebookColumns.some(column => column.name === pcp.colorBy) ? [pcp.colorBy] : [])])]
   const data = useColumnarData(selection.datasetId, requestedColumns, availableMaAxes.filter(axis => requestedAxes.includes(axis.key)))
   const theme = vizTheme(false)
-  /** OffscreenCanvas mirror of the visible canvas — painted in the worker. */
-  const offscreenRef = useRef<OffscreenCanvas | null>(null)
+  const painterRef = useRef<PcpPaintClient | null>(null)
+  useEffect(() => {
+    const painter = new PcpPaintClient()
+    painterRef.current = painter
+    return () => {
+      painterRef.current = null
+      painter.dispose()
+    }
+  }, [datasetKey])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const lastPaintedSpecRef = useRef<{ datasetKey: string; spec: PcpRenderSpec } | null>(null)
   const currentDatasetKeyRef = useRef(datasetKey)
@@ -202,7 +158,6 @@ export default function PcpPage() {
   // Dataset switch: drop the previous geometry immediately so axis controls
   // never render positions from a different dataset (audit #3).
   useEffect(() => {
-    offscreenRef.current = null
     setFirstFrameRendered(false)
     if (frameNodeRef.current) {
       frameNodeRef.current.scrollLeft = 0
@@ -358,7 +313,7 @@ export default function PcpPage() {
 
   /**
    * Render pipeline: geometry (WASM in worker) → paint spec → worker paints on
-   * OffscreenCanvas; main thread only transfers the canvas and input events.
+   * worker-owned OffscreenCanvas, returning a transferable ImageBitmap frame.
    * Falls back to painting locally when OffscreenCanvas/Worker unavailable.
    * While one paint is in flight, newer requests REPLACE the queued one (only
    * the latest state is painted when the worker frees up) so rapid pointer
@@ -410,7 +365,6 @@ export default function PcpPage() {
     if (canvas.width !== deviceW || canvas.height !== deviceH) {
       canvas.width = deviceW
       canvas.height = deviceH
-      offscreenRef.current = null
     }
     // R035-01: Canvas は共通 surface の scale 変換内に置かれるため、
     // 共通 viewport のスクロール量（CSS px）を論理座標へ換算して渡す。
@@ -490,36 +444,12 @@ export default function PcpPage() {
       clusterSizes: simplification?.clusterSizes ?? null,
     }
 
-    let offscreen = offscreenRef.current
-    const canOffscreen = typeof OffscreenCanvas !== 'undefined' && graphEngine.kind !== undefined
-    if (canOffscreen) {
-      try {
-        if (!offscreen || offscreen.width !== deviceW || offscreen.height !== deviceH) {
-          offscreen = new OffscreenCanvas(deviceW, deviceH)
-          offscreenRef.current = offscreen
-        } else {
-          // Reuse the same buffer: the worker clears it before painting.
-        }
-        await paintOnWorker(offscreen, spec)
-        // A completed frame from an old dataset must not become exportable.
-        if (currentDatasetKeyRef.current !== datasetKey || canvasRef.current !== canvas || geometryRef.current !== geometry) return
-        // Blit only AFTER the fresh frame is complete — the visible canvas
-        // keeps showing the previous frame until this moment (no blank).
-        const ctx = canvas.getContext('2d')!
-        ctx.setTransform(1, 0, 0, 1, 0, 0)
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(offscreen as unknown as CanvasImageSource, 0, 0)
-        lastPaintedSpecRef.current = { datasetKey, spec }
-        setFirstFrameRendered(true)
-        return
-      } catch {
-        // Worker paint failed — fall back to a synchronous local repaint below.
-      }
-    }
-    if (currentDatasetKeyRef.current !== datasetKey || canvasRef.current !== canvas || geometryRef.current !== geometry) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    renderPcp(ctx, spec)
+    const painter = painterRef.current
+    if (!painter) return
+    const isCurrent = () => painterRef.current === painter && currentDatasetKeyRef.current === datasetKey
+      && canvasRef.current === canvas && geometryRef.current === geometry
+    const painted = await painter.paint(canvas, spec, isCurrent)
+    if (!painted || !isCurrent()) return
     lastPaintedSpecRef.current = { datasetKey, spec }
     setFirstFrameRendered(true)
     }

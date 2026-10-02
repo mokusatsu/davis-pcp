@@ -1,4 +1,5 @@
 import { configureStore, createAction, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { retainColumnarCacheScope } from '../features/pcp/columnarCache'
 import { entityKey, reconcileEntities, variableCatalog, type VariableEntity } from '../features/selection/variableEntities'
 
 export interface GroupDef {
@@ -540,6 +541,26 @@ export const store = configureStore({
         ignoredPaths: ['selection.activeRowIdSet'],
       },
     }),
+})
+
+// Bound dataset/revision lifetimes even when the current route has no columnar
+// consumers. This removes cache ownership without disturbing mounted view data.
+let columnarScope = {
+  datasetId: store.getState().selection.datasetId,
+  dataRevision: store.getState().selection.dataRevision,
+  schemaRevision: store.getState().codebook.schemaRevision,
+}
+store.subscribe(() => {
+  const { selection, codebook } = store.getState()
+  if (selection.datasetId === columnarScope.datasetId
+    && selection.dataRevision === columnarScope.dataRevision
+    && codebook.schemaRevision === columnarScope.schemaRevision) return
+  columnarScope = {
+    datasetId: selection.datasetId,
+    dataRevision: selection.dataRevision,
+    schemaRevision: codebook.schemaRevision,
+  }
+  retainColumnarCacheScope(columnarScope)
 })
 
 // Debug access from the browser console (e2e verification aid).

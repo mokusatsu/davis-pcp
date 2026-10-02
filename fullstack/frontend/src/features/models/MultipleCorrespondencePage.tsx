@@ -1,3 +1,4 @@
+import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -81,7 +82,6 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   const [selectInfo, setSelectInfo] = useState<string | null>(null)
   const [rows, setRows] = useState<{ rowId: string; coordinates: number[] }[]>([])
   const [rowsTotal, setRowsTotal] = useState(0)
-  const [linkedCategoryIds, setLinkedCategoryIds] = useState<Set<string>>(new Set())
   const [matAxis, setMatAxis] = useState(1)
   const runSequence = useRef(0)
   const selectionSequence = useRef(0)
@@ -115,7 +115,6 @@ export default function MultipleCorrespondencePage(): JSX.Element {
     setSelectInfo(null)
     setRows([])
     setRowsTotal(0)
-    setLinkedCategoryIds(new Set())
     setVariables([])
     setMaMode('ordinary_only')
   }, [datasetId])
@@ -269,58 +268,12 @@ export default function MultipleCorrespondencePage(): JSX.Element {
 
   const resultStale = result !== null
     && (result.meta.dataRevision !== selection.dataRevision || result.meta.schemaRevision !== schemaRevision)
-  const [liveRevisions, setLiveRevisions] = useState<{ data: number; schema: number } | null>(null)
-  useEffect(() => {
-    if (!result || !datasetId) { setLiveRevisions(null); return }
-    let cancelled = false
-    const startedDataset = datasetId
-    const check = (): void => {
-      void api.get<{ dataRevision: number; schemaRevision: number }>(`/datasets/${startedDataset}`)
-        .then((meta) => {
-          if (!cancelled && datasetId === startedDataset) setLiveRevisions({ data: meta.dataRevision, schema: meta.schemaRevision })
-        }).catch(() => { /* 版確認の失敗はstale判定に使わない */ })
-    }
-    check()
-    const timer = setInterval(check, 10000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [result?.resultId, datasetId])
+  const { liveRevisions, linkedCategoryIds } = useAnalysisResultLifecycle(
+    result, datasetId, selection.selectedRowIds, selection.dataRevision, schemaRevision,
+  )
+
   const shownStale = resultStale || (result !== null && liveRevisions !== null
     && (result.meta.dataRevision !== liveRevisions.data || result.meta.schemaRevision !== liveRevisions.schema))
-
-  useEffect(() => {
-    if (!result || !datasetId || selection.selectedRowIds.length === 0) {
-      if (selection.selectedRowIds.length === 0) setLinkedCategoryIds(new Set())
-      return
-    }
-    const resultId = result.resultId
-    let cancelled = false
-    const startedDataset = datasetId
-    const selSet = new Set(selection.selectedRowIds)
-    void (async () => {
-      try {
-        const hit = new Set<string>()
-        let offset = 0
-        for (;;) {
-          const res = await api.post<{ payload: string; nextOffset: number | null }>(
-            `/analysis-results/${resultId}/export`, { format: 'json', table: 'members', offset, limit: 5000 },
-          )
-          if (cancelled || selectionRef.current.datasetId !== startedDataset) return
-          let rowsParsed: [string, string, string][] = []
-          try { rowsParsed = JSON.parse(res.payload)?.rows ?? [] } catch { rowsParsed = [] }
-          for (const [cid, rid] of rowsParsed) {
-            if (selSet.has(String(rid))) hit.add(String(cid))
-          }
-          if (res.nextOffset === null || res.nextOffset === undefined) break
-          offset = res.nextOffset
-        }
-        if (!cancelled && selectionRef.current.datasetId === startedDataset) setLinkedCategoryIds(hit)
-      } catch {
-        if (!cancelled && selectionRef.current.datasetId === startedDataset) setLinkedCategoryIds(new Set())
-      }
-    })()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, selection.selectedRowIds, datasetId, selection.dataRevision])
 
   const varColor = useMemo(() => {
     const map = new Map<string, string>()

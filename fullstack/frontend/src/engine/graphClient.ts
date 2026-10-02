@@ -19,6 +19,15 @@ const local = new LocalEngine()
 
 export let activeEngineKind: 'wasm' | 'local' = 'local'
 
+function failWorker(error: Error): void {
+  workerBroken = true
+  const failed = worker
+  worker = null
+  failed?.terminate()
+  for (const entry of pending.values()) entry.reject(error)
+  pending.clear()
+}
+
 function ensureWorker(): Worker | null {
   if (worker) return worker
   if (workerBroken) return null
@@ -33,13 +42,8 @@ function ensureWorker(): Worker | null {
       if (data.ok) entry.resolve(data.result)
       else entry.reject(new Error(data.error ?? 'worker error'))
     }
-    worker.onerror = () => {
-      // Network/module failure: degrade permanently to local engine.
-      workerBroken = true
-      worker = null
-      for (const [, entry] of pending) entry.reject(new Error('graph worker failed'))
-      pending.clear()
-    }
+    worker.onerror = () => failWorker(new Error('graph worker failed'))
+    worker.onmessageerror = () => failWorker(new Error('graph worker response could not be read'))
     return worker
   } catch {
     workerBroken = true
@@ -53,7 +57,11 @@ function call(op: string, payload: Record<string, unknown>, transfer: Transferab
   const id = ++requestCounter
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
-    w.postMessage({ id, op, ...payload }, transfer)
+    try {
+      w.postMessage({ id, op, ...payload }, transfer)
+    } catch (error) {
+      failWorker(error instanceof Error ? error : new Error(String(error)))
+    }
   })
 }
 

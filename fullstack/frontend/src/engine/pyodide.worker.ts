@@ -5,6 +5,7 @@
  */
 
 import { createSerialQueue } from './serialQueue'
+import { consumePythonResponse } from './pythonResponse'
 
 declare const self: DedicatedWorkerGlobalScope & {
   loadPyodide: (options: { indexURL: string }) => Promise<any>
@@ -251,17 +252,7 @@ async function handleApiRequest(msg: WorkerApiRequest) {
       uploadBytes,
     )
 
-    const statusCode: number = pyResult.get('status_code')
-    const resHeadersPy: any = pyResult.get('headers')
-    const resHeaders: Record<string, string> = resHeadersPy.toJs({ dict_converter: Object.fromEntries })
-    const isBinary: boolean = Boolean(pyResult.get('is_binary') ?? pyResult.get('is_arrow'))
-    const rawContentPy: any = pyResult.get('content')
-    const rawBytes: Uint8Array = rawContentPy.toJs()
-    const text: string | null = pyResult.get('text')
-
-    pyResult.destroy()
-    if (resHeadersPy?.destroy) resHeadersPy.destroy()
-    if (rawContentPy?.destroy) rawContentPy.destroy()
+    const { statusCode, resHeaders, isBinary, rawBytes, text } = consumePythonResponse(pyResult)
 
     // Sync filesystem if mutative operation
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {

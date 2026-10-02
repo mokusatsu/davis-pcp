@@ -1,10 +1,12 @@
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { afterEach, expect, it, vi } from 'vitest'
 import { store } from '../src/app/store'
 import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
 import PcpPage from '../src/features/pcp/PcpPage'
+import { renderPcp } from '../src/engine/pcpRenderer'
+import { downloadBlob } from '../src/features/charts/chartExport'
 
 const fixture = vi.hoisted(() => ({
   axes: Array.from({ length: 10 }, (_, index) => ({ key: `A${index}`, label: `A${index}`, type: 'numeric', min: 0, max: 10 })),
@@ -28,6 +30,7 @@ vi.mock('../src/theme/useL1ColorDomain', () => ({ useDatasetL1ColorDomains: () =
 vi.mock('../src/api/client', () => ({ api: { get: async () => ({ entries: [] }) } }))
 vi.mock('../src/engine/graphClient', () => ({ graphEngine: { kind: 'wasm' } }))
 vi.mock('../src/engine/pcpRenderer', () => ({ renderPcp: vi.fn() }))
+vi.mock('../src/features/charts/chartExport', () => ({ downloadBlob: vi.fn() }))
 vi.mock('../src/features/common/ColumnQuestionTooltip', () => ({
   default: ({ children }: { children: React.ReactNode }) => children,
   ColumnQuestionText: ({ nameOrId }: { nameOrId: string }) => nameOrId,
@@ -72,7 +75,7 @@ function setup(orientation: 'horizontal' | 'vertical' = 'horizontal') {
       }
     })
   }
-  return { view, tree, measure }
+  return { view, tree, measure, local, state }
 }
 
 it.each(['horizontal', 'vertical'] as const)('uses GraphPanel as the only size source for %s PCP at fractional browser sizes', orientation => {
@@ -92,4 +95,62 @@ it.each(['horizontal', 'vertical'] as const)('uses GraphPanel as the only size s
   measure(1132.796875, 598.59375)
   measure()
   expect(fixture.dimensions.at(-1)).toEqual({ width: 1132, height: 598 })
+})
+
+
+function paintedGeometry() {
+  return { nRows: 1, nAxes: 10, rowIds: ['r1'], points: new Float64Array(20),
+    axisPos: Array.from({ length: 10 }, (_, i) => 40 + 80 * i),
+    bounds: { left: 40, right: 860, top: 20, bottom: 350 } }
+}
+
+it('keeps local PCP output exportable when worker posting fails, and stops retrying until the dataset changes', async () => {
+  const workers: any[] = []
+  class FailedWorker {
+    postMessage = vi.fn(() => { throw new DOMException('not cloneable', 'DataCloneError') })
+    terminate = vi.fn()
+    constructor() { workers.push(this) }
+  }
+  vi.stubGlobal('Worker', FailedWorker)
+  vi.stubGlobal('OffscreenCanvas', class {})
+  const { view, tree, measure } = setup()
+  fixture.geometry = paintedGeometry()
+  await act(async () => view.rerender(tree()))
+  await waitFor(() => expect(view.getByTestId('pcp-export-svg')).toBeEnabled())
+  fireEvent.click(view.getByTestId('pcp-export-svg'))
+  await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'PCP.svg'))
+  for (let i = 0; i < 5; i++) await act(async () => measure(500 + i, 400 + i))
+  expect(vi.mocked(renderPcp)).toHaveBeenCalled()
+  expect(workers).toHaveLength(1)
+  expect(workers[0].postMessage).toHaveBeenCalledTimes(1)
+  expect(workers[0].terminate).toHaveBeenCalledTimes(1)
+})
+
+it.each(['unmount', 'dataset'] as const)('disposes an in-flight page painter on %s and closes stale frames without making them exportable', async change => {
+  const workers: any[] = []
+  class PendingWorker {
+    onmessage: ((event: any) => void) | null = null
+    postMessage = vi.fn()
+    terminate = vi.fn()
+    constructor() { workers.push(this) }
+  }
+  vi.stubGlobal('Worker', PendingWorker)
+  vi.stubGlobal('OffscreenCanvas', class {})
+  const { view, tree, local, state } = setup()
+  fixture.geometry = paintedGeometry()
+  await act(async () => view.rerender(tree()))
+  expect(workers).toHaveLength(1)
+  const first = workers[0]
+  if (change === 'unmount') view.unmount()
+  else {
+    await act(async () => {
+      local.replaceReducer(() => ({ ...state, selection: { ...state.selection, datasetId: 'replacement' } }))
+    })
+    expect(view.getByTestId('pcp-export-svg')).toBeDisabled()
+  }
+  expect(first.terminate).toHaveBeenCalledTimes(1)
+  const frame = { close: vi.fn() }
+  await act(async () => first.onmessage?.({ data: { id: first.postMessage.mock.calls[0][0].id, ok: true, frame } }))
+  expect(frame.close).toHaveBeenCalledTimes(1)
+  if (change === 'dataset') expect(view.getByTestId('pcp-export-svg')).toBeDisabled()
 })

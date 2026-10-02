@@ -3,21 +3,26 @@ import type { BrushResponse } from './brush.worker'
 
 let worker: Worker | null = null
 let requestCounter = 0
-const pending = new Map<number, (hits: string[]) => void>()
+let workerBroken = false
+const pending = new Map<number, { resolve: (hits: string[]) => void; reject: (error: Error) => void }>()
 
 function ensureWorker(): Worker | null {
   if (worker) return worker
+  if (workerBroken) return null
   try {
     worker = new Worker(new URL('./brush.worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (event: MessageEvent<BrushResponse>) => {
       const resolver = pending.get(event.data.requestId)
       if (resolver) {
         pending.delete(event.data.requestId)
-        resolver(event.data.hits)
+        resolver.resolve(event.data.hits)
       }
     }
+    worker.onerror = () => failWorker(new Error('brush worker failed'))
+    worker.onmessageerror = () => failWorker(new Error('brush worker response could not be read'))
     return worker
   } catch {
+    workerBroken = true
     return null
   }
 }
@@ -35,14 +40,25 @@ export function computeHits(rect: Rect, mode: HitMode, payload: BrushPayload): P
     return Promise.resolve(hitRows(pointsById, payload.activeIds, rect, mode))
   }
   const requestId = ++requestCounter
-  return new Promise((resolve) => {
-    pending.set(requestId, resolve)
-    w.postMessage({ type: 'brush', requestId, rect, mode, ...payload })
+  return new Promise<string[]>((resolve, reject) => {
+    pending.set(requestId, { resolve, reject })
+    try {
+      w.postMessage({ type: 'brush', requestId, rect, mode, ...payload })
+    } catch (error) {
+      failWorker(error instanceof Error ? error : new Error(String(error)))
+    }
   })
 }
 
-export function terminateWorker(): void {
-  worker?.terminate()
+function failWorker(error: Error): void {
+  workerBroken = true
+  terminateWorker(error)
+}
+
+export function terminateWorker(error = new Error('brush worker terminated')): void {
+  const stopped = worker
   worker = null
+  stopped?.terminate()
+  for (const entry of pending.values()) entry.reject(error)
   pending.clear()
 }

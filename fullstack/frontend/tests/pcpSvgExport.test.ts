@@ -309,6 +309,7 @@ describe('PCP SVG control lifecycle', () => {
     vi.stubGlobal('Worker', class {
       onmessage: ((event: unknown) => void) | null = null
       constructor() { worker = this }
+      terminate = vi.fn()
       postMessage(message: { id: number }) { requests.push(message.id) }
     })
     const view = render(tree())
@@ -325,7 +326,9 @@ describe('PCP SVG control lifecycle', () => {
     await waitFor(() => expect(requests).toHaveLength(2))
     fixture.geometry = null
     act(() => { pageStore.dispatch({ type: 'test/switchDataset', payload: 'third' }) })
-    await act(async () => { worker.onmessage({ data: { id: requests[1], ok: true } }) })
+    const frame = { close: vi.fn() }
+    await act(async () => { worker.onmessage({ data: { id: requests[1], ok: true, frame } }) })
+    expect(frame.close).toHaveBeenCalledTimes(1)
     expect(view.getByRole('button', { name: 'PCP：SVGを保存' })).toBeDisabled()
     expect(context.fillRect).not.toHaveBeenCalled()
     expect(context.drawImage).not.toHaveBeenCalled()

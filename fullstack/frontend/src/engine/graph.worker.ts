@@ -6,12 +6,10 @@
 /// <reference lib="webworker" />
 import { instantiateGraphCore, WasmMemoryView, type GraphCoreExports } from './wasmLoader'
 import { LocalEngine } from './local'
-import { renderPcp, type PcpRenderSpec } from './pcpRenderer'
 import type { PcpGeometryRequest, Rect } from './types'
 
 type RpcRequest =
   | { id: number; op: 'ping' }
-  | { id: number; op: 'renderPcp'; canvas: OffscreenCanvas; spec: PcpRenderSpec }
   | { id: number; op: 'pcpGeometry'; req: PcpGeometryRequest }
   | { id: number; op: 'polylineHit'; points: Float64Array; nRows: number; nAxes: number; rect: Rect; mode: string; active: Uint8Array }
   | { id: number; op: 'scatterHit'; values: Float64Array; nRows: number; rect: Rect; active: Uint8Array }
@@ -262,18 +260,6 @@ function collectHits(flags: Uint8Array): number[] {
 const local = new LocalEngine()
 
 async function handle(message: RpcRequest): Promise<unknown> {
-  if (message.op === 'renderPcp') {
-    // Off-main-thread painting: the worker owns the OffscreenCanvas context.
-    // Pure JS painting — no WASM dependency, never falls through.
-    const ctx = message.canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | null
-    if (!ctx) throw new Error('offscreen 2d context unavailable')
-    // The canvas is reused across frames; clear stale pixels first so the
-    // fresh paint never blends over the previous frame's lines.
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, message.canvas.width, message.canvas.height)
-    renderPcp(ctx, message.spec)
-    return true
-  }
   const w = await ensureWasm()
   if (w) {
     try {

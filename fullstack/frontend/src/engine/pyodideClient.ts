@@ -50,6 +50,14 @@ class PyodideClient {
 
   private failRuntime(error: Error) {
     this.runtimeError = error
+    const worker = this.worker
+    this.worker = null
+    if (worker) {
+      worker.onmessage = null
+      worker.onerror = null
+      worker.onmessageerror = null
+      worker.terminate()
+    }
     this.notifyStatus({ stage: 'error', progress: 0, message: error.message })
     for (const request of this.pending.values()) request.reject(error)
     this.pending.clear()
@@ -108,6 +116,12 @@ class PyodideClient {
           reject(error)
         }
 
+        this.worker.onmessageerror = () => {
+          const error = new Error('Worker応答を読み取れませんでした')
+          this.failRuntime(error)
+          reject(error)
+        }
+
         // Determine base URL for pyodide assets (relative to page)
         const baseUrl = new URL('./pyodide/', window.location.href).href
         this.worker.postMessage({
@@ -131,6 +145,24 @@ class PyodideClient {
       await this.initPromise
     }
     if (this.runtimeError) throw this.runtimeError
+  }
+
+  private send<T>(id: number, message: unknown, transfer: Transferable[] = []): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      if (this.runtimeError || !this.worker) {
+        reject(this.runtimeError ?? new Error('Pyodide worker unavailable'))
+        return
+      }
+      this.pending.set(id, { resolve, reject })
+      try {
+        this.worker.postMessage(message, transfer)
+      } catch (error) {
+        // A failed clone/send owns no live worker request. Do not retain its
+        // callbacks, and do not kill unrelated queued analyses for bad input.
+        this.pending.delete(id)
+        reject(error)
+      }
+    })
   }
 
   public async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -159,17 +191,7 @@ class PyodideClient {
       }
     }
 
-    return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.worker!.postMessage({
-        type: 'REQUEST',
-        id,
-        method,
-        path,
-        headers,
-        body,
-      })
-    })
+    return this.send<T>(id, { type: 'REQUEST', id, method, path, headers, body })
   }
 
   public async upload<T>(path: string, file: File, extra: Record<string, string> = {}): Promise<T> {
@@ -179,23 +201,10 @@ class PyodideClient {
     const arrayBuffer = await file.arrayBuffer()
     if (this.runtimeError) throw this.runtimeError
 
-    return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.worker!.postMessage(
-        {
-          type: 'REQUEST',
-          id,
-          method: 'POST',
-          path,
-          filePayload: {
-            filename: file.name,
-            data: arrayBuffer,
-            extra,
-          },
-        },
-        [arrayBuffer],
-      )
-    })
+    return this.send<T>(id, {
+      type: 'REQUEST', id, method: 'POST', path,
+      filePayload: { filename: file.name, data: arrayBuffer, extra },
+    }, [arrayBuffer])
   }
 
   public async fetchArrowView(
