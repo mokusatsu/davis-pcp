@@ -18,7 +18,7 @@ comparison, sensitivity comparison.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import polars as pl
@@ -757,7 +757,10 @@ def fit_single_q(r: np.ndarray, req: dict, q: int, *,
 
 
 def run_parallel_analysis(fit: dict, req: dict, r_obs: np.ndarray,
-                          perm_index: np.ndarray | None = None) -> dict[str, Any]:
+                          perm_index: np.ndarray | None = None, *,
+                          progress: Callable[[int, int], bool | None] | None = None,
+                          ) -> dict[str, Any]:
+    """Run PA, forwarding chunked progress and cancellation to the kernel."""
     pa = req.get("parallelAnalysis") or {}
     if not pa.get("enabled", True):
         return {"enabled": False, "status": "not_requested",
@@ -794,7 +797,7 @@ def run_parallel_analysis(fit: dict, req: dict, r_obs: np.ndarray,
                             iterations=int(pa.get("iterations", 500)),
                             quantile=float(pa.get("quantile", 0.95)),
                             seed=int(pa.get("seed", 42)),
-                            perm_index=perm_index)
+                            perm_index=perm_index, progress=progress)
     res["observedEigenvalues"] = [float(v) for v in obs_eig.tolist()]
     if res.get("status") == "completed" and res.get("referenceQuantiles") is not None:
         sug = suggest_factors(obs_eig, np.asarray(res["referenceQuantiles"]))

@@ -969,38 +969,98 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
     by_name = {c["name"]: c for c in cb["columns"]}
     by_id = {c["columnId"]: c for c in cb["columns"]}
     raw = await _read_upload(file)
-    text = raw.decode("utf-8-sig")
     patches: list[dict] = []
     groups = None
+    design_updates: dict[str, Any] = {}
     try:
+        text = raw.decode("utf-8-sig")
         if text.lstrip().startswith(("{", "[")):
             payload = json.loads(text)
             items = payload.get("columns") if isinstance(payload, dict) else payload
             if not isinstance(items, list):
                 raise ValueError("columns must be an array")
+            source_targets: dict[str, dict | None] = {}
+            source_names: dict[str, dict | None] = {}
             for item in items:
                 if not isinstance(item, dict):
                     raise ValueError("column definitions must be objects")
-                target = by_name.get(item.get("name")) or by_id.get(item.get("columnId"))
+                name, source_id = item.get("name"), item.get("columnId")
+                if name is not None and (not isinstance(name, str) or not name):
+                    raise ValueError("column name must be a nonempty string")
+                if source_id is not None and (not isinstance(source_id, str) or not source_id):
+                    raise ValueError("columnId must be a nonempty string")
+                if name in source_names or (source_id is not None and source_id in source_targets):
+                    raise ValueError("Duplicate source column name or columnId")
+                # A supplied name is authoritative across datasets. An
+                # unmatched name must never fall back to an unrelated local ID.
+                target = by_name.get(name) if name is not None else by_id.get(source_id)
+                if name is not None:
+                    source_names[name] = target
+                if source_id is not None:
+                    source_targets[source_id] = target
                 if target:
                     patches.append({**item, "columnId": target["columnId"], "name": target["name"]})
+
+            def resolve_reference(value: Any, field: str) -> str | None:
+                if value in (None, ""):
+                    return None
+                if not isinstance(value, str):
+                    raise ValueError(f"{field} must be a string")
+                # Resolve exported IDs through the same correspondence as the
+                # column patches, even if an ID collides with a target ID/name.
+                # Keep unmatched source IDs so they cannot silently fall back.
+                if value in source_targets:
+                    target = source_targets[value]
+                elif value in source_names:
+                    target = source_names[value]
+                else:
+                    target = by_id.get(value) or by_name.get(value)
+                if target is None:
+                    raise ValueError(f"{field} cannot identify a target column: {value}")
+                return target["columnId"]
+
             if isinstance(payload, dict) and "multiResponseGroups" in payload:
                 groups = payload["multiResponseGroups"]
                 if not isinstance(groups, list):
                     raise ValueError("multiResponseGroups must be an array")
-                source_names = {c.get("columnId"): c.get("name") for c in items if isinstance(c, dict)}
                 normalized_groups = []
                 for raw_group in groups:
+                    if not isinstance(raw_group, dict):
+                        raise ValueError("multiResponseGroups must contain objects")
                     group = dict(raw_group)
                     if "optionOrderNames" in group and "optionOrder" in group:
                         raise ValueError("Specify only one option order field")
                     if "optionOrderNames" in group:
                         group["optionOrder"] = [by_name[name]["columnId"] for name in group.pop("optionOrderNames")]
                     elif group.get("optionOrder"):
-                        group["optionOrder"] = [by_name[source_names[cid]]["columnId"] if cid in source_names
-                                                else by_id[cid]["columnId"] for cid in group["optionOrder"]]
+                        group["optionOrder"] = [resolve_reference(cid, "optionOrder") for cid in group["optionOrder"]]
                     normalized_groups.append(group)
                 groups = normalized_groups
+            if isinstance(payload, dict):
+                for key in ("weightConfig", "surveyDesign"):
+                    if key not in payload:
+                        continue
+                    config = payload[key]
+                    if config is None:
+                        design_updates[key] = None
+                        continue
+                    if not isinstance(config, dict):
+                        raise ValueError(f"{key} must be an object or null")
+                    mapped = dict(config)
+                    fields = ("weightColumnId",) if key == "weightConfig" else (
+                        "weightColumnId", "strataColumnId", "psuColumnId", "fpcColumnId")
+                    for field in fields:
+                        if field in mapped:
+                            mapped[field] = resolve_reference(mapped[field], f"{key}.{field}")
+                    if key == "surveyDesign" and "replicateWeightColumnIds" in mapped:
+                        replicate_ids = mapped["replicateWeightColumnIds"]
+                        if not isinstance(replicate_ids, list):
+                            raise ValueError("replicateWeightColumnIds must be an array")
+                        mapped["replicateWeightColumnIds"] = [
+                            resolve_reference(ref, "surveyDesign.replicateWeightColumnIds")
+                            for ref in replicate_ids
+                        ]
+                    design_updates[key] = mapped
         else:
             for row in csv.DictReader(io.StringIO(text)):
                 target = by_name.get(row.get("name"))
@@ -1025,47 +1085,9 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
     except (ValueError, KeyError, TypeError) as exc:
         raise BizError("CODEBOOK_INVALID", "辞書の列・設問定義を確認してください。", status_code=422,
                        details={"message": str(exc)}) from exc
-    request = {"columns": patches, "expectedSchemaRevision": cb["schemaRevision"]}
+    request = {"columns": patches, "expectedSchemaRevision": cb["schemaRevision"], **design_updates}
     if groups is not None:
         request["multiResponseGroups"] = groups
-    # PK05: the JSON roundtrip carries the whole typed codebook, not just
-    # columns: re-map weight/design references by column id after verifying
-    # the column correspondence.
-    try:
-        _payload = json.loads(text) if text.lstrip().startswith("{") else None
-    except Exception:
-        _payload = None
-    if isinstance(_payload, dict):
-        for key in ("weightConfig", "surveyDesign"):
-            if key in _payload and _payload[key] is not None:
-                if key == "weightConfig":
-                    _wc = _payload[key]
-                    _col = _wc.get("weightColumnId") if isinstance(_wc, dict) else None
-                    _target = by_id.get(_col) or by_name.get(_col)
-                    if _target is None and _col is not None:
-                        raise BizError("CODEBOOK_INVALID",
-                                       "weightConfig の列対応を確認してください。",
-                                       status_code=422)
-                    request["weightConfig"] = {
-                        "weightColumnId": _target["columnId"],
-                        "weightType": _wc.get("weightType", "survey"),
-                    } if _target else None
-                else:
-                    _sd = _payload[key]
-                    if isinstance(_sd, dict):
-                        _mapped = {}
-                        for _f in ("weightColumnId", "strataColumnId", "psuColumnId", "fpcColumnId"):
-                            _raw = _sd.get(_f)
-                            if _raw in (None, ""):
-                                _mapped[_f] = None
-                            else:
-                                _t = by_id.get(_raw) or by_name.get(_raw)
-                                if _t is None:
-                                    raise BizError("CODEBOOK_INVALID",
-                                                   "surveyDesign の列対応を確認してください。",
-                                                   status_code=422)
-                                _mapped[_f] = _t["columnId"]
-                        request["surveyDesign"] = _mapped
     return update_codebook(dataset_id, request)
 
 

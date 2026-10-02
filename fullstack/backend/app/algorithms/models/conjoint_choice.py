@@ -6,7 +6,8 @@ Implements DAVIS-FEAT-034-DESIGN sections 5.1-5.2 on encoded design rows:
   keep the original task/respondent identity (no stage is treated as an
   independent respondent).
 - logsumexp probabilities, analytic score/Hessian, internal RMS scaling
-  restored to original units, L-BFGS-B without regularization or bounds.
+  restored to original units, L-BFGS-B with safeguarded Newton polishing,
+  without regularization or bounds.
 - Complete/quasi-complete separation is checked with a HiGHS LP on the
   chosen-vs-other difference matrix. LP failure or unavailability is
   CONJOINT_SEPARATION_CHECK_FAILED, never a silent pass.
@@ -22,6 +23,8 @@ from scipy.special import logsumexp
 
 SEPARATION_TOL = 1e-8
 SCORE_TOL = 1e-6
+MAX_POLISH_ITERATIONS = 8
+MAX_POLISH_BACKTRACKS = 25
 
 
 def expand_stages(
@@ -160,13 +163,28 @@ def check_separation(
     return {"status": "ok", "maxImprovement": improvement}
 
 
+def _check_information(hessian: np.ndarray, p: int) -> None:
+    """Require positive-definite, full-rank information in scaled units."""
+    try:
+        eig = np.linalg.eigvalsh(hessian)
+        sv = np.linalg.svd(hessian, compute_uv=False)
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("CONJOINT_INFORMATION_SINGULAR") from exc
+    if not np.all(np.isfinite(eig)) or not bool((eig > 0).all()):
+        raise ValueError("CONJOINT_INFORMATION_SINGULAR")
+    tol = max(1e-12, float(np.finfo(float).eps) * max(hessian.shape)
+              * (float(sv[0]) if len(sv) else 0.0))
+    if int((sv > tol).sum()) < p:
+        raise ValueError("CONJOINT_INFORMATION_SINGULAR")
+
+
 def fit_conditional_logit(
     stages: list[dict[str, Any]],
     p: int,
     *,
     max_iterations: int = 1000,
 ) -> dict[str, Any]:
-    """Fit the shared stage-likelihood kernel. No regularization, no caps."""
+    """Fit the shared stage likelihood without regularization or coefficient bounds."""
     # Task-centered rank check: a common intercept would lose rank.
     centered_rows: list[np.ndarray] = []
     for st in stages:
@@ -206,30 +224,75 @@ def fit_conditional_logit(
     total_w = float(sum(float(st["weight"]) for st in scaled_stages)) or 1.0
     score_norm = float(np.abs(score).max() / total_w)
     logl = float(-res.fun)
+    iterations = int(getattr(res, "nit", 0) or 0)
+    polish_iterations = 0
+    # L-BFGS can satisfy its relative objective tolerance before the stricter
+    # normalized score criterion. Refine only successful, finite estimates;
+    # optimizer failures and an exhausted iteration budget remain failures.
+    if (bool(res.success) and math.isfinite(logl)
+            and np.all(np.isfinite(beta_scaled))
+            and math.isfinite(score_norm) and score_norm > SCORE_TOL):
+        remaining = max(0, int(max_iterations) - iterations)
+        for _ in range(min(MAX_POLISH_ITERATIONS, remaining)):
+            _check_information(hess_scaled, p)
+            try:
+                direction = np.linalg.solve(hess_scaled, score)
+            except np.linalg.LinAlgError as exc:
+                raise ValueError("CONJOINT_INFORMATION_SINGULAR") from exc
+            directional_gain = float(score @ direction)
+            if (not np.all(np.isfinite(direction))
+                    or not math.isfinite(directional_gain)
+                    or directional_gain <= 0):
+                break
+            # Armijo ascent, with a roundoff-sized exception only when the
+            # independently recomputed score improves. Tiny objective changes
+            # near the optimum must not prevent a well-resolved score update.
+            roundoff_tol = 64 * np.finfo(float).eps * max(1.0, abs(logl))
+            step_size = 1.0
+            for _ in range(MAX_POLISH_BACKTRACKS):
+                trial_beta = beta_scaled + step_size * direction
+                if not np.all(np.isfinite(trial_beta)):
+                    step_size *= 0.5
+                    continue
+                trial_logl = stage_loglik(trial_beta, scaled_stages)
+                gain = trial_logl - logl
+                armijo_gain = 1e-4 * step_size * directional_gain
+                if (math.isfinite(trial_logl)
+                        and (gain >= armijo_gain or abs(gain) <= roundoff_tol)):
+                    trial_score, trial_hess, _ = stage_score_hessian(
+                        trial_beta, scaled_stages)
+                    trial_norm = float(np.abs(trial_score).max() / total_w)
+                    if (math.isfinite(trial_norm) and np.all(np.isfinite(trial_hess))
+                            and ((gain > roundoff_tol and gain >= armijo_gain)
+                                 or (abs(gain) <= roundoff_tol
+                                     and trial_norm < score_norm))):
+                        beta_scaled, logl = trial_beta, float(trial_logl)
+                        score, hess_scaled = trial_score, trial_hess
+                        score_norm = trial_norm
+                        polish_iterations += 1
+                        break
+                step_size *= 0.5
+            else:
+                break
+            if score_norm <= SCORE_TOL:
+                break
     converged = bool(res.success) and score_norm <= SCORE_TOL and math.isfinite(logl)
     if not converged:
         raise ValueError("CONJOINT_NONCONVERGENCE")
-    # Positive-definite + full rank information check in scaled units.
-    try:
-        eig = np.linalg.eigvalsh(hess_scaled)
-    except Exception as exc:
-        raise ValueError("CONJOINT_INFORMATION_SINGULAR") from exc
-    if not np.all(np.isfinite(eig)) or not bool((eig > 0).all()):
-        raise ValueError("CONJOINT_INFORMATION_SINGULAR")
-    sv_h = np.linalg.svd(hess_scaled, compute_uv=False)
-    tol_h = max(1e-12, float(np.finfo(float).eps) * max(hess_scaled.shape)
-                * (float(sv_h[0]) if len(sv_h) else 0.0))
-    if int((sv_h > tol_h).sum()) < p:
-        raise ValueError("CONJOINT_INFORMATION_SINGULAR")
+    _check_information(hess_scaled, p)
     inv_scaled = np.linalg.inv(hess_scaled)
     beta = beta_scaled / scales
     bread = (np.diag(1.0 / scales) @ inv_scaled @ np.diag(1.0 / scales))
+    optimizer_message = str(getattr(res, "message", ""))[:200]
+    if polish_iterations:
+        optimizer_message = (optimizer_message[:160]
+                             + f"; Newton polish: {polish_iterations} iteration(s)")
     return {
         "beta": np.asarray(beta, dtype=np.float64),
         "bread": np.asarray(bread, dtype=np.float64),
         "scales": scales,
         "logLikelihood": logl,
         "scoreInfNorm": score_norm,
-        "iterations": int(getattr(res, "nit", 0) or 0),
-        "optimizerMessage": str(getattr(res, "message", ""))[:200],
+        "iterations": iterations + polish_iterations,
+        "optimizerMessage": optimizer_message,
     }

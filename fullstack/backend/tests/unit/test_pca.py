@@ -56,3 +56,32 @@ def test_pca_subset_and_covariance():
     assert len(res["scores"]) == 50
 
 
+
+
+@pytest.mark.parametrize("use_correlation", [True, False])
+def test_kaiser_recommendation_uses_full_spectrum_when_output_is_truncated(use_correlation):
+    """Requesting one displayed component must not cap the recommendation."""
+    rng = np.random.default_rng(18)
+    latent = rng.normal(size=(240, 2))
+    x = np.column_stack([latent[:, 0], latent[:, 0], latent[:, 1], latent[:, 1]])
+    x += 0.15 * rng.normal(size=x.shape)
+    df = pl.DataFrame({f"q{j}": x[:, j] for j in range(x.shape[1])})
+    centered = x - x.mean(axis=0)
+    if use_correlation:
+        centered /= x.std(axis=0, ddof=1)
+    eigenvalues = np.linalg.eigvalsh(centered.T @ centered / (len(x) - 1))[::-1]
+    threshold = 1.0 if use_correlation else eigenvalues.mean()
+    expected = int(np.count_nonzero(eigenvalues >= threshold))
+    assert expected == 2
+    for n_components in (1, 2, 4):
+        result = compute_pca(df, use_correlation=use_correlation,
+                             n_components=n_components)
+        assert result["kaiserThresholdComponents"] == expected
+        assert result["kaiser_threshold_components"] == expected
+        assert result["kaiserThreshold"] == pytest.approx(threshold, abs=5.1e-5)
+        assert result["nComponents"] == n_components
+        np.testing.assert_allclose(result["eigenvalues"], eigenvalues[:n_components],
+                                   atol=5.1e-6, rtol=0)
+        assert len(result["eigenvectors"]) == n_components
+        assert all(len(values) == n_components for values in result["loadings"].values())
+        assert all(len(row["pc"]) == n_components for row in result["scores"])

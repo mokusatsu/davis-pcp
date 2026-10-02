@@ -108,7 +108,7 @@ def compute_pca(
     # Kaiser threshold: eigenvalue >= 1.0 for correlation matrix, or mean eigenvalue for covariance.
     # Always from the full spectrum, never from a truncated request (contract).
     kaiser_val = 1.0 if use_correlation else float(np.mean(full_eigenvalues))
-    kaiser_count = int(np.sum(eigenvalues >= kaiser_val))
+    kaiser_count = int(np.sum(full_eigenvalues >= kaiser_val))
     if kaiser_count == 0:
         kaiser_count = 1
 

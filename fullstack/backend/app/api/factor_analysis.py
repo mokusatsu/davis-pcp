@@ -236,6 +236,8 @@ def _note_progress(comparison_id: str, stage: str, done: int, total: int) -> boo
     try:
         with _comparison_lock(comparison_id):
             rec = _load_comparison(comparison_id)
+            if _cancel_requested(comparison_id) or rec.get("status") != "running":
+                return False
             rec["stage"] = stage
             rec["completedIterations"] = int(done)
             rec["totalIterations"] = int(total)
@@ -246,6 +248,39 @@ def _note_progress(comparison_id: str, stage: str, done: int, total: int) -> boo
     return not _cancel_requested(comparison_id)
 
 
+def _finish_comparison(comparison_id: str, updates: dict) -> tuple[dict, str]:
+    """Publish a terminal state without losing progress or a concurrent cancel."""
+    with _comparison_lock(comparison_id):
+        current = _load_comparison(comparison_id)
+        if current.get("status") == "cancelled":
+            return current, comparison_id
+        entry = {**current, **updates}
+        if _cancel_requested(comparison_id):
+            entry = {**current, "status": "cancelled", "stage": "cancelled",
+                     "assessment": None, "reasonCode": "COMPARISON_CANCELLED"}
+        _remember_comparison(entry)
+        return entry, comparison_id
+
+
+def _run_sensitivity_worker(dataset_id, payload, rd, prep, fit, r, qrec, pa_rec,
+                            comparison_id) -> None:
+    try:
+        # _run_sensitivity publishes its terminal update atomically. Rewriting
+        # the returned snapshot could erase a primary-result link saved later.
+        _run_sensitivity(dataset_id, payload, rd, prep, fit, r, qrec, pa_rec,
+                         comparison_id=comparison_id)
+    except Exception as exc:
+        try:
+            _finish_comparison(comparison_id, {
+                "status": "failed", "stage": "failed",
+                "assessment": "indeterminate",
+                "reasonCode": "COMPARISON_WORKER_FAILED",
+                "diagnostics": {"error": str(exc)[:300]},
+            })
+        except Exception:
+            pass
+
+
 def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
                      fit: dict, r: np.ndarray, qrec: dict,
                      pa_rec: dict,
@@ -254,9 +289,16 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
     sa = rd.get("sensitivityAnalysis") or {}
     q = int(rd["nFactors"])
     treatments = [str(v["treatment"]) for v in rd["variables"]]
+    # Both sides use the same complete cases and already ordered/reversed
+    # ordinal ranks, regardless of the primary treatment. The main fit can
+    # contain numeric scores and must not be passed to the polychoric path.
+    ordinal_fit = {
+        "kind": "codes",
+        "codes": _np.asarray(prep["rankCodes"][prep["fitIndex"], :], dtype=int),
+        "nCats": fit["nCats"],
+    }
     # Pearson side: final rank positions 1..K (never raw code spacing).
-    pearson_codes = _np.asarray(prep["rankCodes"][prep["fitIndex"], :], dtype=float)
-    pearson_x = pearson_codes + 1.0
+    pearson_x = ordinal_fit["codes"].astype(float) + 1.0
     pearson_fit = {"kind": "scores", "x": pearson_x, "nCats": fit.get("nCats")}
     pearson_corr = fa_svc.estimate_correlation(
         pearson_fit, {**rd, "correlation": "pearson"})
@@ -272,39 +314,34 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
         _remember_comparison(base_entry)
-    else:
-        base_entry = _load_comparison(comparison_id)
     if pearson_corr.get("correlation") is None:
-        entry = {**base_entry, "status": "failed",
+        entry = {"status": "failed",
                  "reasonCode": pearson_corr.get("reasonCode"),
                  "assessment": "indeterminate",
                  "diagnostics": {"failedSide": "pearson",
                                  "pairCount": len(pearson_corr.get("pairs") or [])
                                  if isinstance(pearson_corr.get("pairs"), list)
                                  else None}}
-        _remember_comparison(entry)
-        return entry, comparison_id
+        return _finish_comparison(comparison_id, entry)
     r_p = _np.asarray(pearson_corr["correlation"], dtype=float)
     mcheck = fa_svc.validate_correlation_matrix(r_p)
     if not mcheck.get("positiveDefinite"):
-        entry = {**base_entry, "status": "failed",
+        entry = {"status": "failed",
                  "reasonCode": "FA_NON_POSITIVE_DEFINITE",
                  "assessment": "indeterminate",
                  "diagnostics": {"failedSide": "pearson",
                                  "minEigenvalue": mcheck.get("minEigenvalue")}}
-        _remember_comparison(entry)
-        return entry, comparison_id
+        return _finish_comparison(comparison_id, entry)
     minres_req = {**rd, "correlation": "pearson", "extraction": "minres",
                   "scoreMethod": "none"}
     res_p = fa_svc.fit_single_q(r_p, minres_req, q, fit_n=len(prep["fitIds"]))
     if res_p.get("status") != "success":
-        entry = {**base_entry, "status": "failed",
+        entry = {"status": "failed",
                  "reasonCode": res_p.get("reasonCode"),
                  "assessment": "indeterminate",
                  "diagnostics": {"failedSide": "pearson",
                                  "extractionStarts": res_p.get("starts")}}
-        _remember_comparison(entry)
-        return entry, comparison_id
+        return _finish_comparison(comparison_id, entry)
     # Polychoric side: reuse the main result when the main path is already
     # Polychoric-MINRES; otherwise fit a comparison Polychoric-MINRES model
     # with identical q/rotation/starts (never replacing the main ML model).
@@ -312,22 +349,22 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
         res_o = qrec
         r_o = _np.asarray(r, dtype=float)
     else:
-        poly_corr = fa_svc.estimate_correlation(fit, {**rd, "correlation": "polychoric"})
+        poly_corr = fa_svc.estimate_correlation(
+            ordinal_fit, {**rd, "correlation": "polychoric"})
         if poly_corr.get("correlation") is None:
-            entry = {**base_entry, "status": "failed",
+            entry = {"status": "failed",
                      "reasonCode": poly_corr.get("reasonCode"),
                      "assessment": "indeterminate",
                      "diagnostics": {
                          "failedSide": "polychoric",
                          "polychoricPairCount": len(poly_corr.get("pairs") or [])}}
-            _remember_comparison(entry)
-            return entry, comparison_id
+            return _finish_comparison(comparison_id, entry)
         r_o = _np.asarray(poly_corr["correlation"], dtype=float)
         res_o = fa_svc.fit_single_q(
             r_o, {**rd, "correlation": "polychoric", "extraction": "minres",
                   "scoreMethod": "none"}, q, fit_n=len(prep["fitIds"]))
         if res_o.get("status") != "success":
-            entry = {**base_entry, "status": "failed",
+            entry = {"status": "failed",
                      "reasonCode": res_o.get("reasonCode"),
                      "assessment": "indeterminate",
                      "diagnostics": {
@@ -335,8 +372,7 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
                              (poly_corr.get("pairs") or [])),
                          "failedSide": "polychoric",
                          "extractionStarts": res_o.get("starts")}}
-            _remember_comparison(entry)
-            return entry, comparison_id
+            return _finish_comparison(comparison_id, entry)
     # Shared permutation stream for both PA sides: one (iterations, n, p)
     # index array, independent per replicate AND per column (E001).
     from ..services.factor_analysis_service import (
@@ -353,43 +389,36 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
     def _pa_progress(done: int, total: int) -> bool:
         # Chunked progress for cancellable background execution; both PA
         # sides share the same stream so progress is reported per side.
-        _note_progress(comparison_id, "parallel_analysis", done, total * 2)
-        return not _cancel_requested(comparison_id)
+        return _note_progress(comparison_id, "parallel_analysis", done, total * 2)
 
     pa_p = _run_pa(pearson_fit, {**rd, "correlation": "pearson"}, r_p,
                    perm_index=_shared_perm, progress=_pa_progress)
     if _cancel_requested(comparison_id) or pa_p.get("status") == "cancelled":
-        entry = {**base_entry, "status": "cancelled", "stage": "cancelled",
+        entry = {"status": "cancelled", "stage": "cancelled",
                  "assessment": None, "reasonCode": "COMPARISON_CANCELLED",
                  "cancelNote": "cancelled during Pearson parallel analysis"}
-        _remember_comparison(entry)
-        return entry, comparison_id
+        return _finish_comparison(comparison_id, entry)
     _note_progress(comparison_id, "parallel_analysis",
                    _iters, _iters * 2)
-    pa_o_fit = {"kind": "codes",
-                "codes": _np.asarray(prep["rankCodes"][prep["fitIndex"], :], dtype=int),
-                "nCats": fit.get("nCats")}
 
     def _pa_progress_o(done: int, total: int) -> bool:
-        _note_progress(comparison_id, "parallel_analysis", _iters + done,
-                       total * 2)
-        return not _cancel_requested(comparison_id)
+        return _note_progress(comparison_id, "parallel_analysis", _iters + done,
+                              total * 2)
 
-    pa_o = _run_pa(pa_o_fit, {**rd, "correlation": "polychoric"}, r_o,
+    pa_o = _run_pa(ordinal_fit, {**rd, "correlation": "polychoric"}, r_o,
                    perm_index=_shared_perm, progress=_pa_progress_o)
     if _cancel_requested(comparison_id) or pa_o.get("status") == "cancelled":
-        entry = {**base_entry, "status": "cancelled", "stage": "cancelled",
+        entry = {"status": "cancelled", "stage": "cancelled",
                  "assessment": None, "reasonCode": "COMPARISON_CANCELLED",
                  "cancelNote": "cancelled during Polychoric parallel analysis"}
-        _remember_comparison(entry)
-        return entry, comparison_id
+        return _finish_comparison(comparison_id, entry)
     res_p = {**res_p, "correlation": r_p,
              "parallelSuggested": pa_p.get("suggestedFactors")}
     res_o = {**res_o, "correlation": r_o,
              "parallelSuggested": pa_o.get("suggestedFactors")}
-    comp = fa_svc.run_sensitivity_comparison(prep, rd, q, pearson_fit, pa_o_fit,
+    comp = fa_svc.run_sensitivity_comparison(prep, rd, q, pearson_fit, ordinal_fit,
                                              res_p, res_o)
-    entry = {**base_entry, "status": "completed"
+    entry = {"status": "completed"
              if comp.get("status") == "completed" else comp.get("status", "failed"),
              "stage": "done", "methods": {
                  "pearson": {"solutionStatus": res_p.get("solutionStatus"),
@@ -415,8 +444,7 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
                  "polychoricParallel": {k: pa_o.get(k) for k in (
                      "status", "iterationsSucceeded", "iterationsFailed",
                      "reasonCode")}}}
-    _remember_comparison(entry)
-    return entry, comparison_id
+    return _finish_comparison(comparison_id, entry)
 
 
 @router.post("/models/factor-analysis")
@@ -541,30 +569,6 @@ def run_factor_analysis(payload: dict = Body(...)):
         worker_payload = _copy.deepcopy(payload)
         worker_rd = _copy.deepcopy(rd)
 
-        def _background() -> None:
-            try:
-                entry, _cid = _run_sensitivity(
-                    dataset_id, worker_payload, worker_rd, prep, fit, r,
-                    qrec, pa_rec, comparison_id=comparison_id)
-                with _comparison_lock(comparison_id):
-                    final = _load_comparison(comparison_id)
-                    if final.get("status") == "cancelled":
-                        return
-                    _remember_comparison(entry)
-            except Exception as exc:
-                try:
-                    with _comparison_lock(comparison_id):
-                        cur = _load_comparison(comparison_id)
-                        if cur.get("status") == "cancelled":
-                            return
-                        cur.update({"status": "failed", "stage": "failed",
-                                    "assessment": "indeterminate",
-                                    "reasonCode": "COMPARISON_WORKER_FAILED",
-                                    "diagnostics": {"error": str(exc)[:300]}})
-                        _remember_comparison(cur)
-                except Exception:
-                    pass
-
         import os as _os
         if _os.environ.get("DAVIS_PCP_WASM") == "1" or _os.environ.get("PYTEST_CURRENT_TEST"):
             # Single-threaded WASM / deterministic tests: run inline but
@@ -573,7 +577,10 @@ def run_factor_analysis(payload: dict = Body(...)):
                 dataset_id, payload, rd, prep, fit, r, qrec, pa_rec,
                 comparison_id=comparison_id)
         else:
-            th = threading.Thread(target=_background, daemon=True,
+            th = threading.Thread(target=_run_sensitivity_worker,
+                                  args=(dataset_id, worker_payload, worker_rd,
+                                        prep, fit, r, qrec, pa_rec, comparison_id),
+                                  daemon=True,
                                   name=f"efa-comparison-{comparison_id[:8]}")
             _comparison_threads[comparison_id] = th
             th.start()
@@ -783,9 +790,10 @@ def _publish_result(dataset_id: str, payload: dict, rd: dict, prep: dict,
         result_store.save_result(result_id, manifest, arrays,
                                  members=None, exclusions=None, rows=rows_df)
     if sens is not None and comparison_id is not None:
-        entry = _load_comparison(comparison_id)
-        entry["primaryResultId"] = result_id
-        _remember_comparison(entry)
+        with _comparison_lock(comparison_id):
+            entry = _load_comparison(comparison_id)
+            entry["primaryResultId"] = result_id
+            _remember_comparison(entry)
     out = {"status": "success", "resultId": result_id, "method": "efa",
            "meta": meta, "config": config, "capabilities": capabilities,
            "summary": summary, "details": details,
@@ -1459,24 +1467,25 @@ def export_comparison(comparison_id: str, table: str = "manifest",
 
 @router.post("/analysis-comparisons/{comparison_id}/cancel")
 def cancel_comparison(comparison_id: str):
-    try:
-        rec = _load_comparison(comparison_id)
-    except BizError:
-        _err("ANALYSIS_COMPARISON_NOT_FOUND", "比較が見つかりません。", 404)
-    if rec.get("status") in ("completed", "failed", "cancelled"):
-        out = {"status": "success", "comparisonId": comparison_id,
-               "cancelled": False, "comparisonStatus": rec.get("status")}
-        check_json_finite(out)
-        return out
+    with _comparison_lock(comparison_id):
+        try:
+            rec = _load_comparison(comparison_id)
+        except BizError:
+            _err("ANALYSIS_COMPARISON_NOT_FOUND", "比較が見つかりません。", 404)
+        if rec.get("status") in ("completed", "failed", "cancelled"):
+            out = {"status": "success", "comparisonId": comparison_id,
+                   "cancelled": False, "comparisonStatus": rec.get("status")}
+            check_json_finite(out)
+            return out
+        ev = _comparison_cancel.get(comparison_id)
+        if ev is None:
+            ev = threading.Event()
+            _comparison_cancel[comparison_id] = ev
+        ev.set()
     # E011 3rd round: signal the background worker via the cancel event;
     # the worker observes it at the next PA chunk boundary and persists a
     # cancelled record itself. Set the flag under lock, then join briefly
     # so GET observes a settled state quickly.
-    ev = _comparison_cancel.get(comparison_id)
-    if ev is None:
-        ev = threading.Event()
-        _comparison_cancel[comparison_id] = ev
-    ev.set()
     th = _comparison_threads.get(comparison_id)
     if th is not None and th.is_alive():
         th.join(timeout=30.0)
@@ -1487,14 +1496,14 @@ def cancel_comparison(comparison_id: str):
                 cur["status"] = "cancelled"
                 cur["stage"] = "cancelled"
                 cur["reasonCode"] = "COMPARISON_CANCELLED"
+                cur["assessment"] = None
                 cur["cancelNote"] = ("cancel requested; worker did not settle "
                                      "in time, marked cancelled, main result untouched")
                 _remember_comparison(cur)
-                rec = cur
+            rec = cur
     except Exception:
         pass
     out = {"status": "success", "comparisonId": comparison_id,
            "cancelled": True, "comparisonStatus": rec.get("status")}
     check_json_finite(out)
     return out
-

@@ -47,13 +47,14 @@ def _sniff_encoding(raw: bytes) -> str:
 
 
 _MAGIC_PARQUET = b"PAR1"
+_ARROW_STREAM_CONTINUATION = b"\xff\xff\xff\xff"
 
 
 def detect_format(filename: str, head: bytes) -> str:
     """Content-based format detection. Extension is only a hint."""
     if head[:4] == _MAGIC_PARQUET or head[-4:] == _MAGIC_PARQUET:
         return "parquet"
-    if head[:6] == b"ARROW1" or head[:6] == b"ARROW:":
+    if head[:6] in (b"ARROW1", b"ARROW:") or head.startswith(_ARROW_STREAM_CONTINUATION):
         return "arrow"
     if b"SQLite format 3\x00" in head[:100]:
         return "sqlite"
@@ -321,7 +322,14 @@ def load_dataframe_from_upload(filename: str, raw: bytes, options: ImportOptions
                            suggested_actions=["ファイルが壊れていないか確認してください"]) from exc
     elif fmt == "arrow":
         try:
-            df = pl.read_ipc(io.BytesIO(raw))
+            # IPC streams (including our own exports) use the continuation
+            # marker, while IPC files / Feather V2 use the ARROW1 magic.
+            # Keep malformed binary content on the Arrow error path rather
+            # than retrying it as text and reporting a misleading CSV error.
+            if raw.startswith(_ARROW_STREAM_CONTINUATION):
+                df = pl.read_ipc_stream(io.BytesIO(raw))
+            else:
+                df = pl.read_ipc(io.BytesIO(raw))
         except Exception as exc:
             raise BizError("IMPORT_MALFORMED_ARROW", "Arrow IPCファイルを読み込めませんでした。",
                            details={"reason": str(exc)[:200]},
