@@ -179,6 +179,26 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
     return entries
   }, [children, questions])
   const keyboardMark = accessibilityMarks[Math.min(keyboardIndex, accessibilityMarks.length - 1)]
+  const keyboardHover = useRef<any>(null)
+  const leaveKeyboardMark = (event: Event) => {
+    const previous = keyboardHover.current
+    keyboardHover.current = null
+    previous?.onmouseout?.({ event })
+  }
+  const enterKeyboardMark = (mark: any, event: Event) => {
+    leaveKeyboardMark(event)
+    keyboardHover.current = mark ?? null
+    setTip(mark?.info?.title ?? null)
+    mark?.onmouseover?.({ event })
+  }
+  useEffect(() => {
+    const previous = keyboardHover.current
+    if (!previous) return
+    const current = accessibilityMarks.find(mark => mark.id === previous.id && mark.info?.title === previous.info?.title)
+    if (current) keyboardHover.current = current
+    else { leaveKeyboardMark(new Event('blur')); setTip(null) }
+  }, [accessibilityMarks])
+  useEffect(() => () => leaveKeyboardMark(new Event('blur')), [])
   const option = useMemo<EChartsOption>(() => {
     const sx = size.width / logicalWidth, sy = size.height / logicalHeight
     const scale = Math.min(sx, sy)
@@ -204,31 +224,34 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
   }
   const autoHeight = style?.height === 'auto' || (!height && !style?.height)
   return <div ref={host} tabIndex={0} aria-label={`${props['aria-label'] ?? props['data-testid'] ?? '統計グラフ'}。矢印キーでマークを移動、Enterで選択`}
-    onFocus={event => { if (event.target === event.currentTarget) setTip(keyboardMark?.info?.title ?? null) }}
-    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTip(null) }}
+    onFocus={event => { if (event.target === event.currentTarget) enterKeyboardMark(keyboardMark, event.nativeEvent) }}
+    onBlur={event => {
+      leaveKeyboardMark(event.nativeEvent)
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTip(null)
+    }}
     onKeyDown={event => {
+      if (event.target !== event.currentTarget || event.defaultPrevented) return
       if (event.key.startsWith('Arrow') && accessibilityMarks.length) {
         event.preventDefault()
         const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
-        const index = (keyboardIndex + direction + accessibilityMarks.length) % accessibilityMarks.length
-        setKeyboardIndex(index); setTip(accessibilityMarks[index].info?.title ?? null)
-        accessibilityMarks[index].onmouseover?.({ event: event.nativeEvent })
+        const index = (Math.min(keyboardIndex, accessibilityMarks.length - 1) + direction + accessibilityMarks.length) % accessibilityMarks.length
+        setKeyboardIndex(index); enterKeyboardMark(accessibilityMarks[index], event.nativeEvent)
       } else if ((event.key === 'Enter' || event.key === ' ') && keyboardMark?.onclick) { event.preventDefault(); keyboardMark.onclick({ event: event.nativeEvent }) }
-      else if (event.key === 'Escape') setTip(null)
+      else if (event.key === 'Escape') { leaveKeyboardMark(event.nativeEvent); setTip(null) }
     }} data-testid={props['data-testid']} data-chart-renderer="echarts-graphic"
     style={{ width: width ?? '100%', height: autoHeight ? undefined : height ?? logicalHeight, aspectRatio: autoHeight ? `${logicalWidth} / ${logicalHeight}` : undefined,
       position: 'relative', userSelect: 'none', ...style, ...(autoHeight ? { height: undefined } : {}) }}
     onPointerDown={mouseHandler('onPointerDown')} onPointerMove={mouseHandler('onPointerMove')} onPointerUp={mouseHandler('onPointerUp')}
     onPointerCancel={mouseHandler('onPointerCancel')} onLostPointerCapture={mouseHandler('onLostPointerCapture')} onContextMenu={mouseHandler('onContextMenu')} onPointerLeave={mouseHandler('onPointerLeave')}
     onMouseDown={mouseHandler('onMouseDown')} onMouseMove={mouseHandler('onMouseMove')} onMouseUp={mouseHandler('onMouseUp')}
-    onMouseLeave={() => setTip(null)}>
+    onMouseLeave={event => { leaveKeyboardMark(event.nativeEvent); setTip(null); mouseHandler('onMouseLeave')(event) }}>
     <EChart option={option} height="100%" chartRef={chart} svgRef={svg} ariaLabel={props['aria-label'] ?? props['data-testid'] ?? '統計グラフ'}
       onReady={instance => { instance.on('finished', () => transferLatest.current()); instance.on('mouseover', (event: any) => setTip(event.info?.title ?? null)) }} style={{ minHeight: 0 }} />
     {tip && <div role="tooltip" aria-live="polite" tabIndex={0}
       onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
       onMouseDown={event => event.stopPropagation()} onMouseMove={event => event.stopPropagation()} onMouseUp={event => event.stopPropagation()}
       onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
-      onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { host.current?.focus(); setTip(null) } }}
+      onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') { host.current?.focus(); leaveKeyboardMark(event.nativeEvent); setTip(null) } }}
       style={{ position: 'absolute', left: 12, bottom: 4, pointerEvents: 'auto', background: '#fff', border: '1px solid #ddd', padding: 6, fontSize: 12,
         boxSizing: 'border-box', maxWidth: 'calc(100% - 24px)', maxHeight: 'min(50vh, 100%)', overflow: 'auto', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', zIndex: 10 }}>{tip}</div>}
   </div>

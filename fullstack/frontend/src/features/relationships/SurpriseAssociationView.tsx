@@ -1,3 +1,4 @@
+import Statistic from '../common/RoundedStatistic'
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
@@ -9,7 +10,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Slider, Tag,
-  Segmented, Statistic, Empty, Spin, Alert, Tooltip,
+  Segmented, Empty, Spin, Alert, Tooltip,
 } from 'antd'
 import Select from '../common/ColumnSelect'
 import {

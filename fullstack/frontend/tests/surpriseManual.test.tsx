@@ -63,8 +63,11 @@ it('renders the native association heatmap with pair details and preserves its i
     const caption = view.getByTestId('surprise-high-quadrant-caption')
     const button = plot.querySelector<HTMLButtonElement>('[data-chart-export="svg"]')!
     expect(button).toBeTruthy()
+    const controls = button.closest<HTMLElement>('[data-chart-export-controls]')!
+    expect(controls).toBeTruthy()
     // Local caption is below the export row, without moving chart coordinates.
-    expect(parseFloat(caption.style.top)).toBeGreaterThanOrEqual(parseFloat(button.style.top) + 28)
+    expect(button).toHaveClass('ant-btn-sm')
+    expect(parseFloat(caption.style.top)).toBeGreaterThanOrEqual(parseFloat(controls.style.top) + 28)
     expect(caption).toHaveStyle({ pointerEvents: 'none', right: '12px' })
     expect(plot).toHaveStyle({ width: '500px', height: '400px' })
   }

@@ -1,3 +1,5 @@
+import Statistic from '../../common/RoundedStatistic'
+import { vifDisplay } from './vifDisplay'
 import { useScopedRun, AnalysisScopeSummary } from '../../selection/analysisScope'
 import ColumnQuestionTooltip, { useQuestionText } from '../../common/ColumnQuestionTooltip'
 import EChart from '../../charts/EChart'
@@ -8,7 +10,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
-  Statistic, Alert, Spin, Slider, Divider,
+  Alert, Spin, Slider, Divider,
 } from 'antd'
 import {
   RocketOutlined, ThunderboltOutlined, ExperimentOutlined,
@@ -260,9 +262,12 @@ export default function KeyDriverAnalysisPage() {
                   <Statistic
                     title="最大共線性 (Max VIF)"
                     value={result.model.vif_max}
-                    precision={1}
-                    valueStyle={{ color: result.model.vif_max > 10 ? '#cf1322' : '#52c41a' }}
+                    formatter={() => vifDisplay(result.model.vif_max).text}
+                    valueStyle={{ color: vifDisplay(result.model.vif_max).color }}
                   />
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {vifDisplay(result.model.vif_max).label}。5超: 注意 / 10超: 強い共線性
+                  </Typography.Text>
                 </Card>
               </Col>
               <Col xs={12} sm={6}>
@@ -348,7 +353,7 @@ export default function KeyDriverAnalysisPage() {
                           title: 'VIF',
                           dataIndex: 'vif',
                           render: (v: number) => (
-                            <span style={{ color: v > 5 ? '#cf1322' : 'inherit' }}>{v.toFixed(1)}</span>
+                            <span title={vifDisplay(v).label} style={{ color: vifDisplay(v).color }}>{vifDisplay(v).text}</span>
                           ),
                         },
                         {

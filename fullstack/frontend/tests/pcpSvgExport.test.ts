@@ -239,7 +239,7 @@ describe('PCP SVG control lifecycle', () => {
       expect(this.download).toBe('PCP.svg')
     })
     const view = render(tree())
-    const button = view.getByRole('button', { name: 'PCPをSVGで保存' })
+    const button = view.getByRole('button', { name: 'PCP：SVGを保存' })
     expect(button).toBeDisabled()
     fireEvent.click(button)
     expect(click).not.toHaveBeenCalled()
@@ -249,6 +249,10 @@ describe('PCP SVG control lifecycle', () => {
     await waitFor(() => expect(button).toBeEnabled())
     fireEvent.click(button)
     fireEvent.click(button)
+    expect(click).toHaveBeenCalledTimes(1) // Pending reactivation is suppressed.
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    await waitFor(() => expect(button).toBeEnabled())
     expect(click).toHaveBeenCalledTimes(2)
     expect((create.mock.calls[0][0] as Blob).type).toBe('image/svg+xml;charset=utf-8')
     const downloaded = await new Promise<string>(resolve => {
@@ -270,17 +274,19 @@ describe('PCP SVG control lifecycle', () => {
 
     fireEvent.click(view.getByTestId('graph-expand-pcp/main'))
     const dialog = await view.findByRole('dialog')
-    expect(within(dialog).getByRole('button', { name: 'PCPをSVGで保存' })).toBe(button)
+    expect(within(dialog).getByRole('button', { name: 'PCP：SVGを保存' })).toBe(button)
     fireEvent.click(button)
     expect(click).toHaveBeenCalledTimes(3)
+    await waitFor(() => expect(button).toBeEnabled())
     create.mockImplementationOnce(() => { throw new Error('download unavailable') })
     fireEvent.click(button)
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('download unavailable')
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('download unavailable'))
     fireEvent.click(button)
-    expect(within(dialog).queryByRole('alert')).toBeNull()
+    await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull())
+    await waitFor(() => expect(button).toBeEnabled())
     expect(click).toHaveBeenCalledTimes(4)
     fireEvent.click(within(dialog).getByRole('button', { name: '拡大を戻す' }))
-    expect(view.getByRole('button', { name: 'PCPをSVGで保存' })).toBe(button)
+    expect(view.getByRole('button', { name: 'PCP：SVGを保存' })).toBe(button)
 
     fixture.geometry = null
     act(() => { pageStore.dispatch({ type: 'test/switchDataset' }) })
@@ -310,7 +316,7 @@ describe('PCP SVG control lifecycle', () => {
     fixture.geometry = null
     act(() => { pageStore.dispatch({ type: 'test/switchDataset' }) })
     await act(async () => { worker.onmessage({ data: { id: requests[0], ok: false, error: 'old frame failed' } }) })
-    expect(view.getByRole('button', { name: 'PCPをSVGで保存' })).toBeDisabled()
+    expect(view.getByRole('button', { name: 'PCP：SVGを保存' })).toBeDisabled()
     expect(context.fillRect).not.toHaveBeenCalled()
     expect(context.drawImage).not.toHaveBeenCalled()
 
@@ -320,7 +326,7 @@ describe('PCP SVG control lifecycle', () => {
     fixture.geometry = null
     act(() => { pageStore.dispatch({ type: 'test/switchDataset', payload: 'third' }) })
     await act(async () => { worker.onmessage({ data: { id: requests[1], ok: true } }) })
-    expect(view.getByRole('button', { name: 'PCPをSVGで保存' })).toBeDisabled()
+    expect(view.getByRole('button', { name: 'PCP：SVGを保存' })).toBeDisabled()
     expect(context.fillRect).not.toHaveBeenCalled()
     expect(context.drawImage).not.toHaveBeenCalled()
   })

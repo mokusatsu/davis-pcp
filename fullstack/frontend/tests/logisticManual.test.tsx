@@ -23,6 +23,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setup() {
   const base = store.getState()
   const state: any = { ...base,
+    pcp: { ...base.pcp, brushOperation: 'replace' },
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds: ['r2'] },
     globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'score' }, { kind: 'ma', groupId: 'g' }] },
@@ -33,6 +34,9 @@ function setup() {
   const local = configureStore({ reducer: (s = state, action: any) => action.type === 'test/revision' ? { ...s, selection: { ...s.selection, dataRevision: 4 } } : action.type === 'test/scope'
     ? { ...s, globalObservations: { ...s.globalObservations, scopeMode: 'sampled', sampling: { ...s.globalObservations.sampling, sampledRowIds: action.payload } } } : s,
     middleware: get => get({ serializableCheck: false }) })
+  // Production's Provider and imperative getters share one Redux store.
+  // Bind the imported store reader to this isolated Provider fixture too.
+  vi.spyOn(store, 'getState').mockImplementation(() => local.getState())
   const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><LogisticRegressionPage /></Provider>)
   return { local, view, dispatch }

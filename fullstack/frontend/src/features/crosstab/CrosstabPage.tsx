@@ -412,7 +412,7 @@ export default function CrosstabPage() {
               onChange={(v) => setColVariable(v as string)}
               options={categoricalOptions}
             />
-            <Select
+            <SelectColumn
               data-testid="crosstab-weight"
               style={{ minWidth: 200 }}
               placeholder="ウェイトなし"
@@ -479,7 +479,7 @@ export default function CrosstabPage() {
                 検定は Rao–Scott 第2次補正のみ利用可（Pearson χ² は不可）
               </Typography.Text>
               <span>層（strata）</span>
-              <Select
+              <SelectColumn
                 data-testid="crosstab-strata"
                 style={{ minWidth: 180 }}
                 placeholder="未指定"
@@ -491,7 +491,7 @@ export default function CrosstabPage() {
                 options={designOptions}
               />
               <span>PSU</span>
-              <Select
+              <SelectColumn
                 data-testid="crosstab-psu"
                 style={{ minWidth: 180 }}
                 placeholder="未指定"

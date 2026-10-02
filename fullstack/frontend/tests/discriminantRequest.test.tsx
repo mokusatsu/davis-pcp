@@ -4,9 +4,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { message } from 'antd'
-import { store, selectionReducer } from '../src/app/store'
+import { store, selectionReducer, pcpStateChanged } from '../src/app/store'
 import { GraphExpansionProvider, useGraphExpansion } from '../src/features/common/GraphExpansion'
-import { useBrushOp, type BrushOperation } from '../src/features/selection/SelectionMenu'
+import { getBrushOp, useBrushOp, type BrushOperation } from '../src/features/selection/SelectionMenu'
 import { api } from '../src/api/client'
 import DiscriminantAnalysisPage from '../src/features/models/DiscriminantAnalysisPage'
 
@@ -89,8 +89,8 @@ function FocusControls() {
 }
 
 function OperationPicker() {
-  const [, setOperation] = useBrushOp()
-  return <select aria-label="test operation" onChange={event => setOperation(event.target.value as BrushOperation)} defaultValue="replace">
+  const [operation, setOperation] = useBrushOp()
+  return <select aria-label="test operation" onChange={event => setOperation(event.target.value as BrushOperation)} value={operation}>
     {['replace', 'add', 'subtract', 'toggle'].map(op => <option key={op}>{op}</option>)}
   </select>
 }
@@ -105,6 +105,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
       ld1: index, ld2: index - 1, mahalanobisDistance: 1, isMisclassified: false })) } as any)
   const base = store.getState()
   const state: any = { ...base,
+    pcp: { ...base.pcp, brushOperation: 'replace' },
     selection: { ...base.selection, datasetId: 'd', selectedRowIds: ['r2'] },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'x' }, { kind: 'column', columnId: 'y' }] },
     codebook: { ...base.codebook, datasetId: 'd', columns: [
@@ -112,7 +113,10 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
       { name: 'y', columnId: 'y', role: 'attribute', scaleType: 'nominal' }] } }
   state.selection = { ...state.selection, allRowIds: ['r1', 'r2', 'r3'], activeRowIds: ['r1', 'r2', 'r3'], activeRowIdSet: new Set(['r1', 'r2', 'r3']), selectedRowIds: ['r1', 'r2'] }
   const local = configureStore({ reducer: (current = state, action: any) => ({ ...current,
-    selection: selectionReducer(current.selection, action) }), middleware: get => get({ serializableCheck: false }) })
+    selection: selectionReducer(current.selection, action),
+    pcp: pcpStateChanged.match(action) ? { ...current.pcp, ...action.payload } : current.pcp }), middleware: get => get({ serializableCheck: false }) })
+  // Production's Provider and imperative getters share one Redux store.
+  vi.spyOn(store, 'getState').mockImplementation(() => local.getState())
   const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><GraphExpansionProvider><FocusControls /><OperationPicker /><DiscriminantAnalysisPage /></GraphExpansionProvider></Provider>)
   fireEvent.change(view.getByTestId('discriminant-target-select'), { target: { value: 'y' } })
@@ -150,6 +154,8 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   }
   for (const [op, expected] of [['replace', ['r2']], ['add', ['r2']], ['subtract', []], ['toggle', ['r2']], ['toggle', []]] as const) {
     fireEvent.change(operation, { target: { value: op } })
+    expect(local.getState().pcp.brushOperation).toBe(op)
+    expect(getBrushOp()).toBe(local.getState().pcp.brushOperation)
     rectangle()
     expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({ payload: expect.objectContaining({ operation: op, rowIds: ['r2'] }) }))
     expect(local.getState().selection.selectedRowIds).toEqual(expected)

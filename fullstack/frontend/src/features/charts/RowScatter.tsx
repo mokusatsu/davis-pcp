@@ -75,7 +75,15 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
     }, ...(Array.isArray(option?.series) ? option.series : option?.series ? [option.series] : [])],
   }
   const keyboardPoint = finite[Math.min(keyboardIndex, finite.length - 1)]
+  const selectPoint = (rowId: string) => dispatch(selectionApplied({ rowIds: [rowId],
+    operation: clickOperation === 'menu' ? getBrushOp() : 'toggle', label: `${testId ?? '散布図'} 行選択` }))
+  const keyboardHover = useRef(false)
+  const leaveKeyboard = () => { if (keyboardHover.current) { keyboardHover.current = false; dispatch(hovered(null)) } }
+  useEffect(() => { leaveKeyboard() }, [pointsKey])
+  useEffect(() => () => leaveKeyboard(), [])
   return <div tabIndex={0} role="group" aria-label={`${xName} × ${yName}。矢印キーで行を移動、Enterで選択`}
+    onFocus={event => { if (event.target === event.currentTarget && keyboardPoint) { keyboardHover.current = true; dispatch(hovered(keyboardPoint.rowId)) } }}
+    onBlur={leaveKeyboard}
     onPointerDown={event => {
       if (event.button !== 0 || start.current) return
       const position = local(event)
@@ -98,7 +106,7 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
       if (!position || !origin || !chart) return
       if (Math.abs(event.clientX - origin.clientX) < 4 && Math.abs(event.clientY - origin.clientY) < 4) {
         const point = nearest(position)
-        if (point) dispatch(selectionApplied({ rowIds: [point.rowId], operation: clickOperation === 'menu' ? getBrushOp() : 'toggle', label: `${testId ?? '散布図'} 行選択` }))
+        if (point) selectPoint(point.rowId)
       } else if (!origin.point) {
         const a = chart.convertFromPixel({ gridIndex: 0 }, [origin.x, origin.y]) as number[]
         const b = chart.convertFromPixel({ gridIndex: 0 }, [position.x, position.y]) as number[]
@@ -106,11 +114,16 @@ export default function RowScatter({ points, xName, yName, testId, height = 420,
       }
     }} onPointerCancel={clear} onLostPointerCapture={clear} onPointerLeave={() => { if (!start.current) dispatch(hovered(null)) }}
     onKeyDown={event => {
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); setKeyboardIndex(i => Math.min(finite.length - 1, i + 1)) }
-      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); setKeyboardIndex(i => Math.max(0, i - 1)) }
-      else if ((event.key === 'Enter' || event.key === ' ') && keyboardPoint) { event.preventDefault(); dispatch(selectionApplied({ rowIds: [keyboardPoint.rowId], operation: 'toggle', label: `${testId ?? '散布図'} 行選択` })) }
-    }} style={{ width: '100%', height }}>
+      if (event.target !== event.currentTarget || event.defaultPrevented) return
+      if (event.key.startsWith('Arrow') && finite.length) {
+        event.preventDefault()
+        const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
+        const index = Math.max(0, Math.min(finite.length - 1, Math.min(keyboardIndex, finite.length - 1) + direction))
+        setKeyboardIndex(index); keyboardHover.current = true; dispatch(hovered(finite[index].rowId))
+      } else if ((event.key === 'Enter' || event.key === ' ') && keyboardPoint) { event.preventDefault(); selectPoint(keyboardPoint.rowId) }
+      else if (event.key === 'Escape') leaveKeyboard()
+    }} style={{ width: '100%', height, position: 'relative' }}>
     <EChart fitPointMarkers chartRef={chartRef} option={chartOption} height="100%" testId={testId} ariaLabel={ariaLabel ?? `${xName} × ${yName}`} onReady={onReady} />
-    <span aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardPoint ? `rowId ${keyboardPoint.rowId}, ${xName} ${keyboardPoint.x}, ${yName} ${keyboardPoint.y}` : 'データなし'}</span>
+    <span aria-live="polite" style={{ position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardPoint ? `rowId ${keyboardPoint.rowId}, ${xName} ${keyboardPoint.x}, ${yName} ${keyboardPoint.y}` : 'データなし'}</span>
   </div>
 }

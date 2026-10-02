@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -17,7 +18,7 @@ import { runCa, selectCaCategories, type CAContext } from './caApi'
 import CaHelp from './caHelp'
 import CaFigure from './caFigure'
 import { CategoryTable, EigenvalueTable } from './caTables'
-import { downloadPng, downloadSvg, exportCaTable } from './caExport'
+import { exportCaTable } from './caExport'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -358,7 +359,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                   options={rowLabelOptions}
                 />
                 <span>セル列</span>
-                <Select
+                <SelectColumn
                   mode="multiple"
                   style={{ minWidth: 240 }}
                   placeholder="数値セル列（2列以上）"
@@ -471,26 +472,12 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
                 原行IDへ解決して選択 ({selectedCats.size})
               </Button>
               {selectInfo && <Tag>{selectInfo}</Tag>}
-              <Button onClick={() => void exportCaTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</Button>
-              <Button onClick={() => void exportCaTable(result.resultId, 'eigenvalues', 'json')}>固有値JSON</Button>
-              <Button onClick={() => void exportCaTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</Button>
-              <Button onClick={() => void exportCaTable(result.resultId, 'table', 'csv')}>分割表CSV</Button>
-              <Button onClick={() => void exportCaTable(result.resultId, 'table', 'json')}>分割表JSON</Button>
-              <Button onClick={() => void exportCaTable(result.resultId, 'manifest', 'json')}>設定JSON</Button>
-              <Button
-                onClick={() => {
-                  if (svgRef.current) downloadSvg(svgRef.current, `ca-${result.resultId}.svg`)
-                }}
-              >
-                図SVG
-              </Button>
-              <Button
-                onClick={() => {
-                  if (svgRef.current) downloadPng(svgRef.current, `ca-${result.resultId}.png`)
-                }}
-              >
-                図PNG
-              </Button>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="固有値CSV" onExport={() => exportCaTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</AsyncExportButton>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="固有値JSON" onExport={() => exportCaTable(result.resultId, 'eigenvalues', 'json')}>固有値JSON</AsyncExportButton>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="カテゴリCSV" onExport={() => exportCaTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</AsyncExportButton>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="分割表CSV" onExport={() => exportCaTable(result.resultId, 'table', 'csv')}>分割表CSV</AsyncExportButton>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="分割表JSON" onExport={() => exportCaTable(result.resultId, 'table', 'json')}>分割表JSON</AsyncExportButton>
+              <AsyncExportButton exportKey={result.resultId} statusLabel="設定JSON" onExport={() => exportCaTable(result.resultId, 'manifest', 'json')}>設定JSON</AsyncExportButton>
             </Space>
             <div style={{ marginTop: 12 }}>
               <EigenvalueTable

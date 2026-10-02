@@ -1,16 +1,20 @@
+import Modal from '../common/ActiveModal'
+import MutationProgress from '../common/MutationProgress'
+import { useRequestIdentity } from '../common/useRequestIdentity'
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import EChart from '../charts/EChart'
 import { imputationHistogramOption } from './preprocessingCharts'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
   Card,
+  ConfigProvider,
   Checkbox,
   Input,
   InputNumber,
-  Modal,
   Radio,
   Segmented,
   Space,
@@ -37,7 +41,7 @@ interface ImputationModalProps {
   targetColumn?: string | null
   columnsWithMissing: ColumnMissingInfo[]
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (committedDatasetId: string) => void
 }
 
 interface PreviewStats {
@@ -103,8 +107,9 @@ export default function ImputationModal({
   onClose,
   onSuccess,
 }: ImputationModalProps) {
-  const { columns } = useCodebook()
+  const { columns, getColumn } = useCodebook()
   const [selectedCols, setSelectedCols] = useState<string[]>([])
+  const [targetSearch, setTargetSearch] = useState('')
   const [strategy, setStrategy] = useState<string>('tabdiff')
   const [inPlace, setInPlace] = useState<boolean>(true)
   // Predictors: "auto" leaves the choice to the server (every usable column).
@@ -128,6 +133,9 @@ export default function ImputationModal({
 
   // Execution state
   const [executing, setExecuting] = useState<boolean>(false)
+  const busy = useRef(false)
+  const active = useAnalysisViewActive()
+  const mutationRequest = useRequestIdentity(JSON.stringify([datasetId, open, active]))
 
   /** Only numeric, non-MA, non-weight columns can condition the imputation. */
   const predictorOptions = useMemo(
@@ -161,6 +169,7 @@ export default function ImputationModal({
   }), [selectedCols, predictorMode, predictorCols, strategy, buildOptions])
 
   const settingsKey = useMemo(() => JSON.stringify(buildBody()), [buildBody])
+  const previewRequest = useRequestIdentity(JSON.stringify([datasetId, open, active, settingsKey]))
 
   // F005-G51: columnsWithMissingは親の再レンダーごとに新参照になるため、
   // 配列の中身が変わらない限り初期化effectを再実行しない。拡大開始の
@@ -178,36 +187,47 @@ export default function ImputationModal({
       setSelectedCols([])
       setPreviewCol('')
     }
+    setTargetSearch('')
     setPreviewData(null)
     setPreviewedSettings(null)
     setPredictorMode('auto')
     setPredictorCols([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetColumn, missingKey, open])
+  }, [targetColumn, missingKey, open, datasetId])
+
+  useEffect(() => { setPreviewLoading(false) }, [datasetId, open, active, settingsKey])
 
   const fetchPreview = async () => {
-    if (selectedCols.length === 0) return null
+    if (!open || !active || selectedCols.length === 0) return null
+    const current = previewRequest.begin()
     setPreviewLoading(true)
     try {
       // Preview the *whole* target set — the same request the apply will send.
       const res = await api.post<ImputePreviewResponse>(`/datasets/${datasetId}/impute/preview`, buildBody())
+      if (!current()) return null
       setPreviewData(res)
       setPreviewedSettings(JSON.stringify(buildBody()))
       setPreviewCol((prev) => (res.perColumn.some((c) => c.column === prev) ? prev : (res.perColumn[0]?.column ?? '')))
       return res
     } catch (err: any) {
+      if (!current()) return null
       message.error(`プレビュー取得エラー: ${err.code ? `${err.code}: ` : ''}${err.message || err}`)
       return null
     } finally {
-      setPreviewLoading(false)
+      if (current()) setPreviewLoading(false)
     }
   }
 
   const handleApply = async () => {
+    if (busy.current || !open || !active) return
     if (selectedCols.length === 0) {
       message.warning('補完対象の列を1つ以上選択してください。')
       return
     }
+    busy.current = true
+    const current = mutationRequest.begin()
+    previewRequest.invalidate()
+    setPreviewLoading(false)
     setExecuting(true)
     try {
       // Apply exactly what was previewed; if the settings moved on since, the
@@ -219,19 +239,24 @@ export default function ImputationModal({
         planHash,
       })
       message.success(`欠損値補完完了 (${strategy})`)
-      onSuccess()
-      onClose()
+      onSuccess(datasetId)
+      if (current()) onClose()
     } catch (err: any) {
-      if (err?.code === 'IMPUTATION_PLAN_STALE') {
+      if (current() && err?.code === 'IMPUTATION_PLAN_STALE') {
         message.warning('プレビュー後にデータが変わりました。再プレビューします。')
         await fetchPreview()
       } else {
         message.error(`補完エラー: ${err.code ? `${err.code}: ` : ''}${err.message || err}`)
       }
     } finally {
+      busy.current = false
       setExecuting(false)
     }
   }
+
+  const filteredTargets = columnsWithMissing.filter(col =>
+    `${col.name} ${getColumn(col.name)?.label ?? ''}`.toLocaleLowerCase().includes(targetSearch.trim().toLocaleLowerCase()))
+  const hiddenTargetCount = selectedCols.filter(name => !filteredTargets.some(col => col.name === name)).length
 
   const activePreview = previewData?.perColumn.find((c) => c.column === previewCol)
     ?? previewData?.perColumn[0]
@@ -248,16 +273,20 @@ export default function ImputationModal({
         </Space>
       }
       width={840}
-      onCancel={onClose}
+      onCancel={() => { if (!busy.current) onClose() }}
+      closable={!executing}
+      keyboard={!executing}
+      maskClosable={!executing}
+      onDeactivate={onClose}
       footer={[
-        <Button key="cancel" onClick={onClose}>
+        <Button key="cancel" onClick={onClose} disabled={executing}>
           キャンセル
         </Button>,
         <Button
           key="preview"
           onClick={() => void fetchPreview()}
           loading={previewLoading}
-          disabled={selectedCols.length === 0}
+          disabled={executing || selectedCols.length === 0}
         >
           プレビュー更新
         </Button>,
@@ -266,53 +295,51 @@ export default function ImputationModal({
           type="primary"
           onClick={() => void handleApply()}
           loading={executing}
-          disabled={selectedCols.length === 0}
+          disabled={executing || selectedCols.length === 0}
           data-testid="btn-execute-imputation"
         >
           補完を適用
         </Button>,
       ]}
     >
+      <MutationProgress busy={executing} />
+      <ConfigProvider componentDisabled={executing}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '68vh', overflowY: 'auto' }}>
         {/* Section 1: Columns */}
         <Card size="small" title="1. 補完対象の列を選択" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
           {columnsWithMissing.length === 0 ? (
             <Alert type="info" message="欠損値を含む列は見つかりませんでした。" showIcon />
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {columnsWithMissing.map((col) => {
-                const isChecked = selectedCols.includes(col.name)
-                const pct = ((col.missing / Math.max(1, col.total)) * 100).toFixed(1)
-                return (
-                  <div
-                    key={col.name}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 6,
-                      border: `1px solid ${isChecked ? '#2563eb' : '#e5e7eb'}`,
-                      background: isChecked ? '#eff6ff' : '#ffffff',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => {
-                      if (isChecked) {
-                        setSelectedCols(selectedCols.filter((c) => c !== col.name))
-                      } else {
-                        setSelectedCols([...selectedCols, col.name])
-                        setPreviewCol(col.name)
-                      }
-                    }}
-                  >
-                    <Space size="small">
-                      <Checkbox checked={isChecked} />
-                      <Typography.Text strong><ColumnQuestionTooltip nameOrId={col.name}>{col.name}</ColumnQuestionTooltip></Typography.Text>
-                      <Tag color="red" style={{ margin: 0, fontSize: 11 }}>
-                        欠損 {col.missing} ({pct}%)
-                      </Tag>
+            <>
+              <Space wrap style={{ marginBottom: 12, width: '100%' }}>
+                <Input aria-label="補完対象を変数名・質問文で検索" placeholder="変数名・質問文で絞り込み"
+                  value={targetSearch} onChange={event => setTargetSearch(event.target.value)} allowClear disabled={executing} />
+                <Button disabled={executing || !filteredTargets.length} onClick={() => setSelectedCols(previous => [...new Set([...previous, ...filteredTargets.map(col => col.name)])])}>
+                  検索結果を全選択（{filteredTargets.length}件）
+                </Button>
+                <Button disabled={executing || !filteredTargets.some(col => selectedCols.includes(col.name))}
+                  onClick={() => setSelectedCols(previous => previous.filter(name => !filteredTargets.some(col => col.name === name)))}>検索結果を全解除</Button>
+                <Typography.Text role="status">{selectedCols.length}件選択中{hiddenTargetCount ? `（検索結果外 ${hiddenTargetCount}件）` : ''}</Typography.Text>
+              </Space>
+              <div role="group" aria-label="補完対象の検索結果" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {filteredTargets.map(col => {
+                  const isChecked = selectedCols.includes(col.name)
+                  const pct = ((col.missing / Math.max(1, col.total)) * 100).toFixed(1)
+                  return <Checkbox key={col.name} checked={isChecked} disabled={executing}
+                    style={{ marginInlineStart: 0, padding: '6px 10px', borderRadius: 6, border: `1px solid ${isChecked ? '#2563eb' : '#e5e7eb'}`, background: isChecked ? '#eff6ff' : '#fff' }}
+                    onChange={event => {
+                      setSelectedCols(previous => event.target.checked ? [...previous, col.name] : previous.filter(name => name !== col.name))
+                      if (event.target.checked) setPreviewCol(col.name)
+                    }}>
+                    <Space size="small" wrap>
+                      <Typography.Text strong><ColumnQuestionTooltip nameOrId={col.name} tabIndex={-1} passive>{col.name}</ColumnQuestionTooltip></Typography.Text>
+                      <Tag color="red" style={{ margin: 0, fontSize: 11 }}>欠損 {col.missing} ({pct}%)</Tag>
                     </Space>
-                  </div>
-                )
-              })}
-            </div>
+                  </Checkbox>
+                })}
+                {!filteredTargets.length && <Typography.Text type="secondary">該当する変数がありません</Typography.Text>}
+              </div>
+            </>
           )}
         </Card>
 
@@ -558,6 +585,7 @@ export default function ImputationModal({
           </Radio.Group>
         </Card>
       </div>
+      </ConfigProvider>
     </Modal>
   )
 }

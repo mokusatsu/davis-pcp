@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { CHART_MARKERS, pointDiameter, pointEmphasis } from '../charts/markerStyle'
 import { useLayoutEffect, useMemo, useRef, type FC } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -88,10 +89,10 @@ function PcaMatrixChart({ pcaData }: { pcaData: PcaResponse | null }) {
     tooltip: { trigger: 'item', confine: true, formatter: (p: any) => escapeHtml(p.data.tooltip ?? '').replace(/\n/g, '<br/>') },
   }
   const contextMenuItems = [
-    { key: 'focus', label: 'Focus Selected', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(focusSelected()) },
-    { key: 'delete', label: 'Delete Selected', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(deleteSelected()) },
-    { key: 'clear', label: '選択解除', onClick: () => dispatch(selectionCleared()) },
-    { key: 'reset', label: 'Reset to Base Data', onClick: () => dispatch(resetWorkingSet()) },
+    { key: 'focus', label: SELECTION_LABELS.focus, disabled: !selection.selectedRowIds.length, onClick: () => dispatch(focusSelected()) },
+    { key: 'delete', label: SELECTION_LABELS.exclude, disabled: !selection.selectedRowIds.length, onClick: () => dispatch(deleteSelected()) },
+    { key: 'clear', label: SELECTION_LABELS.clear, onClick: () => dispatch(selectionCleared()) },
+    { key: 'reset', label: SELECTION_LABELS.reset, onClick: () => dispatch(resetWorkingSet()) },
   ]
   return <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>
     <div style={{ width: 640, height: 640, userSelect: 'none', touchAction: 'none' }}

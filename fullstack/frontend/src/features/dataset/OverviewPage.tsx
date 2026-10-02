@@ -1,3 +1,4 @@
+import { notifyDatasetMutationCommitted, onDatasetMutationCommitted } from './datasetMutationEvents'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useEffect, useRef, useState } from 'react'
@@ -120,6 +121,14 @@ export default function OverviewPage() {
       void dispatch(fetchCodebookThunk(datasetId))
     }
   }
+
+  // A committed request keeps running after its dialog closes. Reconcile the
+  // captured dataset through the latest page callback, never a stale dataset.
+  const reloadDatasetRef = useRef<(() => Promise<void>) | null>(reloadDataset)
+  reloadDatasetRef.current = reloadDataset
+  useEffect(() => onDatasetMutationCommitted(committedDatasetId => {
+    if (datasetRef.current === committedDatasetId) void reloadDatasetRef.current?.()
+  }), [])
 
   useEffect(() => {
     setMeta(null)
@@ -342,9 +351,10 @@ export default function OverviewPage() {
         <BinningModal
           open={Boolean(binModalTarget)}
           datasetId={selection.datasetId}
+          dataRevision={selection.dataRevision}
           columnName={binModalTarget}
           onClose={() => setBinModalTarget(null)}
-          onSuccess={reloadDataset}
+          onSuccess={notifyDatasetMutationCommitted}
         />
       )}
 
@@ -355,7 +365,7 @@ export default function OverviewPage() {
           columnName={oneHotModalTarget.col}
           categories={oneHotModalTarget.categories}
           onClose={() => setOneHotModalTarget(null)}
-          onSuccess={reloadDataset}
+          onSuccess={notifyDatasetMutationCommitted}
         />
       )}
 
@@ -369,7 +379,7 @@ export default function OverviewPage() {
             setImputeModalOpen(false)
             setImputeTargetCol(null)
           }}
-          onSuccess={reloadDataset}
+          onSuccess={notifyDatasetMutationCommitted}
         />
       )}
 
@@ -377,9 +387,10 @@ export default function OverviewPage() {
         <AddVariableModal
           open={addVarModalOpen}
           datasetId={selection.datasetId}
+          dataRevision={selection.dataRevision}
           columns={Object.keys(summary?.columns ?? {})}
           onClose={() => setAddVarModalOpen(false)}
-          onSuccess={reloadDataset}
+          onSuccess={notifyDatasetMutationCommitted}
         />
       )}
     </div>

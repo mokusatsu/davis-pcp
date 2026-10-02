@@ -1,40 +1,28 @@
 import { useGraphPopupContainer } from '../common/GraphPanel'
 import { Select as AntSelect } from 'antd'
-import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Dropdown, Popconfirm, Space, Typography } from 'antd'
+import { Button, Dropdown, Space, Typography } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
-import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
+import { SELECTION_LABELS } from './selectionLabels'
+import { store, pcpStateChanged, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 
 export type BrushOperation = 'add' | 'replace' | 'subtract' | 'toggle'
 
-/* Shared set-operation registry: the "選択" menu is the single place users pick
- * Add/Replace/Subtract/Toggle; group/leaf/bin handlers read the same choice. */
-let currentBrushOp: BrushOperation = 'replace'
-const listeners = new Set<(op: BrushOperation) => void>()
-
+/** Redux is the single source of truth, including restored sessions and PCP. */
 export function getBrushOp(): BrushOperation {
-  return currentBrushOp
+  return store.getState().pcp.brushOperation
 }
 
 export function useBrushOp(): [BrushOperation, (op: BrushOperation) => void] {
-  const [op, setOp] = useState(currentBrushOp)
-  useEffect(() => {
-    listeners.add(setOp)
-    return () => { listeners.delete(setOp) }
-  }, [])
-  const set = (next: BrushOperation) => {
-    currentBrushOp = next
-    listeners.forEach((listener) => listener(next))
-  }
-  return [op, set]
+  const op = useSelector((state: RootState) => state.pcp.brushOperation)
+  const dispatch = useDispatch()
+  return [op, next => { dispatch(pcpStateChanged({ brushOperation: next })) }]
 }
 
 /** AGENTS.md rule 5.1: the shared "選択" dropdown for every graph panel.
- *  Panels with their own local brush op can pass `op`/`onOpChange` to bind the
- *  menu to their state; otherwise the shared registry is used. */
-export default function SelectionMenu({ testId = 'selection-menu', op, onOpChange, extraContent, buttonSize = 'small' }: {
+ *  Every entry changes the same Redux operation. */
+export default function SelectionMenu({ testId = 'selection-menu', onOpChange, extraContent, buttonSize = 'small' }: {
   testId?: string
   op?: BrushOperation
   onOpChange?: (op: BrushOperation) => void
@@ -44,16 +32,10 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
   const getPopupContainer=useGraphPopupContainer()
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
-  const [registryOp, setRegistryOp] = useState(currentBrushOp)
-  useEffect(() => {
-    listeners.add(setRegistryOp)
-    return () => { listeners.delete(setRegistryOp) }
-  }, [])
-  const value = op ?? registryOp
+  const [value, setOperation] = useBrushOp()
   const change = (next: BrushOperation) => {
+    setOperation(next)
     onOpChange?.(next)
-    currentBrushOp = next
-    listeners.forEach((listener) => listener(next))
   }
 
   const menu = (
@@ -76,19 +58,18 @@ export default function SelectionMenu({ testId = 'selection-menu', op, onOpChang
         />
       </div>
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
-        <Button block data-testid="clear-selection" onClick={() => dispatch(selectionCleared())}>選択解除</Button>
-        <Button block data-testid="focus-selection" disabled={!selection.selectedRowIds.length} onClick={() => dispatch(focusSelected())}>Focus</Button>
-        <Popconfirm getPopupContainer={getPopupContainer} title="選択行を作業集合から除外しますか？" onConfirm={() => dispatch(deleteSelected())}>
-          <Button block danger data-testid="delete-selection" disabled={!selection.selectedRowIds.length}>Delete</Button>
-        </Popconfirm>
-        <Button block data-testid="reset-working-set" onClick={() => dispatch(resetWorkingSet())}>Reset to Base Data</Button>
+        <Button block data-testid="clear-selection" onClick={() => dispatch(selectionCleared())}>{SELECTION_LABELS.clear}</Button>
+        <Button block data-testid="focus-selection" disabled={!selection.selectedRowIds.length} onClick={() => dispatch(focusSelected())}>{SELECTION_LABELS.focus}</Button>
+        <Button block danger data-testid="delete-selection" title={SELECTION_LABELS.excludeHelp}
+          onClick={() => dispatch(deleteSelected())} disabled={!selection.selectedRowIds.length}>{SELECTION_LABELS.exclude}</Button>
+        <Button block data-testid="reset-working-set" onClick={() => dispatch(resetWorkingSet())}>{SELECTION_LABELS.reset}</Button>
       </Space>
     </div>
   )
 
   return (
     <Dropdown getPopupContainer={getPopupContainer} popupRender={() => menu} trigger={['click']}>
-      <Button size={buttonSize} data-testid={testId}>選択 <DownOutlined /></Button>
+      <Button size={buttonSize} data-testid={testId}>{SELECTION_LABELS.menu} <DownOutlined /></Button>
     </Dropdown>
   )
 }

@@ -354,7 +354,7 @@ const MultiResponseCard: React.FC<MultiResponseCardProps> = ({ summary, onSelect
                     disabled={loading}
                     onClick={() => triggerAny([item.columnId], true)}
                   >
-                    PCP
+                    選択してPCPへ移動
                   </Button>
                 </Space>
               </Space>

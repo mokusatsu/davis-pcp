@@ -15,6 +15,7 @@ export interface CategoryDistItem {
   percentageValid: number
   percentageTotal: number
   isMissing?: boolean
+  isInvalid?: boolean
   missingReason?: string | null
 }
 
@@ -62,6 +63,7 @@ export interface QuestionSummaryData {
     valid: number
     missing: number
     notApplicable: number
+    invalid?: number
   }
   distribution?: CategoryDistItem[]
   auxiliaryStats?: AuxiliaryStats
@@ -215,6 +217,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         <span>
           無回答: <strong>{denominators.missing.toLocaleString()}</strong>
         </span>
+        {(denominators.invalid ?? 0) > 0 && (
+          <>
+            <span>|</span>
+            <span>無効: <strong>{denominators.invalid!.toLocaleString()}</strong></span>
+          </>
+        )}
         {denominators.notApplicable > 0 && (
           <>
             <span>|</span>
@@ -227,10 +235,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
       <CategoryBars axisName={`${base === 'valid' ? '有効回答' : '全対象者'}ベース (%)`} max={100} testId={`question-chart-${summary.columnId}`}
         items={distribution.map(item => ({ id: item.code === null ? '__null__' : String(item.code), label: item.label || String(item.code),
-          value: base === 'valid' && item.isMissing ? null : base === 'valid' ? item.percentageValid : item.percentageTotal,
+          value: base === 'valid' && (item.isMissing || item.isInvalid) ? null : base === 'valid' ? item.percentageValid : item.percentageTotal,
           selected: (selectedCountByCode?.[item.code === null ? '__null__' : String(item.code)] ?? 0) > 0,
-          color: item.isMissing ? '#bfbfbf' : undefined,
-          detail: `件数: ${item.count} / コード: ${item.code ?? '空欄'}${item.isMissing ? ` / 欠損: ${item.missingReason ?? '無回答'}` : ''}` }))}
+          color: item.isInvalid ? '#d46b08' : item.isMissing ? '#bfbfbf' : undefined,
+          detail: `件数: ${item.count} / コード: ${item.code ?? '空欄'}${item.isInvalid ? ' / 無効: 定義範囲外または数値として無効' : item.isMissing ? ` / 欠損: ${item.missingReason ?? '無回答'}` : ''}` }))}
         onSelect={key => { const item = distribution.find(d => (d.code === null ? '__null__' : String(d.code)) === key); if (item) onSelectCategory?.(item.code, item.label) }} />
       {/* Distribution items */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
@@ -241,13 +249,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           const displayLabel = item.label || String(item.code)
           const selectedCount = selectedCountByCode?.[key] ?? 0
           const isSelected = selectedCount > 0
-          const displayPct = item.isMissing && base === 'valid' ? '対象外' : `${pct.toFixed(1)}%`
+          const displayPct = (item.isMissing || item.isInvalid) && base === 'valid' ? '対象外' : `${pct.toFixed(1)}%`
           const titleParts = [
             `ラベル: ${displayLabel}`,
             `コード: ${rowCodeText}`,
             `件数: ${item.count.toLocaleString()}`,
           ]
-          if (item.missingReason) titleParts.push(`欠損理由: ${item.missingReason}`)
+          if (item.isInvalid) titleParts.push('無効理由: 定義範囲外または数値として無効')
+          else if (item.missingReason) titleParts.push(`欠損理由: ${item.missingReason}`)
 
           return (
             <Row
@@ -279,6 +288,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       return <span> / 加重{w.weightedPct == null ? '—' : `${w.weightedPct.toFixed(1)}%`} ({w.weightedCountStatus === 'out_of_range' ? '範囲外' : w.weightedCount?.toLocaleString() ?? '—'})</span>
                     })()}
                   </Text>
+                  {item.isInvalid && <Tag color="error">無効値（定義範囲外・数値不正）</Tag>}
                   {item.isMissing && <Tag color="warning">{item.missingReason || '無回答'}</Tag>}
                   {isSelected && <Tag color="blue">{selectedCount}選択中</Tag>}
                   {onSelectCategory && (
@@ -287,11 +297,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                       type="link"
                       icon={<SlidersOutlined />}
                       disabled={item.count === 0}
-                      title="PCPでこのカテゴリを選択"
+                      title="このカテゴリの回答者を選択"
+                      aria-label={`${displayLabel}の回答者を選択`}
                       onClick={() => onSelectCategory(item.code, displayLabel)}
                       style={{ padding: '0 4px', height: 'auto', fontSize: 11 }}
                     >
-                      PCP
+                      回答者を選択
                     </Button>
                   )}
                 </Space>

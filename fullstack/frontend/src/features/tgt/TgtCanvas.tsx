@@ -5,9 +5,10 @@ import type { ECharts, EChartsOption } from 'echarts'
 import { useDispatch, useSelector } from 'react-redux'
 import { Dropdown } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
+import { hovered, selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { getBrushOp } from '../selection/SelectionMenu'
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import type { GeodesicEngine, ProjectionPoint } from './geodesicEngine'
 import EChart from '../charts/EChart'
 
@@ -18,9 +19,13 @@ interface TgtCanvasProps {
   isPlaying: boolean
   isTracking: boolean
   onBasisUpdate: (alpha: number[], beta: number[]) => void
+  isActive?: boolean
+  onTogglePlay?: () => void
+  onStep?: () => void
+  onReset?: () => void
 }
 export interface TourPoint extends ProjectionPoint {
-  color: string; selected: boolean; trails: {x:number;y:number}[]
+  color: string; selected: boolean; highlighted?: boolean; trails: {x:number;y:number}[]
 }
 /** The engine, not ECharts animation, remains authoritative for coordinates. */
 export function tourOption(points: TourPoint[], width: number, height: number, selectionColor: string): EChartsOption {
@@ -44,22 +49,37 @@ export function tourOption(points: TourPoint[], width: number, height: number, s
         return {type:'group',children}
       }},
       {id:'tour-points',type:'scatter',z:3,data:points.map(p=>({id:p.rowId,rowId:p.rowId,value:[p.x,p.y],
-        symbolSize:pointDiameter(p.selected),emphasis:pointEmphasis(p.selected),itemStyle:{color:p.selected?selectionColor:p.color,borderColor:'#fff',borderWidth:p.selected?2:.5,opacity:1}}))}],
+        symbolSize:pointDiameter(p.selected,p.highlighted),emphasis:pointEmphasis(p.selected,p.highlighted),itemStyle:{color:p.selected?selectionColor:p.color,borderColor:p.highlighted?'#fa8c16':'#fff',borderWidth:p.selected||p.highlighted?2:.5,opacity:1}}))}],
   }
 }
 export const TgtCanvas: FC<TgtCanvasProps> = props => {
-  const { engine, rowIds, dataMatrix, isPlaying, isTracking }=props
+  const { engine, rowIds, dataMatrix, isPlaying, isTracking, isActive = true }=props
   const viewport = useGraphViewport()
   const viewportKey=JSON.stringify(viewport)
   const fitScale = markerFitScale(viewport)
   const getPopupContainer=useGraphPopupContainer()
   const dispatch=useDispatch<AppDispatch>(),selection=useSelector((s:RootState)=>s.selection)
   const colors=useRowColorResolver()
-  const latest=useRef({props,colors,fitScale});latest.current={props,colors,fitScale}
+  const latest=useRef({props,colors,fitScale,hoveredRowId:selection.hoveredRowId});latest.current={props,colors,fitScale,hoveredRowId:selection.hoveredRowId}
   const containerRef=useRef<HTMLDivElement>(null),chartRef=useRef<ECharts|null>(null)
   const pointsRef=useRef<ProjectionPoint[]>([]),start=useRef<{x:number;y:number;clientX:number;clientY:number;pointerId:number;coordKey:string;pointId?:string}|null>(null)
   const lastProjection=useRef<{engine:GeodesicEngine;rowIds:string[];dataMatrix:number[][];basis:string}|null>(null)
   const [ready,setReady]=useState(false)
+  const [keyboardDetail,setKeyboardDetail]=useState('')
+  const keyboardRow=useRef<string|null>(null)
+  const leaveKeyboard=()=>{
+    if(keyboardRow.current!==null){keyboardRow.current=null;dispatch(hovered(null))}
+    setKeyboardDetail('')
+  }
+  const announcePoint=(index:number)=>{
+    const point=pointsRef.current[index]
+    if(!point)return
+    keyboardRow.current=point.rowId
+    setKeyboardDetail(`rowId: ${point.rowId}, x: ${point.x}, y: ${point.y}`)
+    dispatch(hovered(point.rowId))
+  }
+  useEffect(()=>{leaveKeyboard()},[rowIds,dataMatrix,isPlaying,isActive])
+  useEffect(()=>()=>{if(keyboardRow.current!==null)dispatch(hovered(null))},[])
   const pausedBasisKey=isPlaying?'':JSON.stringify([engine.alpha,engine.beta])
   const baseOption=useMemo<EChartsOption>(()=>({animation:false,backgroundColor:'#141414'}),[])
   const clear=()=>{
@@ -74,7 +94,7 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
     const chart=chartRef.current
     if(!chart || chart.isDisposed())return
     const {props:p,colors:c}=latest.current
-    const points:TourPoint[]=pointsRef.current.map(q=>({...q,color:c.getColor(q.rowId),selected:c.isSelected(q.rowId),
+    const points:TourPoint[]=pointsRef.current.map(q=>({...q,color:c.getColor(q.rowId),selected:c.isSelected(q.rowId),highlighted:q.rowId===latest.current.hoveredRowId,
       trails:p.isTracking?p.engine.getTrails(q.rowId):[]}))
     const option = tourOption(points,chart.getWidth(),chart.getHeight(),c.selectionColor)
     chart.setOption({...option,series:fitPointSeries(option.series,latest.current.fitScale)},{notMerge:false,lazyUpdate:false})
@@ -101,7 +121,7 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
     return ()=>{cancelled=true;if(id!==undefined)cancelAnimationFrame(id);clear()}
   },[ready,engine,rowIds,dataMatrix,isPlaying,pausedBasisKey])
   // Recolor and resize without mutating the projection/trail engine.
-  useEffect(()=>{if(ready)draw()},[ready,isTracking,colors.getColor,colors.isSelected,colors.selectionColor])
+  useEffect(()=>{if(ready)draw()},[ready,isTracking,colors.getColor,colors.isSelected,colors.selectionColor,selection.hoveredRowId])
   useEffect(()=>{
     if(!ready||!containerRef.current||typeof ResizeObserver==='undefined')return
     const observer=new ResizeObserver(()=>{const chart=chartRef.current;if(chart&&!chart.isDisposed()){chart.resize();clear();draw()}})
@@ -125,19 +145,19 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行で絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: '選択解除 (Clear Selection)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
@@ -146,14 +166,37 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
     },
     {
       key: 'reset',
-      label: '作業セット復元 (Reset Working Set)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]
 
 
   return <Dropdown getPopupContainer={getPopupContainer} menu={{items:contextMenuItems}} trigger={['contextMenu']}>
-    <div ref={containerRef} data-testid="tgt-canvas" style={{height:'100%',width:'100%',position:'relative',border:'1px solid #333',borderRadius:8,overflow:'hidden',userSelect:'none',touchAction:'none'}}
+    <div ref={containerRef} data-testid="tgt-canvas" tabIndex={0} role="group"
+      aria-label="Grand Tour 投影図。Spaceで再生・一時停止、.で1コマ送り、Rで視点リセット。一時停止中は矢印キーで行を移動、Enterで選択"
+      onFocus={event=>{if(event.target===event.currentTarget&&isActive&&!isPlaying)announcePoint(Math.max(0,pointsRef.current.findIndex(point=>point.rowId===keyboardRow.current)))}}
+      onBlur={leaveKeyboard}
+      onKeyDown={event=>{
+        // Native controls (including export and dialog buttons) keep their keys.
+        if(!isActive||event.defaultPrevented||event.target!==event.currentTarget||event.altKey||event.ctrlKey||event.metaKey||event.repeat)return
+        if((event.code==='Space'||event.key===' ')&&props.onTogglePlay){event.preventDefault();props.onTogglePlay();return}
+        if(event.key==='.'&&props.onStep){event.preventDefault();props.onStep();return}
+        if((event.key==='r'||event.key==='R')&&props.onReset){event.preventDefault();props.onReset();return}
+        if(event.key==='Escape'){leaveKeyboard();return}
+        if(isPlaying||!pointsRef.current.length)return
+        const index=Math.max(0,pointsRef.current.findIndex(point=>point.rowId===keyboardRow.current))
+        if(event.key.startsWith('Arrow')){
+          event.preventDefault()
+          const direction=event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:1
+          announcePoint(Math.max(0,Math.min(pointsRef.current.length-1,index+direction)))
+        }else if(event.key==='Home'||event.key==='End'){
+          event.preventDefault();announcePoint(event.key==='Home'?0:pointsRef.current.length-1)
+        }else if(event.key==='Enter'){
+          event.preventDefault();dispatch(selectionApplied({rowIds:[pointsRef.current[index].rowId],operation:'toggle',label:'Touring点選択'}))
+        }
+      }}
+      style={{height:'100%',width:'100%',position:'relative',border:'1px solid #333',borderRadius:8,overflow:'hidden',userSelect:'none',touchAction:'none'}}
       onPointerDown={e=>{if(isPlaying||e.button!==0||start.current)return;const p=local(e);if(!p)return;
         start.current={...p,clientX:e.clientX,clientY:e.clientY,pointerId:e.pointerId,coordKey:viewportKey,pointId:nearestRow(p,e.currentTarget.getBoundingClientRect())};try{e.currentTarget.setPointerCapture?.(e.pointerId)}catch{/* synthetic event */}}}
       onPointerMove={e=>{const a=start.current,p=local(e);if(!a||a.pointId||a.pointerId!==e.pointerId||!p||isPlaying)return;
@@ -179,6 +222,7 @@ export const TgtCanvas: FC<TgtCanvasProps> = props => {
       <EChart chartRef={chartRef} renderer="canvas" height="100%" option={baseOption} ariaLabel="Grand Tour 投影図" onReady={()=>setReady(true)}
         onEvents={{mouseover:event=>{if(event.seriesId==='tour-points'&&event.data?.rowId)dispatch({type:'selection/hovered',payload:event.data.rowId})},
           mouseout:event=>{if(event.seriesId==='tour-points')dispatch({type:'selection/hovered',payload:null})}}} />
+      <span aria-live="polite" style={{position:'absolute',top:0,left:0,width:1,height:1,overflow:'hidden',clipPath:'inset(50%)'}}>{keyboardDetail}</span>
     </div>
   </Dropdown>
 }

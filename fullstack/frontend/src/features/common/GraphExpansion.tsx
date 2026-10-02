@@ -412,7 +412,7 @@ export function GraphExpansionProvider({ children }: { children: ReactNode }) {
         try { dlg.removeAttribute('open') } catch { /* ignore */ }
       }
     }
-  }, [session])
+  }, [session?.graphId, session?.host])
 
   const value = useMemo<GraphExpansionValue>(() => ({
     session, register, unregister, updateEntry, open, openWhenAvailable,

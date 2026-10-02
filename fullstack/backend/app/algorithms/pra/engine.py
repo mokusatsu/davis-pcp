@@ -15,6 +15,9 @@ import polars as pl
 from scipy import stats
 
 
+# Exploratory Kano classification threshold, distinct from coefficient alpha.
+ASYMMETRY_ALPHA = 0.15
+
 def evaluate_penalty_reward(
     df: pl.DataFrame,
     outcome: str,
@@ -177,23 +180,23 @@ def evaluate_penalty_reward(
         is_low_sig = (p_low < alpha) and (b_low < 0)
         is_high_sig = (p_high < alpha) and (b_high > 0)
 
-        if is_low_sig and (not is_high_sig or (asym_p < 0.15 and asymmetry_val < 0)):
+        if is_low_sig and (not is_high_sig or (asym_p < ASYMMETRY_ALPHA and asymmetry_val < 0)):
             classification = "basic"
             class_label = "当たり前品質 (Basic / Must-be)"
             narrative = f"「{attr}」は当たり前品質（不満防止要因）です。不足時の不満ペナルティ ({b_low:.2f}) が充足時のリワード ({b_high:.2f}) を大きく上回ります。まず最低水準の徹底確保を最優先してください。"
             all_basic_dissatisfied.update(dissatisfied_row_ids[attr])
-        elif is_high_sig and (not is_low_sig or (asym_p < 0.15 and asymmetry_val > 0)):
+        elif is_high_sig and (not is_low_sig or (asym_p < ASYMMETRY_ALPHA and asymmetry_val > 0)):
             classification = "excitement"
             class_label = "魅力的品質 (Excitement / Delighter)"
             narrative = f"「{attr}」は魅力的品質（感動要因）です。不足しても不満になりにくい一方、充足時のリワード ({b_high:.2f}) が突出しています。他社差別化の重点投資領域です。"
         elif is_low_sig and is_high_sig:
             classification = "performance"
-            class_label = "一元的品質 (Performance / Linear)"
-            narrative = f"「{attr}」は一元的品質です。充足度と満足度が対称的に連動します（ペナルティ {b_low:.2f}, リワード {b_high:.2f}）。改善がリニアに満足度向上へ直結します。"
+            class_label = "一元的品質 (Performance)"
+            narrative = f"「{attr}」は探索的な分類で一元的品質です。ペナルティ ({b_low:.2f}) とリワード ({b_high:.2f}) の両方を検出しましたが、非対称性の証拠は検出していません。これは対称性・線形関係や因果効果の証明ではありません。"
         else:
             classification = "indifferent"
             class_label = "無関心要因 (Indifferent)"
-            narrative = f"「{attr}」は現状、全体満足度への影響が限定的な要因です（両係数とも統計的に非有意）。"
+            narrative = f"「{attr}」は係数の符号と有意水準に基づく探索的分類では無関心要因です。この分類は効果がないことの証明ではありません。係数・信頼区間・p値を併せて確認してください。"
 
         attr_label = meta_by_col.get(attr, {}).get("label") or attr
 
@@ -213,7 +216,8 @@ def evaluate_penalty_reward(
                 "ci": [round(b_high - 1.96 * se_high, 4), round(b_high + 1.96 * se_high, 4)],
             },
             "asymmetry": round(asymmetry_val, 4),
-            "asym_p": round(asym_p, 4),
+            "asym_p": asym_p,
+            "asymmetry_significant": asym_p < ASYMMETRY_ALPHA,
             "classification": classification,
             "class_label": class_label,
             "n_dissatisfied": len(dissatisfied_row_ids[attr]),
@@ -242,6 +246,7 @@ def evaluate_penalty_reward(
             "r_squared": round(r_squared, 4),
             "n_valid": n_valid,
             "alpha": alpha,
+            "asymmetry_alpha": ASYMMETRY_ALPHA,
             "warnings": [],
         },
         "attributes": attributes_out,

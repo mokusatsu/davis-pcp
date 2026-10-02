@@ -106,9 +106,11 @@ def generate_initial_codebook(dataset_id: str, schemas: list[Any]) -> dict[str, 
         else:
             role = RoleType.ATTRIBUTE
 
-        # Value labels & categories
+        # Inferred categories are display hints, never a user-declared allowed
+        # domain. Probe samples may omit late or high-cardinality values. Only
+        # explicit codebook edits may populate the authoritative categoryOrder.
         val_labels = {str(c): str(c) for c in cats} if cats else {}
-        cat_order = [str(c) for c in cats] if cats else []
+        cat_order: list[str] = []
 
         col = CodebookColumn(
             columnId=col_id,

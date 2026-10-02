@@ -27,6 +27,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setup(selectedRowIds: string[] = []) {
   const base = store.getState()
   const state: any = { ...base,
+    pcp: { ...base.pcp, brushOperation: 'replace' },
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3, selectedRowIds, activeRowIds: ['r7', 'r14'], clusterResult: null },
     globalObservations: { ...base.globalObservations, scopeMode: 'sampled', sampling: { ...base.globalObservations.sampling, sampledRowIds: [] } },
     globalVariables: { ...base.globalVariables, activeEntities: [{ kind: 'column', columnId: 'x' }, { kind: 'column', columnId: 'category' }, { kind: 'ma', groupId: 'g' }] },
@@ -40,6 +41,9 @@ function setup(selectedRowIds: string[] = []) {
     : action.type === 'test/revision' ? { ...current, selection: { ...current.selection, dataRevision: 4 } }
     : clusterResultStored.match(action) ? { ...current, selection: { ...current.selection, clusterResult: action.payload } } : current,
     middleware: get => get({ serializableCheck: false }) })
+  // Production's Provider and imperative getters share one Redux store.
+  // Bind the imported store reader to this isolated Provider fixture too.
+  vi.spyOn(store, 'getState').mockImplementation(() => local.getState())
   const dispatch = vi.spyOn(local, 'dispatch')
   const view = render(<Provider store={local}><ClustersPage /></Provider>)
   return { local, dispatch, view }

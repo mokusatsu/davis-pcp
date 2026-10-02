@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Button,
@@ -56,6 +56,8 @@ export default function CodebookEditorModal() {
   const [maOpen, setMaOpen] = useState(false)
 
   const datasetId = selection.datasetId
+  const currentDatasetId = useRef(datasetId)
+  currentDatasetId.current = datasetId
 
   // Load codebook when modal opens
   useEffect(() => {
@@ -370,8 +372,8 @@ export default function CodebookEditorModal() {
           open={codebook.isImportDialogOpen}
           onClose={() => dispatch(importDialogToggled(false))}
           datasetId={datasetId}
-          onSuccess={() => {
-            dispatch(fetchCodebookThunk(datasetId))
+          onSuccess={(committedDatasetId) => {
+            if (currentDatasetId.current === committedDatasetId) dispatch(fetchCodebookThunk(committedDatasetId))
           }}
         />
       )}

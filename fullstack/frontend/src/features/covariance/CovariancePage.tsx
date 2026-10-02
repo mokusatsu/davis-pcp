@@ -6,12 +6,14 @@ import Select from '../common/ColumnSelect'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Alert, Button, Radio, Space, Spin, Tag, Typography } from 'antd'
+import { Button, Radio, Space, Spin, Tag, Typography } from 'antd'
 import { AppstoreOutlined, ArrowRightOutlined, LineChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { pcpStateChanged, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
+import AnalysisErrorPanel, { analysisErrorMessage } from '../common/AnalysisErrorPanel'
+import { useDatasetColumnSelection } from '../common/useDatasetColumnSelection'
 import { useCodebook } from '../dataset/useCodebookColumn'
 
 interface CovarianceResponse {
@@ -39,13 +41,13 @@ export default function CovariancePage() {
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const { columns, schemaRevision } = useCodebook()
+  const { columns, schemaRevision, isLoading: codebookLoading } = useCodebook()
+  const codebookDatasetId = useSelector((s: RootState) => s.codebook.datasetId)
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
   const requestGeneration = useRef(0)
   const [error, setError] = useState<string | null>(null)
 
   const [mode, setMode] = useState<'cov' | 'corr' | 'prec'>('cov')
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [covData, setCovData] = useState<CovarianceResponse | null>(null)
   const [selectedCell, setSelectedCell] = useState<{ r: number; c: number; col1: string; col2: string } | null>(null)
@@ -57,31 +59,25 @@ export default function CovariancePage() {
 
   const activeNumericColumns = useMemo(() => {
     const activeVarSet = new Set(globalVars.activeVariableIds)
-    return columns
-      .filter((c) => numericColumns.includes(c.name) && c.scaleType !== 'ordinal' && (!activeVarSet || activeVarSet.has(c.name)))
-      .map((c) => c.name)
-  }, [columns, numericColumns, globalVars?.activeVariableIds])
+    return numericColumns.filter(name => activeVarSet.has(name))
+  }, [numericColumns, globalVars.activeVariableIds])
+  const [selectedColumns, setSelectedColumns] = useDatasetColumnSelection(
+    datasetId, activeNumericColumns, 8, Boolean(datasetId && codebookDatasetId === datasetId && !codebookLoading),
+  )
 
-  useEffect(() => {
-    setSelectedColumns(previous => {
-      const activeSet = new Set(activeNumericColumns)
-      const valid = previous.filter(name => activeSet.has(name))
-      return valid.length === previous.length ? previous : valid
-    })
-  }, [activeNumericColumns])
-
-  useEffect(() => {
-    if (activeNumericColumns.length >= 2 && selectedColumns.length === 0) {
-      setSelectedColumns(activeNumericColumns.slice(0, 8))
-    }
-  }, [activeNumericColumns, selectedColumns.length])
+  const liveKey = JSON.stringify([datasetId, dataRevision, schemaRevision, effectiveRowIds, selectedColumns, viewActive])
+  const liveRef = useRef(liveKey)
+  liveRef.current = liveKey
+  useEffect(() => () => { requestGeneration.current++ }, [])
 
   const fetchCov = useCallback(async () => {
     const generation = ++requestGeneration.current
+    const startedKey = liveRef.current
+    const current = () => generation === requestGeneration.current && startedKey === liveRef.current
     setCovData(null)
     setSelectedCell(null)
     setError(null)
-    if (!viewActive || !datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !numericColumns.includes(c))) { setLoading(false); return }
+    if (!viewActive || !datasetId || selectedColumns.length < 2 || selectedColumns.some(c => !activeNumericColumns.includes(c))) { setLoading(false); return }
     setLoading(true)
     try {
       const res = await api.post<CovarianceResponse>('/statistics/covariance', {
@@ -91,13 +87,13 @@ export default function CovariancePage() {
         expectedSchemaRevision: schemaRevision,
         expectedDataRevision: dataRevision,
       })
-      if (generation === requestGeneration.current) setCovData(res)
+      if (current()) setCovData(res)
     } catch (err) {
-      if (generation === requestGeneration.current) setError((err as Error).message || '共分散の計算に失敗しました。')
+      if (current()) setError(analysisErrorMessage(err))
     } finally {
-      if (generation === requestGeneration.current) setLoading(false)
+      if (current()) setLoading(false)
     }
-  }, [datasetId, selectedColumns, effectiveRowIds, schemaRevision, dataRevision, numericColumns, viewActive])
+  }, [datasetId, selectedColumns, effectiveRowIds, schemaRevision, dataRevision, activeNumericColumns, viewActive])
 
   useEffect(() => {
     void fetchCov()
@@ -145,7 +141,7 @@ export default function CovariancePage() {
 
   const navigateToLoess = () => {
     if (!selectedCell) return
-    navigate('/loess')
+    navigate('/loess', { state: { datasetId, xCol: selectedCell.col1, yCol: selectedCell.col2 } })
   }
 
 
@@ -157,7 +153,7 @@ export default function CovariancePage() {
       data-testid="covariance-page"
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
-      {error && <Alert type="error" message={error} />}
+      {error && <AnalysisErrorPanel title="共分散行列" error={error} onRetry={() => void fetchCov()} loading={loading} />}
       {/* Controls Card */}
         <div
           style={{
@@ -191,12 +187,13 @@ export default function CovariancePage() {
             </Radio.Group>
 
             <Select
+              data-testid="covariance-columns-select"
               mode="multiple"
               style={{ minWidth: 260 }}
               placeholder="対象列を選択"
               value={selectedColumns}
               onChange={setSelectedColumns}
-              options={numericColumns.map((c) => ({ label: c, value: c }))}
+              options={activeNumericColumns.map((c) => ({ label: c, value: c }))}
               maxTagCount={4}
               size="small"
             />
@@ -302,7 +299,7 @@ export default function CovariancePage() {
             </div>
           )}
 
-          {!loading && (!covData || covData.columns.length < 2) && (
+          {!loading && !error && (!covData || covData.columns.length < 2) && (
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
               最低2つの数値列を選択してください。
             </div>

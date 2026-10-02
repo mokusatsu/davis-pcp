@@ -90,7 +90,8 @@ export default function FamdFigure({ points, rank, dispRank, xAxis, yAxis, ratio
   return <ModelScatter points={points.map(p => ({ ...p, selected: selected.has(p.id), highlighted: highlighted.has(p.id),
     color: p.color ?? (getColor && p.rowId ? getColor(p.rowId) : '#1890ff') }))}
     xLabel={famdAxisLabel(rank, ratio, xAxis ?? 1)} yLabel={famdAxisLabel(rank, ratio, yAxis ?? 2)}
-    oneDimensional={shown < 2} svgRef={svgRef} testId={testId} note={overlayNote} onToggle={onToggle}
+    oneDimensional={shown < 2} svgRef={svgRef} testId={testId}
+    exportTarget={testId.includes('category') ? 'カテゴリ図' : '個体図'} note={overlayNote} onToggle={onToggle}
     onBrush={b => { if (onCategoryBrush) onCategoryBrush(b)
       else onBrush?.(shown >= 2 ? [1, 2] : [1], b.y ? [b.x, b.y] : [b.x]) }} />
 }

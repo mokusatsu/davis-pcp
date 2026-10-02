@@ -2,8 +2,12 @@ import EChartSurface from '../charts/EChartSurface'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
 import Table from '../common/ColumnTable'
-import { useEffect, useState } from 'react'
-import { Input, Modal, Radio, Slider, Space, Typography, notification } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import Modal from '../common/ActiveModal'
+import MutationProgress from '../common/MutationProgress'
+import { useRequestIdentity } from '../common/useRequestIdentity'
+import { useAnalysisViewActive } from '../selection/analysisScope'
+import { Alert, Button, ConfigProvider, Input, Radio, Slider, Space, Typography, notification } from 'antd'
 import { api } from '../../api/client'
 
 interface BinInfo {
@@ -33,73 +37,88 @@ interface BinningModalProps {
   open: boolean
   datasetId: string
   columnName: string
+  dataRevision?: number
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (committedDatasetId: string) => void
 }
 
-export default function BinningModal({ open, datasetId, columnName, onClose, onSuccess }: BinningModalProps) {
+export default function BinningModal({ open, datasetId, columnName, dataRevision = 0, onClose, onSuccess }: BinningModalProps) {
   const [method, setMethod] = useState<'equal_width' | 'quantile' | 'custom'>('equal_width')
   const [numBins, setNumBins] = useState(4)
   const [customCuts, setCustomCuts] = useState('')
   const [outputName, setOutputName] = useState('')
-  const [preview, setPreview] = useState<PreviewResponse | null>(null)
+  const [previewResult, setPreview] = useState<PreviewResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
 
+  const active = useAnalysisViewActive()
+  const busy = useRef(false)
+  const nameEdited = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+  const [previewKey, setPreviewKey] = useState<string | null>(null)
+  const inputKey = JSON.stringify([open, active, datasetId, dataRevision, columnName, method, numBins, customCuts])
+  const request = useRequestIdentity(inputKey)
+  const saveRequest = useRequestIdentity(JSON.stringify([datasetId, columnName, open, active]))
+  const preview = previewKey === inputKey ? previewResult : null
+
   useEffect(() => {
     if (!open) return
+    nameEdited.current = false
     setOutputName(`${columnName}_bin${numBins}`)
-    loadPreview()
-  }, [open, datasetId, columnName, method, numBins, customCuts])
+  }, [open, datasetId, columnName])
+  useEffect(() => {
+    if (!nameEdited.current) setOutputName(`${columnName}_bin${numBins}`)
+  }, [columnName, numBins])
 
+  const parseCuts = () => {
+    if (method !== 'custom') return undefined
+    const parts = customCuts.split(',').map(value => value.trim())
+    const cuts = parts.map(Number)
+    if (parts.some(value => !value) || cuts.some(value => !Number.isFinite(value)) || cuts.some((value, i) => i > 0 && value <= cuts[i - 1])) {
+      throw new Error('境界値は小さい順に、重複しない数値をカンマ区切りで入力してください。')
+    }
+    return cuts
+  }
   const loadPreview = async () => {
-    if (!datasetId || !columnName) return
+    const current = request.begin()
+    setPreview(null)
+    setPreviewKey(null)
+    setError(null)
+    if (!open || !active || !datasetId || !columnName) { setLoading(false); return }
     setLoading(true)
     try {
-      const cuts = method === 'custom' && customCuts.trim()
-        ? customCuts.split(',').map((s) => parseFloat(s.trim())).filter((n) => !isNaN(n))
-        : undefined
-
       const res = await api.post<PreviewResponse>(`/datasets/${datasetId}/transform/preview`, {
-        column: columnName,
-        method,
-        num_bins: numBins,
-        custom_cuts: cuts,
+        column: columnName, method, num_bins: numBins, custom_cuts: parseCuts(),
       })
+      if (!current()) return
       setPreview(res)
-    } catch {
-      // preview error handled silently
+      setPreviewKey(inputKey)
+    } catch (err) {
+      if (current()) setError(err instanceof Error ? err.message : 'プレビューを取得できませんでした。')
     } finally {
-      setLoading(false)
+      if (current()) setLoading(false)
     }
   }
+  useEffect(() => { void loadPreview() }, [inputKey])
 
   const handleApply = async () => {
-    if (!datasetId || !columnName) return
+    if (busy.current || !open || !active || !datasetId || !columnName || !preview || loading || error) return
+    busy.current = true
+    const current = saveRequest.begin()
     setApplying(true)
     try {
-      const cuts = method === 'custom' && customCuts.trim()
-        ? customCuts.split(',').map((s) => parseFloat(s.trim())).filter((n) => !isNaN(n))
-        : undefined
-
       await api.post(`/datasets/${datasetId}/transform`, {
-        type: 'binning',
-        source_column: columnName,
-        options: {
-          method,
-          num_bins: numBins,
-          custom_cuts: cuts,
-          output_column_name: outputName.trim() || undefined,
-          labels_format: 'range',
-        },
+        type: 'binning', source_column: columnName,
+        options: { method, num_bins: numBins, custom_cuts: parseCuts(),
+          output_column_name: outputName.trim() || undefined, labels_format: 'range' },
       })
       notification.success({ message: 'ビン分割完了', description: `新列 '${outputName || `${columnName}_bin${numBins}`}' を生成しました。` })
-      onSuccess()
-      onClose()
+      onSuccess(datasetId)
+      if (current()) onClose()
     } catch (err) {
-      const error = err as { message: string }
-      notification.error({ message: '変換エラー', description: error.message || 'ビン分割に失敗しました。' })
+      notification.error({ message: '変換エラー', description: err instanceof Error ? err.message : 'ビン分割に失敗しました。' })
     } finally {
+      busy.current = false
       setApplying(false)
     }
   }
@@ -108,12 +127,22 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
     <Modal
       title={<>連続変数のビン分割: <ColumnQuestionTooltip nameOrId={columnName} /></>}
       open={open}
-      onCancel={onClose}
+      onCancel={() => { if (!busy.current) onClose() }}
+      onDeactivate={onClose}
+      closable={!applying}
+      keyboard={!applying}
+      maskClosable={!applying}
+      cancelButtonProps={{ disabled: applying }}
+      okButtonProps={{ disabled: applying || loading || !preview || Boolean(error) }}
       onOk={handleApply}
       okText="ビン列を生成"
       confirmLoading={applying}
       width={680}
     >
+      <MutationProgress busy={applying} />
+      {error && <Alert type="error" showIcon role="alert" message="プレビューを取得できませんでした" description={error}
+        action={<Button onClick={() => void loadPreview()} disabled={applying} loading={loading}>再試行</Button>} style={{ marginBottom: 12 }} />}
+      <ConfigProvider componentDisabled={applying}>
       <div data-testid="binning-modal-content">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
@@ -138,7 +167,6 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
               value={numBins}
               onChange={(val) => {
                 setNumBins(val)
-                setOutputName(`${columnName}_bin${val}`)
               }}
               data-testid="binning-slider"
             />
@@ -240,13 +268,14 @@ export default function BinningModal({ open, datasetId, columnName, onClose, onS
           <Typography.Text strong>出力列名: </Typography.Text>
           <Input
             value={outputName}
-            onChange={(e) => setOutputName(e.target.value)}
+            onChange={(e) => { nameEdited.current = true; setOutputName(e.target.value) }}
             placeholder={`${columnName}_bin${numBins}`}
             data-testid="binning-output-name"
           />
         </div>
       </Space>
       </div>
+      </ConfigProvider>
     </Modal>
   )
 }

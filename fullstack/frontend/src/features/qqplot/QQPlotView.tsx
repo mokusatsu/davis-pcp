@@ -1,16 +1,18 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useAnalysisViewActive } from '../selection/analysisScope'
 import { selectOrdinaryVariables } from '../../app/store'
 import RowScatter from '../charts/RowScatter'
 import Select from '../common/ColumnSelect'
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Dropdown, Space, Tag, Typography } from 'antd'
+import { Card, Dropdown, Space, Spin, Tag, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
 import { api } from '../../api/client'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
+import AnalysisErrorPanel, { analysisErrorMessage } from '../common/AnalysisErrorPanel'
 
 interface QQPoint {
   rowId: string
@@ -64,6 +66,8 @@ export default function QQPlotView() {
   const [selectedColumn, setSelectedColumn] = useState<string>('')
   const [qqData, setQqData] = useState<QQResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [retrySequence, setRetrySequence] = useState(0)
 
   useEffect(() => {
     if (numericColumns.length > 0 && (!selectedColumn || !numericColumns.includes(selectedColumn))) {
@@ -72,10 +76,10 @@ export default function QQPlotView() {
   }, [numericColumns, selectedColumn])
 
   useEffect(() => {
-    if (!viewActive) return
     let cancelled = false
     setQqData(null)
-    if (!selection.datasetId || !selectedColumn || !numericColumns.includes(selectedColumn)) { setLoading(false); return }
+    setError(null)
+    if (!viewActive || !selection.datasetId || !selectedColumn || !numericColumns.includes(selectedColumn)) { setLoading(false); return }
     setLoading(true)
     api.post<QQResponse>('/summaries/qqplot', {
       datasetId: selection.datasetId,
@@ -84,10 +88,10 @@ export default function QQPlotView() {
       expectedDataRevision: selection.dataRevision,
     })
       .then(value => { if (!cancelled) setQqData(value) })
-      .catch(() => { if (!cancelled) setQqData(null) })
+      .catch(error => { if (!cancelled) setError(analysisErrorMessage(error)) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [viewActive, selection.datasetId, selection.dataRevision, selectedColumn, effectiveRowIds, data, numericColumns])
+  }, [viewActive, selection.datasetId, selection.dataRevision, selectedColumn, effectiveRowIds, data, numericColumns, retrySequence])
 
   const width = 680
   const height = 440
@@ -96,25 +100,25 @@ export default function QQPlotView() {
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行のみに絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を一時除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: 'Clear Selection (選択解除)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
     {
       key: 'reset',
-      label: 'Reset to Base Data (全データ復帰)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]
@@ -142,11 +146,13 @@ export default function QQPlotView() {
 
   return (
     <div data-testid="qqplot-view" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {error && <AnalysisErrorPanel title="Q-Qプロット" error={error} onRetry={() => setRetrySequence(value => value + 1)} loading={loading} />}
+      {loading && <Spin aria-label="Q-Qプロットを計算中" />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <GraphPanel
         graphId="distribution/qq"
         title="正規Q-Qプロット"
-        available={numericColumns.length > 0}
+        available={Boolean(!loading && qqData)}
         sizing="intrinsic"
         intrinsicSize={{ width, height }}
         controls={columnControls}

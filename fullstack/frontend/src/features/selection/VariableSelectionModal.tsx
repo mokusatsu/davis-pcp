@@ -2,7 +2,8 @@ import { selectVariableManagerState } from '../../app/store'
 import { Select as AntSelect } from 'antd'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import React, { useState, useEffect } from 'react'
-import { Modal, Input, Button, Space, Typography, List, Card, message } from 'antd'
+import Modal from '../common/ActiveModal'
+import { Input, Button, Space, Typography, List, Card, message } from 'antd'
 import { ArrowRightOutlined, ArrowLeftOutlined, UpOutlined, DownOutlined, BarChartOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -26,6 +27,18 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
   const [selectedList, setSelectedList] = useState<string[]>([])
   const [selectedAvailable, setSelectedAvailable] = useState<string[]>([])
   const [selectedActive, setSelectedActive] = useState<string[]>([])
+  const [availableFocus, setAvailableFocus] = useState<string | null>(null)
+  const [activeFocus, setActiveFocus] = useState<string | null>(null)
+  const onRowKeyDown = (event: React.KeyboardEvent<HTMLElement>, toggle: () => void) => {
+    if (event.target !== event.currentTarget) return
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); return }
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const rows = Array.from(event.currentTarget.closest('[role="listbox"]')?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])
+    const index = rows.indexOf(event.currentTarget)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)))
+    rows[next]?.focus()
+  }
 
   useEffect(() => {
     if (open) {
@@ -102,6 +115,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
       title="変数マネージャ (Variable Selection Manager)"
       open={open}
       onCancel={onClose}
+      onDeactivate={onClose}
       width={720}
       footer={[
         <Button
@@ -155,7 +169,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
           style={{ flex: 1, height: 350, display: 'flex', flexDirection: 'column' }}
           bodyStyle={{ flex: 1, overflow: 'auto', padding: 4 }}
         >
-          <List
+          <div role="listbox" aria-label="利用可能変数" aria-multiselectable="true"><List
             size="small"
             dataSource={filteredAvailable}
             renderItem={(item) => {
@@ -163,6 +177,10 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
               const meta = globalVars.variableMeta[item]
               return (
                 <List.Item
+                  role="option" aria-selected={isSel}
+                  tabIndex={item === (availableFocus && filteredAvailable.includes(availableFocus) ? availableFocus : filteredAvailable[0]) ? 0 : -1}
+                  onFocus={() => setAvailableFocus(item)}
+                  onKeyDown={event => onRowKeyDown(event, () => setSelectedAvailable(previous => previous.includes(item) ? previous.filter(id => id !== item) : [...previous, item]))}
                   style={{
                     padding: '4px 8px',
                     cursor: 'pointer',
@@ -182,7 +200,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                   data-testid={`var-available-${item}`}
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <Typography.Text><ColumnQuestionTooltip nameOrId={meta?.name}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip></Typography.Text>
+                    <Typography.Text><ColumnQuestionTooltip nameOrId={meta?.name} tabIndex={-1}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip></Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                       {meta?.entity.kind === 'ma' ? 'MA' : meta?.semanticType ?? 'variable'}
                     </Typography.Text>
@@ -190,7 +208,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 </List.Item>
               )
             }}
-          />
+          /></div>
         </Card>
 
         {/* Center Move Buttons */}
@@ -200,14 +218,14 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
             onClick={moveToSelected}
             disabled={selectedAvailable.length === 0}
             data-testid="var-move-to-selected"
-            title="選択に追加"
+            title="選択に追加" aria-label="選択に追加"
           />
           <Button
             icon={<ArrowLeftOutlined />}
             onClick={moveToAvailable}
             disabled={selectedActive.length === 0}
             data-testid="var-move-to-available"
-            title="選択から除外"
+            title="選択から除外" aria-label="選択から除外"
           />
         </div>
 
@@ -222,7 +240,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 icon={<UpOutlined />}
                 disabled={selectedActive.length !== 1 || selectedList.indexOf(selectedActive[0]) <= 0}
                 onClick={moveUp}
-                title="上へ"
+                title="上へ" aria-label="上へ"
                 data-testid="var-move-up"
               />
               <Button
@@ -233,7 +251,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                   selectedList.indexOf(selectedActive[0]) === selectedList.length - 1
                 }
                 onClick={moveDown}
-                title="下へ"
+                title="下へ" aria-label="下へ"
                 data-testid="var-move-down"
               />
             </Space>
@@ -241,7 +259,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
           style={{ flex: 1, height: 350, display: 'flex', flexDirection: 'column' }}
           bodyStyle={{ flex: 1, overflow: 'auto', padding: 4 }}
         >
-          <List
+          <div role="listbox" aria-label="選択・表示変数" aria-multiselectable="true"><List
             size="small"
             dataSource={filteredSelected}
             renderItem={(item, index) => {
@@ -249,6 +267,10 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
               const meta = globalVars.variableMeta[item]
               return (
                 <List.Item
+                  role="option" aria-selected={isSel}
+                  tabIndex={item === (activeFocus && filteredSelected.includes(activeFocus) ? activeFocus : filteredSelected[0]) ? 0 : -1}
+                  onFocus={() => setActiveFocus(item)}
+                  onKeyDown={event => onRowKeyDown(event, () => setSelectedActive(previous => previous.includes(item) ? previous.filter(id => id !== item) : [...previous, item]))}
                   style={{
                     padding: '4px 8px',
                     cursor: 'pointer',
@@ -269,7 +291,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 >
                   <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
                     <Typography.Text>
-                      {index + 1}. <ColumnQuestionTooltip nameOrId={meta?.name}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip>
+                      {index + 1}. <ColumnQuestionTooltip nameOrId={meta?.name} tabIndex={-1}>{meta?.label} ({meta?.name})</ColumnQuestionTooltip>
                     </Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                       {meta?.entity.kind === 'ma' ? 'MA' : meta?.semanticType ?? 'variable'}
@@ -278,7 +300,7 @@ export const VariableSelectionModal: React.FC<VariableSelectionModalProps> = ({ 
                 </List.Item>
               )
             }}
-          />
+          /></div>
         </Card>
       </div>
     </Modal>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Button, Checkbox, Modal, Select, Space, Table, Typography, Input } from 'antd'
 import { CodebookColumn } from '../../api/client'
+import ColumnSelect from '../common/ColumnSelect'
 import { parseBulkLabels } from './codebookParsers'
 
 interface BulkLabelPasteModalProps {
@@ -122,7 +123,7 @@ export default function BulkLabelPasteModal({
       <Space wrap style={{ marginBottom: 12 }}>
         <Space size="small">
           <Typography.Text style={{ fontSize: 12 }}>開始変数:</Typography.Text>
-          <Select
+          <ColumnSelect
             size="small"
             style={{ width: 180 }}
             popupMatchSelectWidth={false}
@@ -130,7 +131,7 @@ export default function BulkLabelPasteModal({
             onChange={setStartColId}
             options={candidateColumns.map((c) => ({
               value: c.columnId,
-              label: `${c.name} (${c.label || 'ラベルなし'})`,
+              label: c.name, questionName: c.name, questionText: c.label,
             }))}
           />
         </Space>

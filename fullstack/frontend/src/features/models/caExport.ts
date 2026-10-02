@@ -91,28 +91,4 @@ export function categoriesToCsv(
   return lines.join('\n')
 }
 
-export { downloadSvg } from '../charts/chartExport'
-
-export function downloadPng(svg: SVGSVGElement, fileName: string): void {
-  const text = new XMLSerializer().serializeToString(svg)
-  const img = new Image()
-  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml;charset=utf-8' }))
-  img.onload = () => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 960
-    canvas.height = 640
-    const ctx = canvas.getContext('2d')
-    if (ctx) {
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      canvas.toBlob((blob) => {
-        if (blob) downloadBlob(blob, fileName)
-        URL.revokeObjectURL(url)
-      })
-    } else {
-      URL.revokeObjectURL(url)
-    }
-  }
-  img.src = url
-}
+export { downloadSvg, downloadPng } from '../charts/chartExport'

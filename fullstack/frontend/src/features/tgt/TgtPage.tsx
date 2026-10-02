@@ -137,29 +137,6 @@ export default function TgtPage() {
   const location = useLocation()
   const isTouringActive = location.pathname === '/touring'
 
-  // Global keyboard shortcuts (only active when on /touring tab)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isTouringActive) return
-      // Don't trigger if user is typing in an input/select
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return
-
-      if (e.code === 'Space') {
-        e.preventDefault()
-        handleTogglePlay()
-      } else if (e.key === '.') {
-        e.preventDefault()
-        handleStep()
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault()
-        handleReset()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleTogglePlay, handleStep, handleReset, isTouringActive])
-
   const handleBasisUpdate = useCallback((newAlpha: number[], newBeta: number[]) => {
     setBasis({ alpha: newAlpha, beta: newBeta })
   }, [])
@@ -206,7 +183,7 @@ export default function TgtPage() {
       {/* Action Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 860 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            💡 ショートカット: <strong>Space</strong> (再生/一時停止) · <strong>.</strong> (1コマ送り) · <strong>R</strong> (視点リセット) · 一時停止中にドラッグで矩形選択
+            💡 図にフォーカス中: <strong>Space</strong> (再生/一時停止) · <strong>.</strong> (1コマ送り) · <strong>R</strong> (視点リセット) · 一時停止中は矢印＋Enterで点選択、ドラッグで矩形選択
           </Typography.Text>
           <Space>
           </Space>
@@ -241,6 +218,10 @@ export default function TgtPage() {
               isPlaying={isPlaying && isTouringActive}
               isTracking={isTracking}
               onBasisUpdate={handleBasisUpdate}
+              isActive={isTouringActive}
+              onTogglePlay={handleTogglePlay}
+              onStep={handleStep}
+              onReset={handleReset}
             />
           )}
 

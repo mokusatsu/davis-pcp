@@ -63,10 +63,11 @@ export function modelScatterOption(points: ModelPoint[], xLabel: string, yLabel:
   }
 }
 export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = false, xExtent, yExtent, extraSeries, note,
-  svgRef, testId, height = 400, onToggle, onBrush }: {
+  svgRef, testId, height = 400, onToggle, onBrush, exportTarget }: {
   points: ModelPoint[]; xLabel: string; yLabel: string; oneDimensional?: boolean
   xExtent?: [number, number]; yExtent?: [number, number]; extraSeries?: SeriesOption[]; note?: string
   svgRef?: RefObject<SVGSVGElement>; testId: string; height?: number
+  exportTarget?: string
   onToggle?: (id: string) => void; onBrush?: (bounds: { x: [number, number]; y: [number, number] | null }) => void
 }) {
   const viewportKey=JSON.stringify(useGraphViewport())
@@ -98,6 +99,8 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
   }
   const dataKey = JSON.stringify([points.map(p => [p.id,p.x,p.y]),xLabel,yLabel,oneDimensional,xExtent,yExtent])
   useEffect(clear, [dataKey, viewportKey])
+  const finitePoints = points.filter(p => Number.isFinite(p.x) && (oneDimensional || Number.isFinite(p.y)))
+  const pointSeriesIndex = (extraSeries?.length ?? 0) + (finitePoints.some(p => p.misclassified) ? 1 : 0)
   return <div style={{height}} onPointerDown={e => {
     if (e.button !== 0 || (!onBrush && !onToggle) || start.current) return
     const p = local(e)
@@ -129,6 +132,10 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
   }} onPointerCancel={e => { if(start.current?.pointerId===e.pointerId){suppressClick.current=true; clear()} }} onLostPointerCapture={e=>{if(start.current?.pointerId===e.pointerId)clear()}}>
   <EChart fitPointMarkers chartRef={chartRef} option={modelScatterOption(points.map(p=>({...p,highlighted:p.highlighted || !!p.rowId && p.rowId===hoveredRow})), xLabel, yLabel, oneDimensional, xExtent, yExtent, extraSeries, note)}
     height={height} svgRef={svgRef} testId={testId} ariaLabel={`${xLabel} / ${yLabel}`}
+    exportFormats={['svg', 'png']} exportFileName={testId.replace(/-svg$/, '')} exportTarget={exportTarget}
+    keyboardNavigation={{ items: finitePoints.map((point, dataIndex) => ({ id: point.id, label: `${point.title}${point.selected ? '、選択中' : ''}`,
+      seriesIndex: pointSeriesIndex, dataIndex })), onSelect: onToggle,
+      onHover: id => hoverRow(id === null ? null : finitePoints.find(point => point.id === id)?.rowId ?? null) }}
     onEvents={{ mouseover:p=>{if(p.data?.rowId)hoverRow(p.data.rowId)}, mouseout:p=>{if(p.data?.rowId)hoverRow(null)}, click: p => { if (suppressClick.current) { suppressClick.current=false; return }; if (p.seriesId === 'model-points' && p.data?.id) onToggle?.(p.data.id) },
       brushEnd: p => {
         const a = p.areas?.[0]

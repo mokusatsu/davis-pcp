@@ -192,25 +192,33 @@ def probe_table(
                 categories = None
         else:
             physical = "string"
-            values = [str(v) for v in non_null.head(200).to_list()]
-            numeric_like = sum(1 for v in values if _try_float(v) is not None)
-            leading_zero_codes = [v for v in values
-                                  if len(v) > 1 and v[0] == "0" and v[1:].isdigit()
-                                  and not v.startswith("0.") and "," not in v]
-            if not values:
+            # Type inference must not depend on row order. Inspect the whole
+            # column, but do not materialize another full Python list.
+            numeric_like = 0
+            leading_zero_codes = False
+            for value in non_null:
+                token = str(value)
+                numeric_like += _try_float(token) is not None
+                if (len(token) > 1 and token[0] == "0"
+                        and token[1:].isdigit()
+                        and not token.startswith("0.") and "," not in token):
+                    leading_zero_codes = True
+            if len(non_null) == 0:
                 semantic = "ignored"
             elif leading_zero_codes:
                 # Leading-zero numeric strings ("001") are codes, not
                 # quantities: keep them categorical so they default to
                 # nominal instead of ratio (AV05).
                 semantic = "categorical"
-            elif numeric_like / max(1, len(values)) > 0.95:
+            elif numeric_like / len(non_null) > 0.95:
                 semantic = "numeric"
             else:
                 semantic = "categorical"
             min_v = None
             max_v = None
-            categories = sorted(set(values))[:100] if semantic == "categorical" else None
+            # Bounded display candidates come from the whole column, not the
+            # first 200 rows. They are not an exhaustive validation domain.
+            categories = [str(v) for v in non_null.unique().sort().head(100).to_list()] if semantic == "categorical" else None
         schemas.append(ColumnSchema(
             columnId=new_id("col"),
             name=name,

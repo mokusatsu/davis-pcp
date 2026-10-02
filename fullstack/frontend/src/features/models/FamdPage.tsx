@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -16,7 +17,6 @@ import L1Legend from '../common/L1Legend'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import type { FAMDResponse } from './famdTypes'
 import { exportFamdTable, fetchFamdRows, runFamd, selectFamd, type FAMDContext } from './famdApi'
-import { downloadPng, downloadSvg } from './mcaApi'
 import FamdFigure, { CorrelationCircle, famdAxisLabel, famdCategoryPoints, famdRelationOption } from './FamdFigure'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -825,14 +825,14 @@ export default function FamdPage(): JSX.Element {
                       >
                         FAMD{matAxis}を派生列へ保存
                       </Button>
-                      <Button onClick={() => void exportFamdTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</Button>
-                      <Button onClick={() => void exportFamdTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</Button>
-                      <Button onClick={() => void exportFamdTable(result.resultId, 'variables', 'csv')}>変数CSV</Button>
-                      <Button onClick={() => void exportFamdTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</Button>
-                      <Button onClick={() => void exportFamdTable(result.resultId, 'manifest', 'json')}>設定JSON</Button>
-                      <Button onClick={() => { if (svgIndRef.current) downloadSvg(svgIndRef.current, `famd-ind-${result.resultId}.svg`) }}>個体図SVG</Button>
-                      <Button onClick={() => { if (svgCatRef.current) downloadSvg(svgCatRef.current, `famd-cat-${result.resultId}.svg`) }}>カテゴリ図SVG</Button>
-                      <Button onClick={() => { if (svgIndRef.current) downloadPng(svgIndRef.current, `famd-ind-${result.resultId}.png`) }}>個体図PNG</Button>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="固有値CSV" onExport={() => exportFamdTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="カテゴリCSV" onExport={() => exportFamdTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="変数CSV" onExport={() => exportFamdTable(result.resultId, 'variables', 'csv')}>変数CSV</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="個体CSV（全件）" onExport={() => exportFamdTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="設定JSON" onExport={() => exportFamdTable(result.resultId, 'manifest', 'json')}>設定JSON</AsyncExportButton>
+                      <Typography.Text type="secondary">図のSVG・PNGは各グラフ右上から保存できます。</Typography.Text>
+                      <Button onClick={() => setTab('individuals')}>個体図を開く</Button>
+                      <Button onClick={() => setTab('categories')}>カテゴリ図を開く</Button>
                     </Space>
                   ),
                 },

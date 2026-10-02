@@ -193,12 +193,12 @@ describe('Codebook UI Components E2E Flow', () => {
     const onClose = vi.fn()
 
     render(
-      <BulkLabelPasteModal
+      <Provider store={createTestStore()}><BulkLabelPasteModal
         open={true}
         onClose={onClose}
         columns={mockColumns}
         onApply={onApply}
-      />
+      /></Provider>
     )
 
     expect(screen.getByText(/質問文（ラベル）の一括貼り付け/)).toBeInTheDocument()

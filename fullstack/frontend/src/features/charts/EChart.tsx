@@ -3,18 +3,36 @@ import { useGraphViewport } from '../common/GraphPanel'
 import { useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type MutableRefObject, type RefObject } from 'react'
 import * as echarts from 'echarts'
 import Eventful from 'zrender/lib/core/Eventful.js'
-import { downloadChartSvg } from './chartExport'
+import { downloadChartSvg, downloadChartPng } from './chartExport'
+import GraphExportControl, { type GraphExportFormat } from './GraphExportControl'
 import { layoutCategoryAxes } from './categoryAxisLayout'
 import { ReactReduxContext } from 'react-redux'
 import type { ECharts, EChartsOption } from 'echarts'
 
+export interface EChartKeyboardItem {
+  id: string
+  label: string
+  seriesIndex?: number
+  dataIndex?: number
+}
+export interface EChartKeyboardNavigation {
+  items: readonly EChartKeyboardItem[]
+  onSelect?: (id: string) => void
+  onHover?: (id: string | null) => void
+}
+
 export interface EChartProps {
+  /** Accessible mark traversal. Callbacks share the pointer selection/hover path. */
+  keyboardNavigation?: EChartKeyboardNavigation
   /** Ordinary scatter/line markers opt in; semantic/tree geometry is untouched. */
   fitPointMarkers?: boolean
   /** Invisible coarse-pointer radius for point charts without a nearest-point handler. */
   pointHitRadius?: number
   resetKey?: string | number
   exportPosition?: 'top-right' | 'top-left'
+  exportFormats?: readonly GraphExportFormat[]
+  exportFileName?: string
+  exportTarget?: string
   renderer?: 'svg' | 'canvas'
   option: EChartsOption
   height?: number | string
@@ -31,8 +49,9 @@ export interface EChartProps {
 /** Single lifecycle owner for all non-PCP charts. Options and handlers may change
  * without recreating a chart; hidden keep-alive/focus panels resize on re-entry. */
 export default function EChart({ option, height = 360, width = '100%', onEvents, onReady,
-  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style, exportPosition = 'top-right', pointHitRadius, fitPointMarkers = false }: EChartProps) {
-  const [exportError, setExportError] = useState<string | null>(null)
+  chartRef, svgRef, resetKey, renderer = 'svg', ariaLabel = '統計グラフ', testId, style, exportPosition = 'top-right',
+  exportFormats = ['svg'], exportFileName, exportTarget, pointHitRadius, fitPointMarkers = false, keyboardNavigation }: EChartProps) {
+  const keyboardEnabled = Boolean(keyboardNavigation?.items.length)
   const graphViewport=useGraphViewport()
   const viewportKey=JSON.stringify(graphViewport)
   const fitScale = fitPointMarkers ? markerFitScale(graphViewport) : 1
@@ -154,8 +173,11 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     labelViewport.current = `${chart.getWidth()}x${chart.getHeight()}`
     chart.setOption({
       animation: false,
-      aria: { enabled: true, label: { description: ariaLabel } },
       ...laidOut,
+      // The focusable mark navigator owns its accessible role and instructions.
+      // ECharts' generated ARIA otherwise overwrites that element with role=img.
+      aria: keyboardEnabled ? { ...laidOut.aria, enabled: false }
+        : { enabled: true, label: { description: ariaLabel }, ...laidOut.aria },
       ...(tooltips ? { tooltip: tooltips } : {}),
       ...(legend ? { legend } : {}),
       ...(dataZoom ? { dataZoom } : {}),
@@ -166,7 +188,7 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     }, { notMerge: true, lazyUpdate: false })
     if (svgRef) (svgRef as MutableRefObject<SVGSVGElement | null>).current = container.current?.querySelector('svg') ?? null
     if (!readyCalled.current) { readyCalled.current = true; ready.current?.(chart) }
-  }, [option, ariaLabel, chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize, fitScale, resetKey, datasetId])
+  }, [option, ariaLabel, chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize, fitScale, resetKey, datasetId, keyboardEnabled])
 
   useEffect(() => {
     const chart = instance.current
@@ -187,6 +209,45 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     })
     return () => { if (!chart.isDisposed()) handlers.forEach(({ name, handler }) => chart.off(name, handler)) }
   }, [eventNames, chartRef, svgRef, renderer, effectiveDpr, effectivePointerSize])
+
+  const [keyboardId, setKeyboardId] = useState<string | null>(null)
+  const keyboard = useRef(keyboardNavigation); keyboard.current = keyboardNavigation
+  const activeKeyboardItem = useRef<EChartKeyboardItem | null>(null)
+  const keyboardScope = `${resetKey ?? datasetId ?? ''}`
+  const previousKeyboardScope = useRef(keyboardScope)
+  const leaveKeyboard = () => {
+    const previous = activeKeyboardItem.current
+    activeKeyboardItem.current = null
+    const chart = instance.current
+    if (previous && chart && !chart.isDisposed()) {
+      if (previous.seriesIndex !== undefined && previous.dataIndex !== undefined)
+        chart.dispatchAction({ type: 'downplay', seriesIndex: previous.seriesIndex, dataIndex: previous.dataIndex })
+      chart.dispatchAction({ type: 'hideTip' })
+    }
+    if (previous) keyboard.current?.onHover?.(null)
+  }
+  const enterKeyboard = (item: EChartKeyboardItem | undefined) => {
+    leaveKeyboard()
+    activeKeyboardItem.current = item ?? null
+    setKeyboardId(item?.id ?? null)
+    if (!item) return
+    const chart = instance.current
+    if (chart && !chart.isDisposed() && item.seriesIndex !== undefined && item.dataIndex !== undefined) {
+      chart.dispatchAction({ type: 'highlight', seriesIndex: item.seriesIndex, dataIndex: item.dataIndex })
+      chart.dispatchAction({ type: 'showTip', seriesIndex: item.seriesIndex, dataIndex: item.dataIndex })
+    }
+    keyboard.current?.onHover?.(item.id)
+  }
+  const keyboardItemsKey = JSON.stringify(keyboardNavigation?.items.map(item => [item.id, item.seriesIndex, item.dataIndex]))
+  useEffect(() => {
+    const current = keyboard.current?.items.find(item => item.id === activeKeyboardItem.current?.id)
+    if (previousKeyboardScope.current !== keyboardScope || (activeKeyboardItem.current && !current)) {
+      leaveKeyboard(); setKeyboardId(null)
+    } else if (current) activeKeyboardItem.current = current
+    previousKeyboardScope.current = keyboardScope
+  }, [keyboardItemsKey, keyboardScope])
+  useEffect(() => () => leaveKeyboard(), [])
+  const keyboardItem = keyboardNavigation?.items.find(item => item.id === keyboardId)
 
   const retainNativeControl = (event: MouseEvent<HTMLDivElement>) => {
     // Long full-text tooltips can be scrolled without starting a chart brush.
@@ -215,23 +276,41 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
   }
 
   return <div data-chart-host="echarts" style={{ width, height, minWidth: 0, minHeight: 100, position: 'relative', ...style }}>
-    <div ref={container} data-testid={testId} data-chart-renderer="echarts" role="img" aria-label={ariaLabel}
+    <div ref={container} data-testid={testId} data-chart-renderer="echarts" role={keyboardEnabled ? 'group' : 'img'}
+      tabIndex={keyboardEnabled ? 0 : undefined}
+      aria-label={keyboardEnabled ? `${ariaLabel}。矢印キーでマークを移動${keyboardNavigation?.onSelect ? '、EnterまたはSpaceで選択' : ''}、Escapeで詳細を閉じる` : ariaLabel}
+      onFocus={event => { if (event.target === event.currentTarget) enterKeyboard(keyboardItem ?? keyboard.current?.items[0]) }}
+      onBlur={() => { leaveKeyboard(); setKeyboardId(null) }}
+      onKeyDown={event => {
+        if (event.target !== event.currentTarget || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
+        const navigation = keyboard.current, items = navigation?.items
+        if (!items?.length) return
+        const index = Math.max(0, items.findIndex(item => item.id === keyboardId))
+        if (event.key.startsWith('Arrow')) {
+          event.preventDefault()
+          const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
+          enterKeyboard(items[(index + direction + items.length) % items.length])
+        } else if (event.key === 'Home' || event.key === 'End') {
+          event.preventDefault(); enterKeyboard(items[event.key === 'Home' ? 0 : items.length - 1])
+        } else if ((event.key === 'Enter' || event.key === ' ') && navigation?.onSelect) {
+          event.preventDefault(); navigation.onSelect(items[index].id)
+        } else if (event.key === 'Escape') { leaveKeyboard(); setKeyboardId(null) }
+      }}
       onPointerDown={retainNativeControl} onMouseDown={retainNativeControl}
       style={{ width: '100%', height: '100%', minWidth: 0, userSelect: 'none', touchAction: 'none' }} />
-    <button type="button" data-chart-export="svg" aria-label={`${ariaLabel}：SVGを保存`} title="SVGを保存"
-      onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()}
-      onKeyDown={event => event.stopPropagation()}
-      onClick={event => {
-        event.stopPropagation()
-        const chart = instance.current
-        if (!chart || chart.isDisposed()) return
-        try { downloadChartSvg(chart, ariaLabel, graphViewport.scale); setExportError(null) }
-        catch (error) { setExportError(`SVGを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`) }
-      }}
-      style={{ position: 'absolute', top: 4, ...(exportPosition === 'top-left'
-        ? { left: 8, width: 84, height: 24, boxSizing: 'border-box' as const } : { right: 8 }), zIndex: 2, padding: '2px 6px', border: '1px solid #d9d9d9', borderRadius: 4,
-        background: '#fff', color: '#333', font: '12px sans-serif', cursor: 'pointer' }}>SVGを保存</button>
-    {exportError && <div role="alert" style={{ position: 'absolute', top: 32, right: 8, zIndex: 3, background: '#fff', color: '#b42318', padding: 6 }}>{exportError}</div>}
+    {keyboardNavigation && <span aria-live="polite" style={{ position: 'absolute', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}>{keyboardItem?.label ?? ''}</span>}
+    <div data-chart-export-controls onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()}
+      style={{ position: 'absolute', top: 4, ...(exportPosition === 'top-left' ? { left: 8 } : { right: 8 }), zIndex: 2, display: 'flex', gap: 4, maxWidth: 'calc(100% - 16px)' }}>
+      {exportFormats.map(format => <GraphExportControl key={format} format={format} graphLabel={ariaLabel} target={exportTarget}
+        exportKey={resetKey ?? datasetId} statusStyle={{ position: 'absolute', top: 28, ...(exportPosition === 'top-left' ? { left: 0 } : { right: 0 }), background: '#fff', padding: 4, width: 240, zIndex: 3 }}
+        onExport={() => {
+          const chart = instance.current
+          if (!chart || chart.isDisposed()) throw new Error('グラフを利用できません')
+          return format === 'png'
+            ? downloadChartPng(chart, exportFileName ?? ariaLabel, graphViewport.scale)
+            : downloadChartSvg(chart, exportFileName ?? ariaLabel, graphViewport.scale)
+        }} />)}
+    </div>
   </div>
 }
 

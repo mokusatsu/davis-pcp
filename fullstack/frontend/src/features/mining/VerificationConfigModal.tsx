@@ -1,5 +1,6 @@
+import Modal from '../common/ActiveModal'
 import { useState } from 'react'
-import { Alert, InputNumber, Modal, Radio, Select, Space, Typography } from 'antd'
+import { Alert, InputNumber, Radio, Select, Space, Typography } from 'antd'
 
 export interface VerificationConfig {
   method: 'holdout' | 'cross_validation' | 'independent'
@@ -38,6 +39,7 @@ export default function VerificationConfigModal({
       title="検証モードの設定"
       open={open}
       onCancel={onCancel}
+      onDeactivate={onCancel}
       okText="実行"
       cancelText="キャンセル"
       onOk={() => onRun({ method, test_size: testSize, k, correction: 'bh-fdr', alpha, seed,

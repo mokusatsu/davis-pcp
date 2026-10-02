@@ -1,0 +1,197 @@
+import React from 'react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Provider } from 'react-redux'
+import { AnalysisViewActivityContext } from '../src/features/selection/analysisScope'
+import { store, pcpStateChanged } from '../src/app/store'
+import { api } from '../src/api/client'
+import AddVariableModal from '../src/features/dataset/AddVariableModal'
+import BinningModal from '../src/features/dataset/BinningModal'
+import SelectionMenu, { getBrushOp } from '../src/features/selection/SelectionMenu'
+import { PointerSelectionDropdown } from '../src/features/selection/PointerSelectionDropdown'
+
+vi.mock('../src/features/charts/CategoryBars', () => ({ default: () => <div>chart</div> }))
+vi.mock('../src/features/charts/EChartSurface', () => ({ default: () => <div>chart</div> }))
+afterEach(() => {cleanup();vi.restoreAllMocks()})
+function wrap(ui: React.ReactNode) { return <Provider store={store}>{ui}</Provider> }
+function deferred<T>(){let resolve!: (v:T)=>void;let reject!: (e:any)=>void;const promise=new Promise<T>((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}
+const preview = (column='new_feature',mean=1) => ({valid:true,error:null,column,previewValues:[mean],stats:{count:1,mean},histogram:[]})
+const columns = ['x','y']
+const binPreview=(label:string)=>({column:'x',method:'equal_width',edges:[0,1],bins:[{binIndex:0,label,min:0,max:1,count:1,ratio:1}],histogram:{counts:[1],edges:[0,1]},min:0,max:1,count:1})
+
+describe('GUI mutation audit repair acceptance',()=>{
+ it('I01 calculation helper edits invalidate success and require fresh verification', async()=>{
+  const post=vi.spyOn(api,'post').mockResolvedValue(preview() as any)
+  render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
+  fireEvent.click(screen.getByText('+',{selector:'.ant-tag'}))
+  fireEvent.click(screen.getByText('x',{selector:'.ant-tag'}))
+  expect(screen.getByTestId('input-variable-expression')).toHaveValue('x / (y + 1e-6) + x')
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
+  fireEvent.click(screen.getByTestId('btn-add-variable-submit'))
+  await waitFor(()=>expect(post).toHaveBeenLastCalledWith('/datasets/d/calculate',{expression:'x / (y + 1e-6) + x',columnName:'new_feature'}))
+  expect(post.mock.calls.filter(([url])=>String(url).endsWith('/preview'))).toHaveLength(2)
+ })
+ it('I02 older preview cannot validate edited input', async()=>{
+  const pending=deferred<any>();vi.spyOn(api,'post').mockReturnValue(pending.promise)
+  render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  fireEvent.change(screen.getByTestId('input-variable-expression'),{target:{value:'x + 999'}})
+  await act(async()=>{pending.resolve(preview());await pending.promise})
+  expect(screen.getByTestId('input-variable-expression')).toHaveValue('x + 999')
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+  expect(screen.queryByText("数式検証成功: 'new_feature' が正常に計算されました。")).not.toBeInTheDocument()
+ })
+ it('I03 equivalent columns prop preserves draft',()=>{
+  const view=render(wrap(<AddVariableModal open datasetId="d" columns={['x','y']} onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.change(screen.getByTestId('input-new-variable-name'),{target:{value:'my_custom_column'}})
+  fireEvent.change(screen.getByTestId('input-variable-expression'),{target:{value:'x + 10'}})
+  view.rerender(wrap(<AddVariableModal open datasetId="d" columns={['x','y']} onClose={()=>{}} onSuccess={()=>{}}/>))
+  expect(screen.getByTestId('input-new-variable-name')).toHaveValue('my_custom_column')
+  expect(screen.getByTestId('input-variable-expression')).toHaveValue('x + 10')
+ })
+ it('I04 binning keeps only latest preview',async()=>{
+  const first=deferred<any>(),second=deferred<any>();vi.spyOn(api,'post').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+  render(wrap(<BinningModal open datasetId="d" columnName="x" onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.click(screen.getByText('分位点 (Quantile)'))
+  await act(async()=>{second.resolve(binPreview('LATEST_QUANTILE'));await second.promise})
+  expect(screen.getAllByText('LATEST_QUANTILE').length).toBeGreaterThan(0)
+  await act(async()=>{first.resolve(binPreview('STALE_EQUAL_WIDTH'));await first.promise})
+  expect(screen.queryByText('STALE_EQUAL_WIDTH')).not.toBeInTheDocument()
+  expect(screen.getByText('LATEST_QUANTILE')).toBeInTheDocument()
+  expect(screen.getByDisplayValue('quantile')).toBeChecked()
+ })
+ it('I05 local, header and PCP operation share Redux state',async()=>{
+  render(wrap(<><SelectionMenu/><PointerSelectionDropdown/></>))
+  fireEvent.click(screen.getByTestId('selection-menu'))
+  fireEvent.mouseDown(screen.getByTestId('brush-operation').querySelector('.ant-select-selector')!)
+  fireEvent.click(await screen.findByTitle('Subtract（除去）'))
+  expect(getBrushOp()).toBe('subtract')
+  expect(store.getState().pcp.brushOperation).toBe('subtract')
+  fireEvent.click(screen.getByTestId('pointer-selection-dropdown'))
+  await waitFor(()=>expect(screen.getByTestId('brush-operation-select')).toHaveTextContent('Subtract（除去）'))
+ })
+ it('I07 preview rejection clears old table and prevents apply',async()=>{
+  const next=deferred<any>();vi.spyOn(api,'post').mockResolvedValueOnce(binPreview('OLD_VALID_BIN') as any).mockReturnValueOnce(next.promise)
+  render(wrap(<BinningModal open datasetId="d" columnName="x" onClose={()=>{}} onSuccess={()=>{}}/>))
+  await waitFor(()=>expect(screen.getByText('OLD_VALID_BIN')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('分位点 (Quantile)'))
+  await act(async()=>{next.reject(new Error('NEW_PREVIEW_FAILED'));try{await next.promise}catch{}})
+  expect(screen.queryByText('OLD_VALID_BIN')).not.toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent('NEW_PREVIEW_FAILED')
+  expect(screen.getByRole('button',{name:'ビン列を生成'})).toBeDisabled()
+  const retry=screen.getByRole('button',{name:'再試行'});retry.focus();expect(retry).toHaveFocus()
+ })
+ it('I08 binning method change preserves user output name',async()=>{
+  vi.spyOn(api,'post').mockResolvedValue(binPreview('BIN') as any)
+  render(wrap(<BinningModal open datasetId="d" columnName="x" onClose={()=>{}} onSuccess={()=>{}}/>))
+  const name=screen.getByDisplayValue('x_bin4')
+  fireEvent.change(name,{target:{value:'my_named_bins'}})
+  fireEvent.click(screen.getByText('分位点 (Quantile)'))
+  expect(name).toHaveValue('my_named_bins')
+ })
+ it('I09 inactive KeepAlive page hides its modal and clears parent open state',async()=>{
+  const close=vi.fn()
+  const modal=<AddVariableModal open datasetId="d" columns={columns} onClose={close} onSuccess={()=>{}}/>
+  const view=render(wrap(<AnalysisViewActivityContext.Provider value={true}>{modal}</AnalysisViewActivityContext.Provider>))
+  await waitFor(()=>expect(screen.getByRole('dialog')).toBeVisible())
+  view.rerender(wrap(<AnalysisViewActivityContext.Provider value={false}>{modal}</AnalysisViewActivityContext.Provider>))
+  await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(close).toHaveBeenCalled()
+ })
+})
+
+describe('Preview and mutation interruption coverage',()=>{
+ it.each(['name','template'])('I01 %s edits invalidate a successful preview',async(kind)=>{
+  const post=vi.spyOn(api,'post').mockResolvedValue(preview() as any)
+  render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
+  if(kind==='name') fireEvent.change(screen.getByTestId('input-new-variable-name'),{target:{value:'renamed'}})
+  else fireEvent.click(screen.getByText('対数変換 (log1p)'))
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+  expect(screen.queryByText(/数式検証成功/)).not.toBeInTheDocument()
+  expect(post).toHaveBeenCalledTimes(1)
+ })
+ it('I02 preview response after close/reopen, revision or dataset change remains invalid',async()=>{
+  const requests=[deferred<any>(),deferred<any>(),deferred<any>()]
+  const post=vi.spyOn(api,'post');requests.forEach(p=>post.mockReturnValueOnce(p.promise))
+  const ui=(open=true,datasetId='d',dataRevision=0)=><AddVariableModal open={open} datasetId={datasetId} dataRevision={dataRevision} columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>
+  const view=render(wrap(ui()))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  view.rerender(wrap(ui(false)));view.rerender(wrap(ui()))
+  await act(async()=>{requests[0].resolve(preview());await requests[0].promise})
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  view.rerender(wrap(ui(true,'d',2)))
+  await act(async()=>{requests[1].resolve(preview());await requests[1].promise})
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  view.rerender(wrap(ui(true,'other',2)))
+  await act(async()=>{requests[2].resolve(preview());await requests[2].promise})
+  expect(screen.getByTestId('btn-add-variable-submit')).toBeDisabled()
+ })
+ it('I02 reversed formula preview order keeps only the latest verified name',async()=>{
+  const first=deferred<any>(),second=deferred<any>()
+  vi.spyOn(api,'post').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+  render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  fireEvent.change(screen.getByTestId('input-new-variable-name'),{target:{value:'latest'}})
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  await act(async()=>{second.resolve(preview('latest'));await second.promise})
+  await act(async()=>{first.resolve(preview('old'));await first.promise})
+  expect(screen.getByText("数式検証成功: 'latest' が正常に計算されました。")).toBeInTheDocument()
+  expect(screen.queryByText(/'old'/)).not.toBeInTheDocument()
+ })
+ it('I22 formula mutation blocks edits, cancel and repeat submit',async()=>{
+  const save=deferred<any>(),close=vi.fn(),success=vi.fn()
+  const post=vi.spyOn(api,'post').mockResolvedValueOnce(preview() as any).mockReturnValueOnce(save.promise)
+  render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={close} onSuccess={success}/>))
+  fireEvent.click(screen.getByText('プレビュー検証'))
+  await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
+  const submit=screen.getByTestId('btn-add-variable-submit');fireEvent.click(submit);fireEvent.click(submit)
+  expect(post).toHaveBeenCalledTimes(2)
+  expect(screen.getByTestId('input-variable-expression')).toBeDisabled()
+  expect(screen.getByRole('button',{name:'キャンセル'})).toBeDisabled()
+  fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape',keyCode:27})
+  expect(close).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('+',{selector:'.ant-tag'}))
+  expect(screen.getByTestId('input-variable-expression')).toHaveValue('x / (y + 1e-6)')
+  await act(async()=>{save.resolve({});await save.promise})
+  expect(success).toHaveBeenCalledOnce();expect(close).toHaveBeenCalledOnce()
+ })
+ it('I07 invalid custom cuts produce an error without submitting and can retry',async()=>{
+  const post=vi.spyOn(api,'post').mockResolvedValue(binPreview('OK') as any)
+  render(wrap(<BinningModal open datasetId="d" columnName="x" onClose={()=>{}} onSuccess={()=>{}}/>))
+  await screen.findByText('OK')
+  fireEvent.click(screen.getByText('カスタム境界値'))
+  fireEvent.change(screen.getByPlaceholderText('例: 5.0, 6.0, 7.0'),{target:{value:'3,bad,1'}})
+  expect(screen.getByRole('alert')).toHaveTextContent('境界値は小さい順に')
+  expect(post).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('button',{name:'ビン列を生成'})).toBeDisabled()
+  fireEvent.change(screen.getByPlaceholderText('例: 5.0, 6.0, 7.0'),{target:{value:'1,3'}})
+  await screen.findByText('OK')
+  expect(screen.getByRole('button',{name:'ビン列を生成'})).toBeEnabled()
+ })
+ it('I04 bin response from a prior dataset or unmounted modal is ignored',async()=>{
+  const first=deferred<any>(),second=deferred<any>()
+  vi.spyOn(api,'post').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+  const ui=(id:string)=><BinningModal open datasetId={id} columnName="x" onClose={()=>{}} onSuccess={()=>{}}/>
+  const view=render(wrap(ui('d')))
+  view.rerender(wrap(ui('new')))
+  await act(async()=>{first.resolve(binPreview('OLD'));await first.promise})
+  expect(screen.queryByText('OLD')).not.toBeInTheDocument()
+  view.unmount()
+  await act(async()=>{second.resolve(binPreview('UNMOUNTED'));await second.promise})
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+ })
+ it('I05 initial and restored Redux operation are observed synchronously',()=>{
+  act(()=>{store.dispatch(pcpStateChanged({brushOperation:'add'}))})
+  expect(getBrushOp()).toBe('add')
+  act(()=>{store.dispatch(pcpStateChanged({brushOperation:'toggle'}))})
+  expect(getBrushOp()).toBe('toggle')
+ })
+})

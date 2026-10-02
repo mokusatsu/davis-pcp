@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useAnalysisScope, AnalysisScopeSummary, useAnalysisViewActive } from '../selection/analysisScope'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
@@ -61,25 +62,25 @@ export default function StatisticsPage() {
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行のみに絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を一時除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: 'Clear Selection (選択解除)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
     {
       key: 'reset',
-      label: 'Reset to Base Data (全データ復帰)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]

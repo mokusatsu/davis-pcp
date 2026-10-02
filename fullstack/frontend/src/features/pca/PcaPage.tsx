@@ -80,12 +80,10 @@ export default function PcaPage() {
   )
 
   const handleComponentSelectFromScree = (compIndex: number) => {
-    if (compIndex === selectedX) {
-      // If clicking X, switch to Y
-      setSelectedY(compIndex)
-    } else {
-      setSelectedX(compIndex)
-    }
+    // A bar assigns X; choosing the current Y swaps the axes instead of duplicating it.
+    if (compIndex === selectedX) return
+    if (compIndex === selectedY) setSelectedY(selectedX)
+    setSelectedX(compIndex)
   }
 
 

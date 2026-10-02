@@ -1,12 +1,16 @@
 import CategoryBars from '../charts/CategoryBars'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Modal from '../common/ActiveModal'
+import MutationProgress from '../common/MutationProgress'
+import { useRequestIdentity } from '../common/useRequestIdentity'
+import { useAnalysisViewActive } from '../selection/analysisScope'
 import {
   Alert,
   Button,
   Card,
   Input,
-  Modal,
+  ConfigProvider,
   Space,
   Tag,
   Typography,
@@ -17,9 +21,10 @@ import { api } from '../../api/client'
 interface AddVariableModalProps {
   open: boolean
   datasetId: string
+  dataRevision?: number
   columns: string[]
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (committedDatasetId: string) => void
 }
 
 interface CalculatePreviewResponse {
@@ -51,6 +56,7 @@ export default function AddVariableModal({
   open,
   datasetId,
   columns,
+  dataRevision = 0,
   onClose,
   onSuccess,
 }: AddVariableModalProps) {
@@ -60,68 +66,86 @@ export default function AddVariableModal({
   const [loading, setLoading] = useState<boolean>(false)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
+  const busy = useRef(false)
+  const active = useAnalysisViewActive()
+  const [previewKey, setPreviewKey] = useState<string | null>(null)
+  const inputKey = JSON.stringify([open, active, datasetId, dataRevision, columnName.trim(), expression])
+  const previewRequest = useRequestIdentity(inputKey)
+  const saveRequest = useRequestIdentity(JSON.stringify([datasetId, open, active]))
+  const canSave = Boolean(open && active && preview?.valid && previewKey === inputKey && !loading)
+
+  // columns is intentionally excluded: a parent render must not erase this draft.
   useEffect(() => {
     if (open) {
       setColumnName('new_feature')
       setExpression(columns.length >= 2 ? `${columns[0]} / (${columns[1]} + 1e-6)` : '')
       setPreview(null)
+      setPreviewKey(null)
+      setLoading(false)
     }
-  }, [open, columns])
+  }, [open, datasetId])
 
-  const handlePreview = async (exprToPreview?: string, nameToPreview?: string) => {
-    const expr = exprToPreview ?? expression
-    const name = nameToPreview ?? columnName
-    if (!expr.trim() || !name.trim()) return
+  useEffect(() => {
+    setPreview(null)
+    setPreviewKey(null)
+    setLoading(false)
+  }, [dataRevision, active])
 
+  const invalidatePreview = () => {
+    previewRequest.invalidate()
+    setPreview(null)
+    setPreviewKey(null)
+    setLoading(false)
+  }
+  const editExpression = (next: string) => {
+    if (busy.current) return
+    invalidatePreview()
+    setExpression(next)
+  }
+  const handlePreview = async () => {
+    if (busy.current || !open || !active || !expression.trim() || !columnName.trim()) return
+    const current = previewRequest.begin()
+    const requestedKey = inputKey
+    setPreview(null)
+    setPreviewKey(null)
     setLoading(true)
     try {
       const res = await api.post<CalculatePreviewResponse>(`/datasets/${datasetId}/calculate/preview`, {
-        expression: expr,
-        columnName: name,
+        expression,
+        columnName: columnName.trim(),
       })
+      if (!current()) return
       setPreview(res)
+      setPreviewKey(requestedKey)
     } catch (err: any) {
-      setPreview({
-        valid: false,
-        error: err.message || String(err),
-        column: name,
-        previewValues: [],
-        stats: {},
-        histogram: [],
-      })
+      if (!current()) return
+      setPreviewKey(requestedKey)
+      setPreview({ valid: false, error: err.message || String(err), column: columnName.trim(),
+        previewValues: [], stats: {}, histogram: [] })
     } finally {
-      setLoading(false)
+      if (current()) setLoading(false)
     }
   }
 
   const handleAdd = async () => {
-    if (!columnName.trim()) {
-      message.warning('新規列名を入力してください。')
-      return
-    }
-    if (!expression.trim()) {
-      message.warning('計算式を入力してください。')
-      return
-    }
+    if (busy.current || !canSave) return
+    busy.current = true
+    const current = saveRequest.begin()
     setSubmitting(true)
     try {
-      await api.post(`/datasets/${datasetId}/calculate`, {
-        expression,
-        columnName: columnName.trim(),
-      })
+      await api.post(`/datasets/${datasetId}/calculate`, { expression, columnName: columnName.trim() })
       message.success(`変数 '${columnName.trim()}' を追加しました。`)
-      onSuccess()
-      onClose()
+      onSuccess(datasetId)
+      if (current()) onClose()
     } catch (err: any) {
       message.error(`計算変数追加エラー: ${err.message || err}`)
     } finally {
+      busy.current = false
       setSubmitting(false)
     }
   }
 
-  const appendToExpr = (text: string) => {
-    setExpression((prev) => `${prev} ${text}`.trim())
-  }
+  const appendToExpr = (text: string) => editExpression(`${expression} ${text}`.trim())
 
   return (
     <Modal
@@ -135,12 +159,16 @@ export default function AddVariableModal({
         </Space>
       }
       width={780}
-      onCancel={onClose}
+      onCancel={() => { if (!busy.current) onClose() }}
+      onDeactivate={onClose}
+      closable={!submitting}
+      keyboard={!submitting}
+      maskClosable={!submitting}
       footer={[
-        <Button key="cancel" onClick={onClose}>
+        <Button key="cancel" onClick={onClose} disabled={submitting}>
           キャンセル
         </Button>,
-        <Button key="preview" onClick={() => void handlePreview()} loading={loading}>
+        <Button key="preview" onClick={() => void handlePreview()} loading={loading} disabled={submitting}>
           プレビュー検証
         </Button>,
         <Button
@@ -148,13 +176,15 @@ export default function AddVariableModal({
           type="primary"
           onClick={() => void handleAdd()}
           loading={submitting}
-          disabled={!preview?.valid}
+          disabled={!canSave || submitting}
           data-testid="btn-add-variable-submit"
         >
           変数をデータセットに追加
         </Button>,
       ]}
     >
+      <MutationProgress busy={submitting} />
+      <ConfigProvider componentDisabled={submitting}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68vh', overflowY: 'auto' }}>
         {/* Section 1: Name and Expression */}
         <Card size="small" title="1. 変数名 &amp; 計算式" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
@@ -167,7 +197,7 @@ export default function AddVariableModal({
                 data-testid="input-new-variable-name"
                 placeholder="例: petal_ratio, log_income, score_scaled"
                 value={columnName}
-                onChange={(e) => setColumnName(e.target.value)}
+                onChange={(e) => { if (!busy.current) { invalidatePreview(); setColumnName(e.target.value) } }}
                 style={{ maxWidth: 320 }}
               />
             </div>
@@ -186,10 +216,7 @@ export default function AddVariableModal({
                 rows={3}
                 placeholder="例: colA + colB * 2, log(colA + 1), zscore(colA), where(colA > 50, 1, 0)"
                 value={expression}
-                onChange={(e) => {
-                  setExpression(e.target.value)
-                  setPreview(null)
-                }}
+                onChange={(e) => editExpression(e.target.value)}
                 style={{ fontFamily: 'monospace', fontSize: 13 }}
               />
             </div>
@@ -259,8 +286,7 @@ export default function AddVariableModal({
                     size="small"
                     onClick={() => {
                       const newExp = tpl.expr(columns)
-                      setExpression(newExp)
-                      void handlePreview(newExp, columnName)
+                      editExpression(newExp)
                     }}
                   >
                     {tpl.label}
@@ -273,7 +299,7 @@ export default function AddVariableModal({
 
         {/* Section 2: Validation & Preview */}
         <Card size="small" title="2. 計算プレビュー &amp; 診断" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
-          {preview ? (
+          {preview && previewKey === inputKey ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {preview.valid ? (
                 <Alert
@@ -357,6 +383,7 @@ export default function AddVariableModal({
           )}
         </Card>
       </div>
+      </ConfigProvider>
     </Modal>
   )
 }

@@ -1,3 +1,4 @@
+import Statistic from '../common/RoundedStatistic'
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
@@ -8,7 +9,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Button, Typography, Space, Tag, Row, Col,
-  Alert, Statistic, Spin, Empty, InputNumber, Divider, Tabs,
+  Alert, Spin, Empty, InputNumber, Divider, Tabs,
 } from 'antd'
 import {
   ThunderboltOutlined, AimOutlined, CheckCircleOutlined,

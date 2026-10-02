@@ -1,3 +1,5 @@
+import { composedColor, vizTheme } from '../../theme/viz'
+import { SELECTION_LABELS } from './selectionLabels'
 import { selectEffectiveRowIds, selectVariableManagerState, weightColumnCleared, weightColumnSet } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -35,6 +37,7 @@ import {
   deleteSelected,
   resetWorkingSet,
   pcpStateChanged,
+  l2ColorToggled,
 } from '../../app/store'
 import Select from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
@@ -61,6 +64,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
     (c) => c.role === 'weight' && (c.scaleType === 'interval' || c.scaleType === 'ratio') && !c.multiResponseGroup
   )
   const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const l2Active = selection.l2ColorEnabled && selection.groups.length > 0
   const colorBy = useSelector((s: RootState) => s.pcp.colorBy)
   const l1Candidates = useDatasetL1ColorDomains(selection.datasetId)
   const colorOptions = (l1Candidates ?? []).map((domain) => {
@@ -220,6 +224,21 @@ export const GlobalHeaderControlBar: React.FC = () => {
       />
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>{colorStatus}</Typography.Text>
       <L1Legend />
+      <Divider style={{ margin: '4px 0' }} />
+      <Typography.Text strong style={{ fontSize: 12 }}>L2色分け（解析グループの明暗）</Typography.Text>
+      <Typography.Text data-testid="global-l2-status">
+        {l2Active ? `有効（${selection.groups.length}グループ）` : '無効'}
+      </Typography.Text>
+      {l2Active && <div aria-label="L2色分け凡例" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', maxHeight: 160, overflowY: 'auto' }}>
+        {selection.groups.map((group, index) => <span key={group.groupId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflowWrap: 'anywhere' }}>
+          <i aria-hidden style={{ width: 10, height: 10, flexShrink: 0, background: composedColor(vizTheme(false), { l2Group: index }) }} />
+          {group.name}
+        </span>)}
+      </div>}
+      {l2Active && colorBy && <Typography.Text type="secondary" style={{ fontSize: 12 }}>凡例は明暗の例です。L1併用時は各色相にこの明暗を合成します。</Typography.Text>}
+      {selection.l2ColorEnabled && <Button size="small" data-testid="global-l2-disable"
+        onClick={() => dispatch(l2ColorToggled(false))}>L2色分けを解除</Button>}
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>解析でグループを作成すると有効になります。</Typography.Text>
     </div>
   )
 
@@ -283,7 +302,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
             getPopupContainer={() => document.body}
           >
             <Button size="small" data-testid="global-color-btn">
-              色分け <DownOutlined style={{ fontSize: 10 }} />
+              色分け（{colorBy ? 'L1' : ''}{colorBy && l2Active ? '＋' : ''}{l2Active ? 'L2' : ''}{!colorBy && !l2Active ? 'なし' : ''}） <DownOutlined style={{ fontSize: 10 }} />
             </Button>
           </Popover>
         </Space>
@@ -334,7 +353,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           </Typography.Text>}
         </Space>
 
-        <Space size={4}>
+        <Space size={4} wrap>
           <Button
             size="small"
             icon={<FilterOutlined />}
@@ -360,7 +379,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
         </Space>
 
         {/* Selection actions */}
-        <Space size={4}>
+        <Space size={4} wrap>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             選択: {selectedRowCount}行
           </Typography.Text>
@@ -370,20 +389,20 @@ export const GlobalHeaderControlBar: React.FC = () => {
             icon={<ClearOutlined />}
             disabled={selectedRowCount === 0}
             onClick={() => dispatch(selectionCleared())}
-            title="選択解除"
+            title={SELECTION_LABELS.clear}
             data-testid="header-clear-selection"
           >
-            解除
+            {SELECTION_LABELS.clear}
           </Button>
           <Button
             size="small"
             icon={<AimOutlined />}
             disabled={selectedRowCount === 0}
             onClick={() => dispatch(focusSelected())}
-            title="選択行のみに絞り込み"
+            title={SELECTION_LABELS.focus}
             data-testid="header-focus-selection"
           >
-            Focus
+            {SELECTION_LABELS.focus}
           </Button>
           <Button
             size="small"
@@ -391,19 +410,19 @@ export const GlobalHeaderControlBar: React.FC = () => {
             icon={<DeleteOutlined />}
             disabled={selectedRowCount === 0}
             onClick={() => dispatch(deleteSelected())}
-            title="選択行を一時除外"
+            title={SELECTION_LABELS.excludeHelp}
             data-testid="header-delete-selection"
           >
-            Delete
+            {SELECTION_LABELS.exclude}
           </Button>
           <Button
             size="small"
             icon={<ReloadOutlined />}
             onClick={() => dispatch(resetWorkingSet())}
-            title="初期ベースデータに全復帰"
+            title={SELECTION_LABELS.reset}
             data-testid="header-reset-selection"
           >
-            全復帰(Reset)
+            {SELECTION_LABELS.reset}
           </Button>
         </Space>
       </div>

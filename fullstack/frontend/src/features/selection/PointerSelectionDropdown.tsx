@@ -5,6 +5,7 @@ import { DownOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import type { RootState } from '../../app/store'
 import { deleteSelected, focusSelected, pcpStateChanged, resetWorkingSet, selectionCleared } from '../../app/store'
+import { SELECTION_LABELS } from './selectionLabels'
 import { useBrushOp, type BrushOperation } from './SelectionMenu'
 
 export interface PointerSelectionDropdownProps {
@@ -36,7 +37,6 @@ export const PointerSelectionDropdown: React.FC<PointerSelectionDropdownProps> =
 
   const handleBrushOpChange = (op: BrushOperation) => {
     setBrushOp(op)
-    dispatch(pcpStateChanged({ brushOperation: op }))
   }
 
   const handleHitModeChange = (mode: 'legacyVertex' | 'segment') => {
@@ -98,12 +98,12 @@ export const PointerSelectionDropdown: React.FC<PointerSelectionDropdownProps> =
 
       {includeSelectionActions && <Space direction="vertical" size={4} style={{ width: '100%', paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
         <Button block size="small" data-testid={`${testId}-clear`} disabled={!selection.selectedRowIds.length}
-          onClick={() => dispatch(selectionCleared())}>解除</Button>
+          onClick={() => dispatch(selectionCleared())}>{SELECTION_LABELS.clear}</Button>
         <Button block size="small" data-testid={`${testId}-focus`} disabled={!selection.selectedRowIds.length}
-          onClick={() => dispatch(focusSelected())}>Focus</Button>
+          onClick={() => dispatch(focusSelected())}>{SELECTION_LABELS.focus}</Button>
         <Button block size="small" danger data-testid={`${testId}-delete`} disabled={!selection.selectedRowIds.length}
-          onClick={() => dispatch(deleteSelected())}>Delete</Button>
-        <Button block size="small" data-testid={`${testId}-reset`} onClick={() => dispatch(resetWorkingSet())}>全復帰 (Reset)</Button>
+          title={SELECTION_LABELS.excludeHelp} onClick={() => dispatch(deleteSelected())}>{SELECTION_LABELS.exclude}</Button>
+        <Button block size="small" data-testid={`${testId}-reset`} onClick={() => dispatch(resetWorkingSet())}>{SELECTION_LABELS.reset}</Button>
       </Space>}
     </div>
   )
@@ -115,7 +115,7 @@ export const PointerSelectionDropdown: React.FC<PointerSelectionDropdownProps> =
       </Typography.Text>}
       <Dropdown popupRender={() => menu} trigger={['click']} getPopupContainer={popupContainer}>
         <Button size={buttonSize} data-testid={testId}>
-          ポインター選択 <DownOutlined />
+          {SELECTION_LABELS.menu} <DownOutlined />
         </Button>
       </Dropdown>
     </Space>

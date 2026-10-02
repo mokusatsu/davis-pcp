@@ -116,6 +116,13 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
     if adapter is None and ordered_valid_codes:
         ordered_valid_codes = [code for code in ordered_valid_codes if code not in missing_code_set]
 
+    # Continuous distributions follow numeric magnitude, not encounter order.
+    # A declared order remains authoritative (including reverse-score bounds).
+    if scale_type in ("ratio", "interval", "numeric") and not declared_domain:
+        ordered_valid_codes = sorted(
+            (code for code in ordered_valid_codes if not _is_invalid_code(code)), key=float
+        )
+
     # Reverse ordered scale if explicitly defined so that Top/Bottom and scores reflect reversed direction.
     if is_reversed:
         ordered_valid_codes = list(reversed(ordered_valid_codes))
@@ -244,14 +251,17 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
         if valid_vals:
             arr = np.array(valid_vals)
             auxiliary_stats["mean"] = round(float(arr.mean()), 2)
-            auxiliary_stats["meanNote"] = "等間隔得点として計算"
+            if scale_type == "ordinal":
+                auxiliary_stats["meanNote"] = "等間隔得点として計算"
             auxiliary_stats["median"] = round(float(np.median(arr)), 2)
             q1, q3 = np.percentile(arr, [25, 75])
             auxiliary_stats["q1"] = round(float(q1), 2)
             auxiliary_stats["q3"] = round(float(q3), 2)
             auxiliary_stats["iqr"] = round(float(q3 - q1), 2)
 
-        if len(fixed_order) >= 2:
+        # Top/Bottom boxes describe ordered response categories, not the
+        # largest/smallest two distinct values of a continuous measurement.
+        if scale_type == "ordinal" and len(fixed_order) >= 2:
             top2_codes = fixed_order[-2:]
             top2_n = sum(raw_counts.get(c, 0) for c in top2_codes)
             top2_pct = round(top2_n / valid * 100, 1)

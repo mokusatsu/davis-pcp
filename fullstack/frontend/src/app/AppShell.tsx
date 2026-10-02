@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../features/selection/selectionLabels'
 import { createAnalysisWorkspaceSnapshot, readAnalysisWorkspaceSnapshot } from '../features/selection/workspaceSession'
 import { analysisWorkspaceRestored } from './store'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -410,11 +411,11 @@ export default function AppShell() {
   const sidebarContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
       <Typography.Text strong>選択行 {selectedCount} / active {activeCount} / 全{totalCount}</Typography.Text>
-      <Space.Compact style={{ width: '100%' }}>
-        <Button size="small" onClick={() => dispatch(selectionCleared())} icon={<ClearOutlined />} disabled={!selectedCount}>解除</Button>
-        <Button size="small" onClick={() => dispatch(focusSelected())} disabled={!selectedCount}>Focus</Button>
-        <Button size="small" danger onClick={() => dispatch(deleteSelected())} disabled={!selectedCount}>Delete</Button>
-      </Space.Compact>
+      <Space wrap style={{ width: '100%' }}>
+        <Button size="small" onClick={() => dispatch(selectionCleared())} icon={<ClearOutlined />} disabled={!selectedCount}>{SELECTION_LABELS.clear}</Button>
+        <Button size="small" onClick={() => dispatch(focusSelected())} disabled={!selectedCount}>{SELECTION_LABELS.focus}</Button>
+        <Button size="small" danger onClick={() => dispatch(deleteSelected())} disabled={!selectedCount}>{SELECTION_LABELS.exclude}</Button>
+      </Space>
       <Button
         size="small"
         icon={<BarChartOutlined />}
@@ -491,7 +492,7 @@ export default function AppShell() {
               return false
             }}
           >
-            <Button data-testid="import-button" icon={<ImportOutlined />}>Import</Button>
+            <Button data-testid="import-button" icon={<ImportOutlined />}>インポート</Button>
           </Upload>
           <Button data-testid="save-button" icon={<SaveOutlined />} onClick={() => setSaveModal(true)} disabled={!selection.datasetId}>Save</Button>
           <Tooltip title="Save As Copy">
@@ -547,7 +548,7 @@ export default function AppShell() {
               ],
             }}
           >
-            <Button data-testid="export-button" icon={<DownloadOutlined />} disabled={!selection.datasetId}>Export</Button>
+            <Button data-testid="export-button" icon={<DownloadOutlined />} disabled={!selection.datasetId}>エクスポート</Button>
           </Dropdown>
           <Button
             data-testid="codebook-button"
@@ -565,7 +566,7 @@ export default function AppShell() {
               icon={<SafetyCertificateOutlined />}
               onClick={() => setLicenseModalOpen(true)}
             >
-              License
+              ライセンス
             </Button>
           </div>
         </div>

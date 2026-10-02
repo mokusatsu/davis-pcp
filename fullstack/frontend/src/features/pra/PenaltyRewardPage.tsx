@@ -1,3 +1,5 @@
+import Statistic from '../common/RoundedStatistic'
+import { asymmetryVerdict } from './asymmetryDisplay'
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { CHART_MARKERS } from '../charts/markerStyle'
 import Table from '../common/ColumnTable'
@@ -8,7 +10,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
-  Statistic, Alert, Spin, Empty, Divider,
+  Alert, Spin, Empty, Divider,
 } from 'antd'
 import {
   AimOutlined, ArrowRightOutlined, ThunderboltOutlined,
@@ -28,6 +30,7 @@ export interface PraAttribute {
   reward: { coef: number; se: number; p: number; ci: [number, number] }
   asymmetry: number
   asym_p: number
+  asymmetry_significant: boolean
   classification: 'basic' | 'performance' | 'excitement' | 'indifferent'
   class_label: string
   n_dissatisfied: number
@@ -39,7 +42,7 @@ export interface PraResponse {
   run_id: string
   outcome: { name: string; label: string; type: string }
   scale: { min: number | null; max: number | null; neutral: number | null }
-  model: { r_squared: number; n_valid: number; alpha: number; warnings: string[] }
+  model: { r_squared: number; n_valid: number; alpha: number; asymmetry_alpha: number; warnings: string[] }
   attributes: PraAttribute[]
   all_basic_dissatisfied_row_ids: string[]
 }
@@ -236,7 +239,7 @@ export default function PenaltyRewardPage() {
                 loading={loading}
                 onClick={() => void runEvaluation()}
                 data-testid="pra-run-btn"
-                style={{ marginTop: 22, width: '100%' }}
+                style={{ marginTop: 22, width: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
               >
                 三因子分析を実行
               </Button>
@@ -407,7 +410,7 @@ export default function PenaltyRewardPage() {
                   <Card
                     size="small"
                     title={
-                      <Space>
+                      <Space wrap>
                         <Typography.Text strong style={{ fontSize: 15 }}>
                           <ColumnQuestionTooltip nameOrId={currentAttr.name}>{currentAttr.label}</ColumnQuestionTooltip>
                         </Typography.Text>
@@ -418,21 +421,22 @@ export default function PenaltyRewardPage() {
                     }
                     data-testid="attribute-detail-card"
                   >
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginBottom: 12, minWidth: 0 }}>
                       <Button
                         type="primary"
                         icon={<AimOutlined />}
                         onClick={() => handleSelectDissatisfied(currentAttr)}
                         data-testid="select-dissatisfied-pcp"
+                        style={{ maxWidth: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
                         disabled={currentAttr.dissatisfied_row_ids.length === 0}
                       >
-                        Select Dissatisfied Customers in PCP ({currentAttr.dissatisfied_row_ids.length}行)
+                        不満回答者を選択 ({currentAttr.dissatisfied_row_ids.length}行)
                       </Button>
                       <Button
                         icon={<ArrowRightOutlined />}
                         onClick={() => handleFocusPcp(currentAttr)}
                       >
-                        Focus PCP
+                        選択してPCPへ移動
                       </Button>
                     </div>
                   {/* Action Strategy Alert */}
@@ -444,6 +448,11 @@ export default function PenaltyRewardPage() {
                     style={{ marginBottom: 16 }}
                   />
 
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+                    係数検定の有意水準: α = {result.model.alpha}（{result.model.alpha * 100}%）。
+                    非対称性の探索的分類閾値: α = {result.model.asymmetry_alpha}（{result.model.asymmetry_alpha * 100}%）。
+                    分類は探索的な目安で、因果効果や対称性・線形関係を証明するものではありません。
+                  </Typography.Paragraph>
                   {/* Coefficients Detail */}
                   <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
                     <Col span={12}>
@@ -488,7 +497,7 @@ export default function PenaltyRewardPage() {
                       { key: 'Wald検定 p値', val: currentAttr.asym_p.toFixed(4) },
                       {
                         key: '非対称性の判定',
-                        val: currentAttr.asym_p < 0.15 ? '統計的有意な非対称性あり' : '対称的 (線形連動)',
+                        val: asymmetryVerdict(currentAttr.asym_p, result.model.asymmetry_alpha),
                       },
                       { key: '不満回答者数 (Low)', val: `${currentAttr.n_dissatisfied} 名` },
                     ]}

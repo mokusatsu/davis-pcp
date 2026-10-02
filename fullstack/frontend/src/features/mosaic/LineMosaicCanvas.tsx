@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import EChartSurface from '../charts/EChartSurface'
 import GraphPanel, { useGraphPopupContainer, useGraphViewport } from '../common/GraphPanel'
 import { getSvgPoint } from '../../utils/svgCoordinates'
@@ -209,19 +210,19 @@ const LineMosaicDrawing: FC<LineMosaicCanvasProps> = ({
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行で絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: '選択解除 (Clear Selection)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
@@ -230,7 +231,7 @@ const LineMosaicDrawing: FC<LineMosaicCanvasProps> = ({
     },
     {
       key: 'reset',
-      label: '作業セット復元 (Reset Working Set)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]

@@ -1,5 +1,8 @@
-import { useState } from 'react'
-import { Button, Modal, Upload, Typography, notification } from 'antd'
+import { useEffect, useRef, useState } from 'react'
+import Modal from '../common/ActiveModal'
+import MutationProgress from '../common/MutationProgress'
+import { useRequestIdentity } from '../common/useRequestIdentity'
+import { Button, Upload, Typography, notification } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import { importCodebook } from '../../api/client'
 
@@ -7,7 +10,7 @@ interface CodebookCsvImportDialogProps {
   open: boolean
   onClose: () => void
   datasetId: string
-  onSuccess: () => void
+  onSuccess: (committedDatasetId: string) => void
 }
 
 export default function CodebookCsvImportDialog({
@@ -19,24 +22,30 @@ export default function CodebookCsvImportDialog({
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => { setFile(null) }, [datasetId])
+
+  const busy = useRef(false)
+  const request = useRequestIdentity(JSON.stringify([datasetId, open]))
   const handleImport = async () => {
-    if (!file || !datasetId) return
+    if (busy.current || !open || !file || !datasetId) return
+    busy.current = true
+    const current = request.begin()
     setLoading(true)
     try {
       const res = await importCodebook(datasetId, file)
       notification.success({
         message: '辞書インポート完了',
-        description: `${res.updatedColumns}件の変数が更新されました（リビジョン: ${res.schemaRevision}）。`,
+        description: `データセット ${datasetId}: ${res.updatedColumns}件の変数が更新されました（リビジョン: ${res.schemaRevision}）。`,
       })
-      setFile(null)
-      onSuccess()
-      onClose()
+      onSuccess(datasetId)
+      if (current()) { setFile(null); onClose() }
     } catch (err: any) {
       notification.error({
         message: 'インポート失敗',
         description: err.message || 'コードブック辞書ファイルのインポートに失敗しました。',
       })
     } finally {
+      busy.current = false
       setLoading(false)
     }
   }
@@ -45,7 +54,11 @@ export default function CodebookCsvImportDialog({
     <Modal
       title="コードブック辞書ファイルのインポート"
       open={open}
-      onCancel={onClose}
+      onCancel={() => { if (!busy.current) onClose() }}
+      onDeactivate={onClose}
+      closable={!loading}
+      keyboard={!loading}
+      maskClosable={!loading}
       footer={[
         <Button key="cancel" onClick={onClose} disabled={loading}>
           キャンセル
@@ -53,7 +66,7 @@ export default function CodebookCsvImportDialog({
         <Button
           key="import"
           type="primary"
-          disabled={!file}
+          disabled={!file || loading}
           loading={loading}
           onClick={handleImport}
         >
@@ -61,11 +74,13 @@ export default function CodebookCsvImportDialog({
         </Button>,
       ]}
     >
+      <MutationProgress busy={loading} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
         エクスポートされたCSVまたはJSON辞書ファイルをアップロードしてください。列名（<code>name</code>）または列IDをもとに各変数の質問文、尺度、役割、値ラベル等の設定が一括反映されます。
       </Typography.Paragraph>
 
       <Upload.Dragger
+        disabled={loading}
         accept=".csv,.json"
         multiple={false}
         beforeUpload={(f) => {

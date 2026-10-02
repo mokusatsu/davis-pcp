@@ -135,6 +135,25 @@ describe('saved codebook display', () => {
     expect(tooltip).toHaveStyle({ position: 'absolute' })
   })
 
+  it('L03 exposes complete long bar details in a focusable scrollable dialog without changing selection', async () => {
+    const local = setup()
+    const longLabel = 'すべて確認できる長いカテゴリの詳細'.repeat(50)
+    act(() => { local.dispatch({ type: 'test/columns', payload: [{ ...spec, valueLabels: { ...spec.valueLabels, '1': longLabel } }] }) })
+    const dispatch = vi.spyOn(local, 'dispatch')
+    render(<Provider store={local}><BarChartPage /></Provider>)
+    await waitFor(() => expect(chartBars()).toHaveLength(4))
+    fireEvent.click(screen.getByRole('button', { name: 'カテゴリの詳細を表示' }))
+    const dialog = screen.getByRole('dialog', { name: 'カテゴリの詳細' })
+    const region = within(dialog).getByRole('region', { name: 'カテゴリの全文と内訳' })
+    expect(region).toHaveTextContent(longLabel)
+    expect(region).toHaveStyle({ maxHeight: '50vh', overflowY: 'auto' })
+    act(() => region.focus())
+    expect(region).toHaveFocus()
+    expect(dispatch.mock.calls.some(([action]) => (action as any).type === 'selection/selectionApplied')).toBe(false)
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    await waitFor(() => expect(dialog).not.toBeVisible())
+  })
+
   it('projects only ordinary chart inputs, follows the shared scope and keeps no variables empty', async () => {
     const local = setup()
     act(() => { local.dispatch({ type: 'test/columns', payload: [spec,

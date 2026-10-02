@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useAnalysisViewActive } from '../selection/analysisScope'
 import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { useEffect, useMemo, useState } from 'react'
@@ -77,10 +78,10 @@ export default function RelationshipsPage() {
   }
   const updateNames = (next: string[]) => setSettings({ datasetId: selection.datasetId!, names: next, children: chosen?.children ?? [] })
   const items = [
-    { key: 'focus', label: 'Focus Selected', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(focusSelected()) },
-    { key: 'delete', label: 'Delete Selected', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(deleteSelected()) },
-    { key: 'clear', label: 'Clear Selection', disabled: !selection.selectedRowIds.length, onClick: () => dispatch(selectionCleared()) },
-    { key: 'reset', label: 'Reset to Base Data', onClick: () => dispatch(resetWorkingSet()) },
+    { key: 'focus', label: SELECTION_LABELS.focus, disabled: !selection.selectedRowIds.length, onClick: () => dispatch(focusSelected()) },
+    { key: 'delete', label: SELECTION_LABELS.exclude, disabled: !selection.selectedRowIds.length, onClick: () => dispatch(deleteSelected()) },
+    { key: 'clear', label: SELECTION_LABELS.clear, disabled: !selection.selectedRowIds.length, onClick: () => dispatch(selectionCleared()) },
+    { key: 'reset', label: SELECTION_LABELS.reset, onClick: () => dispatch(resetWorkingSet()) },
   ]
   const heatmapColumnCount = matrix.value?.columns.length ?? names.length
   const heatmapLabelWidth = 140

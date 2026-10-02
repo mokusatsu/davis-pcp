@@ -16,11 +16,11 @@ describe('PointerSelectionDropdown', () => {
   beforeEach(() => {
     store.dispatch(pcpStateChanged({ brushOperation: 'replace', hitMode: 'legacyVertex' }))
   })
-  it('renders "ポインター選択" button', () => {
+  it('renders the shared "選択" button', () => {
     renderWithStore(<PointerSelectionDropdown testId="test-pointer-btn" />)
     const button = screen.getByTestId('test-pointer-btn')
     expect(button).toBeInTheDocument()
-    expect(button).toHaveTextContent('ポインター選択')
+    expect(button).toHaveTextContent('選択')
   })
 
   it('opens popup showing "集合演算" above "PCPヒット判定" when clicked', async () => {

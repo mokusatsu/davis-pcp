@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -16,8 +17,6 @@ import { useRowColorResolver } from '../../theme/useRowColor'
 import type { ConjointResponse } from './conjointTypes'
 import ConjointFigure from './ConjointFigure'
 import {
-  downloadPng,
-  downloadSvg,
   expandConjointScope,
   exportConjointTable,
   fetchConjointPredictions,
@@ -1107,8 +1106,6 @@ export default function ConjointPage(): JSX.Element {
                     </GraphPanel>
                     <L1Legend />
                     <Space wrap>
-                      <Button onClick={() => svgRef.current && downloadSvg(svgRef.current, `${result.resultId}-cj.svg`)}>SVG保存</Button>
-                      <Button onClick={() => svgRef.current && downloadPng(svgRef.current, `${result.resultId}-cj.png`)}>PNG保存</Button>
                       <Button onClick={() => handleRespondentSelect(rows.find((r) => selectedSet.has(r.rowId))?.respondentId ?? '')} disabled={selectedSet.size === 0 || stale || !rowsReady}>選択行の回答者の全タスクを選択</Button>
                     </Space>
                   </Space>
@@ -1416,12 +1413,12 @@ export default function ConjointPage(): JSX.Element {
                     <Space wrap>
                       {(['coefficients', 'diagnostics', 'rows', 'utilities'] as const).map((t) => (
                         <span key={t}>
-                          <Button size="small" onClick={() => void exportConjointTable(result.resultId, t, 'csv')}>{t} CSV</Button>
+                          <AsyncExportButton size="small" exportKey={result.resultId} statusLabel={`${t} CSV`} onExport={() => exportConjointTable(result.resultId, t, 'csv')}>{t} CSV</AsyncExportButton>
                           {' '}
-                          <Button size="small" onClick={() => void exportConjointTable(result.resultId, t, 'json')}>{t} JSON</Button>
+                          <AsyncExportButton size="small" exportKey={result.resultId} statusLabel={`${t} JSON`} onExport={() => exportConjointTable(result.resultId, t, 'json')}>{t} JSON</AsyncExportButton>
                         </span>
                       ))}
-                      <Button size="small" onClick={() => void exportConjointTable(result.resultId, 'manifest', 'json')}>モデルJSON</Button>
+                      <AsyncExportButton size="small" exportKey={result.resultId} statusLabel="モデルJSON" onExport={() => exportConjointTable(result.resultId, 'manifest', 'json')}>モデルJSON</AsyncExportButton>
                     </Space>
                     <Typography.Text type="secondary">使用版・対象数・有効数・除外理由・重みの意味は結果メタ情報に表示されます。</Typography.Text>
                   </Space>

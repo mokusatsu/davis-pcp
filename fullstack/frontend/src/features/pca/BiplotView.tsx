@@ -9,6 +9,7 @@ import type { AppDispatch, RootState } from '../../app/store'
 import { selectionCleared, focusSelected, deleteSelected, resetWorkingSet } from '../../app/store'
 import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import type { PcaResponse } from './types'
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { truncateText } from '../../utils/textUtils'
 
 interface BiplotViewProps {
@@ -63,12 +64,17 @@ export const BiplotView: FC<BiplotViewProps> = ({
     }
   }, [pcaData, selectedX, selectedY])
 
-  // Vector scaling to map loading [-1, 1] into plot coordinate scale
+  // One common display multiplier preserves vector directions. Covariance
+  // loadings carry original units, so fit their actual extent, not [-1, 1].
   const vectorScale = useMemo(() => {
     const spanX = (scoreBounds.maxX - scoreBounds.minX) / 2
     const spanY = (scoreBounds.maxY - scoreBounds.minY) / 2
-    return Math.min(spanX, spanY) * 0.75
-  }, [scoreBounds])
+    const loadingExtent = pcaData?.useCorrelation === false
+      ? (Math.max(0, ...Object.values(pcaData.loadings).flatMap(values =>
+        [Math.abs(values[selectedX] ?? 0), Math.abs(values[selectedY] ?? 0)])) || 1)
+      : 1
+    return Math.min(spanX, spanY) * 0.75 / loadingExtent
+  }, [scoreBounds, pcaData, selectedX, selectedY])
 
   const chartOption: EChartsOption = {
     xAxis: { type: 'value', name: `PC${selectedX + 1}`, nameLocation: 'middle', nameGap: 32, min: scoreBounds.minX, max: scoreBounds.maxX },
@@ -86,19 +92,19 @@ export const BiplotView: FC<BiplotViewProps> = ({
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行で絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: '選択解除 (Clear Selection)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
@@ -107,7 +113,7 @@ export const BiplotView: FC<BiplotViewProps> = ({
     },
     {
       key: 'reset',
-      label: '作業セット復元 (Reset Working Set)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]
@@ -129,8 +135,11 @@ export const BiplotView: FC<BiplotViewProps> = ({
       <AntSelect style={{ width: 140 }} value={selectedY} onChange={onSelectY}
         options={componentOptions} getPopupContainer={graphPopupContainer} data-testid="pca-axis-y" />
       <Checkbox checked={showVectors} onChange={event => setShowVectors(event.target.checked)} data-testid="pca-biplot-vectors">
-        負荷量ベクトル表示 (Loading Vectors)
+        {pcaData?.useCorrelation === false ? '単位付き負荷量ベクトル表示' : '相関負荷量ベクトル表示'}
       </Checkbox>
+      {showVectors && pcaData && <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        ベクトルは表示用の共通倍率 ×{vectorScale.toPrecision(3)}（得点軸とは別尺度）
+      </Typography.Text>}
     </Space>
   )
   return (

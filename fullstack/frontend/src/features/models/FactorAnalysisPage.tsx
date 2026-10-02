@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { CHART_MARKERS, pointEmphasis } from '../charts/markerStyle'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -744,9 +745,9 @@ export default function FactorAnalysisPage(): JSX.Element {
                     size="small" pagination={false}
                   />
                   <Space>
-                    <Button onClick={() => void exportEFATable(result.resultId, 'variables', 'csv')}>変数CSV</Button>
-                    <Button onClick={() => void exportEFATable(result.resultId, 'diagnostics', 'csv')}>診断CSV</Button>
-                    <Button onClick={() => void exportEFATable(result.resultId, 'parallel_analysis', 'csv')}>PA CSV</Button>
+                    <AsyncExportButton exportKey={result.resultId} statusLabel="変数CSV" onExport={() => exportEFATable(result.resultId, 'variables', 'csv')}>変数CSV</AsyncExportButton>
+                    <AsyncExportButton exportKey={result.resultId} statusLabel="診断CSV" onExport={() => exportEFATable(result.resultId, 'diagnostics', 'csv')}>診断CSV</AsyncExportButton>
+                    <AsyncExportButton exportKey={result.resultId} statusLabel="PA CSV" onExport={() => exportEFATable(result.resultId, 'parallel_analysis', 'csv')}>PA CSV</AsyncExportButton>
                   </Space>
                 </Space>
               ) },

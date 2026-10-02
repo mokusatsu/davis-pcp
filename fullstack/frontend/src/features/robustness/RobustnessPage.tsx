@@ -1,14 +1,15 @@
+import Statistic from '../common/RoundedStatistic'
 import { useScopedRun, AnalysisScopeSummary, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import CategoryBars from '../charts/CategoryBars'
 import Table from '../common/ColumnTable'
 import { QuestionTooltip, useQuestionText } from '../common/ColumnQuestionTooltip'
-import Select from '../common/ColumnSelect'
+import { Select } from 'antd'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
-  Statistic, Alert, Spin, Empty,
+  Alert, Spin, Empty,
 } from 'antd'
 import {
   AlertOutlined, AimOutlined,
@@ -324,6 +325,9 @@ export default function RobustnessPage() {
                 <Typography.Text strong style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}>診断対象結論 (Conclusion):</Typography.Text>
                 <Select
                   data-testid="conclusion-selector"
+                  showSearch
+                  optionFilterProp="searchText"
+                  optionRender={option => <QuestionTooltip nameOrId={option.data.questionName} question={option.data.questionText}>{option.label}</QuestionTooltip>}
                   style={{ flex: '1 1 320px', minWidth: 0, width: 'min(100%, 360px)' }}
                   value={selectedConclusionId ?? undefined}
                   onChange={setSelectedConclusionId}
@@ -331,6 +335,7 @@ export default function RobustnessPage() {
                     label: `${c.label} [${c.robustness.grade_label}]`,
                     questionName: [c.target_col, c.group_col].filter(Boolean).join(' / '),
                     questionText: conclusionQuestions(c),
+                    searchText: `${c.label} ${c.robustness.grade_label} ${conclusionQuestions(c)}`,
                     value: c.id,
                   }))}
                 />

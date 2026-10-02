@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -14,7 +15,7 @@ import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import type { MCAResponse } from './mcaTypes'
-import { exportMcaTable, fetchMcaRows, runMca, selectMca, downloadPng, downloadSvg, type MCAContext } from './mcaApi'
+import { exportMcaTable, fetchMcaRows, runMca, selectMca, type MCAContext } from './mcaApi'
 import McaFigure, { axisLabel, categoryPoints } from './McaFigure'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -398,7 +399,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
               <Radio.Button value="explicit_binary_options">MA子を含める</Radio.Button>
             </Radio.Group>
             {maMode === 'explicit_binary_options' && (
-              <Select
+              <SelectColumn
                 mode="multiple"
                 style={{ minWidth: 240 }}
                 placeholder="MA子を選択（明示採用のみ）"
@@ -662,13 +663,13 @@ export default function MultipleCorrespondencePage(): JSX.Element {
                       >
                         MCA{matAxis}を派生列へ保存
                       </Button>
-                      <Button onClick={() => void exportMcaTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</Button>
-                      <Button onClick={() => void exportMcaTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</Button>
-                      <Button onClick={() => void exportMcaTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</Button>
-                      <Button onClick={() => void exportMcaTable(result.resultId, 'manifest', 'json')}>設定JSON</Button>
-                      <Button onClick={() => { if (svgIndRef.current) downloadSvg(svgIndRef.current, `mca-ind-${result.resultId}.svg`) }}>個体図SVG</Button>
-                      <Button onClick={() => { if (svgCatRef.current) downloadSvg(svgCatRef.current, `mca-cat-${result.resultId}.svg`) }}>カテゴリ図SVG</Button>
-                      <Button onClick={() => { if (svgIndRef.current) downloadPng(svgIndRef.current, `mca-ind-${result.resultId}.png`) }}>個体図PNG</Button>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="固有値CSV" onExport={() => exportMcaTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="カテゴリCSV" onExport={() => exportMcaTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="個体CSV（全件）" onExport={() => exportMcaTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</AsyncExportButton>
+                      <AsyncExportButton exportKey={result.resultId} statusLabel="設定JSON" onExport={() => exportMcaTable(result.resultId, 'manifest', 'json')}>設定JSON</AsyncExportButton>
+                      <Typography.Text type="secondary">図のSVG・PNGは各グラフ右上から保存できます。</Typography.Text>
+                      <Button onClick={() => setTab('individuals')}>個体図を開く</Button>
+                      <Button onClick={() => setTab('categories')}>カテゴリ図を開く</Button>
                     </Space>
                   ),
                 },

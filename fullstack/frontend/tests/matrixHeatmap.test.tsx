@@ -131,15 +131,18 @@ it.each([[320, 260, 2], [388, 300, 4], [512, 348, 6], [900, 620, 12]])('keeps th
   const view = render(<MatrixHeatmap labels={labels} matrix={matrix} height={height} title="Matrix" testId="toolbar-matrix" onSelect={select} />)
   const chart = getInstanceByDom(view.getByTestId('toolbar-matrix'))!
   const button = view.getByRole('button', { name: 'Matrix：SVGを保存' })
-  expect(button).toHaveStyle({ top: '4px', left: '8px', width: '84px', height: '24px', boxSizing: 'border-box' })
-  expect(button.style.right).toBe('')
+  const controls = button.closest<HTMLElement>('[data-chart-export-controls]')!
+  expect(controls).toHaveStyle({ top: '4px', left: '8px' })
+  expect(button).toHaveStyle({ width: '84px', height: '24px', boxSizing: 'border-box' })
+  expect(controls.style.right).toBe('')
   const texts = chart.getZr().storage.getDisplayList().filter((item: any) => item.type === 'tspan' && /[a-z]/.test(item.style.text))
   for (const text of texts) {
     const rect = text.getBoundingRect().clone()
     if (text.transform) rect.applyTransform(text.transform)
     for (const scale of [.5, 1, 2]) {
       const glyph = { x: rect.x * scale, y: rect.y * scale, width: rect.width * scale, height: rect.height * scale }
-      const toolbar = { x: 8 * scale, y: 4 * scale, width: 84 * scale, height: 24 * scale }
+      const toolbar = { x: parseFloat(controls.style.left) * scale, y: parseFloat(controls.style.top) * scale,
+        width: parseFloat(button.style.width) * scale, height: parseFloat(button.style.height) * scale }
       const overlap = glyph.x < toolbar.x + toolbar.width && glyph.x + glyph.width > toolbar.x
         && glyph.y < toolbar.y + toolbar.height && glyph.y + glyph.height > toolbar.y
       expect(overlap, `${JSON.stringify(glyph)} overlaps ${JSON.stringify(toolbar)}`).toBe(false)

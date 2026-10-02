@@ -27,7 +27,7 @@ it('renders cards without Arrow data and uses canonical server matches for selec
   render(<Provider store={local}><MemoryRouter><DistributionPage /></MemoryRouter></Provider>)
   expect(await screen.findByText('1選択中')).toBeInTheDocument()
   expect(load.mock.calls.every(args => args[0] === null)).toBe(true)
-  fireEvent.click(screen.getByRole('button', { name: 'sliders PCP' }))
+  fireEvent.click(screen.getByRole('button', { name: '満足の回答者を選択' }))
   await waitFor(() => expect(post).toHaveBeenCalledWith('/datasets/ds/column-matches', expect.objectContaining({ columnId: 'q', code: '1', rowIds: ['r1'] })))
   await waitFor(() => expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ rowIds: ['r1'] }) })))
 })

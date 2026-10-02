@@ -154,16 +154,9 @@ function localStore(codebook: Record<string, unknown> = {}) {
   return local
 }
 
-/** The weight picker is a real antd Select, so it opens and is clicked like one. */
+/** Variable pickers now share ColumnSelect, represented by the same native stub. */
 async function pickWeight(view: ReturnType<typeof render>) {
-  const { fireEvent } = await import('@testing-library/react')
-  fireEvent.mouseDown(view.getByTestId('crosstab-weight').querySelector('.ant-select-selector') as Element)
-  const option = await waitFor(() => {
-    const el = document.querySelector('.ant-select-item-option[title="ウェイト (w)"]')
-    if (!el) throw new Error('weight option not rendered')
-    return el as Element
-  })
-  fireEvent.click(option)
+  fireEvent.change(view.getByTestId('crosstab-weight'), { target: { value: 'w' } })
 }
 
 async function selectInputs(view: ReturnType<typeof render>, { weight = false } = {}) {
@@ -281,7 +274,7 @@ it('sends explicit unweighted mode after clearing a saved weight, including cell
   fireEvent.click(view.getByTestId('crosstab-run'))
   await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
   expect((post.mock.calls[0][1] as any).context).toMatchObject({ weightMode: 'column', weightColumn: 'w' })
-  fireEvent.mouseDown(view.getByTestId('crosstab-weight').querySelector('.ant-select-clear') as Element)
+  fireEvent.change(view.getByTestId('crosstab-weight'), { target: { value: '' } })
   fireEvent.click(view.getByTestId('crosstab-run'))
   await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
   expect((post.mock.calls[1][1] as any).context).toMatchObject({ weightMode: 'none', weightColumn: null })

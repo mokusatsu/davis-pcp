@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useAnalysisViewActive, AnalysisScopeSummary } from '../selection/analysisScope'
 import { selectEffectiveRowIds } from '../../app/store'
 import { CHART_MARKERS, pointRadius } from '../charts/markerStyle'
@@ -6,6 +7,7 @@ import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useLocation } from 'react-router-dom'
 import { Button, Dropdown, Radio, Slider, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { DotChartOutlined, FilterOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
@@ -17,6 +19,7 @@ import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
 import { getSvgPoint } from '../../utils/svgCoordinates'
+import AnalysisErrorPanel, { analysisErrorMessage } from '../common/AnalysisErrorPanel'
 
 interface LoessPoint {
   id: string
@@ -52,6 +55,8 @@ interface LoessResponse {
 export default function LoessPlotPage() {
   const graphPopupContainer = useGraphPopupContainer('loess/main')
   const dispatch = useDispatch()
+  const location = useLocation()
+  const consumedRouteKey = useRef<string | null>(null)
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
   const activeRowIds = useSelector(selectEffectiveRowIds)
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
@@ -62,13 +67,13 @@ export default function LoessPlotPage() {
   const { getColor } = useRowColorResolver()
   const [brushOp] = useBrushOp()
 
-  const [xCol, setXCol] = useState<string>('')
-  const [yCol, setYCol] = useState<string>('')
+  const [axes, setAxes] = useState<{ datasetId: string | null; xCol: string; yCol: string } | null>(null)
   const [span, setSpan] = useState<number>(0.5)
   const [degree, setDegree] = useState<number>(1)
   const [showCi, setShowCi] = useState<boolean>(true)
 
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [loessData, setLoessData] = useState<LoessResponse | null>(null)
   const [hoveredPt, setHoveredPt] = useState<LoessPoint | null>(null)
 
@@ -82,17 +87,27 @@ export default function LoessPlotPage() {
     [data, globalVars.activeVariableIds],
   )
 
-  useEffect(() => {
-    if (xCol && !numericColumns.includes(xCol)) setXCol('')
-    if (yCol && !numericColumns.includes(yCol)) setYCol('')
-  }, [numericColumns, xCol, yCol])
+  // Consume each navigation's pair once, including a cached KeepAlive re-entry.
+  // Resolve it during render so an old pair is never submitted on the way in.
+  const routeState = location.state as { datasetId?: unknown; xCol?: unknown; yCol?: unknown } | null
+  const hasRoutePair = viewActive && location.pathname.replace(/\/$/, '') === '/loess'
+    && consumedRouteKey.current !== location.key && routeState?.datasetId === datasetId
+    && typeof routeState.xCol === 'string' && typeof routeState.yCol === 'string'
+    && numericColumns.includes(routeState.xCol) && numericColumns.includes(routeState.yCol)
+  const previousAxes = axes?.datasetId === datasetId ? axes : null
+  const xCol = hasRoutePair ? routeState.xCol as string
+    : previousAxes && numericColumns.includes(previousAxes.xCol) ? previousAxes.xCol : numericColumns[0] ?? ''
+  const yCol = hasRoutePair ? routeState.yCol as string
+    : previousAxes && numericColumns.includes(previousAxes.yCol) ? previousAxes.yCol : numericColumns[1] ?? ''
 
   useEffect(() => {
-    if (numericColumns.length >= 2 && (!xCol || !yCol)) {
-      setXCol(numericColumns[0])
-      setYCol(numericColumns[1])
-    }
-  }, [numericColumns, xCol, yCol])
+    if (!data) return
+    if (hasRoutePair) consumedRouteKey.current = location.key
+    setAxes(previous => previous?.datasetId === datasetId && previous.xCol === xCol && previous.yCol === yCol
+      ? previous : { datasetId, xCol, yCol })
+  }, [data, datasetId, hasRoutePair, location.key, xCol, yCol])
+  const setXCol = (value: string) => setAxes({ datasetId, xCol: value, yCol })
+  const setYCol = (value: string) => setAxes({ datasetId, xCol, yCol: value })
 
   const liveKey = JSON.stringify([datasetId, dataRevision, schemaRevision, activeRowIds, xCol, yCol, span, degree, viewActive])
   const liveRef = useRef(liveKey)
@@ -100,8 +115,9 @@ export default function LoessPlotPage() {
   const liveSequence = useRef(0)
   useEffect(() => () => { liveSequence.current++ }, [])
   const fetchLoess = useCallback(async () => {
-    if (!viewActive) { setLoading(false); return }
-    if (!datasetId || !xCol || !yCol) return
+    setLoessData(null)
+    setError(null)
+    if (!viewActive || !datasetId || !xCol || !yCol) { setLoading(false); return }
     const startedKey = liveRef.current, version = ++liveSequence.current
     const current = () => version === liveSequence.current && startedKey === liveRef.current
     setLoading(true)
@@ -118,26 +134,23 @@ export default function LoessPlotPage() {
       if (current()) setLoessData(res)
     } catch (err) {
       if (!current()) return
-      console.error('Failed to fetch LOESS', err)
+      setError(analysisErrorMessage(err))
     } finally {
       if (current()) setLoading(false)
     }
   }, [datasetId, xCol, yCol, span, degree, activeRowIds, dataRevision, schemaRevision, viewActive])
 
-  useEffect(() => {
-    setLoessData(null)
-    void fetchLoess()
-  }, [fetchLoess])
+  useEffect(() => { void fetchLoess() }, [fetchLoess])
 
   const selectedSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
   // Context menu
   const contextMenuItems = [
-    { key: 'focus', label: '選択に絞り込み', disabled: selectedRowIds.length === 0 },
-    { key: 'delete', label: '選択を削除', disabled: selectedRowIds.length === 0 },
-    { key: 'clear', label: '選択解除', disabled: selectedRowIds.length === 0 },
+    { key: 'focus', label: SELECTION_LABELS.focus, disabled: selectedRowIds.length === 0 },
+    { key: 'delete', label: SELECTION_LABELS.exclude, disabled: selectedRowIds.length === 0 },
+    { key: 'clear', label: SELECTION_LABELS.clear, disabled: selectedRowIds.length === 0 },
     { type: 'divider' as const },
-    { key: 'reset', label: 'ベースデータに戻す' },
+    { key: 'reset', label: SELECTION_LABELS.reset },
   ]
 
   const onContextMenuClick = (key: string) => {
@@ -235,6 +248,7 @@ export default function LoessPlotPage() {
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       <AnalysisScopeSummary />
+      {error && <AnalysisErrorPanel title="Loess散布図" error={error} onRetry={() => void fetchLoess()} loading={loading} />}
       {/* Top Controls Card */}
         <div
           style={{
@@ -514,7 +528,7 @@ export default function LoessPlotPage() {
               </EChartSurface>
             )}
 
-            {!loading && (!loessData || !scales) && (
+            {!loading && !error && (!loessData || !scales) && (
               <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
                 有効な2つの数値列を選択してください。
               </div>

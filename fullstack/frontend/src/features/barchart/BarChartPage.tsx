@@ -1,3 +1,5 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
+import Modal from '../common/ActiveModal'
 import EChart from '../charts/EChart'
 import type { EChartsOption } from 'echarts'
 import { Select as AntSelect } from 'antd'
@@ -6,7 +8,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import Select from '../common/ColumnSelect'
 import React, { useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Dropdown, Radio, Space, Tag, Typography } from 'antd'
+import { Button, Dropdown, Radio, Space, Tag, Typography } from 'antd'
 import { BarChartOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
@@ -41,6 +43,8 @@ export default function BarChartPage() {
   const [displayMode, setDisplayMode] = useState<'count' | 'percent'>('count')
   const [sortOrder, setSortOrder] = useState<'count-desc' | 'name-asc' | 'ratio-desc'>('count-desc')
   const [hoveredCategory, setHoveredBar] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailCategory, setDetailCategory] = useState<string | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
@@ -123,6 +127,7 @@ export default function BarChartPage() {
     return items
   }, [data, selectedColumn, subColumn, activeRowIds, selectedSet, sortOrder, formatValueLabel])
   const hoveredBar = barData.find(item => item.category === hoveredCategory)
+  const detailBar = barData.find(item => item.category === detailCategory) ?? barData[0]
   const colorSegmentsByCategory = useMemo(() => {
     const result = new Map<string, { color: string; count: number }[]>()
     if (!colorBy && !l2ColorEnabled) return result
@@ -144,11 +149,11 @@ export default function BarChartPage() {
 
   // Context menu
   const contextMenuItems = [
-    { key: 'focus', label: '選択に絞り込み', disabled: selectedRowIds.length === 0 },
-    { key: 'delete', label: '選択を削除', disabled: selectedRowIds.length === 0 },
-    { key: 'clear', label: '選択解除', disabled: selectedRowIds.length === 0 },
+    { key: 'focus', label: SELECTION_LABELS.focus, disabled: selectedRowIds.length === 0 },
+    { key: 'delete', label: SELECTION_LABELS.exclude, disabled: selectedRowIds.length === 0 },
+    { key: 'clear', label: SELECTION_LABELS.clear, disabled: selectedRowIds.length === 0 },
     { type: 'divider' as const },
-    { key: 'reset', label: 'ベースデータに戻す' },
+    { key: 'reset', label: SELECTION_LABELS.reset },
   ]
 
   const onContextMenuClick = (key: string) => {
@@ -331,6 +336,8 @@ export default function BarChartPage() {
               {selectedColumn && <div>対象変数: <ColumnQuestionText nameOrId={selectedColumn} /></div>}
               {subColumn && <div>内訳変数: <ColumnQuestionText nameOrId={subColumn} /></div>}
             </div>
+            <Button size="small" disabled={!barData.length} style={{ marginBottom: 8 }}
+              onClick={() => { setDetailCategory(hoveredCategory ?? barData[0]?.category ?? null); setDetailOpen(true) }}>カテゴリの詳細を表示</Button>
             <EChart testId="barchart-svg" width="100%" height={chartHeight}
               ariaLabel={`${selectedColumn} の度数分布`} option={chartOption}
               onEvents={{
@@ -347,8 +354,8 @@ export default function BarChartPage() {
               }} />
             {hoveredBar && (
               <div role="status" style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, maxWidth: 360, maxHeight: 'calc(100% - 32px)', overflowY: 'auto', padding: 8, background: '#1e293b', color: '#fff', pointerEvents: 'none', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                {formatValueLabel(selectedColumn, hoveredBar.category)} ({hoveredBar.category}): 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択
-                {hoveredBar.subGroups && Object.entries(hoveredBar.subGroups).map(([code, group]) => <div key={code}>{formatValueLabel(subColumn, code)} ({code}): {group.total}行 / 選択 {group.selected}行</div>)}
+                {String(formatValueLabel(selectedColumn, hoveredBar.category)).slice(0, 90)} ({String(hoveredBar.category).slice(0, 40)}): 合計 {hoveredBar.totalCount}行 | 選択 {hoveredBar.selectedCount}行 ({((hoveredBar.selectedCount / (hoveredBar.totalCount || 1)) * 100).toFixed(1)}%) — クリックで選択
+                <div>全文・内訳は「カテゴリの詳細を表示」から確認できます</div>
               </div>
             )}
 
@@ -360,6 +367,22 @@ export default function BarChartPage() {
           </div>
         </Dropdown>
       </GraphPanel>
+
+      <Modal title="カテゴリの詳細" open={detailOpen} onCancel={() => setDetailOpen(false)} onDeactivate={() => setDetailOpen(false)}
+        footer={<Button onClick={() => setDetailOpen(false)}>閉じる</Button>} getContainer={graphPopupContainer}>
+        <AntSelect aria-label="詳細を表示するカテゴリ" showSearch optionFilterProp="label" value={detailBar?.category}
+          style={{ width: '100%', marginBottom: 12 }} onChange={setDetailCategory}
+          options={barData.map(item => ({ value: item.category, label: `${formatValueLabel(selectedColumn, item.category)} (${item.category})` }))}
+          getPopupContainer={trigger => trigger.parentElement ?? document.body} />
+        <div role="region" aria-label="カテゴリの全文と内訳" tabIndex={0} style={{ maxHeight: '50vh', overflowY: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+          {detailBar && <>
+            <Typography.Paragraph>{formatValueLabel(selectedColumn, detailBar.category)} ({detailBar.category}): 合計 {detailBar.totalCount}行 / 選択 {detailBar.selectedCount}行</Typography.Paragraph>
+            {detailBar.subGroups && Object.entries(detailBar.subGroups).map(([code, group]) => <Typography.Paragraph key={code}>
+              {formatValueLabel(subColumn, code)} ({code}): {group.total}行 / 選択 {group.selected}行
+            </Typography.Paragraph>)}
+          </>}
+        </div>
+      </Modal>
 
       {/* Guide Note */}
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px', flexShrink: 0 }}>

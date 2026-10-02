@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useScopedRun } from '../selection/analysisScope'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import MaAxisPicker from './MaAxisPicker'
@@ -25,6 +26,7 @@ import { renderPcp, type PcpRenderSpec } from '../../engine/pcpRenderer'
 import { buildPcpLabelLayout } from '../../engine/pcpLabelLayout'
 import { pcpSvg } from '../../engine/pcpSvgExport'
 import { downloadBlob } from '../charts/chartExport'
+import GraphExportControl from '../charts/GraphExportControl'
 import { useActiveRows, usePcpGeometry, usePcpSimplification, buildAxes } from './usePcpPipeline'
 import { useColumnarData } from './useDatasetColumns'
 import { api } from '../../api/client'
@@ -153,16 +155,10 @@ export default function PcpPage() {
   const [orderingLoading, setOrderingLoading] = useState(false)
   useEffect(() => { setOrderingLoading(false) }, [orderingRun.identity])
   const [firstFrameRendered, setFirstFrameRendered] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
   const exportSvg = useCallback(() => {
     const painted = lastPaintedSpecRef.current
-    if (!painted || painted.datasetKey !== currentDatasetKeyRef.current) return
-    try {
-      downloadBlob(new Blob([pcpSvg(painted.spec)], { type: 'image/svg+xml;charset=utf-8' }), 'PCP.svg')
-      setExportError(null)
-    } catch (error) {
-      setExportError(`SVGを書き出せませんでした: ${error instanceof Error ? error.message : String(error)}`)
-    }
+    if (!painted || painted.datasetKey !== currentDatasetKeyRef.current) throw new Error('現在のグラフを描画中です')
+    downloadBlob(new Blob([pcpSvg(painted.spec)], { type: 'image/svg+xml;charset=utf-8' }), 'PCP.svg')
   }, [])
   const [tooltip, setTooltip] = useState<{ id: string; x: number; y: number } | null>(null)
   const [imputedCells, setImputedCells] = useState<Map<string, Set<string>>>(new Map())
@@ -217,7 +213,6 @@ export default function PcpPage() {
   useEffect(() => {
     lastPaintedSpecRef.current = null
     setFirstFrameRendered(false)
-    setExportError(null)
   }, [datasetKey])
 
   // Initialize only ordinary axes. Additional axes are chosen explicitly in the page control.
@@ -927,25 +922,25 @@ export default function PcpPage() {
   const contextMenuItems = [
     {
       key: 'focus',
-      label: 'Focus Selected (選択行のみに絞り込み)',
+      label: SELECTION_LABELS.focus,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(focusSelected()),
     },
     {
       key: 'delete',
-      label: 'Delete Selected (選択行を一時除外)',
+      label: SELECTION_LABELS.exclude,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(deleteSelected()),
     },
     {
       key: 'clear',
-      label: 'Clear Selection (選択解除)',
+      label: SELECTION_LABELS.clear,
       disabled: selection.selectedRowIds.length === 0,
       onClick: () => dispatch(selectionCleared()),
     },
     {
       key: 'reset',
-      label: 'Reset to Base Data (全データ復帰)',
+      label: SELECTION_LABELS.reset,
       onClick: () => dispatch(resetWorkingSet()),
     },
   ]
@@ -1014,10 +1009,10 @@ export default function PcpPage() {
           title="平行座標プロット (PCP)"
           available={orderedVisibleAxes.length >= 2}
           sizing="responsive"
-          controls={<Space direction="vertical" size="small">
-            <Button data-testid="pcp-export-svg" aria-label="PCPをSVGで保存" title="現在表示中の範囲をSVGで保存" disabled={isPlotLoading || lastPaintedSpecRef.current?.datasetKey !== datasetKey} onClick={exportSvg}>SVG</Button>
-            {exportError && <Alert type="error" showIcon closable message={exportError} onClose={() => setExportError(null)} />}
-          </Space>}
+          controls={<div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <GraphExportControl data-testid="pcp-export-svg" graphLabel="PCP" exportKey={datasetKey}
+              disabled={isPlotLoading || lastPaintedSpecRef.current?.datasetKey !== datasetKey} onExport={exportSvg} />
+          </div>}
         >
         <PcpPlotViewport onSize={onViewportSize} />
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']} getPopupContainer={graphPopupContainer}>

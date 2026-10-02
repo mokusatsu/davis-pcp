@@ -1,3 +1,4 @@
+import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -17,7 +18,7 @@ import type { LRResponse } from './lrTypes'
 import {
   exportLinearRegressionTable, fetchLinearRegressionPredictions, fetchLinearRegressionRows,
   materializeLinearRegression, predictLinearRegression, runLinearRegression,
-  selectLinearRegression, downloadPng, downloadSvg, type LRContext, type LRPredictRow,
+  selectLinearRegression, type LRContext, type LRPredictRow,
 } from './lrApi'
 import LinearRegressionFigure from './LinearRegressionFigure'
 
@@ -630,10 +631,6 @@ export default function LinearRegressionPage(): JSX.Element {
                       />
                     </GraphPanel>
                     <L1Legend />
-                    <Space wrap>
-                      <Button onClick={() => svgRef.current && downloadSvg(svgRef.current, `${result.resultId}-lr.svg`)}>SVG保存</Button>
-                      <Button onClick={() => svgRef.current && downloadPng(svgRef.current, `${result.resultId}-lr.png`)}>PNG保存</Button>
-                    </Space>
                   </Space>
                 ),
               },
@@ -730,9 +727,9 @@ export default function LinearRegressionPage(): JSX.Element {
                     <Space wrap>
                       {(['coefficients', 'diagnostics', 'rows'] as const).map((t) => (
                         <span key={t}>
-                          <Button size="small" onClick={() => void exportLinearRegressionTable(result.resultId, t, 'csv')}>{t} CSV</Button>
+                          <AsyncExportButton size="small" exportKey={result.resultId} statusLabel={`${t} CSV`} onExport={() => exportLinearRegressionTable(result.resultId, t, 'csv')}>{t} CSV</AsyncExportButton>
                           {' '}
-                          <Button size="small" onClick={() => void exportLinearRegressionTable(result.resultId, t, 'json')}>{t} JSON</Button>
+                          <AsyncExportButton size="small" exportKey={result.resultId} statusLabel={`${t} JSON`} onExport={() => exportLinearRegressionTable(result.resultId, t, 'json')}>{t} JSON</AsyncExportButton>
                         </span>
                       ))}
                     </Space>

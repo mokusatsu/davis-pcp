@@ -1,3 +1,4 @@
+import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useAnalysisViewActive, AnalysisScopeSummary } from '../selection/analysisScope'
 import { selectEffectiveRowIds } from '../../app/store'
 import { pointRadius } from '../charts/markerStyle'
@@ -17,6 +18,8 @@ import { useBrushOp } from '../selection/SelectionMenu'
 import GraphPanel, { useGraphPopupContainer } from '../common/GraphPanel'
 import { useRowColorResolver } from '../../theme/useRowColor'
 import { useColumnarData } from '../pcp/useDatasetColumns'
+import AnalysisErrorPanel, { analysisErrorMessage } from '../common/AnalysisErrorPanel'
+import { useDatasetColumnSelection } from '../common/useDatasetColumnSelection'
 
 interface FedfCurvePoint {
   quantile: number
@@ -66,7 +69,7 @@ export default function FedfPage() {
   const [brushOp] = useBrushOp()
 
   const [mode, setMode] = useState<'standard' | 'folded'>('standard')
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [fedfData, setFedfData] = useState<FedfResponse | null>(null)
   const [hoveredPoint, setHoveredPoint] = useState<{ col: string; id: string; val: number; q: number } | null>(null)
@@ -90,15 +93,7 @@ export default function FedfPage() {
     [allNumericColumns, globalVars.activeVariableIds],
   )
 
-  useEffect(() => {
-    setSelectedColumns((prev) => prev.filter((name) => numericColumns.includes(name)))
-  }, [numericColumns])
-
-  useEffect(() => {
-    if (numericColumns.length > 0 && selectedColumns.length === 0) {
-      setSelectedColumns(numericColumns.slice(0, 5))
-    }
-  }, [numericColumns, selectedColumns.length])
+  const [selectedColumns, setSelectedColumns] = useDatasetColumnSelection(datasetId, numericColumns, 5, Boolean(data))
 
   const liveKey = JSON.stringify([datasetId, dataRevision, schemaRevision, activeRowIds, selectedColumns, mode, viewActive])
   const liveRef = useRef(liveKey)
@@ -106,8 +101,9 @@ export default function FedfPage() {
   const liveSequence = useRef(0)
   useEffect(() => () => { liveSequence.current++ }, [])
   const fetchFedf = useCallback(async () => {
-    if (!viewActive) { setLoading(false); return }
-    if (!datasetId || selectedColumns.length === 0) return
+    setFedfData(null)
+    setError(null)
+    if (!viewActive || !datasetId || selectedColumns.length === 0) { setLoading(false); return }
     const startedKey = liveRef.current, version = ++liveSequence.current
     const current = () => version === liveSequence.current && startedKey === liveRef.current
     setLoading(true)
@@ -121,16 +117,13 @@ export default function FedfPage() {
       if (current()) setFedfData(res)
     } catch (err) {
       if (!current()) return
-      console.error('Failed to fetch FEDF', err)
+      setError(analysisErrorMessage(err))
     } finally {
       if (current()) setLoading(false)
     }
   }, [datasetId, selectedColumns, mode, activeRowIds, dataRevision, schemaRevision, viewActive])
 
-  useEffect(() => {
-    setFedfData(null)
-    void fetchFedf()
-  }, [fetchFedf])
+  useEffect(() => { void fetchFedf() }, [fetchFedf])
 
   // Presets
   const applyQuantilePreset = (col: string, qMin: number, qMax: number) => {
@@ -147,11 +140,11 @@ export default function FedfPage() {
 
   // Right-click context menu
   const contextMenuItems = [
-    { key: 'focus', label: '選択に絞り込み', disabled: selectedRowIds.length === 0 },
-    { key: 'delete', label: '選択を削除', disabled: selectedRowIds.length === 0 },
-    { key: 'clear', label: '選択解除', disabled: selectedRowIds.length === 0 },
+    { key: 'focus', label: SELECTION_LABELS.focus, disabled: selectedRowIds.length === 0 },
+    { key: 'delete', label: SELECTION_LABELS.exclude, disabled: selectedRowIds.length === 0 },
+    { key: 'clear', label: SELECTION_LABELS.clear, disabled: selectedRowIds.length === 0 },
     { type: 'divider' as const },
-    { key: 'reset', label: 'ベースデータに戻す' },
+    { key: 'reset', label: SELECTION_LABELS.reset },
   ]
 
   const onContextMenuClick = (key: string) => {
@@ -250,6 +243,7 @@ export default function FedfPage() {
       style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
     >
       <AnalysisScopeSummary />
+      {error && <AnalysisErrorPanel title="FEDF" error={error} onRetry={() => void fetchFedf()} loading={loading} />}
       {/* Top Controls Card */}
         <div
           style={{
@@ -282,6 +276,7 @@ export default function FedfPage() {
             </Radio.Group>
 
             <Select
+              data-testid="fedf-columns-select"
               mode="multiple"
               style={{ minWidth: 260 }}
               placeholder="表示する数値列を選択"
@@ -546,9 +541,9 @@ export default function FedfPage() {
               </EChartSurface>
             )}
 
-            {!loading && (!fedfData || fedfData.columns.length === 0) && (
+            {!loading && !error && (!fedfData || fedfData.columns.length === 0) && (
               <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
-                有効な数値列が選択されていません。
+                1つ以上の数値列を選択してください。
               </div>
             )}
             </div>
