@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Provider, useSelector } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -87,23 +87,25 @@ for (const page of ['efa', 'conjoint'] as const) it(`${page} exports every offer
     await view.findByRole('button', { name: 'Conjoint点を選択' })
     fireEvent.click(view.getByRole('tab', { name: '保存・出力' }))
   }
+  // Keep repeated export queries inside the active panel instead of scanning the full model form.
+  const exportPanel = within(view.getByRole('tabpanel', { name: page === 'efa' ? '得点操作' : '保存・出力' }))
   const exportTable = page === 'efa' ? vi.spyOn(efa, 'exportEFATable') : vi.spyOn(conjoint, 'exportConjointTable')
   const labels = page === 'efa' ? ['変数CSV', '診断CSV', 'PA CSV']
     : ['coefficients CSV', 'coefficients JSON', 'diagnostics CSV', 'diagnostics JSON', 'rows CSV', 'rows JSON', 'utilities CSV', 'utilities JSON', 'モデルJSON']
   for (const label of labels) {
     let reject!: (error: unknown) => void
     exportTable.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail }))
-    const initial = exportTable.mock.calls.length, button = view.getByRole('button', { name: label })
+    const initial = exportTable.mock.calls.length, button = exportPanel.getByRole('button', { name: label })
     fireEvent.click(button); fireEvent.click(button)
     expect(exportTable.mock.calls.length - initial).toBe(1)
     expect(button).toBeDisabled()
     expect(button).toHaveAttribute('aria-busy', 'true')
     await act(async () => reject(new Error('export offline')))
-    expect(await view.findByText(`${label}を保存できませんでした: export offline`)).toHaveAttribute('role', 'alert')
+    expect(await exportPanel.findByText(`${label}を保存できませんでした: export offline`)).toHaveAttribute('role', 'alert')
     expect(button).toBeEnabled()
     exportTable.mockResolvedValueOnce(undefined)
     fireEvent.click(button)
-    await waitFor(() => expect(view.getByText(`${label}のダウンロードを開始しました`)).toHaveAttribute('role', 'status'))
+    await waitFor(() => expect(exportPanel.getByText(`${label}のダウンロードを開始しました`)).toHaveAttribute('role', 'status'))
     expect(exportTable.mock.calls.length - initial).toBe(2)
   }
 })

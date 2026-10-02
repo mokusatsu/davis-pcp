@@ -81,6 +81,11 @@ it('catches rejected API objects and permits retry without an unhandled rejectio
   const button = view.getByRole('button', { name: '設定JSON' })
   fireEvent.click(button)
   expect(await view.findByRole('alert')).toHaveTextContent('設定JSONを保存できませんでした: network unavailable')
+  // Wait for the real button to become actionable before exercising retry.
+  await waitFor(() => {
+    expect(button).toBeEnabled()
+    expect(button).not.toHaveClass('ant-btn-loading')
+  })
   fireEvent.click(button)
   await waitFor(() => expect(view.getByRole('status')).toHaveTextContent('ダウンロードを開始'))
   expect(view.queryByRole('alert')).toBeNull()

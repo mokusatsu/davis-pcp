@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
@@ -51,10 +51,21 @@ function response(path: string, body: any, id = 'fit-1'): any {
   }
 }
 const post = vi.fn(), get = vi.fn()
+const pendingObjectURLs = new Set<string>()
+let nextObjectURL = 0
+beforeAll(() => {
+  vi.stubGlobal('URL', {
+    createObjectURL: () => {
+      const url = `blob:export-${++nextObjectURL}`
+      pendingObjectURLs.add(url)
+      return url
+    },
+    revokeObjectURL: (url: string) => { pendingObjectURLs.delete(url) },
+  })
+})
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(560)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(420)
-  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:export'), revokeObjectURL: vi.fn() })
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   brushSelection.operation = 'add'
   post.mockReset(); get.mockReset()
@@ -72,7 +83,17 @@ beforeEach(() => {
     ? { dataRevision: 1, schemaRevision: 1 }
     : { rows: [{ rowId: 'r2', coordinates: [1, 2], fitted: 1, observed: 1, residual: 0, predictionStatus: 'ok' }], total: 1, nextOffset: null })
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterAll(async () => {
+  try {
+    // Table/chart downloads release URLs after 1s/30s. Let those real timers finish
+    // before restoring URL; per-test restoration leaks callbacks into later tests.
+    await waitFor(() => expect(pendingObjectURLs.size).toBe(0), { timeout: 35_000 })
+  } finally {
+    vi.unstubAllGlobals()
+  }
+}, 40_000)
+
 function setup(test: typeof cases[number], scope: keyof typeof scopes = 'selected') {
   const base = store.getState(), columns = ['Outcome', 'X', 'A', 'B'].map(name => ({ name, columnId: name, label: name,
     role: 'question', scaleType: ['A', 'B'].includes(name) ? 'nominal' : 'ratio', valueLabels: {}, categoryOrder: [] }))
