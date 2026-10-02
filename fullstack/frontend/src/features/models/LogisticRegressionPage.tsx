@@ -1,7 +1,7 @@
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import ModelScatter from './ModelScatter'
 import type { SeriesOption } from 'echarts'
-import OddsRatioForest, { formatOdds } from './OddsRatioForest'
+import OddsRatioForest, { formatOdds, formatOddsInterval, inferenceUnavailableReason } from './OddsRatioForest'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
 import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
@@ -51,16 +51,25 @@ export function logisticCurveSeries(curve: { x: number; probability: number }[],
 export interface CoefficientItem {
   name: string
   coefficient: number
-  stdError: number
-  zValue: number
-  pValue: number
+  stdError: number | null
+  zValue: number | null
+  pValue: number | null
   oddsRatio: number | null
   ciLower: number | null
   ciUpper: number | null
   logOddsRatio: number
-  logCiLower: number
-  logCiUpper: number
+  logCiLower: number | null
+  logCiUpper: number | null
+  inferenceStatus: 'available' | 'unavailable'
+  inferenceReason: string | null
   exponentiationStatus?: { oddsRatio: string; ciLower: string; ciUpper: string }
+}
+
+/** Preserve small nonzero estimates instead of displaying a rounded zero. */
+export function formatLogisticEstimate(value: number | null, digits = 4): string {
+  if (value == null || !Number.isFinite(value)) return '利用不可'
+  return value !== 0 && (Math.abs(value) < 10 ** -digits || Math.abs(value) >= 1e4)
+    ? value.toExponential(digits - 1) : value.toFixed(digits)
 }
 
 export interface SigmoidCurvePoint {
@@ -95,7 +104,7 @@ export interface ConfusionMatrix {
 
 export interface LogisticResponse {
   warnings?: { code: string; message: string }[]
-  diagnostics: { completeSeparation: boolean | null }
+  diagnostics: { completeSeparation: boolean | null; inferenceStatus: 'available' | 'unavailable' }
   target: string
   classes: string[]
   features: string[]
@@ -318,6 +327,9 @@ export default function LogisticRegressionPage() {
     if (!result?.coefficients) return []
     return result.coefficients.filter((c) => c.name !== 'Intercept')
   }, [result])
+  const unavailableReasons = [...new Set(result?.coefficients
+    .filter(c => c.inferenceStatus === 'unavailable').map(inferenceUnavailableReason))]
+  const unavailableCell = (r: CoefficientItem) => <span title={inferenceUnavailableReason(r)}>利用不可</span>
 
   // Table columns
   const coeffColumns = [
@@ -331,25 +343,28 @@ export default function LogisticRegressionPage() {
       title: '係数 β (Coeff)',
       dataIndex: 'coefficient',
       key: 'coefficient',
-      render: (v: number) => v.toFixed(4),
+      render: (v: number) => formatLogisticEstimate(v),
     },
     {
       title: '標準誤差 SE(β)',
       dataIndex: 'stdError',
       key: 'stdError',
-      render: (v: number) => v.toFixed(4),
+      render: (v: number | null, r: CoefficientItem) => r.inferenceStatus === 'unavailable' || v == null
+        ? unavailableCell(r) : formatLogisticEstimate(v),
     },
     {
       title: 'Wald z',
       dataIndex: 'zValue',
       key: 'zValue',
-      render: (v: number) => v.toFixed(3),
+      render: (v: number | null, r: CoefficientItem) => r.inferenceStatus === 'unavailable' || v == null
+        ? unavailableCell(r) : formatLogisticEstimate(v, 3),
     },
     {
       title: 'p-value',
       dataIndex: 'pValue',
       key: 'pValue',
-      render: (v: number) => {
+      render: (v: number | null, r: CoefficientItem) => {
+        if (r.inferenceStatus === 'unavailable' || v == null || !Number.isFinite(v)) return unavailableCell(r)
         const sig = v < 0.05
         return (
           <span style={{ fontWeight: sig ? 'bold' : 'normal', color: sig ? '#cf1322' : 'inherit' }}>
@@ -367,7 +382,7 @@ export default function LogisticRegressionPage() {
     {
       title: '95% 信頼区間 (CI)',
       key: 'ci',
-      render: (_: any, r: CoefficientItem) => `[${formatOdds(r.ciLower, r.exponentiationStatus?.ciLower)}, ${formatOdds(r.ciUpper, r.exponentiationStatus?.ciUpper)}]`,
+      render: (_: any, r: CoefficientItem) => formatOddsInterval(r),
     },
   ]
 
@@ -733,6 +748,9 @@ export default function LogisticRegressionPage() {
 
           {/* Bottom Row: Coefficients Table */}
           <Card size="small" title="▼ 回帰係数詳細サマリー (Coefficients Summary)">
+            {unavailableReasons.length > 0 && <Typography.Paragraph type="secondary">
+              標準誤差・Wald検定・95%信頼区間は利用不可です。理由: {unavailableReasons.join('、')}。係数とORの推定値は表示しています。
+            </Typography.Paragraph>}
             <Table
               size="small"
               dataSource={result.coefficients}

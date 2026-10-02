@@ -35,6 +35,7 @@ OpenAPI: `GET /api/openapi.json` (Swagger UI: `/api/docs`) を正本とする。
 | GET | /api/v1/outliers/{rid} | 結果(outlierRowIds) |
 | POST | /api/v1/models | decision_tree/random_forest(treeStructures/leafMembership/featureImportance) |
 | GET | /api/v1/models/{rid}[/leaves] | 結果(リーフrow集合) |
+| POST | /api/v1/models/logistic | ロジスティック回帰(係数、推論の可否、予測確率) |
 | GET/POST | /api/v1/sessions | session一覧/作成 |
 | GET/PUT/DELETE | /api/v1/sessions/{sid} | 取得/更新(versionToken競合時409)/削除 |
 | POST | /api/v1/sessions/migrate-static-v1 | 静的v1状態JSON migration |
@@ -67,3 +68,19 @@ UIの All / Active / Selected / Sampled は共通ヘッダーで選択する。�
 ### セッション
 
 セッションstateの追加項目 `workspaceVersion: 1` に、共通行source、使用変数、Active/Selected、標本provenanceを保存する。復元はdataset/revisions/行・列ID/標本記録を検証してから単一actionで適用する。不足する旧記録を推測して補完しない。既存sessionを削除したり、新しい結果履歴UIを導入したりはしない。
+
+### ロジスティック回帰の推論可否
+
+`POST /models/logistic` は情報行列のランクが不足していても、計算できた係数解と予測確率を返す。この場合、個々の係数が一意に識別できることを意味しない。
+
+- `diagnostics.inferenceStatus` と各 `coefficients[].inferenceStatus` は `available` / `unavailable`。各係数の `inferenceReason` は通常 `null`、ランク不足時は `SINGULAR_INFORMATION`
+- 推論不可時は `stdError`、`zValue`、`pValue`、`ciLower`、`ciUpper`、`logCiLower`、`logCiUpper` が `null`。`coefficient` / `logOddsRatio` と予測は保持し、`LOGISTIC_INFERENCE_UNAVAILABLE` warningを返す
+- `exponentiationStatus.ciLower` / `ciUpper` は推論不可時 `unavailable`。有限の対数値の指数化だけが表現範囲外の場合は従来どおり `overflow` / `underflow` と `null` を返し、対数値は保持する。`null` を0・p=0・OR=1の区間として扱わない
+
+### モデル計算の数値表現範囲
+
+単位の正規化で計算できる結果は保持する。必要な出力を有限値として表現できない場合、非有限値や暗黙の0を成功応答に含めず、明示的な422エラーを返す。
+
+- `LOGISTIC_NUMERIC_RANGE` / `PCA_NUMERIC_RANGE`: `details.stage` が失敗した計算段階を示す。PCAでは計算段階に応じて `details.useCorrelation` も含む
+- `LR_NUMERIC_RANGE`: `details.fields` に表現範囲外の項目を示す。`details.partialResult` は計算可能な場合、有限の `estimates`、`standardErrors`、`pValues`、`rSquared`、`adjustedRSquared`、`rmse`、`residualStdError` を保持する。モデル結果や予測結果の保存前に有限性を検証する
+- ロジスティック回帰の有限対数値を指数化した場合だけの範囲超過は、このエラーと区別し、上記の指数化statusとnullable OR/CIで返す

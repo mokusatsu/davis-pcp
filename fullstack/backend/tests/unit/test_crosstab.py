@@ -57,7 +57,7 @@ def test_chi2_cramers_v_match_scipy_reference():
     chi2, p, dof, _ = stats.chi2_contingency(observed, correction=False)
     assert result["descriptiveAssociation"]["pearsonChi2"] == pytest.approx(float(chi2))
     assert result["descriptiveAssociation"]["df"] == dof == 2
-    assert result["inference"]["pValue"] == float(p)
+    assert result["inference"]["pValue"] == pytest.approx(float(p), rel=1e-14, abs=0)
     assert result["inference"]["method"] == "pearson"
     assert result["inference"]["statisticType"] == "chi2"
     expected_v = math.sqrt(chi2 / (200 * 1))

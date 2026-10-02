@@ -170,6 +170,8 @@ export default function DistributionPage() {
         setWeightMeta(raw.weightStatus ? {
           status: raw.weightStatus, columnName: raw.weightColumn,
           unweightedN: raw.unweightedN, weightedN: raw.weightedN,
+          weightedNStatus: raw.weightedNStatus,
+          warnings: raw.warnings,
           weightMissingCount: raw.weightMissingCount,
         } : null)
       }
@@ -749,6 +751,8 @@ export default function DistributionPage() {
                     weight: weightMeta ? {
                       status: weightMeta.status, columnName: weightMeta.columnName,
                       unweightedN: weightMeta.unweightedN, weightedN: weightMeta.weightedN,
+                      weightedNStatus: weightMeta.weightedNStatus,
+                      warnings: weightMeta.warnings,
                       weightMissingCount: weightMeta.weightMissingCount,
                     } : null,
                   },

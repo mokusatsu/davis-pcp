@@ -442,3 +442,23 @@ it.each(['revision', 'fit'])('invalidates pending truncated-cell selections on %
   expect(dispatch.mock.calls.filter(([action]) => action.type === selectionApplied.type)).toHaveLength(0)
   expect(view.queryByText('行ID取得中…')).toBeNull()
 })
+
+it('shows absolute chi-square range limits while keeping a valid association', async () => {
+  const warning = { code: 'CROSSTAB_CHI2_OUT_OF_RANGE', message: "記述的Pearson χ²が数値範囲を超えています。比率とCramér's Vは計算されています。" }
+  const value = responseBody({
+    descriptiveAssociation: { pearsonChi2: null, pearsonChi2Status: 'out_of_range', df: 4,
+      cramersV: 1, weightedCramersV: null, weighted: false },
+    inference: { requested: true, status: 'unavailable', method: 'pearson', statisticType: 'chi2',
+      statistic: null, statisticStatus: 'out_of_range', numeratorDf: 4, denominatorDf: null, pValue: null,
+      designAssumption: null, approximate: null },
+    warnings: [warning],
+  })
+  vi.spyOn(api, 'post').mockResolvedValue(value)
+  const view = render(<Provider store={localStore()}><MemoryRouter><CrosstabPage /></MemoryRouter></Provider>)
+  await selectInputs(view)
+  fireEvent.click(view.getByTestId('crosstab-run'))
+  await waitFor(() => expect(view.getAllByText('範囲外')).toHaveLength(2))
+  expect(view.getByText(`${warning.code}: ${warning.message}`)).toBeInTheDocument()
+  expect(view.getByTestId('crosstab-inference-unavailable')).toHaveTextContent('指定した検定を実行できませんでした。')
+  expect(view.getByText("Cramér's V").closest('.ant-statistic')).toHaveTextContent('1')
+})

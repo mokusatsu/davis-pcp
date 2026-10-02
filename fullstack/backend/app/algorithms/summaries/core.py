@@ -7,6 +7,9 @@ import numpy as np
 import polars as pl
 
 from ...domain.codebook_adapter import CodebookAdapter, is_not_applicable_reason, normalize_code
+from ..survey.weight_arithmetic import (
+    absolute_weight_sum, display_weight_total, normalized_weights, weight_total_warning,
+)
 
 
 def numeric_summary(values: np.ndarray) -> dict:
@@ -380,8 +383,7 @@ def _weighted_column_summary(
             reversed_min, reversed_max = min(fixed_numeric), max(fixed_numeric)
 
     raw = series.to_list()
-    counts: dict[str, float] = {}
-    weighted_n = 0.0
+    category_weights: dict[str, list[float]] = {}
     weight_missing = 0
     for value, weight in zip(raw, weights):
         code = normalize_code(value)
@@ -399,35 +401,50 @@ def _weighted_column_summary(
             continue
         if weight <= 0:
             continue
-        weighted_n += weight
-        counts[code] = counts.get(code, 0.0) + weight
+        category_weights.setdefault(code, []).append(weight)
+
+    # The absolute sum may overflow even though every weight is finite. Use
+    # a common scale only for ratios; never report scaled masses as counts.
+    maximum = max((max(group) for group in category_weights.values()), default=0.0)
+    scaled_counts = {code: _wmath.fsum(w / maximum for w in group)
+                     for code, group in category_weights.items()}
+    scaled_total = _wmath.fsum(scaled_counts.values())
+    counts = {code: absolute_weight_sum(group) for code, group in category_weights.items()}
+    weighted_n = absolute_weight_sum(w for group in category_weights.values() for w in group)
 
     distribution = []
     for code in ordered:
         count = counts.get(code, 0.0)
         distribution.append({
             "code": code,
-            "weightedCount": round(count, 4),
-            "weightedPct": round(count / weighted_n * 100, 4) if weighted_n > 0 else None,
+            "weightedCount": display_weight_total(count),
+            "weightedCountStatus": "ok" if count is not None else "out_of_range",
+            "weightedPct": round(scaled_counts.get(code, 0.0) / scaled_total * 100, 4) if scaled_total > 0 else None,
         })
 
     weighted: dict[str, Any] = {
-        "weightedN": round(weighted_n, 4),
+        "weightedN": display_weight_total(weighted_n),
+        "weightedNStatus": "ok" if weighted_n is not None else "out_of_range",
         "weightMissingCount": weight_missing,
         "distribution": distribution,
     }
-    if scale_type in ("ordinal", "interval", "ratio", "numeric") and weighted_n > 0:
+    if weighted_n is None:
+        weighted["warnings"] = [weight_total_warning()]
+    if scale_type in ("ordinal", "interval", "ratio", "numeric") and scaled_total > 0:
         score_map = {code: idx + 1 for idx, code in enumerate(ordered)}
-        total = 0.0
-        for code, count in counts.items():
+        scores: list[tuple[float, float]] = []
+        for code, count in scaled_counts.items():
             try:
                 score = float(score_map[code]) if scale_type == "ordinal" else float(code)
             except (TypeError, ValueError):
                 score = float(score_map.get(code, 0))
             if is_reversed and scale_type != "ordinal":
                 score = reversed_max + reversed_min - score
-            total += score * count
-        weighted["weightedMean"] = round(total / weighted_n, 4)
+            scores.append((score, count / scaled_total))
+        score_scale = max(abs(score) for score, _ in scores)
+        mean = (_wmath.fsum((score / score_scale) * proportion for score, proportion in scores)
+                * score_scale) if score_scale else 0.0
+        weighted["weightedMean"] = round(mean, 4)
         if scale_type == "ordinal":
             weighted["meanNote"] = "等間隔得点として計算"
     else:
@@ -455,11 +472,11 @@ def correlation_matrix_df(
         weight_arr = np.array([np.nan if w is None else float(w) for w in weights], dtype=np.float64)
 
     def _weighted_corr(xi: np.ndarray, xj: np.ndarray, w: np.ndarray) -> float | None:
-        total = float(np.sum(w))
-        if total <= 0 or not np.isfinite(total):
+        w = normalized_weights(w)
+        if not np.any(w > 0):
             return None
-        mx = float(np.sum(w * xi) / total)
-        my = float(np.sum(w * xj) / total)
+        mx = float(np.sum(w * xi))
+        my = float(np.sum(w * xj))
         dx = xi - mx
         dy = xj - my
         cov = float(np.sum(w * dx * dy))
@@ -467,7 +484,7 @@ def correlation_matrix_df(
         vyy = float(np.sum(w * dy * dy))
         if vxx <= 0 or vyy <= 0 or not np.isfinite(cov):
             return None
-        return float(cov / np.sqrt(vxx * vyy))
+        return float((cov / np.sqrt(vxx)) / np.sqrt(vyy))
 
     mat: list[list[float | None]] = [[None] * p for _ in range(p)]
 

@@ -5,9 +5,8 @@ tests. Splitting them out of the inference path is the point: the old code
 derived Cramér's V from whatever ``chi2_contingency`` returned, so swapping the
 inference method silently changed the descriptive number too.
 
-Every quantity here is invariant to multiplying all weights by a constant,
-which is what makes it safe to show next to a survey weight whose scale is
-arbitrary.
+Cramér's V is invariant to multiplying all weights by a constant. Pearson
+X² retains the absolute table scale; it is descriptive, not survey inference.
 """
 from __future__ import annotations
 
@@ -16,6 +15,7 @@ import math
 import numpy as np
 
 from ..survey.rao_scott import pearson_chi_square
+from ..survey.weight_arithmetic import normalized_weights
 
 
 def positive_marginal_submatrix(counts: np.ndarray) -> tuple[np.ndarray, list[int], list[int]]:
@@ -47,13 +47,13 @@ def cramers_v(chi2: float | None, total: float, n_rows: int, n_cols: int) -> flo
     dimensions = min(n_rows - 1, n_cols - 1)
     if dimensions <= 0:
         return None
-    value = chi2 / (total * dimensions)
+    value = (chi2 / total) / dimensions
     if value < 0:
         return None
     return math.sqrt(value)
 
 
-def descriptive_association(counts: np.ndarray, *, weighted: bool) -> dict[str, float | int | bool | None]:
+def descriptive_association(counts: np.ndarray, *, weighted: bool) -> dict[str, float | int | bool | str | None]:
     """Pearson table statistic + Cramér's V for the analysed table.
 
     The statistic is computed from the table's own margins, so it carries the
@@ -65,9 +65,14 @@ def descriptive_association(counts: np.ndarray, *, weighted: bool) -> dict[str, 
     chi2 = pearson_chi_square(counts) if total > 0 else None
     submatrix, _, _ = positive_marginal_submatrix(counts)
     n_rows, n_cols = submatrix.shape if submatrix.size else (0, 0)
-    value = cramers_v(chi2, total, n_rows, n_cols)
+    # V is dimensionless; do not reconstruct it from an absolute statistic
+    # that can underflow for tiny survey weights.
+    relative_chi2 = pearson_chi_square(normalized_weights(counts)) if total > 0 else None
+    value = cramers_v(relative_chi2, 1.0, n_rows, n_cols)
+    out_of_range = chi2 is not None and not math.isfinite(chi2)
     return {
-        "pearsonChi2": chi2,
+        "pearsonChi2": None if out_of_range else chi2,
+        **({"pearsonChi2Status": "out_of_range"} if out_of_range else {}),
         "df": (n_rows - 1) * (n_cols - 1) if n_rows and n_cols else 0,
         # Only one of the two is filled: a weighted V must not be presented
         # under the plain name, and an unweighted one is not "weighted".

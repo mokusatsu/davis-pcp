@@ -7,6 +7,7 @@ import polars as pl
 from sklearn.decomposition import PCA
 
 from ...domain.errors import BizError
+from ._scaling import normalized_columns
 
 
 def compute_pca(
@@ -79,35 +80,46 @@ def compute_pca(
         X_clean = X_clean[:, ~constant_mask]
         p = len(selected_columns)
 
-    # Center and scale
-    mean = np.mean(X_clean, axis=0)
-    X_centered = X_clean - mean
-    
+    # Remove physical units before centering or squaring. Correlation PCA is
+    # invariant to independent positive column rescaling, including units whose
+    # squares are outside float64 even though the observations are finite.
+    unit, mean, std, _ = normalized_columns(X_clean, "PCA_NUMERIC_RANGE")
     if use_correlation:
-        # Sample std with ddof=1
-        std = np.std(X_clean, axis=0, ddof=1)
-        # Prevent division by zero for constant columns
-        std[std == 0] = 1.0
-        X_scaled = X_centered / std
+        X_scaled = (unit - mean) / std
+        output_scale = 1.0
     else:
-        X_scaled = X_centered
+        # A common factor preserves covariance PCA's relative variable scales.
+        # Keep it factored until after SVD so nonrepresentable eigenvalues are
+        # an explicit range error, not zero/Infinity returned as a successful PCA.
+        output_scale = float(np.max(np.abs(X_clean)))
+        unit = X_clean / output_scale
+        X_scaled = unit - np.mean(unit, axis=0)
+    if not np.isfinite(X_scaled).all() or np.any(np.all(X_scaled == X_scaled[0], axis=0)):
+        raise BizError("PCA_NUMERIC_RANGE", "変数の標準化が数値の表現範囲外です。変数の単位を変更してください。",
+                       status_code=422, details={"stage": "standardization", "useCorrelation": use_correlation})
 
     max_k = min(n_samples - 1, p)
     k = max_k if n_components is None or n_components <= 0 else min(n_components, max_k)
 
-    full = PCA(n_components=max_k)
+    full = PCA(n_components=max_k, svd_solver="full")
     full.fit(X_scaled)
-    full_eigenvalues = full.explained_variance_
-    pca = PCA(n_components=k)
-    scores = pca.fit_transform(X_scaled)
-    eigenvalues = pca.explained_variance_
-    explained_variance_ratio = pca.explained_variance_ratio_
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        full_eigenvalues = (full.explained_variance_ * output_scale) * output_scale
+        scores = full.transform(X_scaled)[:, :k] * output_scale
+    if (not np.isfinite(full_eigenvalues).all() or not np.isfinite(scores).all()
+            or np.any((full.explained_variance_ > 0) & (full_eigenvalues == 0))
+            or not np.isfinite(full.explained_variance_ratio_).all()):
+        raise BizError("PCA_NUMERIC_RANGE", "主成分の分散または得点が数値の表現範囲外です。変数の単位を変更してください。",
+                       status_code=422, details={"stage": "spectrum", "useCorrelation": use_correlation})
+    eigenvalues = full_eigenvalues[:k]
+    explained_variance_ratio = full.explained_variance_ratio_[:k]
     cumulative_variance_ratio = np.cumsum(explained_variance_ratio)
-    eigenvectors = pca.components_  # shape: (k, p)
+    eigenvectors = full.components_[:k]  # shape: (k, p)
 
     # Kaiser threshold: eigenvalue >= 1.0 for correlation matrix, or mean eigenvalue for covariance.
     # Always from the full spectrum, never from a truncated request (contract).
-    kaiser_val = 1.0 if use_correlation else float(np.mean(full_eigenvalues))
+    # Include implicit zero eigenvalues when there are more variables than rows.
+    kaiser_val = 1.0 if use_correlation else float(np.sum(full_eigenvalues / p))
     kaiser_count = int(np.sum(full_eigenvalues >= kaiser_val))
     if kaiser_count == 0:
         kaiser_count = 1
@@ -120,7 +132,7 @@ def compute_pca(
         col_loadings = []
         for comp_idx in range(k):
             load_val = eigenvectors[comp_idx, j] * np.sqrt(max(0.0, eigenvalues[comp_idx]))
-            col_loadings.append(round(float(load_val), 4))
+            col_loadings.append(float(load_val))
         loadings[col_name] = col_loadings
 
     # Format scores
@@ -129,7 +141,7 @@ def compute_pca(
         formatted_scores.append({
             "rowId": r_id,
             "row_id": r_id,
-            "pc": [round(float(val), 4) for val in sc],
+            "pc": [float(val) for val in sc],
         })
 
     return {
@@ -142,12 +154,12 @@ def compute_pca(
         "n_components": k,
         "useCorrelation": use_correlation,
         "use_correlation": use_correlation,
-        "eigenvalues": [round(float(e), 5) for e in eigenvalues],
+        "eigenvalues": [float(e) for e in eigenvalues],
         "explainedVarianceRatio": [round(float(r), 4) for r in explained_variance_ratio],
         "explained_variance_ratio": [round(float(r), 4) for r in explained_variance_ratio],
         "cumulativeVarianceRatio": [round(float(c), 4) for c in cumulative_variance_ratio],
         "cumulative_variance_ratio": [round(float(c), 4) for c in cumulative_variance_ratio],
-        "kaiserThreshold": round(kaiser_val, 4),
+        "kaiserThreshold": kaiser_val,
         "kaiserThresholdComponents": kaiser_count,
         "kaiser_threshold_components": kaiser_count,
         "eigenvectors": [[round(float(v), 6) for v in comp] for comp in eigenvectors],

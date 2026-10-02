@@ -29,7 +29,8 @@ describe('model chart layout', () => {
   it('places the odds-ratio reference annotation above the plot, clear of extreme numeric ticks', () => {
     const chart=init(null,undefined,{renderer:'svg',ssr:true,width:560,height:280})
     try {
-      chart.setOption(oddsForestOption([{name:'x',coefficient:2000,stdError:100,zValue:20,pValue:0,oddsRatio:null,ciLower:null,ciUpper:null,logOddsRatio:2000,logCiLower:1800,logCiUpper:2200}]))
+      chart.setOption(oddsForestOption([{name:'x',coefficient:2000,stdError:100,zValue:20,pValue:0,oddsRatio:null,ciLower:null,ciUpper:null,logOddsRatio:2000,logCiLower:1800,logCiUpper:2200,
+        inferenceStatus:'available',inferenceReason:null}]))
       chart.getZr().flush()
       const axis=(chart.getOption() as any).xAxis[0]
       expect(axis.axisLabel.showMinLabel).toBe(false)

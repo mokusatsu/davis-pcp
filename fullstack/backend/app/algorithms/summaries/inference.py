@@ -155,6 +155,14 @@ def unweighted_inference(counts: np.ndarray, method: str = REQUEST_PEARSON) -> I
         return InferenceResult(requested=True, status=STATUS_UNAVAILABLE, method=method)
     chi2 = pearson_chi_square(matrix)
     df_value = float((n_rows - 1) * (n_cols - 1))
+    if not np.isfinite(chi2):
+        return InferenceResult(
+            requested=True, status=STATUS_UNAVAILABLE, method=METHOD_PEARSON,
+            statistic_type="chi2", statistic_status="out_of_range",
+            numerator_df=df_value,
+            warnings=[{"code": "CROSSTAB_PEARSON_OUT_OF_RANGE",
+                       "message": "Pearson検定統計量が数値範囲を超えるため、検定結果を返せません。"}],
+        )
     return InferenceResult(
         requested=True, status=STATUS_OK, method=METHOD_PEARSON,
         statistic_type="chi2", statistic=float(chi2),

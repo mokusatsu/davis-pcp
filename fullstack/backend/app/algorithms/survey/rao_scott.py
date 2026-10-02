@@ -27,6 +27,7 @@ from scipy import stats
 
 from .covariance import mean_covariance
 from .design import SurveyDesign
+from .weight_arithmetic import normalized_weights
 
 METHOD_SECOND_ORDER = "rao_scott_second_order"
 STATISTIC_TYPE = "F"
@@ -78,9 +79,14 @@ def pearson_chi_square(counts: np.ndarray) -> float:
     total = float(counts.sum())
     if total <= 0:
         return 0.0
-    expected = np.outer(counts.sum(axis=1), counts.sum(axis=0)) / total
+    # Work in proportions until the final (scale-dependent) statistic. Raw
+    # marginal products and squared cell residuals overflow/underflow long
+    # before the actual statistic leaves the representable range.
+    proportions = normalized_weights(counts)
+    expected = np.outer(proportions.sum(axis=1), proportions.sum(axis=0))
     usable = expected > 0
-    return float(np.sum((counts[usable] - expected[usable]) ** 2 / expected[usable]))
+    relative = float(np.sum((proportions[usable] - expected[usable]) ** 2 / expected[usable]))
+    return relative * total
 
 
 def rao_scott_test(
@@ -103,10 +109,9 @@ def rao_scott_test(
     n_rows, n_cols = counts.shape
     if n_rows < 2 or n_cols < 2 or design.size == 0:
         return None
-    total = float(counts.sum())
-    if total <= 0:
+    if not np.all(np.isfinite(counts)) or not np.any(counts > 0):
         return None
-    proportions = counts / total
+    proportions = normalized_weights(counts)
     row_margins = proportions.sum(axis=1)
     col_margins = proportions.sum(axis=0)
     if np.any(row_margins <= 0) or np.any(col_margins <= 0):

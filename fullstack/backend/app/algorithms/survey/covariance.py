@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from .design import SurveyDesign
+from .weight_arithmetic import normalized_weights
 
 
 def linearized_total_covariance(values: np.ndarray, design: SurveyDesign) -> np.ndarray:
@@ -60,9 +61,9 @@ def mean_covariance(indicators: np.ndarray, design: SurveyDesign) -> np.ndarray:
     indicators = np.atleast_2d(np.asarray(indicators, dtype=float))
     if indicators.shape[0] != design.size:
         indicators = indicators.T
-    weight_sum = float(design.weights.sum())
-    if weight_sum <= 0 or design.size == 0:
+    weights = normalized_weights(design.weights)
+    if design.size == 0 or not np.any(weights > 0):
         return np.zeros((indicators.shape[1], indicators.shape[1]), dtype=float)
-    average = (indicators * design.weights[:, None]).sum(axis=0) / weight_sum
-    linearized = (indicators - average) * design.weights[:, None] / weight_sum
+    average = (indicators * weights[:, None]).sum(axis=0)
+    linearized = (indicators - average) * weights[:, None]
     return linearized_total_covariance(linearized, design)

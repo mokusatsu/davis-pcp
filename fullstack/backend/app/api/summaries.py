@@ -9,6 +9,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, model_validator
 
 from ..algorithms.summaries.core import correlation_matrix_df, summarize
+from ..algorithms.survey.weight_arithmetic import (
+    absolute_weight_sum, display_weight_total, weight_total_warning,
+)
 from ..storage.dataset_store import DatasetStore
 from ..domain.codebook_adapter import CodebookAdapter
 from ..domain.codebook_adapter import normalize_code
@@ -158,18 +161,21 @@ def _summaries(req: SummaryRequest) -> dict:
             _validate_semantics(weights, weight_type)
         else:
             weight_df = df
-        positive_mass = sum(w for w in weights if w is not None and w > 0)
+        positive_mass = absolute_weight_sum(w for w in weights if w is not None and w > 0)
         weight_missing = sum(1 for w in weights if w is None)
-        weight_status = weighted_status(True, positive_mass)
+        weight_status = weighted_status(True, positive_mass if positive_mass is not None else float("inf"))
         weight_block = {"weightStatus": weight_status, "weightApplied": weight_status == "applied",
                         "weightColumn": weight_name, "weightColumnId": weight_spec["columnId"],
                         "unweightedN": len(scope_ids),
-                        "weightedN": round(positive_mass, 4) if weight_status == "applied" else None,
+                        "weightedN": display_weight_total(positive_mass) if weight_status == "applied" else None,
+                        "weightedNStatus": "ok" if positive_mass is not None else "out_of_range",
                         "weightMissingCount": weight_missing,
                         "scopeHash": _scope_hash([str(v) for v in scope_ids])}
         if weight_status == "no_positive_weight":
             weight_block["warnings"] = [{"code": "WEIGHT_NO_POSITIVE",
                                          "message": "正のウェイトがないため加重値を返しません。"}]
+        elif positive_mass is None:
+            weight_block["warnings"] = [weight_total_warning()]
     payload = {**payload, **weight_block}
     payload.pop("_scopeIds", None)
     if req.selectedRowIds is not None:

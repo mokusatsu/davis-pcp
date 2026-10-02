@@ -58,3 +58,23 @@ it('shows the unsupported warning only when a weight is selected', () => {
   const withoutWeight = render(<WeightUnsupportedAlert weightColumnName={null} />)
   expect(withoutWeight.queryByTestId('weight-unsupported-alert')).toBeNull()
 })
+
+it('shows a range warning while retaining valid weighted mean and percentages', () => {
+  const message = 'ウェイト合計が数値範囲を超えています。範囲外の絶対加重件数は表示できません。比率・平均は正規化したウェイトで計算しています。'
+  const view = render(<Provider store={weightStore()}><QuestionCard summary={{
+    columnId: 'Q1',
+    denominators: { total: 8, target: 8, valid: 8, missing: 0, notApplicable: 0 },
+    distribution: [{ code: '1', label: 'low', count: 3, percentageValid: 37.5, percentageTotal: 37.5 }],
+    auxiliaryStats: { mean: 1.875 },
+    weighted: { weightedN: null, weightedNStatus: 'out_of_range', weightMissingCount: 0,
+      warnings: [{ code: 'WEIGHT_TOTAL_OUT_OF_RANGE', message }],
+      distribution: [{ code: '1', weightedCount: null, weightedCountStatus: 'out_of_range', weightedPct: 37.5 }],
+      weightedMean: 1.875 },
+    weight: { status: 'applied', columnName: 'wt', unweightedN: 8,
+      weightedN: null, weightedNStatus: 'out_of_range' },
+  }} /></Provider>)
+  expect(view.getByTestId('weight-note').textContent).toContain('加重Σw=範囲外')
+  expect(view.getByTestId('weight-range-warning').textContent).toBe(message)
+  expect(view.getByTestId('category-Q1-1').textContent).toContain('加重37.5% (範囲外)')
+  expect(view.container.textContent).toContain('加重平均: 1.88')
+})

@@ -29,6 +29,55 @@ LEVERAGE_ONE_TOL = 1e-12
 VIF_SINGULAR_TOL = 1e-12
 
 
+class LinearRegressionNumericRangeError(ValueError):
+    """A required quantity cannot be represented as a finite float64."""
+
+    def __init__(self, field: str):
+        self.field = field
+        super().__init__("LR_NUMERIC_RANGE")
+
+
+def normalize_response(y: np.ndarray) -> tuple[np.ndarray, float]:
+    """Keep response squares in range; retain the original unit separately.
+
+    Inference, R2 and standardized diagnostics are homogeneous in y. Working
+    in these units avoids overflowing SSE/TSS even when every reported
+    coefficient, standard error, RMSE and stored covariance is representable.
+    """
+    vec = np.asarray(y, dtype=np.float64)
+    if not np.isfinite(vec).all():
+        raise LinearRegressionNumericRangeError("response")
+    scale = float(np.max(np.abs(vec))) if vec.size else 0.0
+    if scale == 0.0:
+        return vec.copy(), 1.0
+    normalized = vec / scale
+    if np.any((vec != 0) & (normalized == 0)):
+        raise LinearRegressionNumericRangeError("normalizedResponse")
+    return normalized, scale
+
+
+def rescale_response_quantity(value: Any, scale: float, power: int = 1,
+                              *, field: str = "result") -> Any:
+    """Restore y or y² units without ever forming scale².
+
+    frexp/ldexp also avoid losing a small intermediate that becomes finite
+    after scaling. A nonzero value rounded to zero is an explicit range
+    failure, not a fabricated zero variance/standard error.
+    """
+    values = np.asarray(value, dtype=np.float64)
+    if not np.isfinite(values).all() or not math.isfinite(scale) or scale <= 0:
+        raise LinearRegressionNumericRangeError(field)
+    mantissa, exponent = np.frexp(values)
+    scale_mantissa, scale_exponent = math.frexp(scale)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        restored = np.ldexp(mantissa * scale_mantissa ** power,
+                            exponent + power * scale_exponent)
+    if (not np.isfinite(restored).all()
+            or np.any((values != 0) & (restored == 0))):
+        raise LinearRegressionNumericRangeError(field)
+    return float(restored) if restored.ndim == 0 else restored
+
+
 def _finite_matrix(name: str, mat: np.ndarray) -> np.ndarray:
     arr = np.asarray(mat, dtype=np.float64)
     if arr.ndim != 2 or not np.isfinite(arr).all():
@@ -59,7 +108,8 @@ def solve_weighted_least_squares(
             raise ValueError("LR kernel requires finite nonnegative weights")
     sqrt_w = np.sqrt(w)
     xw = sqrt_w[:, None] * mat
-    yw = sqrt_w * vec
+    numerical_y, response_scale = normalize_response(vec)
+    yw = sqrt_w * numerical_y
     cond = float(np.finfo(float).eps) * max(xw.shape) if xw.size else 0.0
     beta, _resid, rank, _sv = linalg.lstsq(xw, yw, cond=cond, lapack_driver="gelsd")
     beta = np.asarray(beta, dtype=np.float64).reshape((p,))
@@ -84,8 +134,14 @@ def solve_weighted_least_squares(
     bread = (vt.T * inv) @ vt
     cond_number = float(s_vals[0] / s_vals[-1]) if len(s_vals) and s_vals[-1] > 0 else float("inf")
     fitted = mat @ beta
-    residual = vec - fitted
+    residual = numerical_y - fitted
     sse = float(np.dot(w, residual * residual))
+    beta = rescale_response_quantity(beta, response_scale, field="estimates")
+    fitted = rescale_response_quantity(fitted, response_scale, field="fitted")
+    residual = rescale_response_quantity(residual, response_scale, field="residual")
+    # A direct kernel caller requests SSE in original units. The API instead
+    # keeps this internal sum in normalized units through all inference.
+    sse = rescale_response_quantity(sse, response_scale, 2, field="sse")
     return {
         "beta": beta,
         "bread": np.asarray(bread, dtype=np.float64),
@@ -507,18 +563,35 @@ def qq_positions(residual: np.ndarray, weights: np.ndarray | list[float] | None)
             "position": [float(v) for v in positions_w], "kind": "weighted_mid_cdf"}
 
 
-def mean_ci_half_width(x_row: np.ndarray, cov: np.ndarray | None, t_crit: float | None) -> float | None:
-    """Half width of the mean-response CI from the adopted coefficient covariance."""
-    if cov is None or t_crit is None or not np.isfinite(t_crit):
+def _mean_response_standard_error(x_row: np.ndarray, cov: np.ndarray | None) -> float | None:
+    """Square root of x'Cov x without overflowing its quadratic intermediate."""
+    if cov is None:
         return None
     row = np.asarray(x_row, dtype=np.float64).reshape((-1,))
     mat = np.asarray(cov, dtype=np.float64)
-    if mat.shape != (row.shape[0], row.shape[0]) or not np.isfinite(mat).all():
+    if (mat.shape != (row.shape[0], row.shape[0])
+            or not np.isfinite(mat).all() or not np.isfinite(row).all()):
         return None
-    var = float(row @ mat @ row)
+    mat_scale = float(np.max(np.abs(mat))) if mat.size else 0.0
+    row_scale = float(np.max(np.abs(row))) if row.size else 0.0
+    if mat_scale == 0 or row_scale == 0:
+        return 0.0
+    normalized_row = row / row_scale
+    var = float(normalized_row @ (mat / mat_scale) @ normalized_row)
     if not np.isfinite(var) or var < 0:
         return None
-    return float(t_crit * math.sqrt(var))
+    se = math.sqrt(var) * math.sqrt(mat_scale)
+    return rescale_response_quantity(se, row_scale, field="prediction.standardError")
+
+
+def mean_ci_half_width(x_row: np.ndarray, cov: np.ndarray | None, t_crit: float | None) -> float | None:
+    """Half width of the mean-response CI from the adopted coefficient covariance."""
+    if t_crit is None or not np.isfinite(t_crit) or t_crit <= 0:
+        return None
+    se = _mean_response_standard_error(x_row, cov)
+    if se is None:
+        return None
+    return rescale_response_quantity(se, t_crit, field="prediction.meanCiHalfWidth")
 
 
 def individual_pi_half_width(
@@ -531,15 +604,9 @@ def individual_pi_half_width(
     """Individual PI half width; classical non-survey fits only."""
     if not classical_available or sigma2 is None or not np.isfinite(sigma2) or sigma2 < 0:
         return None
-    mean_half = mean_ci_half_width(x_row, cov, t_crit)
-    if mean_half is None or t_crit is None or not np.isfinite(t_crit):
+    mean_se = _mean_response_standard_error(x_row, cov)
+    if mean_se is None or t_crit is None or not np.isfinite(t_crit) or t_crit <= 0:
         return None
-    row = np.asarray(x_row, dtype=np.float64).reshape((-1,))
-    mat = np.asarray(cov, dtype=np.float64) if cov is not None else None
-    mean_var = 0.0
-    if mat is not None and mat.shape == (row.shape[0], row.shape[0]):
-        mean_var = float(row @ mat @ row)
-    total = mean_var + float(sigma2)
-    if not np.isfinite(total) or total < 0:
-        return None
-    return float(t_crit * math.sqrt(total))
+    total_se = math.hypot(mean_se, math.sqrt(sigma2))
+    return rescale_response_quantity(total_se, t_crit,
+                                     field="prediction.individualPiHalfWidth")

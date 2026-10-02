@@ -10,7 +10,7 @@
 export interface LikertCategoryInput {
   code: string
   label: string
-  count: number
+  count: number | null
   pct: number | null
 }
 
@@ -28,7 +28,7 @@ export type LikertSort = 'top2-desc' | 'mean-desc' | 'original'
 export interface LikertSegment {
   code: string
   label: string
-  count: number
+  count: number | null
   pct: number
   side: 'negative' | 'neutral' | 'positive'
   widthPct: number

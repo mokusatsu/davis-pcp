@@ -49,6 +49,7 @@ interface CrosstabResponse {
   grandTotal: { unweightedCount: number; count: number }
   descriptiveAssociation: {
     pearsonChi2: number | null
+    pearsonChi2Status?: 'out_of_range'
     df: number
     cramersV: number | null
     weightedCramersV: number | null
@@ -60,7 +61,7 @@ interface CrosstabResponse {
     method: string | null
     statisticType: string | null
     statistic: number | null
-    statisticStatus?: 'finite' | 'infinite' | 'undefined' | null
+    statisticStatus?: 'finite' | 'infinite' | 'undefined' | 'out_of_range' | null
     numeratorDf: number | null
     denominatorDf: number | null
     pValue: number | null
@@ -564,7 +565,7 @@ export default function CrosstabPage() {
               <Col span={6}>
                 <Statistic
                   title={isSurveyWeight ? '加重 χ²（記述）' : 'χ²（記述）'}
-                  value={formatNumber(result.descriptiveAssociation.pearsonChi2)}
+                  value={result.descriptiveAssociation.pearsonChi2Status === 'out_of_range' ? '範囲外' : formatNumber(result.descriptiveAssociation.pearsonChi2)}
                   suffix={`df=${result.descriptiveAssociation.df}`}
                 />
               </Col>
@@ -580,7 +581,7 @@ export default function CrosstabPage() {
                 <Statistic
                   title={inferenceTitle(result.inference)}
                   value={result.inference.statistic === null
-                    ? result.inference.statisticStatus === 'infinite' ? '∞' : '—'
+                    ? result.inference.statisticStatus === 'infinite' ? '∞' : result.inference.statisticStatus === 'out_of_range' ? '範囲外' : '—'
                     : result.inference.statistic.toFixed(4)}
                   suffix={result.inference.numeratorDf !== null
                     ? `df=${result.inference.numeratorDf.toFixed(2)}${result.inference.denominatorDf != null ? `, ${result.inference.denominatorDf.toFixed(2)}` : ''}`
@@ -621,7 +622,7 @@ export default function CrosstabPage() {
                 <Alert
                   type="warning"
                   data-testid="crosstab-inference-unavailable"
-                  message="調査設計を考慮した検定を実行できませんでした。"
+                  message="指定した検定を実行できませんでした。"
                 />
               ) : null}
               {isSurveyWeight && result.inference.status === 'ok' ? (

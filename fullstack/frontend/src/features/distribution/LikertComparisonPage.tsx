@@ -16,7 +16,7 @@ interface LikertColumnPayload {
   denominators?: { total: number; target: number; valid: number; missing: number; notApplicable: number }
   distribution?: { code: string; label: string; count: number; percentageValid: number; isMissing?: boolean; isInvalid?: boolean }[]
   auxiliaryStats?: { mean?: number; meanNote?: string; top2Box?: { pct: number; n: number } | null }
-  weighted?: { weightedN: number | null; distribution: { code: string; weightedCount: number; weightedPct: number | null }[] } | null
+  weighted?: { weightedN: number | null; distribution: { code: string; weightedCount: number | null; weightedPct: number | null }[] } | null
 }
 
 type Basis = 'unweighted' | 'weighted'
@@ -37,7 +37,7 @@ export default function LikertComparisonPage() {
   }, [selection.datasetId])
   const [basis, setBasis] = useState<Basis>('unweighted')
   const [payload, setPayload] = useState<Record<string, LikertColumnPayload> | null>(null)
-  const [weightMeta, setWeightMeta] = useState<{ status: string; columnName?: string | null; unweightedN?: number | null; weightedN?: number | null } | null>(null)
+  const [weightMeta, setWeightMeta] = useState<{ status: string; columnName?: string | null; unweightedN?: number | null; weightedN?: number | null; weightedNStatus?: string; warnings?: { code: string; message: string }[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [matchError, setMatchError] = useState<string | null>(null)
@@ -67,7 +67,7 @@ export default function LikertComparisonPage() {
       return
     }
     setLoading(true)
-    void api.post<{ columns: Record<string, LikertColumnPayload>; weightStatus?: string; weightColumn?: string | null; unweightedN?: number; weightedN?: number | null }>(
+    void api.post<{ columns: Record<string, LikertColumnPayload>; weightStatus?: string; weightColumn?: string | null; unweightedN?: number; weightedN?: number | null; weightedNStatus?: string; warnings?: { code: string; message: string }[] }>(
       '/summaries',
       {
         datasetId: selection.datasetId, rowIds: effectiveRowIds, columns: columnNames,
@@ -78,7 +78,8 @@ export default function LikertComparisonPage() {
       if (cancelled || currentInput.current !== inputKey) return
       setPayload(res.columns)
       setWeightMeta({ status: res.weightStatus ?? 'omitted', columnName: res.weightColumn ?? null,
-        unweightedN: res.unweightedN ?? null, weightedN: res.weightedN ?? null })
+        unweightedN: res.unweightedN ?? null, weightedN: res.weightedN ?? null,
+        weightedNStatus: res.weightedNStatus, warnings: res.warnings })
       setResultKey(inputKey)
     }).catch((err: { message?: string }) => {
       if (cancelled || currentInput.current !== inputKey) return
@@ -99,7 +100,7 @@ export default function LikertComparisonPage() {
       const categories = order.map((code) => {
         if (useWeighted) {
           const w = weightedByCode.get(code)
-          return { code, label: distByCode.get(code)?.label ?? code, count: w?.weightedCount ?? 0, pct: w?.weightedPct ?? 0 }
+          return { code, label: distByCode.get(code)?.label ?? code, count: w ? w.weightedCount : 0, pct: w?.weightedPct ?? 0 }
         }
         const d = distByCode.get(code)
         return { code, label: d?.label ?? code, count: d?.count ?? 0, pct: d?.percentageValid ?? 0 }
@@ -187,9 +188,12 @@ export default function LikertComparisonPage() {
       {weightMeta && weightMeta.status !== 'omitted' && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }} data-testid="likert-weight-meta">
           表示基準: {basis === 'weighted' ? `加重（${weightMeta.columnName}）` : '非加重'}
-          （非加重n={weightMeta.unweightedN ?? '—'} / 加重Σw={weightMeta.weightedN ?? '—'}）· 検定p値は加重しません
+          （非加重n={weightMeta.unweightedN ?? '—'} / 加重Σw={weightMeta.weightedNStatus === 'out_of_range' ? '範囲外' : weightMeta.weightedN ?? '—'}）· 検定p値は加重しません
         </Typography.Text>
       )}
+      {(weightMeta?.warnings ?? []).filter(warning => warning.code === 'WEIGHT_TOTAL_OUT_OF_RANGE').map(warning => (
+        <Alert key={warning.code} type="warning" message={warning.message} showIcon />
+      ))}
       {matchError && <Alert type="error" message={matchError} showIcon />}
       {error && <Alert type="error" message="集計エラー" description={error} showIcon />}
       <GraphPanel
@@ -211,7 +215,7 @@ export default function LikertComparisonPage() {
                   xAxis: { type: 'value', min: mode === 'diverging' ? -100 : 0, max: 100, name: '有効回答割合 (%)', nameLocation: 'middle', nameGap: 30,
                     axisLabel: { formatter: (v: number) => `${Math.abs(v)}%` } },
                   yAxis: { type: 'category', inverse: true, data: rows.map(row => row.title), axisLabel: { width: 170, overflow: 'truncate' } },
-                  tooltip: { confine: true, formatter: (p: any) => { const mark = intervals[p.dataIndex]; return `${escapeHtml(rows[mark.rowIndex].title)}<br/>${escapeHtml(mark.label)} (${escapeHtml(mark.code)}): ${mark.count} / ${mark.pct.toFixed(2)}%<br/>有効n=${rows[mark.rowIndex].validN}` } },
+                  tooltip: { confine: true, formatter: (p: any) => { const mark = intervals[p.dataIndex]; return `${escapeHtml(rows[mark.rowIndex].title)}<br/>${escapeHtml(mark.label)} (${escapeHtml(mark.code)}): ${mark.count ?? '範囲外'} / ${mark.pct.toFixed(2)}%<br/>有効n=${rows[mark.rowIndex].validN}` } },
                   series: [{ type: 'custom', data: intervals.map(mark => [mark.start, mark.end, mark.rowIndex]),
                     renderItem: (_params: any, api: any) => {
                       const mark = intervals[_params.dataIndex], start = api.coord([mark.start, mark.rowIndex]), end = api.coord([mark.end, mark.rowIndex])
@@ -224,7 +228,7 @@ export default function LikertComparisonPage() {
                   <Space wrap>
                     {[...row.negative, ...(row.neutral ? [row.neutral] : []), ...row.positive].map(seg => <Button key={seg.code} size="small"
                       data-testid={`likert-seg-${row.columnId}-${seg.code}`} onClick={() => void clickSegment(row, seg.code)}
-                      type={selectedByCategory.has(`${row.columnId}\0${seg.code}`) ? 'primary' : 'default'}>{seg.label}: {seg.count} ({seg.pct.toFixed(1)}%)</Button>)}
+                      type={selectedByCategory.has(`${row.columnId}\0${seg.code}`) ? 'primary' : 'default'}>{seg.label}: {seg.count ?? '範囲外'} ({seg.pct.toFixed(1)}%)</Button>)}
                     <span>Top-2: {row.top2Pct == null ? '—' : `${row.top2Pct.toFixed(1)}%`}</span>
                   </Space>
                   <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>

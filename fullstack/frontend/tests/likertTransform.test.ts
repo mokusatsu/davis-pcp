@@ -65,3 +65,16 @@ it('excludes missing/invalid/NA from the scale and preserves valid zero-count or
   expect(validLikertOrder({ categoryOrder: ['1', '2', '3', '4', '5', '6', '9'], missingCodes: ['9'] }, extra)).toHaveLength(6)
   expect(validLikertOrder({ categoryOrder: ['1', '2', '3'], missingReasons: { '2': 'notApplicable' } }, [])).toEqual(['1', '3'])
 })
+
+it('retains unrepresentable weighted counts without losing valid percentage widths', () => {
+  const row = toLikertRow({ columnId: 'Q', title: 'Q', validN: 8, top2Pct: null, mean: null,
+    categories: [
+      { code: '1', label: 'low', count: null, pct: 37.5 },
+      { code: '2', label: 'middle', count: null, pct: 37.5 },
+      { code: '3', label: 'high', count: null, pct: 25 },
+    ] })
+  const intervals = likertIntervals([row], 'stacked100')
+  expect(intervals.map(item => item.count)).toEqual([null, null, null])
+  expect(intervals.map(item => item.end - item.start)).toEqual([37.5, 37.5, 25])
+  expect(intervals.at(-1)?.end).toBe(100)
+})

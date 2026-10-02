@@ -26,6 +26,11 @@ from ..algorithms.models.linear_regression import (
     survey_leverage,
     weighted_vif,
     qq_positions,
+    LinearRegressionNumericRangeError,
+    normalize_response,
+    rescale_response_quantity,
+    mean_ci_half_width,
+    individual_pi_half_width,
 )
 from ..algorithms.survey.model_covariance import (
     build_regression_design_frame,
@@ -53,6 +58,72 @@ SCHEMA_VERSION = "analysis-result/1.0"
 
 def _err(code, msg, status=422, details=None):
     raise BizError(code, msg, status_code=status, details=details or {})
+
+
+def _numeric_range_error(fields, partial=None):
+    _err("LR_NUMERIC_RANGE",
+         "結果の一部が数値表現範囲を超えています。目的変数の単位を変更してください。",
+         422, details={"fields": sorted(set(fields)),
+                       "partialResult": partial or {}})
+
+
+def _require_finite_result(payload, path=""):
+    """Validate before persistence, where JSON errors otherwise become 500s."""
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            _require_finite_result(value, path + "/" + str(key))
+    elif isinstance(payload, (list, tuple)):
+        for index, value in enumerate(payload):
+            _require_finite_result(value, path + "/" + str(index))
+    elif isinstance(payload, (float, np.floating)) and not math.isfinite(payload):
+        _numeric_range_error([path])
+
+
+def _restore_fit_response_units(scale, beta, fitted, residual, cov, sigma2,
+                                fit_stats, t_rows, qq):
+    """Restore only dimensional quantities after scaled inference completes.
+
+    Collect representable quantities before rejecting an unrepresentable
+    covariance/variance, so the 422 still reports useful estimates and fit.
+    SSE and TSS are internal and need not be materialized in original units.
+    """
+    failures = []
+
+    def restore(key, value, power=1):
+        if value is None:
+            return None
+        try:
+            return rescale_response_quantity(value, scale, power, field=key)
+        except LinearRegressionNumericRangeError:
+            failures.append(key)
+            return None
+
+    beta = restore("estimates", beta)
+    fitted = restore("fitted", fitted)
+    residual = restore("residual", residual)
+    cov = restore("covariance", cov, 2)
+    sigma2 = restore("sigma2", sigma2, 2)
+    for key in ("rmse", "residualStdError"):
+        fit_stats[key] = restore(key, fit_stats.get(key))
+    qq["sortedResidual"] = restore("qq.sortedResidual", qq["sortedResidual"])
+    if qq["sortedResidual"] is not None:
+        qq["sortedResidual"] = qq["sortedResidual"].tolist()
+    for index, row in enumerate(t_rows):
+        for key in ("standardError", "ciLower", "ciUpper"):
+            row[key] = restore(f"coefficients/{index}/{key}", row.get(key))
+    if failures:
+        partial = {key: fit_stats[key] for key in
+                   ("rSquared", "adjustedRSquared", "rmse", "residualStdError")
+                   if fit_stats.get(key) is not None}
+        if beta is not None:
+            partial["estimates"] = beta.tolist()
+        if all(row.get("standardError") is not None for row in t_rows):
+            partial["standardErrors"] = [row["standardError"] for row in t_rows]
+        if all(row.get("pValue") is not None for row in t_rows):
+            partial["pValues"] = [row["pValue"] for row in t_rows]
+        _require_finite_result(partial)
+        _numeric_range_error(failures, partial)
+    return beta, fitted, residual, cov, sigma2
 
 
 def _parse_request(payload):
@@ -348,7 +419,10 @@ def run_linear_regression(payload: dict = Body(...)):
     elif weight_type is None:
         n_stat = float(n)
     try:
-        sol = solve_weighted_least_squares(x_full, y_vec, w_vec)
+        numerical_y, response_scale = normalize_response(y_vec)
+        sol = solve_weighted_least_squares(x_full, numerical_y, w_vec)
+    except LinearRegressionNumericRangeError as exc:
+        _numeric_range_error([exc.field])
     except ValueError as exc:
         if str(exc) == "LR_RANK_DEFICIENT":
             raise BizError("LR_RANK_DEFICIENT",
@@ -367,7 +441,7 @@ def run_linear_regression(payload: dict = Body(...)):
     resid = sol["residual"]
     cond_number = float(sol["conditionNumber"])
     rank_tol = float(sol["rankTol"])
-    stats = fit_statistics(y_vec, w_vec, sse, bool(req.intercept),
+    stats = fit_statistics(numerical_y, w_vec, sse, bool(req.intercept),
                            n_stat, p)
     residual_df = stats["residualDf"]
     # Inference branch.
@@ -523,7 +597,7 @@ def run_linear_regression(payload: dict = Body(...)):
         classical_f = joint
     else:
         classical_f = None
-    std_rows = standardized_effects(x_full, y_vec, w_vec, beta,
+    std_rows = standardized_effects(x_full, numerical_y, w_vec, beta,
                                     full_numeric)
     # Diagnostics.
     fitted = sol["fitted"]
@@ -551,7 +625,7 @@ def run_linear_regression(payload: dict = Body(...)):
     # Near-perfect fit warning + SSE=0 logLik null handled in helper.
     tss_val = stats.get("totalSumSquares")
     if tss_val is not None and np.isfinite(tss_val) and tss_val > 0:
-        if sse <= float(np.finfo(float).eps) * max(1.0, float(tss_val)):
+        if sse <= float(np.finfo(float).eps) * float(tss_val):
             warnings.append({"code": "LR_NEAR_PERFECT_FIT",
                              "message": "残差がほぼ0です。誤差分散の推定が不安定です。",
                              "count": n, "columnIds": []})
@@ -579,6 +653,14 @@ def run_linear_regression(payload: dict = Body(...)):
             if n_stat is not None else {"logLikelihood": None,
                                         "aic": None, "bic": None,
                                         "kAic": p + 1}
+    if like_block.get("logLikelihood") is not None:
+        # Gaussian likelihood is a density in the original response units.
+        log_unit_change = float(n_stat) * math.log(response_scale)
+        like_block["logLikelihood"] -= log_unit_change
+        like_block["aic"] += 2.0 * log_unit_change
+        like_block["bic"] += 2.0 * log_unit_change
+    beta, fitted, resid, cov, sigma2 = _restore_fit_response_units(
+        response_scale, beta, fitted, resid, cov, sigma2, stats, t_rows, qq)
     # Coefficients payload (estimate kept even when inference unavailable).
     coefficients = []
     for j in range(p):
@@ -836,6 +918,7 @@ def run_linear_regression(payload: dict = Body(...)):
     })
     numerical_runtime = time.perf_counter() - started
     manifest["meta"]["numericalRuntimeSeconds"] = float(numerical_runtime)
+    _require_finite_result(manifest)
     with store.lock(ctx["datasetId"]):
         cur_meta = store.get_meta(ctx["datasetId"])
         cur_code = store.load_codebook(ctx["datasetId"]) or {}
@@ -1460,11 +1543,10 @@ def lr_predict(result_id, manifest, req):
         res_list.append(float(yobs - yhat) if yobs is not None else None)
         if want_mean and can_mean:
             try:
-                xvx = float(x @ cov @ x)
-            except Exception:
-                xvx = float("nan")
-            if math.isfinite(xvx) and xvx >= 0:
-                half = tcrit * math.sqrt(xvx)
+                half = mean_ci_half_width(x, cov, tcrit)
+            except LinearRegressionNumericRangeError as exc:
+                _numeric_range_error([exc.field])
+            if half is not None:
                 mlo.append(yhat - half)
                 mhi.append(yhat + half)
             else:
@@ -1477,12 +1559,10 @@ def lr_predict(result_id, manifest, req):
                 interval_unavail = True
         if want_pi and can_pi:
             try:
-                xvx = float(x @ cov @ x)
-            except Exception:
-                xvx = float("nan")
-            tot = xvx + sigma2
-            if math.isfinite(tot) and tot >= 0:
-                half = tcrit * math.sqrt(tot)
+                half = individual_pi_half_width(x, cov, sigma2, tcrit, True)
+            except LinearRegressionNumericRangeError as exc:
+                _numeric_range_error([exc.field])
+            if half is not None:
                 plo.append(yhat - half)
                 phi.append(yhat + half)
             else:
@@ -1591,15 +1671,19 @@ def lr_predict(result_id, manifest, req):
             ha = _nn.asarray(yhs, dtype=float)
             wa = _nn.asarray(ws, dtype=float)
             sw = float(wa.sum())
-            rmse = float(_nn.sqrt(float(((ya - ha) ** 2 * wa).sum() / sw))) \
-                if sw > 0 else None
-            mae = float(float((abs(ya - ha) * wa).sum() / sw)) \
-                if sw > 0 else None
-            ybar = float((ya * wa).sum() / sw) if sw > 0 else None
-            tss = float(((ya - ybar) ** 2 * wa).sum()) \
-                if ybar is not None else None
-            rss = float(((ya - ha) ** 2 * wa).sum())
-            r2 = (1.0 - rss / tss) if tss else None
+            try:
+                joined, eval_scale = normalize_response(_nn.concatenate([ya, ha]))
+                scaled_y, scaled_h = joined[:len(ya)], joined[len(ya):]
+                rss = float(((scaled_y - scaled_h) ** 2 * wa).sum())
+                fit_metrics = fit_statistics(scaled_y, wa, rss, True, None, 0)
+                rmse = rescale_response_quantity(fit_metrics["rmse"], eval_scale,
+                                                field="evaluation.rmse") if sw > 0 else None
+                mae = rescale_response_quantity(
+                    float((abs(scaled_y - scaled_h) * wa).sum() / sw),
+                    eval_scale, field="evaluation.mae") if sw > 0 else None
+                r2 = fit_metrics["rSquared"]
+            except LinearRegressionNumericRangeError as exc:
+                _numeric_range_error([exc.field])
             metrics = {"rmse": rmse, "mae": mae, "rSquared": r2}
         else:
             metrics = {"rmse": None, "mae": None, "rSquared": None}
@@ -1609,6 +1693,10 @@ def lr_predict(result_id, manifest, req):
                       "metrics": metrics}
 
     prediction_id = f"pred-{_uuid.uuid4().hex[:12]}"
+    _require_finite_result({"evaluation": evaluation, "predicted": preds,
+                            "residual": res_list, "meanCiLower": mlo,
+                            "meanCiUpper": mhi, "individualPiLower": plo,
+                            "individualPiUpper": phi})
     pdf = _pl.DataFrame({
         "rowId": scope_ids,
         "status": statuses,

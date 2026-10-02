@@ -1,12 +1,12 @@
 import { getInstanceByDom } from 'echarts'
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { message } from 'antd'
 import { store } from '../src/app/store'
 import { api } from '../src/api/client'
-import LogisticRegressionPage from '../src/features/models/LogisticRegressionPage'
+import LogisticRegressionPage, { type CoefficientItem } from '../src/features/models/LogisticRegressionPage'
 
 vi.mock('../src/features/common/ColumnSelect', () => ({ default: (props: any) => <select data-testid={props['data-testid']}
   multiple={props.mode === 'multiple'} value={props.value} onChange={event => props.onChange(props.mode === 'multiple'
@@ -79,6 +79,44 @@ it('discards responses after revision changes and unmount', async () => {
   view.unmount()
   await act(async () => { finish({ samples: [{ rowId: 'after-unmount' }] }) })
   expect(success).not.toHaveBeenCalled()
+})
+
+it.each(['available', 'unavailable'] as const)('renders %s inference without losing model results', async inferenceStatus => {
+  const available = inferenceStatus === 'available'
+  const coefficient: CoefficientItem = { name: 'score', coefficient: available ? 1e-155 : 1,
+    stdError: available ? 1e-155 : null, zValue: available ? 1 : null, pValue: available ? 0.317311 : null,
+    oddsRatio: available ? 1 : Math.E, ciLower: available ? 1 : null, ciUpper: available ? 1 : null,
+    logOddsRatio: available ? 1e-155 : 1, logCiLower: available ? -0.96e-155 : null,
+    logCiUpper: available ? 2.96e-155 : null, inferenceStatus,
+    inferenceReason: available ? null : 'SINGULAR_INFORMATION',
+    exponentiationStatus: { oddsRatio: 'finite', ciLower: available ? 'finite' : 'unavailable', ciUpper: available ? 'finite' : 'unavailable' } }
+  vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
+  vi.spyOn(api, 'post').mockResolvedValue({ target: 'A', classes: ['0', '1'], features: ['score'], excludedRowCount: 0,
+    diagnostics: { completeSeparation: false, inferenceStatus }, coefficients: [coefficient], curves: {},
+    fitMetrics: { logLikelihood: -1, nullLogLikelihood: -2, aic: 4, bic: 4, pseudoR2: 0.5, converged: true },
+    samples: [{ rowId: 'r1', actual: 0, predictedProb: 0.1, featureValues: { score: 0 }, predictedClass: 0, residual: 0.1, isMisclassified: false }],
+  } as any)
+  const { view } = setup()
+  fireEvent.click(view.getByText('MA候補追加'))
+  fireEvent.change(view.getByTestId('logistic-target-select'), { target: { value: 'A' } })
+  fireEvent.change(view.getByTestId('logistic-features-select'), { target: { value: 'score' } })
+  fireEvent.click(view.getByTestId('run-logistic-btn'))
+  const table = await view.findByTestId('coefficients-table')
+  const cells = within(within(table).getAllByRole('row')[1]).getAllByRole('cell')
+  expect(cells[1]).toHaveTextContent(available ? '1.000e-155' : '1.0000')
+  expect(cells[2]).toHaveTextContent(available ? '1.000e-155' : '利用不可')
+  expect(cells[3]).toHaveTextContent(available ? '1.000' : '利用不可')
+  expect(cells[4]).toHaveTextContent(available ? '0.3173' : '利用不可')
+  expect(cells[4]).not.toHaveTextContent('*')
+  expect(cells[5]).toHaveTextContent(available ? '1.000' : '2.718')
+  expect(cells[6]).toHaveTextContent(available ? '[1.000, 1.000]' : '利用不可')
+  expect(view.getByTestId('logistic-sigmoid-svg')).toBeInTheDocument()
+  expect(view.getByTestId('logistic-forest-chart')).toBeInTheDocument()
+  if (!available) {
+    expect(cells[4].textContent).not.toContain('0.0000')
+    expect(view.getAllByText(/理由:.*情報行列のランク不足/).length).toBeGreaterThan(0)
+    expect(view.getAllByText(/係数を一意に識別できません/).length).toBeGreaterThan(0)
+  }
 })
 
 it.each([0.5, 1, 2])('selects points and rectangles at display scale %s', async scale => {

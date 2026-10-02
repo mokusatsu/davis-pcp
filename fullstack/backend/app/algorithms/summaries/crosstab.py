@@ -25,6 +25,7 @@ import polars as pl
 
 from ..survey.design import build_design
 from ..survey.diagnostics import weight_diagnostics
+from ..survey.weight_arithmetic import absolute_weight_sum, display_weight_total
 from .association import descriptive_association, positive_marginal_submatrix
 from .inference import (
     REQUEST_AUTO,
@@ -245,6 +246,13 @@ def compute_crosstab(
         if values is not None and len(values) != scope_count:
             raise BizError("CROSSTAB_WEIGHT_LENGTH", f"{name} の長さがscopeと一致しません。",
                            status_code=422)
+    if use_weights and absolute_weight_sum(float(weights[k] or 0.0) for k in kept) is None:
+        # This endpoint reports original-unit cells, expected counts and
+        # residuals. Do not silently replace population/frequency counts by a
+        # normalized table when the absolute table cannot be represented.
+        raise BizError("WEIGHT_TOTAL_OUT_OF_RANGE",
+                       "有効回答のウェイト合計が数値範囲を超えています。クロス集計の絶対加重件数を計算できません。",
+                       status_code=422)
     counts = np.zeros((n_rows, n_cols), dtype=float)
     unweighted = np.zeros((n_rows, n_cols), dtype=int)
     cell_rows: list[list[list[str]]] = [[[] for _ in range(n_cols)] for _ in range(n_rows)]
@@ -277,7 +285,7 @@ def compute_crosstab(
     expected = np.zeros((n_rows, n_cols), dtype=float)
     for i in range(n_rows):
         for j in range(n_cols):
-            expected[i, j] = row_totals[i] * col_totals[j] / grand if grand > 0 else 0.0
+            expected[i, j] = (row_totals[i] / grand) * col_totals[j] if grand > 0 else 0.0
 
     def label_of(spec: dict[str, Any], category: str) -> str:
         if category == "__missing__":
@@ -301,11 +309,11 @@ def compute_crosstab(
                 "rowCategoryId": row_cat, "colCategoryId": col_cat,
                 "rowLabel": label_of(row_spec, row_cat), "colLabel": label_of(col_spec, col_cat),
                 "unweightedCount": full_count,
-                "count": round(observed, 4),
+                "count": display_weight_total(observed),
                 "rowPct": pct(observed, float(row_totals[i])),
                 "colPct": pct(observed, float(col_totals[j])),
                 "totalPct": pct(observed, grand),
-                "expectedCount": round(exp, 4),
+                "expectedCount": display_weight_total(exp),
                 "residual": round(asr, 3) if asr is not None else None,
                 "asr": round(asr, 3) if asr is not None else None,
                 "residualType": "descriptive" if survey_weight else "adjusted",
@@ -354,6 +362,9 @@ def compute_crosstab(
     # It is never derived from the test statistic, so choosing a design-based
     # test cannot move it (spec §9).
     descriptive = descriptive_association(counts, weighted=use_weights)
+    if descriptive.get("pearsonChi2Status") == "out_of_range":
+        warnings.append({"code": "CROSSTAB_CHI2_OUT_OF_RANGE",
+                         "message": "記述的Pearson χ²が数値範囲を超えています。比率とCramér's Vは計算されています。"})
     expected_lt5 = int(np.sum(expected < 5))
     total_cells = n_rows * n_cols
     expected_ratio = round(expected_lt5 / total_cells, 4) if total_cells else None
@@ -421,6 +432,7 @@ def compute_crosstab(
             "weightMissingCount": sum(1 for w in weights if w is None),
             "weightZeroCount": weight_zero,
             "weightSum": raw["weightSum"],
+            "weightSumStatus": raw["weightSumStatus"],
             "kishEffectiveN": raw["kishEffectiveN"],
             "weightCv": raw["weightCv"],
             "weightingDeff": raw["weightingDeff"],
@@ -432,12 +444,12 @@ def compute_crosstab(
 
     row_totals_out = [{"categoryId": c, "label": label_of(row_spec, c),
                        "unweightedCount": int(unweighted_row[i]),
-                       "count": round(float(row_totals[i]), 4),
+                       "count": display_weight_total(float(row_totals[i])),
                        "rowPct": 100.0 if row_totals[i] > 0 else None}
                       for i, c in enumerate(row_cats)]
     col_totals_out = [{"categoryId": c, "label": label_of(col_spec, c),
                        "unweightedCount": int(unweighted_col[j]),
-                       "count": round(float(col_totals[j]), 4),
+                       "count": display_weight_total(float(col_totals[j])),
                        "colPct": 100.0 if col_totals[j] > 0 else None}
                       for j, c in enumerate(col_cats)]
     return {
@@ -448,7 +460,7 @@ def compute_crosstab(
         "cells": cells,
         "rowTotals": row_totals_out,
         "colTotals": col_totals_out,
-        "grandTotal": {"unweightedCount": unweighted_grand, "count": round(grand, 4)},
+        "grandTotal": {"unweightedCount": unweighted_grand, "count": display_weight_total(grand)},
         "descriptiveAssociation": descriptive,
         "inference": inference_result.to_payload(),
         "weightDiagnostics": diagnostics,

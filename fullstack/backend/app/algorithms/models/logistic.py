@@ -15,6 +15,7 @@ from scipy import optimize, stats
 from sklearn.linear_model import LogisticRegression
 
 from ...domain.errors import BizError
+from ._scaling import normalized_columns
 
 
 def _exponentiate_estimate(value: float) -> tuple[float | None, str]:
@@ -123,15 +124,17 @@ def run_logistic_regression(
     ])
 
     p_dim = len(feature_columns)
-    means = np.mean(X_raw, axis=0)
-    stds = np.std(X_raw, axis=0, ddof=1)
     constant_columns = [name for name, values in zip(feature_columns, X_raw.T) if np.all(values == values[0])]
     if constant_columns:
         raise BizError('LOGISTIC_CONSTANT_FEATURES', '有効な対象行で値が一定の説明変数を外してください。',
                        details={'columns': constant_columns})
 
+    X_unit, means, stds, unit_scales = normalized_columns(X_raw, "LOGISTIC_NUMERIC_RANGE")
     # Centering without an intercept changes the model origin and cannot be undone.
-    X_scaled = (X_raw - means if intercept else X_raw) / stds
+    X_scaled = (X_unit - means if intercept else X_unit) / stds
+    if not np.isfinite(X_scaled).all():
+        raise BizError("LOGISTIC_NUMERIC_RANGE", "標準化した説明変数が数値の表現範囲外です。",
+                       status_code=422, details={"stage": "standardization"})
 
     # Design matrix: prepend 1s if intercept
     if intercept:
@@ -157,6 +160,7 @@ def run_logistic_regression(
 
     beta_scaled = np.zeros(k_params, dtype=np.float64)
     converged = True
+    fallback_used = False
 
     if reg == "l1":
         # Fit with scikit-learn LogisticRegression L1
@@ -169,6 +173,7 @@ def run_logistic_regression(
         )
         clf.fit(X_design, y)
         beta_scaled = clf.coef_[0]
+        converged = bool(np.all(clf.n_iter_ < clf.max_iter))
     elif reg == "l2":
         # Fit with scikit-learn LogisticRegression L2
         clf = LogisticRegression(
@@ -180,6 +185,7 @@ def run_logistic_regression(
         )
         clf.fit(X_design, y)
         beta_scaled = clf.coef_[0]
+        converged = bool(np.all(clf.n_iter_ < clf.max_iter))
     else:
         # Unpenalized Maximum Likelihood using scipy.optimize.minimize
         def neg_log_likelihood(b: np.ndarray) -> float:
@@ -212,54 +218,71 @@ def run_logistic_regression(
             clf.fit(X_design, y)
             beta_scaled = clf.coef_[0]
             converged = False
+            fallback_used = True
         else:
             beta_scaled = res.x
 
-    # Transform beta back to original scale
-    # X_scaled = (X - mean) / std = X / std - mean / std
-    # beta_scaled_0 + sum_j beta_scaled_j * (X_j - mean_j) / std_j
-    # = (beta_scaled_0 - sum_j beta_scaled_j * mean_j / std_j) + sum_j (beta_scaled_j / std_j) * X_j
-    beta_orig = np.zeros_like(beta_scaled)
+    # First undo centering/sample-SD scaling in the bounded unit coordinates.
+    # Restore physical units only for beta/SE, never for a covariance matrix:
+    # its variances may overflow although the reported SE is representable.
+    transform = np.eye(k_params)
     if intercept:
-        beta_orig[1:] = beta_scaled[1:] / stds
-        beta_orig[0] = beta_scaled[0] - np.sum((beta_scaled[1:] * means) / stds)
-        X_design_orig = np.column_stack([np.ones(n_samples), X_raw])
+        transform[0, 1:] = -means / stds
+        transform[1:, 1:] = np.diag(1.0 / stds)
+        parameter_scales = np.concatenate([[1.0], unit_scales])
     else:
-        beta_orig = beta_scaled / stds
-        X_design_orig = X_raw.copy()
+        transform = np.diag(1.0 / stds)
+        parameter_scales = unit_scales
+    beta_unit = transform @ beta_scaled
+    with np.errstate(over="ignore", under="ignore"):
+        beta_orig = beta_unit / parameter_scales
+    if not np.isfinite(beta_orig).all() or np.any((beta_unit != 0) & (beta_orig == 0)):
+        raise BizError("LOGISTIC_NUMERIC_RANGE", "元の単位での回帰係数が数値の表現範囲外です。単位を変更してください。",
+                       status_code=422, details={"stage": "coefficients"})
 
     # Predictions
-    logits = np.clip(X_design_orig @ beta_orig, -35.0, 35.0)
+    logits = np.clip(X_design @ beta_scaled, -35.0, 35.0)
     pred_probs = 1.0 / (1.0 + np.exp(-logits))
     pred_probs = np.clip(pred_probs, 1e-15, 1.0 - 1e-15)
 
-    # Standard errors via Fisher Information Matrix: I(beta) = X^T W X
+    # Invert Fisher information in the fitted coordinates, with no unrequested
+    # ridge or variance floor. An SVD factor gives SEs without forming squared
+    # physical-unit scale factors. Singular information cannot identify Wald SEs.
     w = pred_probs * (1.0 - pred_probs)
-    Hessian = X_design_orig.T @ (X_design_orig * w[:, None])
-    # Add tiny ridge for numerical stability in inversion
-    Hessian_reg = Hessian + np.eye(k_params) * 1e-9
-    try:
-        cov_matrix = np.linalg.inv(Hessian_reg)
-    except np.linalg.LinAlgError:
-        cov_matrix = np.linalg.pinv(Hessian_reg)
-
-    std_errors = np.sqrt(np.maximum(np.diag(cov_matrix), 1e-12))
-    z_values = beta_orig / std_errors
-    p_values = 2.0 * (1.0 - stats.norm.cdf(np.abs(z_values)))
-
-    # Odds ratio and 95% CI
-    log_ci_lowers = beta_orig - 1.96 * std_errors
-    log_ci_uppers = beta_orig + 1.96 * std_errors
+    _, singular, vt = np.linalg.svd(X_design * np.sqrt(w[:, None]), full_matrices=False)
+    rank_tol = np.finfo(float).eps * max(X_design.shape) * singular[0]
+    inference_available = bool(np.all(singular > rank_tol))
+    std_errors = z_values = p_values = log_ci_lowers = log_ci_uppers = None
+    warnings: list[dict[str, Any]] = []
+    if inference_available:
+        se_unit = np.hypot.reduce(transform @ (vt.T / singular), axis=1)
+        with np.errstate(over="ignore", under="ignore"):
+            std_errors = se_unit / parameter_scales
+            log_ci_lowers = (beta_unit - 1.96 * se_unit) / parameter_scales
+            log_ci_uppers = (beta_unit + 1.96 * se_unit) / parameter_scales
+        if (not all(np.isfinite(v).all() for v in [std_errors, log_ci_lowers, log_ci_uppers])
+                or np.any(std_errors <= 0)):
+            raise BizError("LOGISTIC_NUMERIC_RANGE", "元の単位での標準誤差または信頼区間が数値の表現範囲外です。単位を変更してください。",
+                           status_code=422, details={"stage": "inference"})
+        z_values = beta_unit / se_unit
+        p_values = 2.0 * stats.norm.sf(np.abs(z_values))
+    else:
+        warnings.append({"code": "LOGISTIC_INFERENCE_UNAVAILABLE",
+                         "message": "情報行列のランクが不足しているため、係数の標準誤差・Wald検定・信頼区間を計算できません。",
+                         "details": {"reason": "SINGULAR_INFORMATION"}})
+    if not converged:
+        warnings.append({"code": "LOGISTIC_OPTIMIZER_NOT_CONVERGED",
+                         "message": "要求した最適化の収束を確認できませんでした。",
+                         "details": {"fallbackUsed": fallback_used}})
 
     coefficients = []
-    warnings: list[dict[str, Any]] = []
     for i, name in enumerate(feature_names_with_intercept):
         estimates = {
             "oddsRatio": _exponentiate_estimate(float(beta_orig[i])),
-            "ciLower": _exponentiate_estimate(float(log_ci_lowers[i])),
-            "ciUpper": _exponentiate_estimate(float(log_ci_uppers[i])),
+            "ciLower": _exponentiate_estimate(float(log_ci_lowers[i])) if inference_available else (None, "unavailable"),
+            "ciUpper": _exponentiate_estimate(float(log_ci_uppers[i])) if inference_available else (None, "unavailable"),
         }
-        out_of_range = [key for key, (_, status) in estimates.items() if status != "finite"]
+        out_of_range = [key for key, (_, status) in estimates.items() if status in ("overflow", "underflow")]
         if out_of_range:
             warnings.append({
                 "code": "LOGISTIC_EXPONENTIATION_RANGE",
@@ -268,14 +291,16 @@ def run_logistic_regression(
             })
         coefficients.append({
             "name": name,
-            "coefficient": round(float(beta_orig[i]), 6),
-            "stdError": round(float(std_errors[i]), 6),
-            "zValue": round(float(z_values[i]), 4),
-            "pValue": round(float(p_values[i]), 6),
+            "coefficient": float(beta_orig[i]),
+            "stdError": float(std_errors[i]) if inference_available else None,
+            "zValue": round(float(z_values[i]), 4) if inference_available else None,
+            "pValue": round(float(p_values[i]), 6) if inference_available else None,
             **{key: estimate for key, (estimate, _) in estimates.items()},
             "logOddsRatio": float(beta_orig[i]),
-            "logCiLower": float(log_ci_lowers[i]),
-            "logCiUpper": float(log_ci_uppers[i]),
+            "logCiLower": float(log_ci_lowers[i]) if inference_available else None,
+            "logCiUpper": float(log_ci_uppers[i]) if inference_available else None,
+            "inferenceStatus": "available" if inference_available else "unavailable",
+            "inferenceReason": None if inference_available else "SINGULAR_INFORMATION",
             "exponentiationStatus": {key: status for key, (_, status) in estimates.items()},
         })
 
@@ -341,41 +366,39 @@ def run_logistic_regression(
 
     # Sigmoid curves for each feature
     # Fix other features to median (or mode/0 if binary dummy variable)
-    medians = np.median(X_raw, axis=0)
+    medians = np.median(X_unit, axis=0)
     fixed_values = np.zeros(p_dim)
     for col_i in range(p_dim):
         is_binary = np.all(np.isin(X_raw[:, col_i], [0.0, 1.0]))
         if is_binary:
             vals, counts = np.unique(X_raw[:, col_i], return_counts=True)
-            fixed_values[col_i] = float(vals[np.argmax(counts)])
+            fixed_values[col_i] = float(vals[np.argmax(counts)]) / unit_scales[col_i]
         else:
             fixed_values[col_i] = float(medians[col_i])
 
     curves: dict[str, list[dict[str, float]]] = {}
 
-    feat_betas = beta_orig[1:] if intercept else beta_orig
-    intercept_val = beta_orig[0] if intercept else 0.0
+    fixed_scaled = (fixed_values - means if intercept else fixed_values) / stds
+    feat_betas = beta_scaled[1:] if intercept else beta_scaled
+    intercept_val = beta_scaled[0] if intercept else 0.0
 
     for idx, feat_name in enumerate(feature_columns):
-        col_min = float(np.min(X_raw[:, idx]))
-        col_max = float(np.max(X_raw[:, idx]))
-        if col_max == col_min:
-            col_max += 1.0
-
-        grid_x = np.linspace(col_min, col_max, 80)
+        grid_unit = np.linspace(float(np.min(X_unit[:, idx])), float(np.max(X_unit[:, idx])), 80)
+        grid_scaled = (grid_unit - means[idx] if intercept else grid_unit) / stds[idx]
+        grid_x = grid_unit * unit_scales[idx]
         # Base logit contribution from fixed feature values
         base_logit = intercept_val
         for other_idx in range(p_dim):
             if other_idx != idx:
-                base_logit += feat_betas[other_idx] * fixed_values[other_idx]
+                base_logit += feat_betas[other_idx] * fixed_scaled[other_idx]
 
         curve_points = []
-        for x_val in grid_x:
-            logit_val = base_logit + feat_betas[idx] * x_val
+        for x_val, x_scaled in zip(grid_x, grid_scaled):
+            logit_val = base_logit + feat_betas[idx] * x_scaled
             logit_val = np.clip(logit_val, -35.0, 35.0)
             prob_val = 1.0 / (1.0 + np.exp(-logit_val))
             curve_points.append({
-                "x": round(float(x_val), 4),
+                "x": float(x_val),
                 "probability": round(float(prob_val), 4),
             })
         curves[feat_name] = curve_points
@@ -383,6 +406,8 @@ def run_logistic_regression(
     return {
         "warnings": warnings,
         "diagnostics": {"completeSeparation": complete_separation,
+                        "fallbackUsed": fallback_used,
+                        "inferenceStatus": "available" if inference_available else "unavailable",
                         "separationMethod": "strict-margin-linear-feasibility"},
         "target": target_column,
         "classes": classes,

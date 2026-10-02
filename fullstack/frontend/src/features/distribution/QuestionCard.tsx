@@ -28,12 +28,15 @@ export interface AuxiliaryStats {
 
 export interface WeightedDistItem {
   code: string
-  weightedCount: number
+  weightedCount: number | null
+  weightedCountStatus?: 'ok' | 'out_of_range'
   weightedPct: number | null
 }
 
 export interface WeightedSummary {
   weightedN: number | null
+  weightedNStatus?: 'ok' | 'out_of_range'
+  warnings?: { code: string; message: string }[]
   weightMissingCount: number
   distribution: WeightedDistItem[]
   weightedMean?: number | null
@@ -45,6 +48,8 @@ export interface WeightMeta {
   columnName?: string | null
   unweightedN?: number | null
   weightedN?: number | null
+  weightedNStatus?: 'ok' | 'out_of_range'
+  warnings?: { code: string; message: string }[]
   weightMissingCount?: number | null
 }
 
@@ -271,7 +276,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     {weight?.status === 'applied' && (() => {
                       const w = weightedByCode.get(key)
                       if (!w) return null
-                      return <span> / 加重{w.weightedPct == null ? '—' : `${w.weightedPct.toFixed(1)}%`} ({w.weightedCount.toLocaleString()})</span>
+                      return <span> / 加重{w.weightedPct == null ? '—' : `${w.weightedPct.toFixed(1)}%`} ({w.weightedCountStatus === 'out_of_range' ? '範囲外' : w.weightedCount?.toLocaleString() ?? '—'})</span>
                     })()}
                   </Text>
                   {item.isMissing && <Tag color="warning">{item.missingReason || '無回答'}</Tag>}
@@ -362,10 +367,15 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
       {weight?.status === 'applied' && (
         <div style={{ marginTop: 8, fontSize: 11, color: '#666' }} data-testid="weight-note">
-          非加重n={weight.unweightedN?.toLocaleString()} / 加重Σw={weight.weightedN?.toLocaleString()}
+          非加重n={weight.unweightedN?.toLocaleString()} / 加重Σw={weight.weightedNStatus === 'out_of_range' ? '範囲外' : weight.weightedN?.toLocaleString() ?? '—'}
           {weight.weightMissingCount ? ` / ウェイト欠損${weight.weightMissingCount}` : ''} · 標準誤差は非加重n基準。母集団推論には調査設計情報が必要
         </div>
       )}
+      {weight?.status === 'applied' && (weighted?.warnings ?? weight.warnings ?? []).map(warning => (
+        <div key={warning.code} role="status" style={{ marginTop: 8, fontSize: 12, color: '#ad6800' }} data-testid="weight-range-warning">
+          {warning.message}
+        </div>
+      ))}
       {weight?.status === 'no_positive_weight' && (
         <div style={{ marginTop: 8, fontSize: 11, color: '#a00' }} data-testid="weight-note">
           正のウェイトがないため加重値を表示できません。非加重値を参照してください。
