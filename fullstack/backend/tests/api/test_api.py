@@ -81,7 +81,9 @@ class TestDatasets:
         assert pl.read_ipc_stream(io.BytesIO(r.content))["__rowId__"].to_list() == selected
 
     def test_delete(self):
-        created = client.post("/api/v1/datasets/import/sample", json={"name": "temp"}).json()
+        # Builtins are stable singletons; deletion must use a disposable dataset.
+        created = client.post("/api/v1/datasets/import", files={
+            "file": ("temp.csv", b"x,y\n1,2\n3,4\n", "text/csv")}).json()
         r = client.delete(f"/api/v1/datasets/{created['datasetId']}")
         assert r.status_code == 200
 

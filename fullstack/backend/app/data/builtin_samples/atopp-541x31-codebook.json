@@ -1,0 +1,1792 @@
+{
+  "columns": [
+    {
+      "name": "OR1",
+      "label": "All journals should publish reviewers’ comments with reviewers’ names.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All journals should publish reviewers’ comments with reviewers’ names.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "All journals should publish reviewers ’comments with reviewers’ names.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR2",
+      "label": "All journals should publish reviewers’ comments, but without reviewers’ names.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All journals should publish reviewers’ comments, but without reviewers’ names.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "All journals should publish reviewers ’comments, but without reviewers’ names.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR3",
+      "label": "Open review is difficult in smaller scientific communities.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Open review is difficult in smaller scientific communities.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "Open review is difficult in smaller scientific communities.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR4",
+      "label": "I would like to know who reviewed my work.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I would like to know who reviewed my work.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR4",
+      "sourceItemNumber": 4,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "I would like to know who reviewed my work.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR5",
+      "label": "If I have the opportunity to sign a review report I will always sign it.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "If I have the opportunity to sign a review report I will always sign it.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR5",
+      "sourceItemNumber": 5,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "If I have the opportunity to sign a review report I will always sign it.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR6",
+      "label": "Reviews of rejected manuscripts should be available to all journals to prevent reviewers repeating the same work.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Reviews of rejected manuscripts should be available to all journals to prevent reviewers repeating the same work.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR6",
+      "sourceItemNumber": 6,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Reviews of rejected manuscripts should be available to all journals to prevent reviewers repeating the same work.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR7",
+      "label": "An open review of project proposals increases the transparency of the project selection process for funding.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "An open review of project proposals increases the transparency of the project selection process for funding.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR7",
+      "sourceItemNumber": 7,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "An open review of project proposals increases the transparency of the project selection process for funding.",
+      "questionDomain": "Open peer review",
+      "membershipWarning": "Raw original numbering and wording from S1 Appendix; S2 questionnaire uses a conflicting OR7/OR8/OR9 final-item selection. No final21 selection is asserted."
+    },
+    {
+      "name": "OR8",
+      "label": "Open review for project proposals increases the transparency of funding allocation procedures.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Open review for project proposals increases the transparency of funding allocation procedures.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR8",
+      "sourceItemNumber": 8,
+      "factorMemberships": [
+        "open-peer-review"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Open review for project proposals increases the transparency of funding allocation procedures.",
+      "questionDomain": "Open peer review",
+      "membershipWarning": "Raw original numbering and wording from S1 Appendix; S2 questionnaire uses a conflicting OR7/OR8/OR9 final-item selection. No final21 selection is asserted."
+    },
+    {
+      "name": "OR9",
+      "label": "All public calls for projects proposals should publish reviewers’ comments with reviewers’ names.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All public calls for projects proposals should publish reviewers’ comments with reviewers’ names.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR9",
+      "sourceItemNumber": 9,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "All public calls for projects proposals should publish reviewers’ comments with reviewers’ names.",
+      "questionDomain": "Open peer review",
+      "membershipWarning": "Raw original numbering and wording from S1 Appendix; S2 questionnaire uses a conflicting OR7/OR8/OR9 final-item selection. No final21 selection is asserted."
+    },
+    {
+      "name": "OR10",
+      "label": "Small scientific communities should have double-blind reviews for projects proposals.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Small scientific communities should have double-blind reviews for projects proposals.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR10",
+      "sourceItemNumber": 10,
+      "factorMemberships": [
+        "open-peer-review-small-communities"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "documented-in-main-text-and-verified-in-source-workbook",
+        "sourceDerivedColumn": "OR10_rek",
+        "documentedTransformation": "6 - raw value",
+        "verifiedRows": 541,
+        "violations": 0,
+        "conflictingFootnote": "S1 Appendix says Open data items 4 and 6; main-text Methods and workbook instead identify original Opod6 and Opod8. Do not apply the footnote numbering to original raw columns."
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Small scientific communities should have double-blind reviews for projects proposals.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR11",
+      "label": "Small scientific communities should have double-blind reviews for journal papers.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Small scientific communities should have double-blind reviews for journal papers.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR11",
+      "sourceItemNumber": 11,
+      "factorMemberships": [
+        "open-peer-review-small-communities"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "documented-in-main-text-and-verified-in-source-workbook",
+        "sourceDerivedColumn": "OR_11_rek",
+        "documentedTransformation": "6 - raw value",
+        "verifiedRows": 541,
+        "violations": 0,
+        "conflictingFootnote": "S1 Appendix says Open data items 4 and 6; main-text Methods and workbook instead identify original Opod6 and Opod8. Do not apply the footnote numbering to original raw columns."
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Small scientific communities should have double-blind reviews for journal papers.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "OR12",
+      "label": "Young scientists do not want to sign an open review because they are afraid of the reactions of older colleagues.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Young scientists do not want to sign an open review because they are afraid of the reactions of older colleagues.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "OR12",
+      "sourceItemNumber": 12,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "Young scientists do not want to sign an open review because they are afraid of the reactions of older colleagues.",
+      "questionDomain": "Open peer review"
+    },
+    {
+      "name": "Opod1",
+      "label": "Data from scientific research should be publicly available.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Data from scientific research should be publicly available.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Data from scientific research should be publicly available.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod2",
+      "label": "All (anonymized) research data of publicly funded research should be public/open.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All (anonymized) research data of publicly funded research should be public/open.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "All (anonymized) research data of publicly funded research should be public/open.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod3",
+      "label": "All (anonymized) research data, regardless of who funded the research, should be public/open.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All (anonymized) research data, regardless of who funded the research, should be public/open.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "All (anonymized) research data, regardless of who funded the research, should be public/open.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod4",
+      "label": "All data collected in surveys should be available on request.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "All data collected in surveys should be available on request.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod4",
+      "sourceItemNumber": 4,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "All data collected in surveys should be available on request.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod5",
+      "label": "Research results should be available only to members of the academic community.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Research results should be available only to members of the academic community.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod5",
+      "sourceItemNumber": 5,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "Research results should be available only to members of the academic community.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod6",
+      "label": "I do not want my data to be downloadable and reusable in other research.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I do not want my data to be downloadable and reusable in other research.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod6",
+      "sourceItemNumber": 6,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "documented-in-main-text-and-verified-in-source-workbook",
+        "sourceDerivedColumn": "Opod6_rek",
+        "documentedTransformation": "6 - raw value",
+        "verifiedRows": 541,
+        "violations": 0,
+        "conflictingFootnote": "S1 Appendix says Open data items 4 and 6; main-text Methods and workbook instead identify original Opod6 and Opod8. Do not apply the footnote numbering to original raw columns."
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "I do not want my data to be downloadable and reusable in other research.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod7",
+      "label": "If all or most of the data were publicly available, science would develop faster.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "If all or most of the data were publicly available, science would develop faster.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod7",
+      "sourceItemNumber": 7,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "If all or most of the data were publicly available, science would develop faster.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod8",
+      "label": "Authors should be able to decide whom to give access to for their research data.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Authors should be able to decide whom to give access to for their research data.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod8",
+      "sourceItemNumber": 8,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "documented-in-main-text-and-verified-in-source-workbook",
+        "sourceDerivedColumn": "Opod8_rekod",
+        "documentedTransformation": "6 - raw value",
+        "verifiedRows": 541,
+        "violations": 0,
+        "conflictingFootnote": "S1 Appendix says Open data items 4 and 6; main-text Methods and workbook instead identify original Opod6 and Opod8. Do not apply the footnote numbering to original raw columns."
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Authors should be able to decide whom to give access to for their research data.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod9",
+      "label": "Journals should have access to all information during the review process.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Journals should have access to all information during the review process.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod9",
+      "sourceItemNumber": 9,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Journals should have access to all information during the review process.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "Opod10",
+      "label": "Each institution should have a repository for all research data it collects.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Each institution should have a repository for all research data it collects.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "Opod10",
+      "sourceItemNumber": 10,
+      "factorMemberships": [
+        "open-data"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Each institution should have a repository for all research data it collects.",
+      "questionDomain": "Open data"
+    },
+    {
+      "name": "PPS1",
+      "label": "Before sending a manuscript to a journal, I would publish the manuscript on a preprint server.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Before sending a manuscript to a journal, I would publish the manuscript on a preprint server.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "preprinting"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Before sending a manuscript to a journal, I would publish the manuscript on a preprint server.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS2",
+      "label": "Preprint servers can help editors select good manuscripts for their journal.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Preprint servers can help editors select good manuscripts for their journal.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [
+        "preprinting"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Preprint servers can help editors select good manuscripts for their journal.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS3",
+      "label": "The publisher / magazine has the right to refuse to publish the work that I previously published on the preprint server.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "The publisher / magazine has the right to refuse to publish the work that I previously published on the preprint server.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "The publisher / magazine has the right to refuse to publish the work that I previously published on the preprint server.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS4",
+      "label": "I do not want to publish a manuscript of the paper before sending it to the journal for fear of stealing the idea, research.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I do not want to publish a manuscript of the paper before sending it to the journal for fear of stealing the idea, research.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS4",
+      "sourceItemNumber": 4,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "I do not want to publish a manuscript of the paper before sending it to the journal for fear of stealing the idea, research.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS5",
+      "label": "Papers deposited as preprint versions receive more citations than other papers.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Papers deposited as preprint versions receive more citations than other papers.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS5",
+      "sourceItemNumber": 5,
+      "factorMemberships": [
+        "preprinting"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Papers deposited as preprint versions receive more citations than other papers.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS6",
+      "label": "Papers deposited on preprint servers help increase visibility.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Papers deposited on preprint servers help increase visibility.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS6",
+      "sourceItemNumber": 6,
+      "factorMemberships": [
+        "preprinting"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "Papers deposited on preprint servers help increase visibility.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS7",
+      "label": "By depositing a paper on a preprint server before submitting it to a journal, I protect my research from a lengthy review process.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "By depositing a paper on a preprint server before submitting it to a journal, I protect my research from a lengthy review process.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS7",
+      "sourceItemNumber": 7,
+      "factorMemberships": [
+        "preprinting"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": false,
+      "sourceTextBeforeTypographyNormalization": "By depositing a paper on a preprint server before submitting it to a journal, I protect my research from a lengthy review process.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS8",
+      "label": "It is enough for me to publish the work on the preprint server.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "It is enough for me to publish the work on the preprint server.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS8",
+      "sourceItemNumber": 8,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "It is enough for me to publish the work on the preprint server.",
+      "questionDomain": "Preprinting"
+    },
+    {
+      "name": "PPS9",
+      "label": "Before sending the paper to the journal, I check the conditions of copyright and self-archiving.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "strongly disagree",
+        "2": "disagree",
+        "3": "neither agree nor disagree",
+        "4": "agree",
+        "5": "strongly agree"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "Before sending the paper to the journal, I check the conditions of copyright and self-archiving.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "sourceColumn": "PPS9",
+      "sourceItemNumber": 9,
+      "factorMemberships": [],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "verbatim-labels-from-paper-Methods",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-listed-in-published-four-item-recode"
+      },
+      "removedInS1Appendix": true,
+      "sourceTextBeforeTypographyNormalization": "Before sending the paper to the journal, I check the conditions of copyright and self - archiving.",
+      "questionDomain": "Preprinting"
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "ATOPPの原31項目・未反転・未採点データです。最終21項目の確定版として扱わないでください。S1 AppendixはOR7/OR8を残しOR9を削除しますが、S2 Appendixの質問票はOR7相当を載せずOR8/OR9相当を載せています。項目文と因子情報は元の31項目番号を保持したS1 Appendixに従い、この不一致を解消したとは扱いません。反転対象は本文Methodsと公開XLSXの派生列がOpod6/Opod8/OR10/OR11を支持し、全541行で6−元値と一致します。S1 Appendix脚注のOpen data 4/6という番号には不一致があります。本サンプルは全列の原値を保存し、isReversed=falseは『自動反転を適用しない』を意味します。\n\n© 2021 Baždarić et al. データおよび著者公開の設問文: Creative Commons Attribution 4.0 International (CC BY 4.0). https://creativecommons.org/licenses/by/4.0/\n\nKsenija Baždarić, Iva Vrkić, Evgenia Arh, Martina Mavrinac, Maja Gligora Marković, Lidija Bilić-Zulle, Jadranka Stojanovski, and Mario Malički (2021). Attitudes and practices of open data, preprinting, and peer-review—A cross sectional study on Croatian scientists. PLOS ONE 16(6): e0244529. https://doi.org/10.1371/journal.pone.0244529\n\nデータ出典: S1 Dataset / data_ATOPP。設問文出典: S1 Appendix, Table 1（原31項目）。変更内容: 公開XLSXから設問列のみ選びCSV化。公開ファイルの全541行と元の行順を維持。行除外、数値変更、欠損補完、反転、合成点追加、人工回答追加なし。英語設問文は著者公開版を保持し、文書の改行・空白だけを正規化。\n\nS1 Appendixの因子: Opod1/2/3/6/7/8/9/10=Open data、PPS1/2/5/6/7=Preprinting、OR10/11=Open peer review in small scientific communities、OR1/4/5/6/7/8=Open peer review。削除マーク付き10項目も原データとして残しています。\n\n抽出列の空欄・範囲外値は0件。特殊欠損コードは出典に定義を確認できなかったため追加していません。重み・調査デザイン設定は適用していません。\n\n利用時は著者・原論文・ライセンスと変更内容を明示してください。著者による本アプリの推奨を意味しません。本サンプルの提供は、データ・尺度・因子モデルの正確性、心理測定学的妥当性、特定目的への適合性を保証するものではありません。権利表示確認日: 2026-10-03。PLOSのライセンスポリシー: https://journals.plos.org/plosone/s/licenses-and-copyright",
+  "notes": [
+    "ATOPPの原31項目・未反転・未採点データです。最終21項目の確定版として扱わないでください。S1 AppendixはOR7/OR8を残しOR9を削除しますが、S2 Appendixの質問票はOR7相当を載せずOR8/OR9相当を載せています。項目文と因子情報は元の31項目番号を保持したS1 Appendixに従い、この不一致を解消したとは扱いません。反転対象は本文Methodsと公開XLSXの派生列がOpod6/Opod8/OR10/OR11を支持し、全541行で6−元値と一致します。S1 Appendix脚注のOpen data 4/6という番号には不一致があります。本サンプルは全列の原値を保存し、isReversed=falseは『自動反転を適用しない』を意味します。"
+  ],
+  "factorGroups": [
+    {
+      "id": "open-data",
+      "label": "Open data",
+      "columnNames": [
+        "Opod1",
+        "Opod2",
+        "Opod3",
+        "Opod6",
+        "Opod7",
+        "Opod8",
+        "Opod9",
+        "Opod10"
+      ],
+      "sourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "status": "S1-Appendix-membership-only; S2-questionnaire-conflicts",
+      "scoringApplied": false
+    },
+    {
+      "id": "preprinting",
+      "label": "Preprinting",
+      "columnNames": [
+        "PPS1",
+        "PPS2",
+        "PPS5",
+        "PPS6",
+        "PPS7"
+      ],
+      "sourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "status": "S1-Appendix-membership-only; S2-questionnaire-conflicts",
+      "scoringApplied": false
+    },
+    {
+      "id": "open-peer-review-small-communities",
+      "label": "Open peer review in small scientific communities",
+      "columnNames": [
+        "OR10",
+        "OR11"
+      ],
+      "sourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "status": "S1-Appendix-membership-only; S2-questionnaire-conflicts",
+      "scoringApplied": false
+    },
+    {
+      "id": "open-peer-review",
+      "label": "Open peer review",
+      "columnNames": [
+        "OR1",
+        "OR4",
+        "OR5",
+        "OR6",
+        "OR7",
+        "OR8"
+      ],
+      "sourceUrl": "https://doi.org/10.1371/journal.pone.0244529.s001",
+      "status": "S1-Appendix-membership-only; S2-questionnaire-conflicts",
+      "scoringApplied": false
+    }
+  ],
+  "metadata": {
+    "sampleId": "atopp-541x31",
+    "sourceUrl": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0244529",
+    "sourceDataUrl": "https://journals.plos.org/plosone/article/file?type=supplementary&id=10.1371/journal.pone.0244529.s004",
+    "sourceSheet": "data_ATOPP",
+    "rowCount": 541,
+    "columnCount": 31,
+    "rawUnscored": true,
+    "scoringApplied": false,
+    "syntheticData": false,
+    "ordinalOrderBasis": "ascending original integer response codes; does not assert equally spaced categories",
+    "anchorCaution": "Exact five response labels in article Methods; no Japanese translation of response anchors has been introduced.",
+    "importNote": "Name-based staging. Map name to the live dataset columnId. categoryOrder is the current app field; ordinalOrder, factorGroups, and provenance extras are explanatory staging metadata, not new app behavior."
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "title": "令和4年度横浜市民意識調査",
+  "publisher": "横浜市",
+  "license": "CC-BY-4.0",
+  "licenseUrl": "https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html",
+  "sourceUrl": "https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html",
+  "attribution": "横浜市「令和4年度横浜市民意識調査」を加工。CC BY 4.0。",
+  "sourceFiles": [
+    {
+      "file": "yokohama_rawdataR4.xlsx",
+      "sha256": "c9f2d5268c4d4fb4438c32f958df2f3437cac05b25313d23e779cffb9de27d0b",
+      "bytes": 2496246,
+      "sourceUrl": "https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.files/rawdataR4.xlsx"
+    },
+    {
+      "file": "yokohama_questionnaire_2022.pdf",
+      "sha256": "60d7c98fdf60d7786c8b5337cb8615616ae3645d8d44f8a587337dbc186edbce",
+      "bytes": 318186,
+      "sourceUrl": "https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.files/0001_202404.pdf"
+    }
+  ],
+  "sourceRespondentRows": 2572,
+  "eligibleRows": 2510,
+  "outputRows": 600,
+  "outputColumns": 13,
+  "notes": [
+    "公開個票2,572件のうちF2が20歳以上の回答を抽出。18～19歳・年齢無回答は候補から除外。",
+    "空白は欠損として保持。問8は5段階で3は中立回答であり、欠損ではない。",
+    "健康項目Q8_オ、地区・世帯・子どもの属性は今回の候補から除外。",
+    "MA原票は非選択と無回答の空欄の区別に追加確認が必要なため候補に含めない。"
+  ],
+  "weightStatus": "Publisher supplies no weight in these source files; no weight created",
+  "fullSourceChecks": {},
+  "ccByLicenseUrl": "https://creativecommons.org/licenses/by/4.0/deed.ja",
+  "sampling": {
+    "method": "lowest SHA-256(seed|slug|zero-based-source-row), then source order",
+    "seed": "davis-japanese-survey-qa-2026-10-02-v1",
+    "purpose": "QA candidate, not a population-representative sample"
+  },
+  "sourceCodebookSha256": "acf5460e92a2d0180c4b4d311465538f7baab97b68da1612639dfe171eab1d43",
+  "sourcePreparedDataSha256": "ad5ed0a498b44587083870c7af332048af28fb7c708760fda3bcb97450f1dce9",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "764ad8a6540264218d83b2abac77b3e2a123af815854a0bcf0081ed4243c11f6",
+  "codebookSha256": "80e4d60f65041e805759b74f87a44cf9b02923b1a622ec6e4e392b1b02efd39f",
+  "rowCount": 600,
+  "columnCount": 13,
+  "citation": "令和4年度横浜市民意識調査、横浜市",
+  "changes": "公開個票2,572件のうちF2が20歳以上の回答を抽出。18～19歳・年齢無回答は候補から除外。 空白は欠損として保持。問8は5段階で3は中立回答であり、欠損ではない。 健康項目Q8_オ、地区・世帯・子どもの属性は今回の候補から除外。 MA原票は非選択と無回答の空欄の区別に追加確認が必要なため候補に含めない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。"
+}

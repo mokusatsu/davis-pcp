@@ -20,7 +20,6 @@ from ..domain.multi_response import resolve_groups, validate_group
 from ..domain.ma_projection import plan_ma_axes, append_ma_axes
 from ..services.dataset_service import ColumnRole, ImportOptions, new_id, now_iso
 from ..services.import_service import (
-    build_builtin_iris,
     enforce_limits,
     load_dataframe_from_upload,
     probe_table,
@@ -140,29 +139,76 @@ def list_datasets() -> dict:
 
 
 class BuiltinSampleRequest(BaseModel):
-    name: str = "Iris (built-in sample)"
+    name: str | None = None
+    sampleId: str = "iris"
+
+
+def _existing_builtin(sample_id: str) -> str | None:
+    for item in store.list_datasets():
+        meta = store.get_meta(item["datasetId"])
+        if meta.get("builtinSampleId") == sample_id or meta.get("format") == f"builtin-{sample_id}":
+            return item["datasetId"]
+    return None
+
+
+@router.get("/datasets/samples")
+def list_builtin_samples() -> dict:
+    from ..services.builtin_samples import catalog
+    return {"samples": [{**{key: spec[key] for key in ("id", "name", "rowCount", "columnCount", "sourceUrl") if key in spec},
+                          "datasetId": _existing_builtin(spec["id"])} for spec in catalog()]}
+
+
+@router.get("/datasets/samples/{sample_id}/package")
+def download_builtin_sample(sample_id: str) -> Response:
+    from ..services.builtin_samples import sample_package
+    return Response(sample_package(sample_id), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{sample_id}-sample.zip"'})
 
 
 @router.post("/datasets/import/sample")
 def import_builtin_sample(request: BuiltinSampleRequest | None = None) -> dict:
-    target_name = request.name if request else "Iris (built-in sample)"
-    for item in store.list_datasets():
-        if item.get("name") == target_name:
-            meta = dict(store.get_meta(item["datasetId"]))
-            if store.load_codebook(item["datasetId"]) is None:
-                from ..services.dataset_service import generate_initial_codebook
-                try:
-                    cb = generate_initial_codebook(item["datasetId"], meta.get("schema", []))
-                    store.save_codebook(item["datasetId"], cb)
-                except Exception:
-                    pass
-            meta.pop("rowIds", None)
-            return meta
-    df = build_builtin_iris()
-    dataset_id = new_id("ds")
-    meta = _finalize_dataset(dataset_id, target_name,
-                             "builtin-iris", df, None)
-    return meta
+    from ..services.builtin_samples import IRIS_LABELS, IRIS_LICENSE, install_codebook, load_sample, sample_spec
+    requested = request or BuiltinSampleRequest()
+    spec = sample_spec(requested.sampleId)
+    # A catalog ID identifies a sample; an unrelated upload with the same name
+    # must never be mistaken for the official sample.
+    with store.lock(f"builtin-{requested.sampleId}"):
+        existing = _existing_builtin(requested.sampleId)
+        if existing:
+            with store.lock(existing):
+                meta = store.get_meta(existing)
+                cb = store.load_codebook(existing)
+                if cb is None:
+                    from ..services.dataset_service import generate_initial_codebook
+                    _, template = load_sample(requested.sampleId)
+                    cb = install_codebook(generate_initial_codebook(existing, meta.get("schema", [])), template)
+                elif requested.sampleId == "iris":
+                    # Enrich only untouched question text. Never rewrite custom
+                    # labels, reversal flags, scales, domains, or existing licenses.
+                    changed = False
+                    for column in cb.get("columns", []):
+                        label = IRIS_LABELS.get(column["name"])
+                        if label and not meta.get("builtinCodebookVersion") and column.get("label", column["name"]) == column["name"]:
+                            column["label"] = label
+                            changed = True
+                    if "licenseText" not in cb:
+                        cb["licenseText"] = IRIS_LICENSE
+                        cb["licenseRevision"] = 1
+                    if changed:
+                        cb["schemaRevision"] = int(cb.get("schemaRevision", 1)) + 1
+                        meta["schemaRevision"] = cb["schemaRevision"]
+                        meta["fingerprint"] = dataset_fingerprint(meta["schema"], cb["schemaRevision"], store.get_dataframe(existing),
+                                                                  meta.get("format", ""), meta.get("importOptions", {}))
+                meta["builtinSampleId"] = requested.sampleId
+                meta["builtinCodebookVersion"] = 1
+                store.save_metadata(existing, meta, cb)
+                meta.pop("rowIds", None)
+                return meta
+        frame, template = load_sample(requested.sampleId)
+        dataset_id = f"ds-builtin-{requested.sampleId}"
+        return _finalize_dataset(dataset_id, requested.name or spec["name"],
+                                 f"builtin-{requested.sampleId}", frame, None,
+                                 builtin_sample_id=requested.sampleId, codebook_template=template)
 
 
 async def _read_upload(upload: UploadFile) -> bytes:
@@ -379,6 +425,8 @@ def _sync_codebook(
         cb_payload = {
             "datasetId": dataset_id,
             "schemaRevision": existing_cb.get("schemaRevision", 1) + int(merged_cols != existing_cb["columns"]),
+            "licenseText": existing_cb.get("licenseText", ""),
+            "licenseRevision": existing_cb.get("licenseRevision", 1),
             "columns": merged_cols,
         }
     else:
@@ -416,6 +464,8 @@ def _finalize_dataset(
     source_schema: list[dict] | None = None,
     source_dataset_id: str | None = None,
     derivation: dict[str, Any] | None = None,
+    builtin_sample_id: str | None = None,
+    codebook_template: dict[str, Any] | None = None,
 ) -> dict:
     schemas = probe_table(df, df.height)
     id_column = (options.rowIdColumn if options and options.rowIdColumn else None) or next((s.name for s in schemas if s.role == ColumnRole.ROW_ID), None)
@@ -427,6 +477,12 @@ def _finalize_dataset(
     # Re-probe on the canonical frame so row counts align with __rowId__, preserving schema metadata if available.
     schema_payload = _derive_dataset_schema(df, source_schema)
     cb = _sync_codebook(dataset_id, df, source_schema=source_schema, source_dataset_id=source_dataset_id)
+    if codebook_template is not None:
+        from ..services.builtin_samples import install_codebook
+        cb = install_codebook(cb, codebook_template)
+        _validate_reversed_numeric_ranges(cb)
+        for group in resolve_groups(cb):
+            validate_group(group)
     schema_revision = cb.get("schemaRevision", 1)
 
     # Single source of truth; commit_data_change recomputes it the same way.
@@ -448,6 +504,9 @@ def _finalize_dataset(
         "createdAt": now_iso(),
         "importOptions": options.model_dump(mode="json") if options else ImportOptions().model_dump(mode="json"),
     }
+    if builtin_sample_id:
+        meta["builtinSampleId"] = builtin_sample_id
+        meta["builtinCodebookVersion"] = 1
     if source_dataset_id:
         # A derived dataset must say where it came from, and what its "raw" means.
         meta["sourceDatasetId"] = source_dataset_id
@@ -524,12 +583,13 @@ def _get_codebook(dataset_id: str) -> dict:
         from ..services.dataset_service import generate_initial_codebook
         cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
         store.save_codebook(dataset_id, cb)
-    response = dict(cb)
+    response = {"licenseText": "", "licenseRevision": 1, **cb}
     response["multiResponseGroups"] = _get_visible_multi_response_groups(cb)
     return response
 
 
 @router.put("/datasets/{dataset_id}/codebook")
+@router.patch("/datasets/{dataset_id}/codebook")
 def update_codebook(dataset_id: str, request: dict) -> dict:
     with store.lock(dataset_id):
         return _update_codebook(dataset_id, request)
@@ -654,6 +714,7 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
         cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
         cb["multiResponseGroups"] = []
 
+    cb = {"licenseText": "", "licenseRevision": 1, **cb}
     current_schema_revision = int(cb.get("schemaRevision", 1))
     if (
         update_req.expectedSchemaRevision is not None
@@ -668,6 +729,34 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
                 "expectedSchemaRevision": update_req.expectedSchemaRevision,
             },
         )
+
+    if update_req.explicitly_set("licenseText"):
+        current_license_revision = int(cb["licenseRevision"])
+        if (update_req.expectedLicenseRevision is not None
+                and update_req.expectedLicenseRevision != current_license_revision):
+            raise BizError(
+                "CODEBOOK_LICENSE_STALE",
+                "ライセンス情報が更新されています。再読み込みしてから保存してください。",
+                status_code=409,
+                details={"licenseRevision": current_license_revision,
+                         "expectedLicenseRevision": update_req.expectedLicenseRevision},
+            )
+        cb["licenseText"] = update_req.licenseText
+        cb["licenseRevision"] = current_license_revision + 1
+        if not update_req.columns and not any(update_req.explicitly_set(field) for field in (
+                "multiResponseGroups", "weightConfig", "surveyDesign")):
+            # License edits do not change analytical inputs. In particular, do
+            # not recompute ordinal domains, bump schema/data revisions, or
+            # change the fingerprint that existing model results depend on.
+            store.save_metadata(dataset_id, meta, cb)
+            return {
+                "status": "success",
+                "datasetId": dataset_id,
+                "schemaRevision": current_schema_revision,
+                "licenseRevision": cb["licenseRevision"],
+                "updatedColumns": 0,
+                "codebook": {**cb, "multiResponseGroups": _get_visible_multi_response_groups(cb)},
+            }
 
     columns_payload = [dict(col) for col in cb.get("columns", []) if isinstance(col, dict)]
     cb["columns"] = columns_payload
@@ -958,6 +1047,7 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
         "status": "success",
         "datasetId": dataset_id,
         "schemaRevision": new_rev,
+        "licenseRevision": cb["licenseRevision"],
         "updatedColumns": updated_count,
         "codebook": {**cb, "multiResponseGroups": _get_visible_multi_response_groups(cb)},
     }
@@ -972,13 +1062,18 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
     patches: list[dict] = []
     groups = None
     design_updates: dict[str, Any] = {}
+    license_updates: dict[str, Any] = {}
     try:
         text = raw.decode("utf-8-sig")
         if text.lstrip().startswith(("{", "[")):
             payload = json.loads(text)
-            items = payload.get("columns") if isinstance(payload, dict) else payload
+            items = payload.get("columns", []) if isinstance(payload, dict) else payload
             if not isinstance(items, list):
                 raise ValueError("columns must be an array")
+            if isinstance(payload, dict) and "licenseText" in payload:
+                if not isinstance(payload["licenseText"], str):
+                    raise ValueError("licenseText must be a string")
+                license_updates["licenseText"] = payload["licenseText"]
             source_targets: dict[str, dict | None] = {}
             source_names: dict[str, dict | None] = {}
             for item in items:
@@ -1063,6 +1158,18 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
                     design_updates[key] = mapped
         else:
             for row in csv.DictReader(io.StringIO(text)):
+                record_type = row.get("recordType") or "column"
+                if record_type == "dataset":
+                    if "licenseText" in license_updates:
+                        raise ValueError("Only one dataset metadata row is allowed")
+                    if row.get("name") or not isinstance(row.get("licenseText"), str):
+                        raise ValueError("Dataset metadata requires licenseText and no column name")
+                    license_updates["licenseText"] = row["licenseText"]
+                    continue
+                if record_type != "column":
+                    raise ValueError("recordType must be column or dataset")
+                if row.get("licenseText"):
+                    raise ValueError("licenseText belongs in a dataset metadata row")
                 target = by_name.get(row.get("name"))
                 if not target:
                     continue
@@ -1080,12 +1187,15 @@ async def import_codebook(dataset_id: str, file: UploadFile = File(...)) -> dict
                     if row.get(field):
                         patch[field] = json.loads(row[field])
                 patches.append(patch)
-        if not patches and not groups:
-            raise ValueError("No matching columns or groups")
+        if not patches and not groups and not license_updates:
+            raise ValueError("No matching columns, groups or dataset metadata")
     except (ValueError, KeyError, TypeError) as exc:
         raise BizError("CODEBOOK_INVALID", "辞書の列・設問定義を確認してください。", status_code=422,
                        details={"message": str(exc)}) from exc
     request = {"columns": patches, "expectedSchemaRevision": cb["schemaRevision"], **design_updates}
+    if license_updates:
+        request.update(license_updates)
+        request["expectedLicenseRevision"] = cb["licenseRevision"]
     if groups is not None:
         request["multiResponseGroups"] = groups
     return update_codebook(dataset_id, request)
@@ -1105,6 +1215,7 @@ def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
         cb = generate_initial_codebook(dataset_id, meta.get("schema", []))
         store.save_codebook(dataset_id, cb)
 
+    cb = {"licenseText": "", "licenseRevision": 1, **cb}
     fmt = format.lower().strip()
     if fmt == "json":
         content = json.dumps(cb, ensure_ascii=False, indent=2)
@@ -1128,9 +1239,14 @@ def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
         "isReversed",
         "multiResponseGroup",
         "multiResponseOptionLabel",
+        "recordType",
+        "licenseText",
     ]
     writer = csv.writer(output)
     writer.writerow(fields)
+    # A separate typed row keeps the license dataset-level, even for an empty
+    # codebook. CSV quoting preserves Unicode, commas, quotes and line breaks.
+    writer.writerow([""] * (len(fields) - 2) + ["dataset", cb["licenseText"]])
 
     for col in cb.get("columns", []):
         row = [
@@ -1145,6 +1261,8 @@ def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
             "true" if col.get("isReversed") else "false",
             col.get("multiResponseGroup") or "",
             col.get("multiResponseOptionLabel", ""),
+            "column",
+            "",
         ]
         writer.writerow(row)
 
@@ -1967,6 +2085,12 @@ def _restore_revision(dataset_id: str, target_revision: int, operation: str,
             restored_codebook = _sync_codebook(dataset_id, snapshot,
                                                source_schema=meta.get("schema", []))
 
+    # Data history restores analytical definitions; dataset-level attribution
+    # remains current, including its monotonic concurrency token.
+    current_codebook = store.load_codebook(dataset_id) or {}
+    restored_codebook = {**(restored_codebook or {}),
+                         "licenseText": current_codebook.get("licenseText", ""),
+                         "licenseRevision": current_codebook.get("licenseRevision", 1)}
     restored_meta = {**meta,
                      "schema": schema_payload,
                      "schemaRevision": restored_schema_revision,
@@ -2130,7 +2254,8 @@ def export_package(dataset_id: str):
 
     with store.lock(dataset_id):
         meta = store.get_meta(dataset_id)
-        codebook = store.load_codebook(dataset_id) or {}
+        codebook = {"licenseText": "", "licenseRevision": 1,
+                    **(store.load_codebook(dataset_id) or {})}
         provenance = store.load_provenance(dataset_id) or {
             "datasetId": dataset_id, "operations": [], "currentOperationId": None,
             "rawDataRevision": None,
@@ -2248,6 +2373,15 @@ async def import_package(file: UploadFile = File(...)) -> dict:
                            f"checksum不一致: {entry['path']}", status_code=422)
     try:
         codebook = json.loads(archive.read("metadata/codebook.json").decode("utf-8"))
+        if not isinstance(codebook, dict):
+            raise ValueError("codebook must be an object")
+        license_text = codebook.get("licenseText", "")
+        license_revision = codebook.get("licenseRevision", 1)
+        if not isinstance(license_text, str):
+            raise ValueError("licenseText must be a string")
+        if type(license_revision) is not int or license_revision < 1:
+            raise ValueError("licenseRevision must be a positive integer")
+        codebook = {**codebook, "licenseText": license_text, "licenseRevision": license_revision}
         provenance = json.loads(archive.read("metadata/provenance.json").decode("utf-8"))
         mask = json.loads(archive.read("metadata/imputation-mask.json").decode("utf-8"))
         session_state = json.loads(archive.read("metadata/session-state.json").decode("utf-8"))

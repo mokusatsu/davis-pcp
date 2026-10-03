@@ -1,0 +1,2572 @@
+{
+  "columns": [
+    {
+      "name": "回答番号",
+      "label": "公開CSVのNo.（原回答番号）",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "性別",
+      "label": "問1 あなたの性別について、次の中から１つ選んでください。",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "男性",
+        "2": "女性",
+        "3": "その他",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [
+        "0"
+      ],
+      "missingReasons": {
+        "0": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "年齢",
+      "label": "問2 あなたの年齢を教えてください。（原データは歳）",
+      "scaleType": "ratio",
+      "role": "attribute",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [
+        "0"
+      ],
+      "missingReasons": {
+        "0": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問15_住みやすさ",
+      "label": "問15 掛川市は住みやすいまちだと思いますか",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "とても住みやすい",
+        "2": "どちらかといえば住みやすい",
+        "3": "どちらかといえば住みにくい",
+        "4": "とても住みにくい",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0"
+      ],
+      "missingReasons": {
+        "0": "無回答"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_01",
+      "label": "問20 満足度：１）市民総ぐるみで取り組む心豊かにたくましく生きる子どもの育成ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_02",
+      "label": "問20 満足度：２）市民の生涯学習の拠点が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_03",
+      "label": "問20 満足度：３）郷土の文化の保存と市民の文化芸術活動が振興されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_04",
+      "label": "問20 満足度：４）スポーツを楽しめる環境が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_05",
+      "label": "問20 満足度：５）家庭・地域・企業ぐるみで子育てしやすい環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_06",
+      "label": "問20 満足度：６）安心して出産・子育てできる環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_07",
+      "label": "問20 満足度：７）家庭・地域・職場ぐるみの健康づくりが行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_08",
+      "label": "問20 満足度：８）誰もが安心して医療を受けられる環境の整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_09",
+      "label": "問20 満足度：９）高齢者が生き生きと暮らせる環境づくりができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_10",
+      "label": "問20 満足度：10）障がいのある人の自立した生活支援が充実していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_11",
+      "label": "問20 満足度：11）地域社会でともに支え合う心が育まれ、様々な福祉課題が解決できていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_12",
+      "label": "問20 満足度：12）省エネ・省資源、再生可能エネルギーの普及が図られていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_13",
+      "label": "問20 満足度：13）誰もが集える身近な公園・緑地が充実していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_14",
+      "label": "問20 満足度：14）美しい森林や海岸等の保全と防災機能などの多面的な活用ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_15",
+      "label": "問20 満足度：15）清流が流れ、市民が水と触れ合える環境が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_16",
+      "label": "問20 満足度：16）市民一人ひとりが互いにマナーを守り、快適に暮らせる生活環境が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_17",
+      "label": "問20 満足度：17）安全な水を安定して供給できること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_18",
+      "label": "問20 満足度：18）みんなが働ける雇用・就業の環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_19",
+      "label": "問20 満足度：19）掛川にしごとをつくり、商工業が更なる発展をしていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_20",
+      "label": "問20 満足度：20）多様な担い手による力強い農業経営が営まれていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_21",
+      "label": "問20 満足度：21）安定した農家所得のもとに新たな「掛川茶」のブランド化がなされ、おいしい「掛川茶」を楽しめる環境が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_22",
+      "label": "問20 満足度：22）地域資源を活かした体験交流や地域をまたいだ観光の推進が行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_23",
+      "label": "問20 満足度：23）市民総ぐるみによるシティプロモーションと移住・定住の促進がされていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_24",
+      "label": "問20 満足度：24）自助・共助・公助による防災・減災対策を強化していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_25",
+      "label": "問20 満足度：25）災害に強い住宅や都市基盤施設等が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_26",
+      "label": "問20 満足度：26）消防救急体制の充実により、市民の生命、身体及び財産への被害を最小限に食い止める環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_27",
+      "label": "問20 満足度：27）交通安全と防犯の意識向上と環境整備により、安心して住めること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_28",
+      "label": "問20 満足度：28）人が集い、賑わいを生む中心市街地が形成されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_29",
+      "label": "問20 満足度：29）市街地から郊外の農村集落まで、地域それぞれの特性が生かされた快適な居住環境で市民が暮らしていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_30",
+      "label": "問20 満足度：30）日常の移動が制約される交通弱者の移動手段が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_31",
+      "label": "問20 満足度：31）定住を促進する良質な住宅や住宅地の供給と空き家対策ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_32",
+      "label": "問20 満足度：32）中山間地域の生活環境の保全と維持ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_33",
+      "label": "問20 満足度：33）渋滞の無い快適な道路交通が確保され、人・もの・情報が活発に行き来していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_34",
+      "label": "問20 満足度：34）歩行者も車も安全に通行できる生活道路の整備ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_35",
+      "label": "問20 満足度：35）安全確保と長寿命化に向けた道路施設の維持管理ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_36",
+      "label": "問20 満足度：36）外国人市民と日本人市民が、相互に理解を深め、異なる文化をもつ人々が共生していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_37",
+      "label": "問20 満足度：37）多様性に富み個性と能力を発揮できる社会の実現ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_38",
+      "label": "問20 満足度：38）公共的な活動が、地区、市民、企業、行政など、自立した多様な担い手によって支えられていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_39",
+      "label": "問20 満足度：39）将来の債務を削減し、健全で計画的な行政経営が行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_満足度_40",
+      "label": "問20 満足度：40）人にやさしいデジタル化が推進され、ヒト、モノ、コト、情報がつながる便利なまちになっていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足",
+        "2": "まあ満足",
+        "3": "やや不満",
+        "4": "不満",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_01",
+      "label": "問20 優先度：１）市民総ぐるみで取り組む心豊かにたくましく生きる子どもの育成ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_02",
+      "label": "問20 優先度：２）市民の生涯学習の拠点が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_03",
+      "label": "問20 優先度：３）郷土の文化の保存と市民の文化芸術活動が振興されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_04",
+      "label": "問20 優先度：４）スポーツを楽しめる環境が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_05",
+      "label": "問20 優先度：５）家庭・地域・企業ぐるみで子育てしやすい環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_06",
+      "label": "問20 優先度：６）安心して出産・子育てできる環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_07",
+      "label": "問20 優先度：７）家庭・地域・職場ぐるみの健康づくりが行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_08",
+      "label": "問20 優先度：８）誰もが安心して医療を受けられる環境の整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_09",
+      "label": "問20 優先度：９）高齢者が生き生きと暮らせる環境づくりができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_10",
+      "label": "問20 優先度：10）障がいのある人の自立した生活支援が充実していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_11",
+      "label": "問20 優先度：11）地域社会でともに支え合う心が育まれ、様々な福祉課題が解決できていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_12",
+      "label": "問20 優先度：12）省エネ・省資源、再生可能エネルギーの普及が図られていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_13",
+      "label": "問20 優先度：13）誰もが集える身近な公園・緑地が充実していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_14",
+      "label": "問20 優先度：14）美しい森林や海岸等の保全と防災機能などの多面的な活用ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_15",
+      "label": "問20 優先度：15）清流が流れ、市民が水と触れ合える環境が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_16",
+      "label": "問20 優先度：16）市民一人ひとりが互いにマナーを守り、快適に暮らせる生活環境が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_17",
+      "label": "問20 優先度：17）安全な水を安定して供給できること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_18",
+      "label": "問20 優先度：18）みんなが働ける雇用・就業の環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_19",
+      "label": "問20 優先度：19）掛川にしごとをつくり、商工業が更なる発展をしていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_20",
+      "label": "問20 優先度：20）多様な担い手による力強い農業経営が営まれていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_21",
+      "label": "問20 優先度：21）安定した農家所得のもとに新たな「掛川茶」のブランド化がなされ、おいしい「掛川茶」を楽しめる環境が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_22",
+      "label": "問20 優先度：22）地域資源を活かした体験交流や地域をまたいだ観光の推進が行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_23",
+      "label": "問20 優先度：23）市民総ぐるみによるシティプロモーションと移住・定住の促進がされていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_24",
+      "label": "問20 優先度：24）自助・共助・公助による防災・減災対策を強化していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_25",
+      "label": "問20 優先度：25）災害に強い住宅や都市基盤施設等が整備されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_26",
+      "label": "問20 優先度：26）消防救急体制の充実により、市民の生命、身体及び財産への被害を最小限に食い止める環境が整っていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_27",
+      "label": "問20 優先度：27）交通安全と防犯の意識向上と環境整備により、安心して住めること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_28",
+      "label": "問20 優先度：28）人が集い、賑わいを生む中心市街地が形成されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_29",
+      "label": "問20 優先度：29）市街地から郊外の農村集落まで、地域それぞれの特性が生かされた快適な居住環境で市民が暮らしていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_30",
+      "label": "問20 優先度：30）日常の移動が制約される交通弱者の移動手段が確保されていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_31",
+      "label": "問20 優先度：31）定住を促進する良質な住宅や住宅地の供給と空き家対策ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_32",
+      "label": "問20 優先度：32）中山間地域の生活環境の保全と維持ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_33",
+      "label": "問20 優先度：33）渋滞の無い快適な道路交通が確保され、人・もの・情報が活発に行き来していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_34",
+      "label": "問20 優先度：34）歩行者も車も安全に通行できる生活道路の整備ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_35",
+      "label": "問20 優先度：35）安全確保と長寿命化に向けた道路施設の維持管理ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_36",
+      "label": "問20 優先度：36）外国人市民と日本人市民が、相互に理解を深め、異なる文化をもつ人々が共生していること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_37",
+      "label": "問20 優先度：37）多様性に富み個性と能力を発揮できる社会の実現ができていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_38",
+      "label": "問20 優先度：38）公共的な活動が、地区、市民、企業、行政など、自立した多様な担い手によって支えられていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_39",
+      "label": "問20 優先度：39）将来の債務を削減し、健全で計画的な行政経営が行われていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "問20_優先度_40",
+      "label": "問20 優先度：40）人にやさしいデジタル化が推進され、ヒト、モノ、コト、情報がつながる便利なまちになっていること",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "最優先",
+        "2": "できれば優先",
+        "3": "あまり優先しない",
+        "4": "優先しない",
+        "5": "わからない",
+        "0": "無回答"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [
+        "0",
+        "5"
+      ],
+      "missingReasons": {
+        "0": "無回答",
+        "5": "わからない"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "令和4年度掛川市市民意識調査、掛川市（静岡県オープンデータ掲載）\n出典: https://opendata.pref.shizuoka.jp/dataset/9455.html\n\nCreative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\n原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。\n利用条件: https://opendata.pref.shizuoka.jp/privacy.html\n\nDAVIS-PCPでの変更: 原CSVの3行見出しを解析し、1,170件の個票から20歳以上を抽出。原No.を保持。 問20の0=無回答、5=わからない。4段階の順序尺度の外に置き、元CSVの0/5自体は保持。 満足度と優先度は別設問として80列を保持。多重回答の分岐構造を誤解しないため、この候補にはMA欄を含めていない。 回答者の正確な居住地区・家族情報・自由記述は含めていない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

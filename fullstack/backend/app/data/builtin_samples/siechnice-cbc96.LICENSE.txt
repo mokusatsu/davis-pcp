@@ -1,0 +1,10 @@
+Błaszczyk, Mateusz; Krysiński, Dawid (2026). Siechnice Urban Development Preferences Survey 2025 – Replication Data. Uniwersytet Wrocławski, V1. https://doi.org/10.34616/4CMFXK
+出典: https://uwr.rodbuk.pl/dataset.xhtml?persistentId=doi:10.34616/4CMFXK
+
+CC0 1.0 Universal Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
+原公開パッケージのデータ・属性辞書のCC0表示に基づき再利用。CC0には帰属・継承義務はありませんが出典を明記します。
+
+DAVIS-PCPでの変更: 384人中、匿名回答者IDを辞書順に並べ4人ごとに1人を抽出した96人。各人12課題×3選択肢、3,456行のlong形式を保持。1行=1人ではない。原回答と属性文字列を保持し、属性辞書をWindows-1250からUTF-8へ変換して完全な水準説明を付与。日本語補助説明を追加。オプトアウトの属性空欄は構造的非該当であり補完しない。題名は2025、データ公開年は2026だが、README・説明の調査年は2024と記されており原資料間の年の不一致を保持。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

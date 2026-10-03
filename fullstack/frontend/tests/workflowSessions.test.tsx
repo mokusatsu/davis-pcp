@@ -198,3 +198,63 @@ it('WF05: delayed bootstrap listing cannot overtake an explicit newer dataset se
  await act(async()=>{selected.resolve(meta('c'));await selected.promise});
  await waitFor(()=>expect(local.getState().selection.datasetId).toBe('c'));expect(local.getState().codebook.datasetId).toBe('c');
 })
+
+it('LICENSE: only explicit dropdown switching shows the saved selected dataset notice, each time', async () => {
+ apiMock.getCodebook.mockImplementation(async(id:string)=>({...codebook(id),licenseText:id==='a'?'License A\n©':'License B\n©'}));
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
+ await chooseDataset('b');const dialog=await screen.findByRole('dialog',{name:'ライセンス情報'});
+ expect(within(dialog).getByTestId('dataset-license-text').textContent).toBe('License B\n©');
+ fireEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+ await chooseDataset('a');expect((await screen.findByTestId('dataset-license-text')).textContent).toBe('License A\n©');
+ fireEvent.click(screen.getByRole('button',{name:'OK'}));await chooseDataset('b');
+ expect((await screen.findByTestId('dataset-license-text')).textContent).toBe('License B\n©');
+})
+it('LICENSE: a stale licensed load cannot show a popup over the later unlicensed selection', async () => {
+ const old=deferred<any>();apiMock.getCodebook.mockImplementation(async(id:string)=>id==='b'?old.promise:codebook(id));
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ await chooseDataset('b');await chooseDataset('c');await waitFor(()=>expect(local.getState().selection.datasetId).toBe('c'));
+ await act(async()=>{old.resolve({...codebook('b'),licenseText:'OLD LICENSE'});await old.promise});
+ expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
+})
+it('LICENSE: failed reads show no stale notice; explicit retry shows the correct saved license', async () => {
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ apiMock.getCodebook.mockRejectedValueOnce(new Error('LICENSE_LOAD_FAILED'));await chooseDataset('b');await screen.findByText(/LICENSE_LOAD_FAILED/);
+ expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
+ apiMock.getCodebook.mockResolvedValueOnce({...codebook('b'),licenseText:'RETRY LICENSE'});
+ fireEvent.click(screen.getByRole('button',{name:'再試行',exact:true}));
+ expect((await screen.findByTestId('dataset-license-text')).textContent).toBe('RETRY LICENSE');
+})
+
+it('SAMPLES: a delayed lazy sample import cannot replace a later dataset choice or open its license', async () => {
+ const old=deferred<any>();apiMock.post.mockImplementationOnce(()=>old.promise);
+ apiMock.get.mockImplementation(async(path:string)=>path==='/datasets'?{datasets:list}:path==='/datasets/samples'?{samples:[{id:'wine',name:'Wine',rowCount:178}]}:meta(path.split('/').at(-1)!));
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ fireEvent.mouseDown(screen.getByTestId('dataset-selector').querySelector('.ant-select-selector')!);
+ fireEvent.click(await screen.findByText('Wine (178行・組込み)'));
+ await waitFor(()=>expect(apiMock.post).toHaveBeenCalledWith('/datasets/import/sample',{sampleId:'wine'}));
+ await chooseDataset('c');await waitFor(()=>expect(local.getState().selection.datasetId).toBe('c'));
+ await act(async()=>{old.resolve({datasetId:'b'});await old.promise});
+ expect(local.getState().selection.datasetId).toBe('c');
+ expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
+})
+it('SAMPLES: catalog failure leaves ordinary dataset listing and selection usable', async () => {
+ apiMock.get.mockImplementation(async(path:string)=>{if(path==='/datasets/samples')throw Error('CATALOG_FAILED');return path==='/datasets'?{datasets:list}:meta(path.split('/').at(-1)!)});
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ await chooseDataset('b');await waitFor(()=>expect(local.getState().selection.datasetId).toBe('b'));
+ expect(screen.getByText(/CATALOG_FAILED/)).toBeInTheDocument();
+})
+it('LICENSE: opening a saved session does not trigger a dropdown-only notice', async () => {
+ const record=await savedRecord();sessionApi(record);
+ apiMock.getCodebook.mockImplementation(async(id:string)=>({...codebook(id),licenseText:'Session license'}));
+ const {local}=mount(localStore('b'));await waitFor(()=>expect(local.getState().codebook.datasetId).toBe('b'));
+ await openSaved();await waitFor(()=>expect(local.getState().selection.datasetId).toBe('a'));
+ expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
+})
+
+it('SAMPLES: startup never mistakes a similarly named user upload for official Iris', async () => {
+ apiMock.get.mockImplementation(async(path:string)=>path==='/datasets'?{datasets:[{datasetId:'a',name:'My iris study',rowCount:2}]}:path==='/datasets/samples'?{samples:[{id:'iris',name:'Iris (built-in sample)',rowCount:150,datasetId:null}]}:meta(path.split('/').at(-1)!));
+ const {local}=mount(localStore(null));
+ await waitFor(()=>expect(local.getState().selection.datasetId).toBe('a'));
+ expect(apiMock.post).not.toHaveBeenCalled();
+})

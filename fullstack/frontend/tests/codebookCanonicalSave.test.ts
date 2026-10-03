@@ -40,3 +40,18 @@ it('keeps a newer draft while exposing the normalized saved snapshot', async () 
   expect(local.getState().codebook.draftColumns[0].label).toBe('unsaved next edit')
   expect(local.getState().codebook.hasChanges).toBe(true)
 })
+
+it('does not roll back a saved license when an older same-dataset fetch completes', async () => {
+  const { saveLicenseTextThunk, licenseMetadataReceived } = await import('../src/features/dataset/codebookSlice')
+  const local = setup()
+  local.dispatch(licenseMetadataReceived({ datasetId: 'd', licenseText: 'before', licenseRevision: 2 }))
+  let finish!: (value: unknown) => void
+  vi.spyOn(api, 'get').mockImplementation(() => new Promise(resolve => { finish = resolve }) as any)
+  const fetch = local.dispatch(fetchCodebookThunk('d'))
+  vi.spyOn(api, 'put').mockResolvedValue({ codebook: { licenseText: 'latest', licenseRevision: 3 } })
+  await local.dispatch(saveLicenseTextThunk({ datasetId: 'd', licenseText: 'latest', expectedLicenseRevision: 2 }))
+  finish({ datasetId: 'd', schemaRevision: 1, columns: [draft], licenseText: 'before', licenseRevision: 2 })
+  await fetch
+  expect(local.getState().codebook.licenseText).toBe('latest')
+  expect(local.getState().codebook.licenseRevision).toBe(3)
+})

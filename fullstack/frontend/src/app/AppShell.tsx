@@ -19,8 +19,11 @@ import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar
 import LicenseModal from '../features/common/LicenseModal'
 import KeepAliveOutlet from './KeepAliveOutlet'
 import CodebookEditorModal from '../features/dataset/CodebookEditorModal'
+import DatasetLicenseNotice from '../features/dataset/DatasetLicenseNotice'
 import * as codebookSlice from '../features/dataset/codebookSlice'
 import { useL1Selection } from '../theme/useL1Selection'
+
+interface BuiltinSampleItem { id: string; name: string; rowCount: number; datasetId?: string | null }
 
 interface DatasetListItem {
   datasetId: string
@@ -235,6 +238,8 @@ export default function AppShell() {
     notifyRoute(normalizePageKey(location.pathname), selection.datasetId ?? null)
   }, [location.pathname, selection.datasetId, notifyRoute])
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
+  const [builtinSamples, setBuiltinSamples] = useState<BuiltinSampleItem[]>([])
+  const builtinSamplesRef = useRef<BuiltinSampleItem[]>([])
   const [datasetListError, setDatasetListError] = useState<string | null>(null)
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -245,8 +250,13 @@ export default function AppShell() {
 
   const refreshDatasets = useCallback(async () => {
     try {
-      const result = await api.get<{ datasets: DatasetListItem[] }>('/datasets')
-      setDatasets(result.datasets); setDatasetListError(null)
+      let catalogError: unknown = null
+      const [result, catalog] = await Promise.all([
+        api.get<{ datasets: DatasetListItem[] }>('/datasets'),
+        api.get<{ samples: BuiltinSampleItem[] }>('/datasets/samples').catch(error => { catalogError = error; return null }),
+      ])
+      if (catalog) { builtinSamplesRef.current = catalog.samples ?? []; setBuiltinSamples(builtinSamplesRef.current) }
+      setDatasets(result.datasets); setDatasetListError(catalogError ? `組込みサンプル一覧を読み込めませんでした: ${(catalogError as { message?: string }).message || String(catalogError)}` : null)
       return result.datasets
     } catch (error) {
       setDatasetListError(`データセット一覧を読み込めませんでした: ${(error as { message?: string }).message || String(error)}`)
@@ -268,9 +278,14 @@ export default function AppShell() {
         await loadDataset(created.datasetId, created.name)
         await refreshDatasets()
       } else {
-        const iris = list.find((d) => d.name === 'Iris (built-in sample)') ?? list.find((d) => d.name.toLowerCase().includes('iris'))
+        const officialIrisId = builtinSamplesRef.current.find(sample => sample.id === 'iris')?.datasetId
+        const iris = list.find(dataset => dataset.datasetId === officialIrisId)
         const first = iris ?? list[0]
-        await loadDataset(first.datasetId, first.name)
+        if (iris) {
+          const created = await api.post<{ datasetId: string; name: string }>('/datasets/import/sample', { sampleId: 'iris' })
+          if (cancelled || !persistence.isCurrentDatasetIntent(intent)) return
+          await loadDataset(created.datasetId, created.name)
+        } else await loadDataset(first.datasetId, first.name)
       }
     })().catch(error => { if (!cancelled) setDatasetListError(`初期データセットを読み込めませんでした: ${error.message || String(error)}`) })
       .finally(() => { if (intent !== null) persistence.finishDatasetIntent(intent) })
@@ -280,7 +295,12 @@ export default function AppShell() {
   }, [selection.datasetId, refreshDatasets, loadDataset, bootstrapAttempt])
 
   const onDatasetSelected = async (datasetId: string) => {
-    await loadDataset(datasetId)
+    const sampleId = datasetId.startsWith('builtin:') ? datasetId.slice(8)
+      : builtinSamples.find(sample => sample.datasetId === datasetId)?.id
+    if (sampleId) {
+      await persistence.loadBuiltinSample(sampleId, true, datasetId)
+      await refreshDatasets()
+    } else await loadDataset(datasetId, undefined, true)
   }
 
   const onImport = async (file: File) => {
@@ -409,7 +429,9 @@ export default function AppShell() {
             value={persistence.pendingDataset ?? selection.datasetId ?? undefined}
             loading={persistence.loadBusy}
             disabled={persistence.saveBusy || Boolean(persistence.openingSession)}
-            options={datasets.map((d) => ({ value: d.datasetId, label: `${d.name} (${d.rowCount}行)` }))}
+            options={[...datasets.map((d) => ({ value: d.datasetId, label: `${d.name} (${d.rowCount}行)` })),
+              ...builtinSamples.filter(sample => !sample.datasetId).map(sample => ({ value: `builtin:${sample.id}`,
+                label: `${sample.name} (${sample.rowCount}行・組込み)` }))]}
             onChange={(value) => void onDatasetSelected(value)}
             onOpenChange={(visible) => { if (visible) void refreshDatasets() }}
             getPopupContainer={() => document.body}
@@ -582,6 +604,7 @@ export default function AppShell() {
       </Modal>
       <LicenseModal open={licenseModalOpen} onClose={() => setLicenseModalOpen(false)} />
       <CodebookEditorModal />
+      <DatasetLicenseNotice license={persistence.datasetLicense} onClose={persistence.dismissDatasetLicense} />
     </Layout>
   )
 }

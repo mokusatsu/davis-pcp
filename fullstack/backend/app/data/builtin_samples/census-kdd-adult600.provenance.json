@@ -1,0 +1,47 @@
+{
+  "source": "https://archive.ics.uci.edu/dataset/117/census+income+kdd",
+  "doi": "10.24432/C5N30T",
+  "license": "CC-BY-4.0",
+  "attribution": "Census-Income (KDD). (2000). UCI Machine Learning Repository. https://doi.org/10.24432/C5N30T",
+  "sourceDataSha256": "3676a81db7d3528f3f8b9f3c699d0f0aa28db45e6e994fa0b8ed38327539ee86",
+  "fixtureSha256": "19e26f9525f3fbea6df7de4588383ea410e2e1a53a7acc57b7bf3c9a21a45195",
+  "trainingRows": 199523,
+  "adultRows": 143531,
+  "sampleRows": 600,
+  "seed": 20261002,
+  "transformations": [
+    "Adults age >=18 only; deterministic sample without replacement, retained original source order.",
+    "Select columns, remove source-format surrounding whitespace; no recoded responses, fabricated values, or normalized weights.",
+    "MARSUPWT is the actual source instance weight. Original names file defines it as population weight from stratified sampling.",
+    "source_row denotes source-file line, not respondent identity. No strata or PSU identifiers exist in this extracted file; do not claim original survey inference.",
+    "All analysis below is a software test of a selected subset, not a population estimate."
+  ],
+  "selectedSourceColumns": {
+    "worker_class": 1,
+    "education": 4,
+    "MARSUPWT": 24,
+    "migration_msa": 25,
+    "migration_region": 26,
+    "weeks_worked": 39,
+    "year": 40
+  },
+  "sourceFiles": [
+    {
+      "file": "census-income.data",
+      "sha256": "3676a81db7d3528f3f8b9f3c699d0f0aa28db45e6e994fa0b8ed38327539ee86",
+      "url": "https://archive.ics.uci.edu/static/public/117/census+income+kdd.zip"
+    },
+    {
+      "file": "census-income.names",
+      "sha256": "d6fea52977f68504ab3149351980458e09bfc3116808da8986646710d254ef98"
+    }
+  ],
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "6262e9095c43409a1756b6b596a8f311de5018a4a2242a8f4511ed535c11fa74",
+  "codebookSha256": "0f6e6a622fe86bf54a8a07b861a793cab462eeb49b6bbe67f9739715c4d2cc66",
+  "rowCount": 600,
+  "columnCount": 7,
+  "sourceUrl": "https://archive.ics.uci.edu/dataset/117/census+income+kdd",
+  "citation": "Census-Income (KDD). (2000). UCI Machine Learning Repository. https://doi.org/10.24432/C5N30T",
+  "changes": "1994/1995 CPS由来の公開訓練データから18歳以上600行をseed=20261002で抽出。原データの両端空白を除去し、7変数に限定。年齢・性別・出生国・行照合ID・所得額・資産額・家族情報は同梱しない。原人口重みMARSUPWTは正規化せず保持。?は欠損、移動項目のNot in universeは非該当。反転・補完なし。層・PSUがない部分標本のため正式なCPS母集団推計や完全な標本設計の再現には使えない。"
+}

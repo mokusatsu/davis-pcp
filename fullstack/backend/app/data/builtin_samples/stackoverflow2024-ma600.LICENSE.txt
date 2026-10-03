@@ -1,0 +1,13 @@
+Stack Overflow Developer Survey 2024. Stack Exchange, Inc. Source data and schema: https://github.com/StackExchange/Survey/tree/main/packages/archive/2024 . © Copyright 2026 Stack Exchange, Inc. (official repository notice).
+出典: https://survey.stackoverflow.co/2024/
+
+この83列の派生データベース（CSVと対応するデータスキーマ）は Open Database License (ODbL) 1.0 の条件で提供します。
+https://opendatacommons.org/licenses/odbl/1-0/
+個々の内容は Database Contents License (DbCL) 1.0。
+https://opendatacommons.org/licenses/dbcl/1-0/
+Contains information from Stack Overflow Developer Survey 2024, made available under the Open Database License.
+公開する派生データベースはODbLの継承条件に従い、帰属・権利・ライセンス表示を保持してください。本サンプルのCSVは派生データベース全体で、同梱ファイルとして無償・機械可読で提供します。CSVの個別配布でも同名のLICENSE.txtとコードブックを添付してください。ODbLはこのサンプルデータベースに適用され、アプリのプログラム自体に適用するものではありません。
+
+DAVIS-PCPでの変更: 原65,437行から年齢カテゴリ25–34、35–44、45–54、55–64、65+の48,449行を候補にし、等間隔のeligible_index=floor(i*(48449-1)/599), i=0..599で600行を抽出。RemoteWorkと、使用言語48項目・DB34項目のMAを採用。元の匿名ID・年齢・地域・収入・学歴・経験年数は除外。MAの選択肢はこの600行で観測された元のセミコロン区切り回答の和集合から展開。回答があるとき1=選択、0=非選択、元のNA/空欄は全子列空欄としゼロに置換していない。選択肢順は辞書順。質問文はschema.csvからHTML強調を除去し[Have worked with]と選択肢名を追記。合成回答・欠損の人工注入・反転・補完なし。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

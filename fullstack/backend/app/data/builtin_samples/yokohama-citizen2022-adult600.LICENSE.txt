@@ -1,0 +1,11 @@
+令和4年度横浜市民意識調査、横浜市
+出典: https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。
+利用条件: https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html
+
+DAVIS-PCPでの変更: 公開個票2,572件のうちF2が20歳以上の回答を抽出。18～19歳・年齢無回答は候補から除外。 空白は欠損として保持。問8は5段階で3は中立回答であり、欠損ではない。 健康項目Q8_オ、地区・世帯・子どもの属性は今回の候補から除外。 MA原票は非選択と無回答の空欄の区別に追加確認が必要なため候補に含めない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

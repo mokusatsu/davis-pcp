@@ -1,0 +1,13 @@
+ATOPPの原31項目・未反転・未採点データです。最終21項目の確定版として扱わないでください。S1 AppendixはOR7/OR8を残しOR9を削除しますが、S2 Appendixの質問票はOR7相当を載せずOR8/OR9相当を載せています。項目文と因子情報は元の31項目番号を保持したS1 Appendixに従い、この不一致を解消したとは扱いません。反転対象は本文Methodsと公開XLSXの派生列がOpod6/Opod8/OR10/OR11を支持し、全541行で6−元値と一致します。S1 Appendix脚注のOpen data 4/6という番号には不一致があります。本サンプルは全列の原値を保存し、isReversed=falseは『自動反転を適用しない』を意味します。
+
+© 2021 Baždarić et al. データおよび著者公開の設問文: Creative Commons Attribution 4.0 International (CC BY 4.0). https://creativecommons.org/licenses/by/4.0/
+
+Ksenija Baždarić, Iva Vrkić, Evgenia Arh, Martina Mavrinac, Maja Gligora Marković, Lidija Bilić-Zulle, Jadranka Stojanovski, and Mario Malički (2021). Attitudes and practices of open data, preprinting, and peer-review—A cross sectional study on Croatian scientists. PLOS ONE 16(6): e0244529. https://doi.org/10.1371/journal.pone.0244529
+
+データ出典: S1 Dataset / data_ATOPP。設問文出典: S1 Appendix, Table 1（原31項目）。変更内容: 公開XLSXから設問列のみ選びCSV化。公開ファイルの全541行と元の行順を維持。行除外、数値変更、欠損補完、反転、合成点追加、人工回答追加なし。英語設問文は著者公開版を保持し、文書の改行・空白だけを正規化。
+
+S1 Appendixの因子: Opod1/2/3/6/7/8/9/10=Open data、PPS1/2/5/6/7=Preprinting、OR10/11=Open peer review in small scientific communities、OR1/4/5/6/7/8=Open peer review。削除マーク付き10項目も原データとして残しています。
+
+抽出列の空欄・範囲外値は0件。特殊欠損コードは出典に定義を確認できなかったため追加していません。重み・調査デザイン設定は適用していません。
+
+利用時は著者・原論文・ライセンスと変更内容を明示してください。著者による本アプリの推奨を意味しません。本サンプルの提供は、データ・尺度・因子モデルの正確性、心理測定学的妥当性、特定目的への適合性を保証するものではありません。権利表示確認日: 2026-10-03。PLOSのライセンスポリシー: https://journals.plos.org/plosone/s/licenses-and-copyright

@@ -96,6 +96,9 @@ class SurveyDesignSpec(BaseModel):
 class Codebook(BaseModel):
     datasetId: str
     schemaRevision: int = 1
+    # Dataset attribution is independent of the analysis schema and values.
+    licenseText: str = Field(default="", strict=True)
+    licenseRevision: int = Field(default=1, gt=0, strict=True)
     columns: list[CodebookColumn] = Field(default_factory=list)
     multiResponseGroups: list[MultiResponseGroup] = Field(default_factory=list)
     weightConfig: WeightConfig | None = None
@@ -123,7 +126,10 @@ class CodebookUpdateRequest(BaseModel):
     weightConfig: WeightConfig | None = None
     surveyDesign: SurveyDesignSpec | None = None
     expectedSchemaRevision: int | None = Field(default=None, gt=0)
+    # An omitted key preserves the current text; an empty string clears it.
+    licenseText: str = Field(default="", strict=True)
+    expectedLicenseRevision: int | None = Field(default=None, gt=0, strict=True)
 
     def explicitly_set(self, field: str) -> bool:
-        """True when the caller sent the key at all (``null`` clears, absent leaves alone)."""
+        """Whether the caller sent the key; omitted metadata is preserved."""
         return field in self.model_fields_set

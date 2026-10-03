@@ -1,0 +1,58 @@
+{
+  "title": "交通情報に関するアンケート（2020年）",
+  "publisher": "東京都",
+  "license": "CC-BY-4.0",
+  "licenseUrl": "https://portal.data.metro.tokyo.lg.jp/terms/",
+  "sourceUrl": "https://spec.api.metro.tokyo.lg.jp/spec/t000029d0000000006-59d5d722bc266581927ea3f45180f6ea-0",
+  "attribution": "東京都「交通情報に関するアンケート（2020年）」を加工。CC BY 4.0。",
+  "sourceFiles": [
+    {
+      "file": "tokyo_traffic_answers2020.csv",
+      "sha256": "3890485b6b19eb3252a8646acc535c2478ad950a955a67d95b5f0e05d55e55be",
+      "bytes": 175327,
+      "sourceUrl": "https://www.opendata.metro.tokyo.lg.jp/senryaku/society5.0/130001_traffic_qa_answers2020.csv"
+    },
+    {
+      "file": "tokyo_traffic_definition2020.xlsx",
+      "sha256": "4731cbb205cc2e54f3fb0cbdcb7ee30de3e3835a652b4dec71ca4eb5fde415fe",
+      "bytes": 27575,
+      "sourceUrl": "https://www.opendata.metro.tokyo.lg.jp/senryaku/society5.0/130001_traffic_qa_definition2020.xlsx"
+    },
+    {
+      "file": "tokyo_traffic_questions2020.xlsx",
+      "sha256": "69dd3e7f6e0b716effdb164c276bb16467d28063b5918fa2cd2a20eccb9a3c2d",
+      "bytes": 32488,
+      "sourceUrl": "https://www.opendata.metro.tokyo.lg.jp/senryaku/society5.0/130001_traffic_qa_questions2020.xlsx"
+    }
+  ],
+  "sourceRespondentRows": 1030,
+  "eligibleRows": 1030,
+  "outputRows": 600,
+  "outputColumns": 72,
+  "notes": [
+    "20歳以上の回答のみを候補に抽出。回答日時と自由記述を除外。",
+    "原コード・空欄を保持。MAの0は非選択、空欄は欠損。各設問には「その他／どれも利用していない／特にない」等の選択肢があり、全0は保守的にmissingとする。",
+    "Q18/Q19/Q20等の「わからない」は元の名義カテゴリとして保持し、順序得点にしない。",
+    "Q15はアプリ提供者の比較尺度。等間隔近似のPCAはソフトウェア試験用で、心理尺度の妥当性を主張しない。"
+  ],
+  "weightStatus": "Publisher supplies no weight in these source files; no weight created",
+  "fullSourceChecks": {
+    "minAge": 20,
+    "maxAge": 68
+  },
+  "ccByLicenseUrl": "https://creativecommons.org/licenses/by/4.0/deed.ja",
+  "sampling": {
+    "method": "lowest SHA-256(seed|slug|zero-based-source-row), then source order",
+    "seed": "davis-japanese-survey-qa-2026-10-02-v1",
+    "purpose": "QA candidate, not a population-representative sample"
+  },
+  "sourceCodebookSha256": "b4501aa36e812825c1c87608e6b48d1079a0e7b65bf897b8de024b8cff0f0b48",
+  "sourcePreparedDataSha256": "39d8c3d020d10acc235921b9c3039884fc563774646d34e7dbe4441ae14c6d9f",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "e625a1be4d9e19bef322b1ffc0302ddd4a551240b8912bfea9680a25e5147a09",
+  "codebookSha256": "fead70d39a3fc0e447333af69a057220ccc7b885f8d8aff34a23707bc2b91500",
+  "rowCount": 600,
+  "columnCount": 72,
+  "citation": "交通情報に関するアンケート（2020年）、東京都",
+  "changes": "20歳以上の回答のみを候補に抽出。回答日時と自由記述を除外。 原コード・空欄を保持。MAの0は非選択、空欄は欠損。各設問には「その他／どれも利用していない／特にない」等の選択肢があり、全0は保守的にmissingとする。 Q18/Q19/Q20等の「わからない」は元の名義カテゴリとして保持し、順序得点にしない。 Q15はアプリ提供者の比較尺度。等間隔近似のPCAはソフトウェア試験用で、心理尺度の妥当性を主張しない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。 MAの全0は保守的な分析設定としてmissing扱い。これは原データの改変ではありません。"
+}

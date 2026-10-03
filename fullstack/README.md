@@ -56,6 +56,8 @@ PCAページでは通常PCAと独立したSparsePCAも利用できる。非加�
 
 保存対象・再開方法・分析の引継ぎと欠損方針は [分析ワークフロー](docs/WORKFLOW_RELIABILITY.md) を参照。
 
+コードブックのライセンス編集・選択時の出典表示・12種類の組込みデータ（Iris/Wineを含む）は [ライセンス情報と組込みデータ](docs/CODEBOOK_LICENSES_AND_SAMPLES.md) を参照。
+
 ## import対応形式
 
 CSV / TSV / Parquet / Arrow IPC(Feather) / ARFF / SQLite(.db/.sqlite のtable選択) / 組込みIris sample。

@@ -1,0 +1,746 @@
+{
+  "columns": [
+    {
+      "name": "DS1",
+      "label": "I am able to construct clear and persuasive arguments.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I am able to construct clear and persuasive arguments.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "DS1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "debating-skills"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "DS2",
+      "label": "I am able to provide effective evidence to support my position (such as reliable sources, quotes from authorities, conclusions from research papers, etc.).",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I am able to provide effective evidence to support my position (such as reliable sources, quotes from authorities, conclusions from research papers, etc.).",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "DS2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [
+        "debating-skills"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "DS3",
+      "label": "I am able to identify logical errors between the opponent's arguments and evidence.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I am able to identify logical errors between the opponent's arguments and evidence.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "DS3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [
+        "debating-skills"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "DS4",
+      "label": "I am able to adjust debate strategies flexibly to respond to opponents.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I am able to adjust debate strategies flexibly to respond to opponents.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "DS4",
+      "sourceItemNumber": 4,
+      "factorMemberships": [
+        "debating-skills"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "TC1",
+      "label": "I actively participate in team discussions, sharing my perspectives and listening to and respecting the opinions of team members.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I actively participate in team discussions, sharing my perspectives and listening to and respecting the opinions of team members.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "TC1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "team-collaboration"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "TC2",
+      "label": "I am capable of promptly identifying and clarifying any errors arising from the negligence of our team members.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I am capable of promptly identifying and clarifying any errors arising from the negligence of our team members.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "TC2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [
+        "team-collaboration"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "TC3",
+      "label": "I collaborate closely with debate team members, ensuring that our arguments support each other to form a strong overall performance.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I collaborate closely with debate team members, ensuring that our arguments support each other to form a strong overall performance.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "TC3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [
+        "team-collaboration"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP1",
+      "label": "I can comprehend the viewpoints expressed by my team members and opponents in English.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can comprehend the viewpoints expressed by my team members and opponents in English.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP1",
+      "sourceItemNumber": 1,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP2",
+      "label": "I can accurately articulate my viewpoints in English.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can accurately articulate my viewpoints in English.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP2",
+      "sourceItemNumber": 2,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP3",
+      "label": "I can use appropriate and varied English vocabulary to make the debate more persuasive.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can use appropriate and varied English vocabulary to make the debate more persuasive.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP3",
+      "sourceItemNumber": 3,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP4",
+      "label": "I can employ specific English intonation to express particular viewpoints, attitudes, or emotions.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can employ specific English intonation to express particular viewpoints, attitudes, or emotions.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP4",
+      "sourceItemNumber": 4,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP5",
+      "label": "I can utilize appropriate pauses to avoid ambiguity.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can utilize appropriate pauses to avoid ambiguity.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP5",
+      "sourceItemNumber": 5,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    },
+    {
+      "name": "LP6",
+      "label": "I can flexibly adjust my intonation and pace in English to adapt to different contexts and audiences.",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "ordinalOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": "",
+      "questionText": "I can flexibly adjust my intonation and pace in English to adapt to different contexts and audiences.",
+      "questionTextLanguage": "en",
+      "questionSourceUrl": "https://doi.org/10.1371/journal.pone.0314879.s001",
+      "sourceColumn": "LP6",
+      "sourceItemNumber": 6,
+      "factorMemberships": [
+        "language-proficiency"
+      ],
+      "missingMetadata": {
+        "observedBlankCount": 0,
+        "observedOutOfRangeCount": 0,
+        "specialMissingCodes": "not-documented-in-inspected-sources",
+        "imputationApplied": false
+      },
+      "anchorStatus": "numeric-code-labels-only; EDSS-verbal-anchors-unverified",
+      "reversalMetadata": {
+        "applied": false,
+        "applicationMeaning": "isReversed=false means do not apply a recode to this raw sample",
+        "status": "not-specified; preserved-as-published"
+      }
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "EDSS の公開13項目の原数値です。回答コードは1–5ですが、EDSS固有の言語アンカーを確認できなかったため、値ラベルは数値コードのままです。論文§3.3.2のstrongly disagree/strongly agreeは別尺度EPSSSの説明であり、EDSSに転用していません。反転・補完・標準化・合成点の計算は行っていません。\n\n© 2025 Liu et al. データおよび著者公開の設問文: Creative Commons Attribution 4.0 International (CC BY 4.0). https://creativecommons.org/licenses/by/4.0/\n\nFanghua Liu, Yanchao Yang, Feng (Robin) Wang, and Wangze Li (2025). The English Debating Self-Efficacy Scale: Scale development, validation, and psychometric properties. PLOS ONE 20(2): e0314879. https://doi.org/10.1371/journal.pone.0314879\n\nデータ出典: S2 Dataset / EFA。設問文出典: S1 Table（Appendix A）。変更内容: 公開XLSXから設問列のみ選びCSV化。公開ファイルの全613行と元の行順を維持。行除外、数値変更、欠損補完、反転、合成点追加、人工回答追加なし。英語設問文は著者公開版を保持し、文書の改行・空白だけを正規化。\n\n因子: DS1–DS4=Debating skills、TC1–TC3=Team collaboration、LP1–LP6=Language proficiency。\n\n抽出列の空欄・範囲外値は0件。特殊欠損コードは出典に定義を確認できなかったため追加していません。重み・調査デザイン設定は適用していません。\n\n利用時は著者・原論文・ライセンスと変更内容を明示してください。著者による本アプリの推奨を意味しません。本サンプルの提供は、データ・尺度・因子モデルの正確性、心理測定学的妥当性、特定目的への適合性を保証するものではありません。権利表示確認日: 2026-10-03。PLOSのライセンスポリシー: https://journals.plos.org/plosone/s/licenses-and-copyright",
+  "notes": [
+    "EDSS の公開13項目の原数値です。回答コードは1–5ですが、EDSS固有の言語アンカーを確認できなかったため、値ラベルは数値コードのままです。論文§3.3.2のstrongly disagree/strongly agreeは別尺度EPSSSの説明であり、EDSSに転用していません。反転・補完・標準化・合成点の計算は行っていません。"
+  ],
+  "factorGroups": [
+    {
+      "id": "debating-skills",
+      "label": "Debating skills",
+      "columnNames": [
+        "DS1",
+        "DS2",
+        "DS3",
+        "DS4"
+      ],
+      "sourceUrl": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0314879",
+      "sourceSection": "3.3.1 English Debate Self-Efficacy Scale (EDSS) and 4.4 Exploratory factor analysis",
+      "status": "published-three-factor-membership",
+      "scoringApplied": false
+    },
+    {
+      "id": "team-collaboration",
+      "label": "Team collaboration",
+      "columnNames": [
+        "TC1",
+        "TC2",
+        "TC3"
+      ],
+      "sourceUrl": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0314879",
+      "sourceSection": "3.3.1 English Debate Self-Efficacy Scale (EDSS) and 4.4 Exploratory factor analysis",
+      "status": "published-three-factor-membership",
+      "scoringApplied": false
+    },
+    {
+      "id": "language-proficiency",
+      "label": "Language proficiency",
+      "columnNames": [
+        "LP1",
+        "LP2",
+        "LP3",
+        "LP4",
+        "LP5",
+        "LP6"
+      ],
+      "sourceUrl": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0314879",
+      "sourceSection": "3.3.1 English Debate Self-Efficacy Scale (EDSS) and 4.4 Exploratory factor analysis",
+      "status": "published-three-factor-membership",
+      "scoringApplied": false
+    }
+  ],
+  "metadata": {
+    "sampleId": "edss-efa-613x13",
+    "sourceUrl": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0314879",
+    "sourceDataUrl": "https://journals.plos.org/plosone/article/file?type=supplementary&id=10.1371/journal.pone.0314879.s003",
+    "sourceSheet": "EFA",
+    "rowCount": 613,
+    "columnCount": 13,
+    "rawUnscored": true,
+    "scoringApplied": false,
+    "syntheticData": false,
+    "ordinalOrderBasis": "ascending original integer response codes; does not assert equally spaced categories",
+    "anchorCaution": "EDSS の公開13項目の原数値です。回答コードは1–5ですが、EDSS固有の言語アンカーを確認できなかったため、値ラベルは数値コードのままです。論文§3.3.2のstrongly disagree/strongly agreeは別尺度EPSSSの説明であり、EDSSに転用していません。反転・補完・標準化・合成点の計算は行っていません。",
+    "importNote": "Name-based staging. Map name to the live dataset columnId. categoryOrder is the current app field; ordinalOrder, factorGroups, and provenance extras are explanatory staging metadata, not new app behavior."
+  }
+}

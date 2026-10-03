@@ -1,0 +1,58 @@
+{
+  "title": "令和4年度掛川市市民意識調査",
+  "publisher": "掛川市",
+  "license": "CC-BY-4.0",
+  "licenseUrl": "https://opendata.pref.shizuoka.jp/privacy.html",
+  "sourceUrl": "https://opendata.pref.shizuoka.jp/dataset/9455.html",
+  "attribution": "掛川市「令和4年度掛川市市民意識調査」を加工。CC BY 4.0。",
+  "sourceFiles": [
+    {
+      "file": "kakegawa_citizen2022.csv",
+      "sha256": "004e24b955ebc404990a96ba6861e2de7131fe49f57af7f626fcf931d684b102",
+      "bytes": 383869,
+      "sourceUrl": "https://opendata.pref.shizuoka.jp/dataset/9455/resource/64051/__4_____________.csv"
+    },
+    {
+      "file": "kakegawa_citizen2022_report.pdf",
+      "sha256": "7f046a0cb0340c38c28a2ba5e3d98bdeab49e80cf3dbe7f3ce34d0134743e3ee",
+      "bytes": 13372237,
+      "sourceUrl": "https://opendata.pref.shizuoka.jp/dataset/9455/resource/64052/__4___________.pdf"
+    }
+  ],
+  "sourceRespondentRows": 1170,
+  "eligibleRows": 1138,
+  "outputRows": 600,
+  "outputColumns": 84,
+  "notes": [
+    "原CSVの3行見出しを解析し、1,170件の個票から20歳以上を抽出。原No.を保持。",
+    "問20の0=無回答、5=わからない。4段階の順序尺度の外に置き、元CSVの0/5自体は保持。",
+    "満足度と優先度は別設問として80列を保持。多重回答の分岐構造を誤解しないため、この候補にはMA欄を含めていない。",
+    "回答者の正確な居住地区・家族情報・自由記述は含めていない。"
+  ],
+  "weightStatus": "Publisher supplies no weight in these source files; no weight created",
+  "fullSourceChecks": {
+    "Q20S01": {
+      "2": 391,
+      "5": 438,
+      "3": 210,
+      "0": 39,
+      "4": 86,
+      "1": 6
+    }
+  },
+  "ccByLicenseUrl": "https://creativecommons.org/licenses/by/4.0/deed.ja",
+  "sampling": {
+    "method": "lowest SHA-256(seed|slug|zero-based-source-row), then source order",
+    "seed": "davis-japanese-survey-qa-2026-10-02-v1",
+    "purpose": "QA candidate, not a population-representative sample"
+  },
+  "sourceCodebookSha256": "433d44e7c1b0f60056cfc7506d08ee2b8c4bcf6b18e7fbae859013f5ba81510f",
+  "sourcePreparedDataSha256": "e9ad75d3ddb4c12ea4e904ef4e1dfe2c6736da93c09755eb394d27147b99aff1",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "6e4a534477efbc23e70e6e5d4324eaeffa1936b3f1935fd83a69e55fe299e073",
+  "codebookSha256": "94e1fbf2486a8d3a329dfe826aac626a3d1f0ad2571f1716bd21e0d00125841e",
+  "rowCount": 600,
+  "columnCount": 84,
+  "citation": "令和4年度掛川市市民意識調査、掛川市（静岡県オープンデータ掲載）",
+  "changes": "原CSVの3行見出しを解析し、1,170件の個票から20歳以上を抽出。原No.を保持。 問20の0=無回答、5=わからない。4段階の順序尺度の外に置き、元CSVの0/5自体は保持。 満足度と優先度は別設問として80列を保持。多重回答の分岐構造を誤解しないため、この候補にはMA欄を含めていない。 回答者の正確な居住地区・家族情報・自由記述は含めていない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。"
+}

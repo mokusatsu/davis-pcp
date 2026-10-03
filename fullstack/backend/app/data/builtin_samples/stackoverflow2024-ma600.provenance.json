@@ -1,0 +1,359 @@
+{
+  "sourceFiles": [
+    {
+      "file": "results.csv",
+      "sha256": "7f2c2dbf6989d00b80a7351de4bb3af4b52b21cc52d5c947891bbc4f4e5cbe49",
+      "url": "https://github.com/StackExchange/Survey/raw/refs/heads/main/packages/archive/2024/results.csv"
+    },
+    {
+      "file": "schema.csv",
+      "sha256": "d9c03fd43949dd9b0fea4847894c4011a6fe3c4390d5d8c48e078a8bfe623833",
+      "url": "https://github.com/StackExchange/Survey/raw/refs/heads/main/packages/archive/2024/schema.csv"
+    }
+  ],
+  "sourceRowCount": 65437,
+  "eligibleRows": 48449,
+  "selectionFormula": "floor(i*(48449-1)/599), i=0..599",
+  "eligibility": "25–34 / 35–44 / 45–54 / 55–64 / 65+ age categories",
+  "derivedOptions": {
+    "lang_01": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Ada"
+    },
+    "lang_02": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Apex"
+    },
+    "lang_03": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Assembly"
+    },
+    "lang_04": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Bash/Shell (all shells)"
+    },
+    "lang_05": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "C"
+    },
+    "lang_06": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "C#"
+    },
+    "lang_07": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "C++"
+    },
+    "lang_08": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Clojure"
+    },
+    "lang_09": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Cobol"
+    },
+    "lang_10": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Crystal"
+    },
+    "lang_11": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Dart"
+    },
+    "lang_12": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Delphi"
+    },
+    "lang_13": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Elixir"
+    },
+    "lang_14": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Erlang"
+    },
+    "lang_15": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "F#"
+    },
+    "lang_16": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Fortran"
+    },
+    "lang_17": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "GDScript"
+    },
+    "lang_18": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Go"
+    },
+    "lang_19": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Groovy"
+    },
+    "lang_20": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "HTML/CSS"
+    },
+    "lang_21": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Haskell"
+    },
+    "lang_22": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Java"
+    },
+    "lang_23": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "JavaScript"
+    },
+    "lang_24": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Julia"
+    },
+    "lang_25": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Kotlin"
+    },
+    "lang_26": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Lisp"
+    },
+    "lang_27": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Lua"
+    },
+    "lang_28": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "MATLAB"
+    },
+    "lang_29": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "MicroPython"
+    },
+    "lang_30": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Nim"
+    },
+    "lang_31": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "OCaml"
+    },
+    "lang_32": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Objective-C"
+    },
+    "lang_33": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "PHP"
+    },
+    "lang_34": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Perl"
+    },
+    "lang_35": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "PowerShell"
+    },
+    "lang_36": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Prolog"
+    },
+    "lang_37": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Python"
+    },
+    "lang_38": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "R"
+    },
+    "lang_39": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Ruby"
+    },
+    "lang_40": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Rust"
+    },
+    "lang_41": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "SQL"
+    },
+    "lang_42": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Scala"
+    },
+    "lang_43": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Solidity"
+    },
+    "lang_44": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Swift"
+    },
+    "lang_45": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "TypeScript"
+    },
+    "lang_46": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "VBA"
+    },
+    "lang_47": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Visual Basic (.Net)"
+    },
+    "lang_48": {
+      "parent": "LanguageHaveWorkedWith",
+      "value": "Zig"
+    },
+    "db_01": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "BigQuery"
+    },
+    "db_02": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Cassandra"
+    },
+    "db_03": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Clickhouse"
+    },
+    "db_04": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Cloud Firestore"
+    },
+    "db_05": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Cockroachdb"
+    },
+    "db_06": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Cosmos DB"
+    },
+    "db_07": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Couch DB"
+    },
+    "db_08": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Couchbase"
+    },
+    "db_09": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Databricks SQL"
+    },
+    "db_10": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Datomic"
+    },
+    "db_11": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "DuckDB"
+    },
+    "db_12": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Dynamodb"
+    },
+    "db_13": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Elasticsearch"
+    },
+    "db_14": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "EventStoreDB"
+    },
+    "db_15": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Firebase Realtime Database"
+    },
+    "db_16": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Firebird"
+    },
+    "db_17": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "H2"
+    },
+    "db_18": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "IBM DB2"
+    },
+    "db_19": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "InfluxDB"
+    },
+    "db_20": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "MariaDB"
+    },
+    "db_21": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Microsoft Access"
+    },
+    "db_22": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Microsoft SQL Server"
+    },
+    "db_23": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "MongoDB"
+    },
+    "db_24": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "MySQL"
+    },
+    "db_25": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Neo4J"
+    },
+    "db_26": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Oracle"
+    },
+    "db_27": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "PostgreSQL"
+    },
+    "db_28": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Presto"
+    },
+    "db_29": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "RavenDB"
+    },
+    "db_30": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Redis"
+    },
+    "db_31": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "SQLite"
+    },
+    "db_32": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Snowflake"
+    },
+    "db_33": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Solr"
+    },
+    "db_34": {
+      "parent": "DatabaseHaveWorkedWith",
+      "value": "Supabase"
+    }
+  },
+  "distribution": "This entire derivative database is supplied as the matching CSV under ODbL 1.0, contents DbCL 1.0; no additional restrictions.",
+  "noPublisherWeight": true,
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "307fb8af2dbf025086b7682d28f6cd3eef0b59e7b21531b03e7c4227bc712820",
+  "codebookSha256": "486375aa9220626e40818e6390f1ffd1a60e849a29b37d9ddbda47f59fdc78f8",
+  "rowCount": 600,
+  "columnCount": 83,
+  "license": "ODbL-1.0 + DbCL-1.0",
+  "sourceUrl": "https://survey.stackoverflow.co/2024/",
+  "citation": "Stack Overflow Developer Survey 2024. Stack Exchange, Inc. Source data and schema: https://github.com/StackExchange/Survey/tree/main/packages/archive/2024 . © Copyright 2026 Stack Exchange, Inc. (official repository notice).",
+  "changes": "原65,437行から年齢カテゴリ25–34、35–44、45–54、55–64、65+の48,449行を候補にし、等間隔のeligible_index=floor(i*(48449-1)/599), i=0..599で600行を抽出。RemoteWorkと、使用言語48項目・DB34項目のMAを採用。元の匿名ID・年齢・地域・収入・学歴・経験年数は除外。MAの選択肢はこの600行で観測された元のセミコロン区切り回答の和集合から展開。回答があるとき1=選択、0=非選択、元のNA/空欄は全子列空欄としゼロに置換していない。選択肢順は辞書順。質問文はschema.csvからHTML強調を除去し[Have worked with]と選択肢名を追記。合成回答・欠損の人工注入・反転・補完なし。"
+}

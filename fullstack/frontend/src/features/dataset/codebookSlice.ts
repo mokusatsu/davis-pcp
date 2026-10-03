@@ -11,6 +11,8 @@ export interface CodebookState {
   datasetId: string | null
   fetchRequestId: string | null
   schemaRevision: number
+  licenseText: string
+  licenseRevision: number
   columns: CodebookColumn[]
   draftColumns: CodebookColumn[]
   multiResponseGroups: MultiResponseGroup[]
@@ -38,6 +40,8 @@ const initialState: CodebookState = {
   datasetId: null,
   fetchRequestId: null,
   schemaRevision: 1,
+  licenseText: '',
+  licenseRevision: 1,
   columns: [],
   draftColumns: [],
   multiResponseGroups: [],
@@ -112,6 +116,19 @@ export const saveCodebookThunk = createAsyncThunk(
   }
 )
 
+/** Save attribution independently, leaving numerical revisions and open column drafts intact. */
+export const saveLicenseTextThunk = createAsyncThunk(
+  'codebook/saveLicenseText',
+  async (payload: { datasetId: string; licenseText: string; expectedLicenseRevision: number }) => {
+    const res = await updateCodebook(payload.datasetId, [], {
+      licenseText: payload.licenseText,
+      expectedLicenseRevision: payload.expectedLicenseRevision,
+    })
+    return { datasetId: payload.datasetId, licenseText: res.codebook.licenseText ?? '',
+      licenseRevision: res.codebook.licenseRevision ?? 1 }
+  }
+)
+
 /**
  * Save only the weight declaration, without touching any column.
  *
@@ -154,11 +171,17 @@ export const codebookSlice = createSlice({
       // A prepared dataset is committed synchronously; invalidate any old fetch.
       const value = action.payload
       return { ...initialState, datasetId: value.datasetId, schemaRevision: value.schemaRevision,
+        licenseText: value.licenseText ?? '', licenseRevision: value.licenseRevision ?? 1,
         columns: value.columns, draftColumns: structuredClone(value.columns),
         multiResponseGroups: value.multiResponseGroups ?? [],
         draftMultiResponseGroups: structuredClone(value.multiResponseGroups ?? []),
         weightConfig: value.weightConfig ?? null, surveyDesign: value.surveyDesign ?? null,
         activeColumnId: value.columns[0]?.columnId ?? null }
+    },
+    licenseMetadataReceived(state, action: PayloadAction<{ datasetId: string; licenseText: string; licenseRevision: number }>) {
+      if (action.payload.datasetId !== state.datasetId || action.payload.licenseRevision < (state.licenseRevision ?? 1)) return
+      state.licenseText = action.payload.licenseText
+      state.licenseRevision = action.payload.licenseRevision
     },
     codebookReset() {
       return { ...initialState }
@@ -301,6 +324,8 @@ export const codebookSlice = createSlice({
 
         if (isDifferentDataset) {
           state.schemaRevision = 1
+          state.licenseText = ''
+          state.licenseRevision = 1
           state.columns = []
           state.draftColumns = []
           state.multiResponseGroups = []
@@ -318,6 +343,10 @@ export const codebookSlice = createSlice({
 
         state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
+        if ((action.payload.licenseRevision ?? 1) >= (state.licenseRevision ?? 1)) {
+          state.licenseText = action.payload.licenseText ?? ''
+          state.licenseRevision = action.payload.licenseRevision ?? 1
+        }
         state.columns = action.payload.columns
         state.multiResponseGroups = action.payload.multiResponseGroups ?? []
         state.weightConfig = action.payload.weightConfig ?? null
@@ -362,6 +391,12 @@ export const codebookSlice = createSlice({
       .addCase(saveCodebookThunk.rejected, (state) => {
         state.isSaving = false
       })
+      .addCase(saveLicenseTextThunk.fulfilled, (state, action) => {
+        if (action.payload.datasetId !== state.datasetId) return
+        if (action.payload.licenseRevision < (state.licenseRevision ?? 1)) return
+        state.licenseText = action.payload.licenseText
+        state.licenseRevision = action.payload.licenseRevision
+      })
       .addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
         if (action.payload.datasetId !== state.datasetId) return
         state.schemaRevision = action.payload.schemaRevision
@@ -387,6 +422,7 @@ export const {
   draftReverted,
   codebookReset,
   codebookReceived,
+  licenseMetadataReceived,
   draftMultiResponseGroupUpdated,
   draftMultiResponseGroupRemoved,
 } = codebookSlice.actions

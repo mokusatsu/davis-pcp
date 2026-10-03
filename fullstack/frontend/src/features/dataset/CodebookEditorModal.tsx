@@ -47,6 +47,7 @@ import CodebookGridView from './CodebookGridView'
 import BulkLabelPasteModal from './BulkLabelPasteModal'
 import CodebookCsvImportDialog from './CodebookCsvImportDialog'
 import MultiResponseGroupDialog from './MultiResponseGroupDialog'
+import CodebookLicenseEditor from './CodebookLicenseEditor'
 
 export default function CodebookEditorModal() {
   const [notificationApi, notificationHolder] = notification.useNotification()
@@ -54,6 +55,8 @@ export default function CodebookEditorModal() {
   const selection = useSelector((s: RootState) => s.selection)
   const codebook = useSelector((s: RootState) => s.codebook)
   const [maOpen, setMaOpen] = useState(false)
+  const [licenseOpen, setLicenseOpen] = useState(false)
+  useEffect(() => { setLicenseOpen(false) }, [selection.datasetId, codebook.isEditorOpen])
 
   const datasetId = selection.datasetId
   const currentDatasetId = useRef(datasetId)
@@ -180,6 +183,7 @@ export default function CodebookEditorModal() {
   return (
     <>
       {notificationHolder}
+      <CodebookLicenseEditor open={licenseOpen && codebook.isEditorOpen} onClose={() => setLicenseOpen(false)} />
       <Modal
         open={codebook.isEditorOpen}
         onCancel={() => dispatch(editorModalClosed())}
@@ -195,7 +199,7 @@ export default function CodebookEditorModal() {
           },
         }}
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 32, flexWrap: 'wrap' }}>
             <FileTextOutlined style={{ color: '#3b82f6', fontSize: 16 }} />
             <Typography.Text strong style={{ fontSize: 15 }}>
               コードブックエディタ
@@ -204,19 +208,15 @@ export default function CodebookEditorModal() {
               {selection.datasetName || datasetId || ''} ({codebook.draftColumns.length}変数 / {selection.allRowIds.length}行)
             </Tag>
             <Tag color="purple">Rev: {codebook.schemaRevision}</Tag>
+            {codebook.hasChanges ? (
+              <Tag color="orange">変更保留中: {changedCount}変数・設問設定</Tag>
+            ) : <Tag color="default">変更なし</Tag>}
           </div>
         }
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <div>
-              {codebook.hasChanges ? (
-                <Tag color="orange">
-                  変更保留中: {changedCount}変数・設問設定
-                </Tag>
-              ) : (
-                <Tag color="default">変更なし</Tag>
-              )}
-            </div>
+            <Button icon={<FileTextOutlined />} disabled={codebook.isLoading || !codebook.datasetId}
+              onClick={() => setLicenseOpen(true)}>ライセンス情報</Button>
             <Space>
               <Button
                 icon={<UndoOutlined />}

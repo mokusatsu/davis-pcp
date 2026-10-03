@@ -1,0 +1,60 @@
+{
+  "sourceFiles": [
+    {
+      "path": "siechnice/00_README.txt",
+      "bytes": 4600,
+      "sha256": "62be40de6131d907d888a3b5386c5c21a30bf1180240e0e4f5570428f1954e46",
+      "source_url": "https://uwr.rodbuk.pl/api/access/datafile/1202",
+      "saved_at_utc": "2026-10-02T03:38:31.771101+00:00",
+      "kind": "downloaded-original-or-evidence"
+    },
+    {
+      "path": "siechnice/CBC_questionnaire_Block1.pdf",
+      "bytes": 173258,
+      "sha256": "7c74cd59f1fde66fb4861183b50369c89b94a8b1084010c7c07f1638080e30b5",
+      "source_url": "https://uwr.rodbuk.pl/api/access/datafile/1187",
+      "saved_at_utc": "2026-10-02T03:38:32.055109+00:00",
+      "kind": "downloaded-original-or-evidence"
+    },
+    {
+      "path": "siechnice/SIECHNICE_PLAN_EKSPERYMENTU.csv",
+      "bytes": 1235,
+      "sha256": "f86cbdeb6f9ef99f7d052a68c9aa0faf54b937c19c702bf7e980bee2711819a7",
+      "source_url": "https://uwr.rodbuk.pl/api/access/datafile/1189?format=original",
+      "saved_at_utc": "2026-10-02T03:38:31.759785+00:00",
+      "kind": "downloaded-original-or-evidence"
+    },
+    {
+      "path": "siechnice/Slownik_Atrybutow_i_Poziomow.txt",
+      "bytes": 6245,
+      "sha256": "f992d79a0d759a630ce8076fe8453cc87e9dc163efcd77749ed1a959acc2a325",
+      "source_url": "https://uwr.rodbuk.pl/api/access/datafile/1188",
+      "saved_at_utc": "2026-10-02T03:38:31.807102+00:00",
+      "kind": "downloaded-original-or-evidence"
+    },
+    {
+      "path": "siechnice/siechnice_dane_long.csv",
+      "bytes": 1142831,
+      "sha256": "ed28c2c348a6228cc2311a494149b92e0e55223cdf6f8dcf810d30ac44c47d51",
+      "source_url": "https://uwr.rodbuk.pl/api/access/datafile/1191?format=original",
+      "saved_at_utc": "2026-10-02T03:38:32.547122+00:00",
+      "kind": "downloaded-original-or-evidence"
+    }
+  ],
+  "preparedInputSha256": "400f0ddae019e1741737f1c5ad383876874a99100a3f6add6449b87f66616e27",
+  "respondentCount": 96,
+  "tasksPerRespondent": 12,
+  "alternativesPerTask": 3,
+  "structuralMissing": "atr1–atr5 empty exactly when status_quo=1",
+  "encodingNotice": "Attribute dictionary original bytes verified; cp1250 → UTF-8",
+  "weightStatus": "No publisher weight supplied",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "4d3a4187f02d7c54a208fb9e89ae63d8f546f685ab5ce3183430920c5d8226d5",
+  "codebookSha256": "6436999ef09160caeac7e68a95c70b00d2e9c880a1c8add6037da4b4a01c0b23",
+  "rowCount": 3456,
+  "columnCount": 12,
+  "license": "CC0-1.0",
+  "sourceUrl": "https://uwr.rodbuk.pl/dataset.xhtml?persistentId=doi:10.34616/4CMFXK",
+  "citation": "Błaszczyk, Mateusz; Krysiński, Dawid (2026). Siechnice Urban Development Preferences Survey 2025 – Replication Data. Uniwersytet Wrocławski, V1. https://doi.org/10.34616/4CMFXK",
+  "changes": "384人中、匿名回答者IDを辞書順に並べ4人ごとに1人を抽出した96人。各人12課題×3選択肢、3,456行のlong形式を保持。1行=1人ではない。原回答と属性文字列を保持し、属性辞書をWindows-1250からUTF-8へ変換して完全な水準説明を付与。日本語補助説明を追加。オプトアウトの属性空欄は構造的非該当であり補完しない。題名は2025、データ公開年は2026だが、README・説明の調査年は2024と記されており原資料間の年の不一致を保持。"
+}

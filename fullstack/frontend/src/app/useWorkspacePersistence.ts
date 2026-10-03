@@ -3,6 +3,7 @@ import { useDispatch, useStore } from 'react-redux'
 import { api, fetchArrowView, getCodebook } from '../api/client'
 import type { AppDispatch, RootState, VariableMetaItem } from './store'
 import { analysisWorkspaceRestored, datasetLoaded, variablesInitialized } from './store'
+import type { DatasetLicense } from '../features/dataset/DatasetLicenseNotice'
 import { codebookReceived } from '../features/dataset/codebookSlice'
 import { createAnalysisWorkspaceSnapshot, readAnalysisWorkspaceSnapshot } from '../features/selection/workspaceSession'
 
@@ -23,7 +24,7 @@ const errorMessage = (error: unknown) => (error as { message?: string })?.messag
 /** Read and validate every input before changing the live workspace. */
 async function prepareDataset(datasetId: string, name?: string) {
   const [meta, data, codebook] = await Promise.all([
-    api.get<{ name: string; dataRevision: number; schema: Array<{
+    api.get<{ name: string; builtinSampleId?: string; dataRevision: number; schema: Array<{
       columnId: string; name: string; semanticType: string; physicalType?: string; missingCount?: number
     }> }>(`/datasets/${datasetId}`),
     fetchArrowView(datasetId, []), getCodebook(datasetId),
@@ -40,7 +41,7 @@ async function prepareDataset(datasetId: string, name?: string) {
     }
   })
   return { datasetId, name: name || meta.name, rowIds, dataRevision: meta.dataRevision,
-    variables: meta.schema.map(column => column.name), variableMeta, codebook }
+    variables: meta.schema.map(column => column.name), variableMeta, codebook, builtinSampleId: meta.builtinSampleId }
 }
 
 export function useWorkspacePersistence(onSaved: (message: string) => void) {
@@ -56,6 +57,7 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
   const [loadBusy, setLoadBusy] = useState(false)
   const [pendingDataset, setPendingDataset] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [datasetLicense, setDatasetLicense] = useState<DatasetLicense | null>(null)
   const [sessionsModal, setSessionsModal] = useState(false)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [listBusy, setListBusy] = useState(false)
@@ -83,15 +85,20 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
     if (restored) dispatch(analysisWorkspaceRestored(restored))
   }, [dispatch, workspace])
 
-  const loadDataset = useCallback(async (datasetId: string, name?: string): Promise<boolean> => {
+  const loadDataset = useCallback(async (datasetId: string, name?: string, showLicense = false, sampleId?: string): Promise<boolean> => {
     if (saving.current) return false
     const generation = ++loadGeneration.current
     setLoadBusy(true); setPendingDataset(datasetId); setLoadError(null)
-    retry.current = () => loadDataset(datasetId, name)
+    setDatasetLicense(null)
+    retry.current = () => loadDataset(datasetId, name, showLicense, sampleId)
     try {
-      const prepared = await prepareDataset(datasetId, name)
+      const target = sampleId ? await api.post<{ datasetId: string }>('/datasets/import/sample', { sampleId }) : { datasetId }
+      if (!alive.current || generation !== loadGeneration.current) return false
+      const prepared = await prepareDataset(target.datasetId, name)
       if (!alive.current || generation !== loadGeneration.current) return false
       install(prepared)
+      if (showLicense && prepared.codebook.licenseText?.trim())
+        setDatasetLicense({ datasetId: prepared.datasetId, name: prepared.name, text: prepared.codebook.licenseText, sampleId: prepared.builtinSampleId })
       setIdentity(null); setSessionName(''); setSaveModal(false); setSaveError(null); setConflict(false)
       return true
     } catch (error) {
@@ -106,6 +113,7 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
     if (saving.current) return false
     const generation = ++loadGeneration.current
     setLoadBusy(true); setOpeningSession(sessionId); setLoadError(null); setListError(null)
+    setDatasetLicense(null)
     retry.current = () => openSession(sessionId)
     try {
       const record = await api.get<SessionRecord>(`/sessions/${sessionId}`)
@@ -178,11 +186,13 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
 
   return { identity, sessionName, setSessionName, saveModal, saveBusy, saveError, conflict, beginSave, saveSession,
     closeSave: () => { if (!saving.current && !loadBusy) setSaveModal(false) },
+    datasetLicense, dismissDatasetLicense: () => setDatasetLicense(null),
+    loadBuiltinSample: (sampleId: string, showLicense = true, selectionValue = `builtin:${sampleId}`) => loadDataset(selectionValue, undefined, showLicense, sampleId),
     loadDataset, loadBusy, pendingDataset, loadError, retryLoad: () => retry.current?.(),
     beginDatasetIntent: () => {
       if (saving.current) return null
       const generation = ++loadGeneration.current
-      setLoadBusy(true); setPendingDataset(null); setLoadError(null)
+      setLoadBusy(true); setPendingDataset(null); setLoadError(null); setDatasetLicense(null)
       return generation
     },
     isCurrentDatasetIntent: (generation: number) => alive.current && loadGeneration.current === generation,

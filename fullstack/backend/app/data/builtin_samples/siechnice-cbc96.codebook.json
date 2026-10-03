@@ -1,0 +1,284 @@
+{
+  "columns": [
+    {
+      "name": "profil_id",
+      "label": "Profile ID（実験計画のプロファイル識別子）",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "respondent_id",
+      "label": "Respondent ID（匿名ID、回答者内反復を識別）",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "blok",
+      "label": "Questionnaire block（質問票ブロック1–5）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "zadanie",
+      "label": "Choice task number within block（ブロック内選択課題1–12）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5",
+        "6": "6",
+        "7": "7",
+        "8": "8",
+        "9": "9",
+        "10": "10",
+        "11": "11",
+        "12": "12"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "alternatywa",
+      "label": "Alternative number（1・2=提示プロファイル、3=選択しない）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "Profile 1",
+        "2": "Profile 2",
+        "3": "Opt-out"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "wybor",
+      "label": "Chosen alternative（この選択肢を選んだか）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "Not chosen / 非選択",
+        "1": "Chosen / 選択"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "status_quo",
+      "label": "Opt-out indicator（この選択肢がオプトアウトか）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "0": "Described profile / 属性付き選択肢",
+        "1": "Opt-out / どちらも選ばない"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "atr1",
+      "label": "Kierunek rozwoju miasta — Opisuje główną, strategiczną wizję tego, czym Siechnice mają się stać i na czym ma się opierać ich gospodarka.",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Rezydencjalny": "Miasto staje się przede wszystkim \"sypialnią\" Wrocławia. Polityka miasta wspiera głównie budownictwo mieszkaniowe i podstawowe, lokalne usługi (sklepy, szkoły, przedszkola) dla mieszkańców, którzy pracują i spędzają czas głównie we Wrocławiu.",
+        "Usługowy": "Miasto stawia na rozwój szerokiej oferty handlowo-usługowej, stając się ponadlokalnym centrum, które częściowo konkuruje, a częściowo uzupełnia ofertę Wrocławia. Powstają tu np. centra handlowe, specjalistyczne obiekty rozrywkowe, które mają przyciągać nie tylko mieszkańców Siechnic, ale i całej okolicy.",
+        "Przemysłowy": "Miasto aktywnie przyciąga i wspiera na swoim terenie duże, zewnętrzne firmy produkcyjne i logistyczne, tworząc nowe strefy przemysłowe. Celem jest tworzenie miejsc pracy w przemyśle/",
+        "Lokalny": "Miasto priorytetowo wspiera rozwój małych i średnich firm zakładanych przez mieszkańców, dążąc do jak największej autonomii i samowystarczalności, także względem Wrocławia. Stawia się na lokalną przedsiębiorczość, rzemiosło i usługi, a nie na wielkich, zewnętrznych inwestorów.",
+        "Specjalistyczny": "Miasto specjalizuje się w branży medycznej, stając się regionalnym centrum oferującym zaawansowane usługi medyczne i opiekuńcze, z których korzystają mieszkańcy całego województwa. Powstają tu np. szpital, specjalistyczne kliniki, ośrodki rehabilitacji czy domy opieki."
+      },
+      "categoryOrder": [
+        "Rezydencjalny",
+        "Usługowy",
+        "Przemysłowy",
+        "Lokalny",
+        "Specjalistyczny"
+      ],
+      "missingReasons": {
+        "": "not_applicable: opt-out alternatives have no attribute values"
+      },
+      "missingCodes": [],
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "atr2",
+      "label": "Priorytet inwestycji publicznych — Opisuje, na co w pierwszej kolejności będą przeznaczane publiczne pieniądze z budżetu miasta.",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Połączenia z Wrocławiem": "Maksymalna poprawa połączeń drogowych i kolejowych z Wrocławiem: Główny nacisk kładziony jest na infrastrukturę transportową – remonty i budowę nowych dróg, ścieżek rowerowych oraz zwiększenie częstotliwości i jakości połączeń kolejowych z Wrocławiem.",
+        "Przestrzenie publiczne": "Tworzenie atrakcyjnych przestrzeni publicznych (rynki, parki, skwery): Inwestycje koncentrują się na poprawie jakości życia wewnątrz miasta – tworzeniu i modernizacji miejsc spotkań dla mieszkańców, takich jak parki, skwery, place zabaw, rynek czy lokalne centrum z deptakiem.",
+        "Tereny przemysłowe": "Uzbrajanie nowych terenów pod inwestycje przemysłowe i technologiczne: Pieniądze publiczne inwestowane są w przygotowanie infrastruktury (drogi, media, kanalizacja) na nowych terenach przeznaczonych dla fabryk i firm, aby przyciągnąć zewnętrznych inwestorów.",
+        "Obiekty usługowe": "Budowa dużych, publicznych obiektów usługowych (hala sportowa, dom kultury): Priorytetem jest budowa jednego lub kilku dużych, centralnych obiektów użyteczności publicznej, z których korzystać będą wszyscy mieszkańcy, np. nowoczesnej hali sportowo-widowiskowej, aquaparku czy centrum kultury z salą koncertową."
+      },
+      "categoryOrder": [
+        "Połączenia z Wrocławiem",
+        "Przestrzenie publiczne",
+        "Tereny przemysłowe",
+        "Obiekty usługowe"
+      ],
+      "missingReasons": {
+        "": "not_applicable: opt-out alternatives have no attribute values"
+      },
+      "missingCodes": [],
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "atr3",
+      "label": "Dominująca forma nowej zabudowy mieszkaniowej — Opisuje, jakiego typu budynki mieszkalne będą preferowane i wspierane w planach zagospodarowania przestrzennego.",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Budynki wielorodzinne": "Nowoczesne osiedla budynków wielorodzinnych (bloki): Promowany jest rozwój miasta w oparciu o gęstą zabudowę wielorodzinną (bloki 4-5 piętrowe), co pozwala na efektywne wykorzystanie terenu.",
+        "Zabudowa zwarta": "Osiedla niskiej, zwartej zabudowy (domy szeregowe, bliźniaki): Preferuje się budowę zorganizowanych osiedli o niższej, ale wciąż zwartej zabudowie, takich jak domy w zabudowie szeregowej czy bliźniaczej.",
+        "Domy jednorodzinne": "Wspieranie budownictwa indywidualnego (domy jednorodzinne): Miasto aktywnie udostępnia i uzbraja nowe działki budowlane z przeznaczeniem dla osób prywatnych, które chcą samodzielnie (nie przez dewelopera) wybudować dom jednorodzinny.",
+        "Rewitalizacja": "Uzupełnianie i rewitalizacja starszej zabudowy: Główny nacisk kładziony jest na dogęszczanie, odnowienie i uzupełnianie zabudowy w starszych częściach miasta. Nowe budynki nawiązują do charakteru śródmiejskiego (kamienice z usługami na parterze), aby tworzyć bardziej zwarty, miejski charakter."
+      },
+      "categoryOrder": [
+        "Budynki wielorodzinne",
+        "Zabudowa zwarta",
+        "Domy jednorodzinne",
+        "Rewitalizacja"
+      ],
+      "missingReasons": {
+        "": "not_applicable: opt-out alternatives have no attribute values"
+      },
+      "missingCodes": [],
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "atr4",
+      "label": "Priorytet polityki społecznej — Opisuje, która grupa mieszkańców i jakie działania społeczne będą w pierwszej kolejłości wspierane przez miasto.",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Młode rodziny": "Nastawienie na potrzeby młodych rodzin: Miasto koncentruje swoje działania i budżet na zapewnieniu jak najlepszych warunków dla rodzin z małymi dziećmi (budowa i dofinansowanie żłobków, przedszkoli, szkół, nowoczesnych placów zabaw).",
+        "Oferta kulturalna": "Rozwój oferty kulturalnej i wspieranie organizacji pozarządowych: Priorytetem jest wspieranie lokalnych artystów, organizacji pozarządowych (NGO) oraz finansowanie szerokiej gamy wydarzeń kulturalnych (koncerty, festiwale, warsztaty) i inicjatyw integrujących mieszkańców.",
+        "Partycypacja społeczna": "Wzmacnianie inicjatyw mieszkańców i życia społecznego (działania oddolne): Polityka społeczna skupia się na tworzeniu narzędzi i programów, które aktywizują mieszkańców i wspierają ich własne pomysły. Priorytetem są działania oddolne, np. realizacja projektów z budżetu obywatelskiego, system małych grantów na inicjatywy sąsiedzkie czy tworzenie platform do komunikacji i samoorganizacji mieszkańców.",
+        "Usługi zdrowotne": "Koncentracja na usługach opiekuńczych i zdrowotnych: Miasto skupia się na zapewnieniu wsparcia seniorom i osobom z potrzebami zdrowotnymi. Inwestuje w dzienny dom opieki, usługi opiekuńcze, programy \"złotej rączki\" dla seniorów i profilaktykę zdrowotną."
+      },
+      "categoryOrder": [
+        "Młode rodziny",
+        "Oferta kulturalna",
+        "Partycypacja społeczna",
+        "Usługi zdrowotne"
+      ],
+      "missingReasons": {
+        "": "not_applicable: opt-out alternatives have no attribute values"
+      },
+      "missingCodes": [],
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "atr5",
+      "label": "Podejście do środowiska i zieleni — Opisuje, jaka będzie relacja między rozwojem gospodarczym a ochroną przyrody i terenów zielonych.",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Maksymalizacja zieleni": "Maksymalizacja terenów zielonych i ochrona przyrody: Ochrona istniejącej przyrody i tworzenie nowych parków, lasów czy łąk jest absolutnym priorytetem, nawet jeśli oznacza to rezygnację z niektórych inwestycji gospodarczych lub mieszkaniowych.",
+        "Zrównoważone podejście": "Zrównoważone podejście: Rozwój gospodarczy i ochrona zieleni są równie ważne. Nowe inwestycje są realizowane z poszanowaniem dla przyrody, ale jej ochrona nie blokuje kluczowych projektów rozwojowych.",
+        "Priorytet gospodarczy": "Priorytet dla rozwoju gospodarczego: Najważniejszy jest szybki rozwój gospodarczy i tworzenie miejsc pracy. Ochrona środowiska jest brana pod uwagę, ale nie może stać na przeszkodzie inwestycjom, nawet jeśli wiążą się one z pewnym ryzykiem (np. zwiększony hałas, ruch).",
+        "Rekultywacja terenów": "Rekultywacja i tworzenie zieleni na terenach poprzemysłowych: Działania pro-środowiskowe koncentrują się na naprawianiu szkód i przywracaniu zieleni na terenach już zdegradowanych (np. po hucie)."
+      },
+      "categoryOrder": [
+        "Maksymalizacja zieleni",
+        "Zrównoważone podejście",
+        "Priorytet gospodarczy",
+        "Rekultywacja terenów"
+      ],
+      "missingReasons": {
+        "": "not_applicable: opt-out alternatives have no attribute values"
+      },
+      "missingCodes": [],
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "Błaszczyk, Mateusz; Krysiński, Dawid (2026). Siechnice Urban Development Preferences Survey 2025 – Replication Data. Uniwersytet Wrocławski, V1. https://doi.org/10.34616/4CMFXK\n出典: https://uwr.rodbuk.pl/dataset.xhtml?persistentId=doi:10.34616/4CMFXK\n\nCC0 1.0 Universal Public Domain Dedication\nhttps://creativecommons.org/publicdomain/zero/1.0/\n原公開パッケージのデータ・属性辞書のCC0表示に基づき再利用。CC0には帰属・継承義務はありませんが出典を明記します。\n\nDAVIS-PCPでの変更: 384人中、匿名回答者IDを辞書順に並べ4人ごとに1人を抽出した96人。各人12課題×3選択肢、3,456行のlong形式を保持。1行=1人ではない。原回答と属性文字列を保持し、属性辞書をWindows-1250からUTF-8へ変換して完全な水準説明を付与。日本語補助説明を追加。オプトアウトの属性空欄は構造的非該当であり補完しない。題名は2025、データ公開年は2026だが、README・説明の調査年は2024と記されており原資料間の年の不一致を保持。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

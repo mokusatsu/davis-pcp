@@ -1,0 +1,1866 @@
+{
+  "columns": [
+    {
+      "name": "RemoteWork",
+      "label": "Which best describes your current work situation?",
+      "role": "attribute",
+      "scaleType": "nominal",
+      "missingCodes": [
+        "NA"
+      ],
+      "valueLabels": {
+        "Remote": "Remote",
+        "Hybrid (some remote, some in-person)": "Hybrid (some remote, some in-person)",
+        "In-person": "In-person"
+      },
+      "categoryOrder": [
+        "Remote",
+        "Hybrid (some remote, some in-person)",
+        "In-person"
+      ],
+      "missingReasons": {
+        "NA": "missing"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "lang_01",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Ada",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Ada",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_02",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Apex",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Apex",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_03",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Assembly",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Assembly",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_04",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Bash/Shell (all shells)",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Bash/Shell (all shells)",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_05",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — C",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "C",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_06",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — C#",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "C#",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_07",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — C++",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "C++",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_08",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Clojure",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Clojure",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_09",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Cobol",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Cobol",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_10",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Crystal",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Crystal",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_11",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Dart",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Dart",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_12",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Delphi",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Delphi",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_13",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Elixir",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Elixir",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_14",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Erlang",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Erlang",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_15",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — F#",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "F#",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_16",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Fortran",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Fortran",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_17",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — GDScript",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "GDScript",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_18",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Go",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Go",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_19",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Groovy",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Groovy",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_20",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — HTML/CSS",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "HTML/CSS",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_21",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Haskell",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Haskell",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_22",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Java",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Java",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_23",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — JavaScript",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "JavaScript",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_24",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Julia",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Julia",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_25",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Kotlin",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Kotlin",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_26",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Lisp",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Lisp",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_27",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Lua",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Lua",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_28",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — MATLAB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "MATLAB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_29",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — MicroPython",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "MicroPython",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_30",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Nim",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Nim",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_31",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — OCaml",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "OCaml",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_32",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Objective-C",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Objective-C",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_33",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — PHP",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "PHP",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_34",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Perl",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Perl",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_35",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — PowerShell",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "PowerShell",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_36",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Prolog",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Prolog",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_37",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Python",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Python",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_38",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — R",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "R",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_39",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Ruby",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Ruby",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_40",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Rust",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Rust",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_41",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — SQL",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "SQL",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_42",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Scala",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Scala",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_43",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Solidity",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Solidity",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_44",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Swift",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Swift",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_45",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — TypeScript",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "TypeScript",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_46",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — VBA",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "VBA",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_47",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Visual Basic (.Net)",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Visual Basic (.Net)",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "lang_48",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with] — Zig",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "lang",
+      "multiResponseOptionLabel": "Zig",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_01",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — BigQuery",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "BigQuery",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_02",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Cassandra",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Cassandra",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_03",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Clickhouse",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Clickhouse",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_04",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Cloud Firestore",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Cloud Firestore",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_05",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Cockroachdb",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Cockroachdb",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_06",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Cosmos DB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Cosmos DB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_07",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Couch DB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Couch DB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_08",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Couchbase",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Couchbase",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_09",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Databricks SQL",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Databricks SQL",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_10",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Datomic",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Datomic",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_11",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — DuckDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "DuckDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_12",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Dynamodb",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Dynamodb",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_13",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Elasticsearch",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Elasticsearch",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_14",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — EventStoreDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "EventStoreDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_15",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Firebase Realtime Database",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Firebase Realtime Database",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_16",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Firebird",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Firebird",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_17",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — H2",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "H2",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_18",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — IBM DB2",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "IBM DB2",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_19",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — InfluxDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "InfluxDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_20",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — MariaDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "MariaDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_21",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Microsoft Access",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Microsoft Access",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_22",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Microsoft SQL Server",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Microsoft SQL Server",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_23",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — MongoDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "MongoDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_24",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — MySQL",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "MySQL",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_25",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Neo4J",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Neo4J",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_26",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Oracle",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Oracle",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_27",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — PostgreSQL",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "PostgreSQL",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_28",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Presto",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Presto",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_29",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — RavenDB",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "RavenDB",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_30",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Redis",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Redis",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_31",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — SQLite",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "SQLite",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_32",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Snowflake",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Snowflake",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_33",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Solr",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Solr",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    },
+    {
+      "name": "db_34",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with] — Supabase",
+      "role": "question",
+      "scaleType": "nominal",
+      "multiResponseGroup": "db",
+      "multiResponseOptionLabel": "Supabase",
+      "valueLabels": {
+        "0": "Not selected",
+        "1": "Selected"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingReasons": {
+        "": "missing: source parent response is NA or blank"
+      },
+      "missingCodes": [],
+      "isReversed": false
+    }
+  ],
+  "multiResponseGroups": [
+    {
+      "groupId": "lang",
+      "label": "Which programming, scripting, and markup languages have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the language and want to continue to do so, please check both boxes in that row.) [Have worked with]",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "valid",
+      "optionOrder": [
+        "lang_01",
+        "lang_02",
+        "lang_03",
+        "lang_04",
+        "lang_05",
+        "lang_06",
+        "lang_07",
+        "lang_08",
+        "lang_09",
+        "lang_10",
+        "lang_11",
+        "lang_12",
+        "lang_13",
+        "lang_14",
+        "lang_15",
+        "lang_16",
+        "lang_17",
+        "lang_18",
+        "lang_19",
+        "lang_20",
+        "lang_21",
+        "lang_22",
+        "lang_23",
+        "lang_24",
+        "lang_25",
+        "lang_26",
+        "lang_27",
+        "lang_28",
+        "lang_29",
+        "lang_30",
+        "lang_31",
+        "lang_32",
+        "lang_33",
+        "lang_34",
+        "lang_35",
+        "lang_36",
+        "lang_37",
+        "lang_38",
+        "lang_39",
+        "lang_40",
+        "lang_41",
+        "lang_42",
+        "lang_43",
+        "lang_44",
+        "lang_45",
+        "lang_46",
+        "lang_47",
+        "lang_48"
+      ],
+      "maxSelections": null
+    },
+    {
+      "groupId": "db",
+      "label": "Which database environments have you done extensive development work in over the past year, and which do you want to work in over the next year? (If you both worked with the database and want to continue to do so, please check both boxes in that row.) [Have worked with]",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "valid",
+      "optionOrder": [
+        "db_01",
+        "db_02",
+        "db_03",
+        "db_04",
+        "db_05",
+        "db_06",
+        "db_07",
+        "db_08",
+        "db_09",
+        "db_10",
+        "db_11",
+        "db_12",
+        "db_13",
+        "db_14",
+        "db_15",
+        "db_16",
+        "db_17",
+        "db_18",
+        "db_19",
+        "db_20",
+        "db_21",
+        "db_22",
+        "db_23",
+        "db_24",
+        "db_25",
+        "db_26",
+        "db_27",
+        "db_28",
+        "db_29",
+        "db_30",
+        "db_31",
+        "db_32",
+        "db_33",
+        "db_34"
+      ],
+      "maxSelections": null
+    }
+  ],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "Stack Overflow Developer Survey 2024. Stack Exchange, Inc. Source data and schema: https://github.com/StackExchange/Survey/tree/main/packages/archive/2024 . © Copyright 2026 Stack Exchange, Inc. (official repository notice).\n出典: https://survey.stackoverflow.co/2024/\n\nこの83列の派生データベース（CSVと対応するデータスキーマ）は Open Database License (ODbL) 1.0 の条件で提供します。\nhttps://opendatacommons.org/licenses/odbl/1-0/\n個々の内容は Database Contents License (DbCL) 1.0。\nhttps://opendatacommons.org/licenses/dbcl/1-0/\nContains information from Stack Overflow Developer Survey 2024, made available under the Open Database License.\n公開する派生データベースはODbLの継承条件に従い、帰属・権利・ライセンス表示を保持してください。本サンプルのCSVは派生データベース全体で、同梱ファイルとして無償・機械可読で提供します。CSVの個別配布でも同名のLICENSE.txtとコードブックを添付してください。ODbLはこのサンプルデータベースに適用され、アプリのプログラム自体に適用するものではありません。\n\nDAVIS-PCPでの変更: 原65,437行から年齢カテゴリ25–34、35–44、45–54、55–64、65+の48,449行を候補にし、等間隔のeligible_index=floor(i*(48449-1)/599), i=0..599で600行を抽出。RemoteWorkと、使用言語48項目・DB34項目のMAを採用。元の匿名ID・年齢・地域・収入・学歴・経験年数は除外。MAの選択肢はこの600行で観測された元のセミコロン区切り回答の和集合から展開。回答があるとき1=選択、0=非選択、元のNA/空欄は全子列空欄としゼロに置換していない。選択肢順は辞書順。質問文はschema.csvからHTML強調を除去し[Have worked with]と選択肢名を追記。合成回答・欠損の人工注入・反転・補完なし。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

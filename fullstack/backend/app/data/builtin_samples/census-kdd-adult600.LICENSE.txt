@@ -1,0 +1,10 @@
+Census-Income (KDD). (2000). UCI Machine Learning Repository. https://doi.org/10.24432/C5N30T
+出典: https://archive.ics.uci.edu/dataset/117/census+income+kdd
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。
+
+DAVIS-PCPでの変更: 1994/1995 CPS由来の公開訓練データから18歳以上600行をseed=20261002で抽出。原データの両端空白を除去し、7変数に限定。年齢・性別・出生国・行照合ID・所得額・資産額・家族情報は同梱しない。原人口重みMARSUPWTは正規化せず保持。?は欠損、移動項目のNot in universeは非該当。反転・補完なし。層・PSUがない部分標本のため正式なCPS母集団推計や完全な標本設計の再現には使えない。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

@@ -1,0 +1,10 @@
+Aeberhard, S. & Forina, M. (1992). Wine [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5PC7J. 原データ提供: Forina, M. et al., PARVUS; Stefan Aeberhard. 変数情報: Riccardo Leardi; 1998年9月21日 C. Blake 更新。
+出典: https://archive.ics.uci.edu/dataset/109/wine
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。
+
+DAVIS-PCPでの変更: 全178行×14列（13測定値＋class）を元の順序・数値表記でCSV化。UCI APIの列名を付与し、変数説明・データ説明を日本語訳。イタリアの同じ地域で生産された、3つの異なるブドウ栽培品種に由来するワイン178試料の化学分析データです。13の化学分析指標と品種クラス（1–3）があり、欠損値はありません。品質点数や赤・白の区分ではありません。 原資料の測定単位欄は空欄なので%、g/L、mg/L等の単位を推定して付与していません。連続測定値はintervalとして登録し、測定尺度の厳密な性質は仮定していません。標準化・反転・補完・行抽出なし。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

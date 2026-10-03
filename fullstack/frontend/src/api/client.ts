@@ -49,6 +49,10 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   downloadBlob: async (path: string, init?: RequestInit): Promise<Blob> => {
     if (IS_STATIC_BUILD) {
+      if (/^\/datasets\/samples\/[a-z0-9-]+\/package$/.test(path)) {
+        const data = await pyodideClient.request<ArrayBuffer>(path, init)
+        return new Blob([data], { type: 'application/zip' })
+      }
       throw new Error('再現パッケージ出力はstaticビルドで未対応です (ANALYSIS_CONTEXT_UNSUPPORTED)。')
     }
     const response = await fetch(`${BASE}${path}`, init)
@@ -178,6 +182,9 @@ export interface SurveyDesignSpec {
 export interface CodebookResponse {
   datasetId: string
   schemaRevision: number
+  /** Dataset-level attribution; independent of numerical analysis revisions. */
+  licenseText?: string
+  licenseRevision?: number
   columns: CodebookColumn[]
   multiResponseGroups?: MultiResponseGroup[]
   weightConfig?: WeightConfig | null
@@ -197,6 +204,8 @@ export async function updateCodebook(
     weightConfig?: WeightConfig | null
     surveyDesign?: SurveyDesignSpec | null
     expectedSchemaRevision?: number
+    licenseText?: string
+    expectedLicenseRevision?: number
   }
 ): Promise<{ status: string; datasetId: string; schemaRevision: number; updatedColumns: number; codebook: CodebookResponse }> {
   return api.put(`/datasets/${datasetId}/codebook`, {
@@ -213,15 +222,24 @@ export async function importCodebook(
 }
 
 export async function downloadCodebookExport(datasetId: string, format: 'csv' | 'json' = 'csv'): Promise<void> {
-  const response = await fetch(`${BASE}/datasets/${datasetId}/codebook/export?format=${format}`)
-  if (!response.ok) throw new Error('Codebook export failed')
-  const blob = await response.blob()
-  const disposition = response.headers.get('Content-Disposition') || ''
-  const match = /filename="?([^";]+)"?/.exec(disposition)
+  let blob: Blob
+  let filename = `codebook_${datasetId}.${format}`
+  if (IS_STATIC_BUILD) {
+    const data = await pyodideClient.request<unknown>(`/datasets/${datasetId}/codebook/export?format=${format}`)
+    blob = new Blob([typeof data === 'string' ? data : JSON.stringify(data, null, 2)],
+      { type: format === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8' })
+  } else {
+    const response = await fetch(`${BASE}/datasets/${datasetId}/codebook/export?format=${format}`)
+    if (!response.ok) throw new Error('Codebook export failed')
+    blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') || ''
+    const match = /filename="?([^";]+)"?/.exec(disposition)
+    filename = match?.[1] ?? filename
+  }
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = match?.[1] ?? `codebook_${datasetId}.${format}`
+  anchor.download = filename
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()

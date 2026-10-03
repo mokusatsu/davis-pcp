@@ -1,0 +1,1790 @@
+{
+  "columns": [
+    {
+      "name": "SAMPLEID",
+      "label": "回答者ID（回答者にランダムに振り分けた数値）",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "SEX",
+      "label": "性別\n（回答者の性別）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "男性",
+        "2": "女性"
+      },
+      "categoryOrder": [
+        "1",
+        "2"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "AGE",
+      "label": "年齢(才)\n（回答者の年齢）",
+      "scaleType": "ratio",
+      "role": "attribute",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "AGEID",
+      "label": "年齢\n（回答者の年齢を、12才未満、12才から59才までを５才間隔、60才以上で区分した際の該当区分）",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "12才未満",
+        "2": "12才～19才",
+        "3": "20才～24才",
+        "4": "25才～29才",
+        "5": "30才～34才",
+        "6": "35才～39才",
+        "7": "40才～44才",
+        "8": "45才～49才",
+        "9": "50才～54才",
+        "10": "55才～59才",
+        "11": "60才以上"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "PREFECTURE",
+      "label": "都道府県\n（回答者の居住都道府県）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "北海道",
+        "2": "青森県",
+        "3": "岩手県",
+        "4": "宮城県",
+        "5": "秋田県",
+        "6": "山形県",
+        "7": "福島県",
+        "8": "茨城県",
+        "9": "栃木県",
+        "10": "群馬県",
+        "11": "埼玉県",
+        "12": "千葉県",
+        "13": "東京都",
+        "14": "神奈川県",
+        "15": "新潟県",
+        "16": "富山県",
+        "17": "石川県",
+        "18": "福井県",
+        "19": "山梨県",
+        "20": "長野県",
+        "21": "岐阜県",
+        "22": "静岡県",
+        "23": "愛知県",
+        "24": "三重県",
+        "25": "滋賀県",
+        "26": "京都府",
+        "27": "大阪府",
+        "28": "兵庫県",
+        "29": "奈良県",
+        "30": "和歌山県",
+        "31": "鳥取県",
+        "32": "島根県",
+        "33": "岡山県",
+        "34": "広島県",
+        "35": "山口県",
+        "36": "徳島県",
+        "37": "香川県",
+        "38": "愛媛県",
+        "39": "高知県",
+        "40": "福岡県",
+        "41": "佐賀県",
+        "42": "長崎県",
+        "43": "熊本県",
+        "44": "大分県",
+        "45": "宮崎県",
+        "46": "鹿児島県",
+        "47": "沖縄県"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "40",
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "46",
+        "47"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "AREA",
+      "label": "地域\n（回答者の居住地域）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "北海道",
+        "2": "東北地方",
+        "3": "関東地方",
+        "4": "中部地方",
+        "5": "近畿地方",
+        "6": "中国地方",
+        "7": "四国地方",
+        "8": "九州地方"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "JOB",
+      "label": "職業\n（回答者の職業）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "公務員",
+        "2": "経営者・役員",
+        "3": "会社員(事務系)",
+        "4": "会社員(技術系)",
+        "5": "会社員(その他)",
+        "6": "自営業",
+        "7": "自由業",
+        "8": "専業主婦(主夫)",
+        "9": "パート・アルバイト",
+        "10": "学生",
+        "11": "その他",
+        "12": "無職"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "SQ1",
+      "label": "あなたは現在、リモートワークまたは時差出勤をしていますか。 当てはまるものを1つお選びください。 ※複数お勤め先がある方は、主な1社についてお答えください。（以降も同様です）",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "完全リモートワークをしている",
+        "2": "リモートワークをしているが、出社もしている（時差出勤をしている）",
+        "3": "リモートワークをしているが、出社もしている（時差出勤をしていない）",
+        "4": "いつも勤務先に出社している（時差出勤をしている）",
+        "5": "いつも勤務先に出社している（時差出勤をしていない）",
+        "6": "現在は働いていない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "SQ2",
+      "label": "あなたのお勤め先の場所はどこですか。 ※リモートワーク中の人は、リモートワーク前に出社していた勤務先の所在地をお答えください。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "東京都区部",
+        "2": "東京多摩部",
+        "3": "東京島しょ部",
+        "4": "横浜市",
+        "5": "川崎市",
+        "6": "相模原市",
+        "7": "神奈川県（政令市除く）",
+        "8": "千葉市",
+        "9": "千葉県（政令市除く）",
+        "10": "さいたま市",
+        "11": "埼玉県（政令市除く）",
+        "12": "上記以外"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "SQ3_1",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【鉄道を利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "鉄道を利用"
+    },
+    {
+      "name": "SQ3_2",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【バスを利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "バスを利用"
+    },
+    {
+      "name": "SQ3_3",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【自家用車を利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "自家用車を利用"
+    },
+    {
+      "name": "SQ3_4",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【タクシーを利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "タクシーを利用"
+    },
+    {
+      "name": "SQ3_5",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【オートバイ、原付を利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "オートバイ、原付を利用"
+    },
+    {
+      "name": "SQ3_6",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【自転車を利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "自転車を利用"
+    },
+    {
+      "name": "SQ3_7",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【その他を利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "その他を利用"
+    },
+    {
+      "name": "SQ3_8",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。【徒歩のみを利用】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "利用していない",
+        "1": "利用している"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "SQ3",
+      "multiResponseOptionLabel": "徒歩のみを利用"
+    },
+    {
+      "name": "SQ4",
+      "label": "あなたが通勤するときの鉄道はどのくらい混雑していますか。 最も当てはまるものを１つお選びください。 ※リモートワーク中の人は、リモートワーク前に出社していたときの状況をお答えください。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "常に混雑している",
+        "2": "だいたい混雑している",
+        "3": "あまり混雑していない",
+        "4": "混雑していない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "SQ5",
+      "label": "あなたご自身は、通勤時の鉄道の混雑を避けたいと思いますか。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "とても避けたいと思っている",
+        "2": "可能であれば避けたいと思っている",
+        "3": "あまり避けたいとは思わない",
+        "4": "まったく避けたいとは思わない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q1",
+      "label": "あなたは会社へ通勤する際に、時間をずらしたり経路を変えたりして混雑する電車での移動を避けて出社していますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "している",
+        "2": "していない"
+      },
+      "categoryOrder": [
+        "1",
+        "2"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q2_1",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【電車以外の移動手段がわからない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "電車以外の移動手段がわからない"
+    },
+    {
+      "name": "Q2_2",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【ルートを変えることができない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "ルートを変えることができない"
+    },
+    {
+      "name": "Q2_3",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【混雑している時間帯を把握することができない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "混雑している時間帯を把握することができない"
+    },
+    {
+      "name": "Q2_4",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【混雑を避けたいと勤務先に言いにくい】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "混雑を避けたいと勤務先に言いにくい"
+    },
+    {
+      "name": "Q2_5",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【スケジュールをずらせない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "スケジュールをずらせない"
+    },
+    {
+      "name": "Q2_6",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【混雑を避けるためのスケジュール調整が面倒】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "混雑を避けるためのスケジュール調整が面倒"
+    },
+    {
+      "name": "Q2_7",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【混雑を避けてもメリットが少ない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "混雑を避けてもメリットが少ない"
+    },
+    {
+      "name": "Q2_8",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "その他"
+    },
+    {
+      "name": "Q2_9",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）【特に理由はない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "当てはまらない",
+        "1": "当てはまる"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q2",
+      "multiResponseOptionLabel": "特に理由はない"
+    },
+    {
+      "name": "Q3",
+      "label": "任意の時間でリモートワークが可能になった場合、混雑時間をさけるためにどのような行動をとりますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "リモートワークに変更する",
+        "2": "出社時間を変更する",
+        "3": "移動手段を変更する",
+        "4": "（リモートワークが不可能な職種であるので）リモートワークができない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q4",
+      "label": "任意の時間で時差出勤が可能になった場合、混雑をさけるためにどちらの行動をとりますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "移動手段は変えずに出社時間を変更する",
+        "2": "出社時間は変えずに移動手段を変更する",
+        "3": "出社時間も移動手段を変更する",
+        "4": "（時差出勤が不可能な職種であるので）時差出勤できない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q5",
+      "label": "あなたのお勤め先の業種をお知らせください。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "農業、林業、漁業、鉱業",
+        "2": "情報通信業",
+        "3": "建設業",
+        "4": "製造業",
+        "5": "電気、ガス、水道業",
+        "6": "運輸、輸送業",
+        "7": "流通、卸、小売業",
+        "8": "金融業（銀行または証券）、保険業",
+        "9": "不動産、物品賃貸業",
+        "10": "宿泊業、飲食店",
+        "11": "生活関連サービス業",
+        "12": "娯楽業",
+        "13": "教育関連",
+        "14": "医療、福祉",
+        "15": "出版、印刷業",
+        "16": "メディア、マスコミ、広告業",
+        "17": "マーケットリサーチまたは調査業",
+        "18": "商社",
+        "19": "非営利団体またはNPO",
+        "20": "その他【　　　】"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q6",
+      "label": "あなたの職種の系列をお知らせください。 複数当てはまる場合はもっともあなたと関わりが強いものをお知らせください。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "営業、企画系",
+        "2": "事務系",
+        "3": "サービス、販売系",
+        "4": "クリエイティブ系",
+        "5": "技術系（ソフトウェア、ネットワーク）",
+        "6": "技術系（電気、電子、機械）",
+        "7": "技術系（素材、食品、メディカル）",
+        "8": "技術系（建築、土木）",
+        "9": "社内情報システム系",
+        "10": "専門職",
+        "11": "その他【　　　】"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q7S1",
+      "label": "コロナ前後における、あなたの鉄道の利用頻度について教えてください。【コロナ前】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ほぼ毎日",
+        "2": "週に4，5日程度",
+        "3": "週に2，3日程度",
+        "4": "週に1日程度",
+        "5": "2週に1日程度",
+        "6": "それ以下"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q7S2",
+      "label": "コロナ前後における、あなたの鉄道の利用頻度について教えてください。【4，5月頃（緊急事態宣言期間）】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ほぼ毎日",
+        "2": "週に4，5日程度",
+        "3": "週に2，3日程度",
+        "4": "週に1日程度",
+        "5": "2週に1日程度",
+        "6": "それ以下"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q7S3",
+      "label": "コロナ前後における、あなたの鉄道の利用頻度について教えてください。【現在】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ほぼ毎日",
+        "2": "週に4，5日程度",
+        "3": "週に2，3日程度",
+        "4": "週に1日程度",
+        "5": "2週に1日程度",
+        "6": "それ以下"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8",
+      "label": "あなたは自身が利用する鉄道の混雑する曜日や時間帯を把握していますか。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "混雑する曜日や時間帯をよく把握している（ご自身がよく使う時間帯や路線以外も含めて）",
+        "2": "混雑する曜日や時間帯をある程度把握している（ご自身がよく使う時間帯や路線のみ）",
+        "3": "混雑する曜日や時間帯を把握していない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q9",
+      "label": "現在、あなたが満員電車に乗る頻度はどのくらいですか。 （満員電車：肩が触れ合う程度に混雑した状態をイメージしてください）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "ほぼ毎日",
+        "2": "週に4，5日程度",
+        "3": "週に2，3日程度",
+        "4": "週に1日程度",
+        "5": "2週に1日程度",
+        "6": "それ以下"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q10",
+      "label": "朝の通勤時間帯などの混雑しそうなタイミングを避けるためのわかりやすい情報提供サービスを望みますか。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "望む",
+        "2": "どちらかといえば望む",
+        "3": "望まない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q11",
+      "label": "現在、鉄道会社で混雑情報が配信されていますが、それらを活用していますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "よく活用している",
+        "2": "たまに活用している",
+        "3": "行き先によって活用している",
+        "4": "混雑情報が配信していることは知っているが、活用していない",
+        "5": "混雑情報が表示されていることを知らなかった"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q12_1",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【Googleマップ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "Googleマップ"
+    },
+    {
+      "name": "Q12_2",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【Yahoo!地図】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "Yahoo!地図"
+    },
+    {
+      "name": "Q12_3",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【JR東日本アプリ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "JR東日本アプリ"
+    },
+    {
+      "name": "Q12_4",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【東京メトロアプリ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "東京メトロアプリ"
+    },
+    {
+      "name": "Q12_5",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【マピオン】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "マピオン"
+    },
+    {
+      "name": "Q12_6",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【駅すぱあと】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "駅すぱあと"
+    },
+    {
+      "name": "Q12_7",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【NAVITIME】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "NAVITIME"
+    },
+    {
+      "name": "Q12_8",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【いつもNAVI】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "いつもNAVI"
+    },
+    {
+      "name": "Q12_9",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【駅探★乗換案内】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "駅探★乗換案内"
+    },
+    {
+      "name": "Q12_10",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【ジョルダン乗換案内】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "ジョルダン乗換案内"
+    },
+    {
+      "name": "Q12_11",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "その他"
+    },
+    {
+      "name": "Q12_12",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）【どれも利用していない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "使用しない",
+        "1": "使用する"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q12",
+      "multiResponseOptionLabel": "どれも利用していない"
+    },
+    {
+      "name": "Q13",
+      "label": "配信される交通系の情報が間違っていたらどう感じますか。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "とても不満を感じる",
+        "2": "やや不満を感じる",
+        "3": "あまり気にしない",
+        "4": "まったく気にしない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q14",
+      "label": "交通系の情報を鉄道会社が発信するときと「都区市町村の行政機関など」が発信するときで感じ方に違いはありますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "どちらも変わらない",
+        "2": "行政機関のほうが正確に発信してもらえる期待がある",
+        "3": "行政機関のほうが信頼できない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q15S1",
+      "label": "混雑情報などの情報を「鉄道会社」が直接発信するときと「総合ナビアプリ（経路検索やGoogle マップなど）」が発信するときに、以下の視点においてどちらのほうが優れていると思いますか。【情報の正確さ】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "鉄道会社が作るアプリ",
+        "2": "どちらかといえば鉄道会社が作るアプリ",
+        "3": "どちらも変わらない",
+        "4": "どちらかといえば総合ナビアプリ（経路検索やGoogle マップなど）",
+        "5": "総合ナビアプリ（経路検索やGoogle マップなど）"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q15S2",
+      "label": "混雑情報などの情報を「鉄道会社」が直接発信するときと「総合ナビアプリ（経路検索やGoogle マップなど）」が発信するときに、以下の視点においてどちらのほうが優れていると思いますか。【情報のタイムリー】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "鉄道会社が作るアプリ",
+        "2": "どちらかといえば鉄道会社が作るアプリ",
+        "3": "どちらも変わらない",
+        "4": "どちらかといえば総合ナビアプリ（経路検索やGoogle マップなど）",
+        "5": "総合ナビアプリ（経路検索やGoogle マップなど）"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q15S3",
+      "label": "混雑情報などの情報を「鉄道会社」が直接発信するときと「総合ナビアプリ（経路検索やGoogle マップなど）」が発信するときに、以下の視点においてどちらのほうが優れていると思いますか。【情報の詳しさ】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "鉄道会社が作るアプリ",
+        "2": "どちらかといえば鉄道会社が作るアプリ",
+        "3": "どちらも変わらない",
+        "4": "どちらかといえば総合ナビアプリ（経路検索やGoogle マップなど）",
+        "5": "総合ナビアプリ（経路検索やGoogle マップなど）"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q15S4",
+      "label": "混雑情報などの情報を「鉄道会社」が直接発信するときと「総合ナビアプリ（経路検索やGoogle マップなど）」が発信するときに、以下の視点においてどちらのほうが優れていると思いますか。【情報のわかりやすさ】",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "鉄道会社が作るアプリ",
+        "2": "どちらかといえば鉄道会社が作るアプリ",
+        "3": "どちらも変わらない",
+        "4": "どちらかといえば総合ナビアプリ（経路検索やGoogle マップなど）",
+        "5": "総合ナビアプリ（経路検索やGoogle マップなど）"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q16_1",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【多くのシェアオフィスが使える】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "多くのシェアオフィスが使える"
+    },
+    {
+      "name": "Q16_2",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【目的地（オフィスや店舗）の混雑情報の配信】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "目的地（オフィスや店舗）の混雑情報の配信"
+    },
+    {
+      "name": "Q16_3",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【リモートワーク推奨時間の設定】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "リモートワーク推奨時間の設定"
+    },
+    {
+      "name": "Q16_4",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【混雑を避けた移動を続けるとクーポンがもらえる】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "混雑を避けた移動を続けるとクーポンがもらえる"
+    },
+    {
+      "name": "Q16_5",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【その他】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "その他"
+    },
+    {
+      "name": "Q16_6",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）【特にない】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "0": "なくてもよい",
+        "1": "あればよい"
+      },
+      "categoryOrder": [
+        "0",
+        "1"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": "Q16",
+      "multiResponseOptionLabel": "特にない"
+    },
+    {
+      "name": "Q17S1",
+      "label": "出社タイミングを検討する際に参考とする混雑情報があれば教えてください。【リアルタイム】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "参考にする",
+        "2": "参考にしない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q17S2",
+      "label": "出社タイミングを検討する際に参考とする混雑情報があれば教えてください。【駅や車両情報の細かさ】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "参考にする",
+        "2": "参考にしない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q17S3",
+      "label": "出社タイミングを検討する際に参考とする混雑情報があれば教えてください。【曜日ごとの情報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "参考にする",
+        "2": "参考にしない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q17S4",
+      "label": "出社タイミングを検討する際に参考とする混雑情報があれば教えてください。【時間帯のごとの情報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "参考にする",
+        "2": "参考にしない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q17S5",
+      "label": "出社タイミングを検討する際に参考とする混雑情報があれば教えてください。【経路全体の情報】",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "参考にする",
+        "2": "参考にしない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q18",
+      "label": "到着時間に余裕があり、家で仕事をしてからオフィスに行けばよい場合に、先ほどのようなサービスがあったら使いますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "使ってみたいと思う",
+        "2": "できれば使ってみたいと思う",
+        "3": "おそらく使わないと思う",
+        "4": "使わないと思う",
+        "5": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q19",
+      "label": "この情報を利用して、会社側で混雑している時間帯の出社や打ち合わせなどを避けた時間設定をして欲しいですか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "設定して欲しい",
+        "2": "できれば設定して欲しい",
+        "3": "設定しなくてもよい",
+        "4": "設定する必要はない",
+        "5": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q20",
+      "label": "混雑を避けた新しい生活様式に向けて、出社や買い物など自身の移動するタイミングを検討するためにカレンダーや経路で電車の混雑情報が表示されるサービスを利用してみたいと思いますか。",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "思う",
+        "2": "思わない",
+        "3": "わからない"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "multiResponseGroups": [
+    {
+      "groupId": "SQ3",
+      "label": "あなたが通勤するときに利用している移動手段をすべてお選びください。 ※リモートワーク中の人は、リモートワーク前に出社時に利用していた移動手段をお答えください。",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "missing",
+      "maxSelections": null,
+      "optionOrder": [
+        "SQ3_1",
+        "SQ3_2",
+        "SQ3_3",
+        "SQ3_4",
+        "SQ3_5",
+        "SQ3_6",
+        "SQ3_7",
+        "SQ3_8"
+      ]
+    },
+    {
+      "groupId": "Q2",
+      "label": "電車が混雑していても、自身で混雑を避けて通勤しない理由を教えてください。 以下の中から当てはまるものすべてお選びください。（いくつでも）",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "missing",
+      "maxSelections": null,
+      "optionOrder": [
+        "Q2_1",
+        "Q2_2",
+        "Q2_3",
+        "Q2_4",
+        "Q2_5",
+        "Q2_6",
+        "Q2_7",
+        "Q2_8",
+        "Q2_9"
+      ]
+    },
+    {
+      "groupId": "Q12",
+      "label": "あなたが移動するときによくお使いになる乗換案内、地図アプリをすべてお選びください。（いくつでも）",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "missing",
+      "maxSelections": null,
+      "optionOrder": [
+        "Q12_1",
+        "Q12_2",
+        "Q12_3",
+        "Q12_4",
+        "Q12_5",
+        "Q12_6",
+        "Q12_7",
+        "Q12_8",
+        "Q12_9",
+        "Q12_10",
+        "Q12_11",
+        "Q12_12"
+      ]
+    },
+    {
+      "groupId": "Q16",
+      "label": "リモートワークや混雑を避ける生活（仕事や通勤・通学など）をするとすれば、どのようなサポートがあればよいと思いますか。（いくつでも）",
+      "selectedCodes": [
+        "1"
+      ],
+      "unselectedCodes": [
+        "0"
+      ],
+      "allUnselectedMeaning": "missing",
+      "maxSelections": null,
+      "optionOrder": [
+        "Q16_1",
+        "Q16_2",
+        "Q16_3",
+        "Q16_4",
+        "Q16_5",
+        "Q16_6"
+      ]
+    }
+  ],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "交通情報に関するアンケート（2020年）、東京都\n出典: https://spec.api.metro.tokyo.lg.jp/spec/t000029d0000000006-59d5d722bc266581927ea3f45180f6ea-0\n\nCreative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\n原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。\n利用条件: https://portal.data.metro.tokyo.lg.jp/terms/\n\nDAVIS-PCPでの変更: 20歳以上の回答のみを候補に抽出。回答日時と自由記述を除外。 原コード・空欄を保持。MAの0は非選択、空欄は欠損。各設問には「その他／どれも利用していない／特にない」等の選択肢があり、全0は保守的にmissingとする。 Q18/Q19/Q20等の「わからない」は元の名義カテゴリとして保持し、順序得点にしない。 Q15はアプリ提供者の比較尺度。等間隔近似のPCAはソフトウェア試験用で、心理尺度の妥当性を主張しない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。 MAの全0は保守的な分析設定としてmissing扱い。これは原データの改変ではありません。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

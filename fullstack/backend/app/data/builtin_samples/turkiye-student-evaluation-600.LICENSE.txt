@@ -1,0 +1,10 @@
+Fokoue, E. & Gunduz, N. (2013). Turkiye Student Evaluation. UCI Machine Learning Repository. https://doi.org/10.24432/C5S02S
+出典: https://archive.ics.uci.edu/dataset/262/turkiye+student+evaluation
+
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。
+
+DAVIS-PCPでの変更: 公開5,820授業評価レコードからseed=20261002で非復元抽出した600行。Q1–Q28だけを選択し、行照合ID・講師・授業・受講属性を除外。回答1–5、元設問全文、元行順を保持。言語アンカーは不明なので創作せず数字を表示。反転・補完・重み付けなし。5,820人の独立した回答者とは解釈しない。
+
+このサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。

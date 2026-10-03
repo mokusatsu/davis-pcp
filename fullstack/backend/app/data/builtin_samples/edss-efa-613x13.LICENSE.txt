@@ -1,0 +1,13 @@
+EDSS の公開13項目の原数値です。回答コードは1–5ですが、EDSS固有の言語アンカーを確認できなかったため、値ラベルは数値コードのままです。論文§3.3.2のstrongly disagree/strongly agreeは別尺度EPSSSの説明であり、EDSSに転用していません。反転・補完・標準化・合成点の計算は行っていません。
+
+© 2025 Liu et al. データおよび著者公開の設問文: Creative Commons Attribution 4.0 International (CC BY 4.0). https://creativecommons.org/licenses/by/4.0/
+
+Fanghua Liu, Yanchao Yang, Feng (Robin) Wang, and Wangze Li (2025). The English Debating Self-Efficacy Scale: Scale development, validation, and psychometric properties. PLOS ONE 20(2): e0314879. https://doi.org/10.1371/journal.pone.0314879
+
+データ出典: S2 Dataset / EFA。設問文出典: S1 Table（Appendix A）。変更内容: 公開XLSXから設問列のみ選びCSV化。公開ファイルの全613行と元の行順を維持。行除外、数値変更、欠損補完、反転、合成点追加、人工回答追加なし。英語設問文は著者公開版を保持し、文書の改行・空白だけを正規化。
+
+因子: DS1–DS4=Debating skills、TC1–TC3=Team collaboration、LP1–LP6=Language proficiency。
+
+抽出列の空欄・範囲外値は0件。特殊欠損コードは出典に定義を確認できなかったため追加していません。重み・調査デザイン設定は適用していません。
+
+利用時は著者・原論文・ライセンスと変更内容を明示してください。著者による本アプリの推奨を意味しません。本サンプルの提供は、データ・尺度・因子モデルの正確性、心理測定学的妥当性、特定目的への適合性を保証するものではありません。権利表示確認日: 2026-10-03。PLOSのライセンスポリシー: https://journals.plos.org/plosone/s/licenses-and-copyright

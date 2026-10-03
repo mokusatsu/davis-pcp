@@ -1,0 +1,325 @@
+{
+  "columns": [
+    {
+      "name": "source_excel_row",
+      "label": "出典Excel行番号（加工時に付加した照合用ID。原調査の回答者IDではない）",
+      "scaleType": "id",
+      "role": "id",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "F1",
+      "label": "F1 あなたの性別は",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "男性",
+        "2": "女性"
+      },
+      "categoryOrder": [
+        "1",
+        "2"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "F2",
+      "label": "F2 あなたのお年は何歳ですか",
+      "scaleType": "ordinal",
+      "role": "attribute",
+      "valueLabels": {
+        "1": "18～19歳",
+        "2": "20～24歳",
+        "3": "25～29歳",
+        "4": "30～34歳",
+        "5": "35～39歳",
+        "6": "40～44歳",
+        "7": "45～49歳",
+        "8": "50～54歳",
+        "9": "55～59歳",
+        "10": "60～64歳",
+        "11": "65～69歳",
+        "12": "70～74歳",
+        "13": "75～79歳",
+        "14": "80歳以上"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q5",
+      "label": "問5 あなたは、隣近所と普段どのようなつき合い方をしていますか",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "顔もよく知らない",
+        "2": "道で会えば挨拶ぐらいする",
+        "3": "たまに立ち話をする",
+        "4": "一緒に買い物に行ったり、気の合った人と親しくしている",
+        "5": "困ったとき、相談したり助け合ったりする"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q6",
+      "label": "問6 あなたは、隣近所とのつき合いをどのように感じていますか",
+      "scaleType": "nominal",
+      "role": "question",
+      "valueLabels": {
+        "1": "互いに干渉しあわず、さばさばしていて暮らしやすい",
+        "2": "人間関係が薄く、みながばらばらな感じでさびしい",
+        "3": "親密な人間関係があって、暮らしやすい",
+        "4": "人間関係が濃密で、わずらわしい"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q7",
+      "label": "問7 あなたは、今のご自分の生活に満足しているほうですか。それとも、不満があるほうですか。",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_ア",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：住まい",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_イ",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：自由に過ごせる時間",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_ウ",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：仕事・学業",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_エ",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：収入",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_カ",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：家族との関係",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8_キ",
+      "label": "問8 今のご自分の生活について、次の項目別にみると、満足しているほうですか。それとも、不満があるほうですか：友人や近隣とのつき合い",
+      "scaleType": "ordinal",
+      "role": "question",
+      "valueLabels": {
+        "1": "満足しているほう",
+        "2": "まあ満足しているほう",
+        "3": "どちらともいえない",
+        "4": "やや不満があるほう",
+        "5": "不満があるほう"
+      },
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "回答方法",
+      "label": "公開データ記載の回答方法",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "郵送": "郵送",
+        "web": "web"
+      },
+      "categoryOrder": [
+        "郵送",
+        "web"
+      ],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "令和4年度横浜市民意識調査、横浜市\n出典: https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html\n\nCreative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\n原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。\n利用条件: https://www.city.yokohama.lg.jp/city-info/seisaku/torikumi/shien/shiminisiki/ishiki2022.html\n\nDAVIS-PCPでの変更: 公開個票2,572件のうちF2が20歳以上の回答を抽出。18～19歳・年齢無回答は候補から除外。 空白は欠損として保持。問8は5段階で3は中立回答であり、欠損ではない。 健康項目Q8_オ、地区・世帯・子どもの属性は今回の候補から除外。 MA原票は非選択と無回答の空欄の区別に追加確認が必要なため候補に含めない。 元の回答値・空欄を保持。反転、補完、標準化なし。コードブックをJSON形式に整理。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

@@ -1,0 +1,40 @@
+{
+  "sourceFiles": [
+    {
+      "file": "wine.zip",
+      "url": "https://archive.ics.uci.edu/static/public/109/wine.zip",
+      "sha256": "2bae62c4481220623579d4c4fb36b55652b6b75e06e49fa1981b8198362dfdab"
+    },
+    {
+      "file": "wine.data",
+      "sha256": "6be6b1203f3d51df0b553a70e57b8a723cd405683958204f96d23d7cd6aea659"
+    },
+    {
+      "file": "wine.names",
+      "sha256": "f1b84f2ef845e0bdebf13e14fa7a213e56de4f1baa40c5974dbd1ee51c5ae710"
+    },
+    {
+      "file": "metadata.json",
+      "url": "https://archive.ics.uci.edu/api/dataset?id=109",
+      "sha256": "ac0e877a4f06e3e9e686e2cc3d61f65577dcafa3c808049af03e95c110aeeccb"
+    }
+  ],
+  "descriptionJa": "イタリアの同じ地域で生産された、3つの異なるブドウ栽培品種に由来するワイン178試料の化学分析データです。13の化学分析指標と品種クラス（1–3）があり、欠損値はありません。品質点数や赤・白の区分ではありません。",
+  "classCounts": {
+    "1": 59,
+    "2": 71,
+    "3": 48
+  },
+  "missingCells": 0,
+  "units": "All source variable units are null; not inferred",
+  "measurementScale": "Continuous features registered as interval for general numeric analysis; source does not provide measurement-level semantics.",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "6a3a808e2c33130c3569f5549c6324080d7f5be6c9487bbddd3a64f6fb64e35f",
+  "codebookSha256": "6acd6473138e60cd0054208813b0d405931901cd2556142e2061e3024e7a172c",
+  "rowCount": 178,
+  "columnCount": 14,
+  "license": "CC-BY-4.0",
+  "sourceUrl": "https://archive.ics.uci.edu/dataset/109/wine",
+  "citation": "Aeberhard, S. & Forina, M. (1992). Wine [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5PC7J. 原データ提供: Forina, M. et al., PARVUS; Stefan Aeberhard. 変数情報: Riccardo Leardi; 1998年9月21日 C. Blake 更新。",
+  "changes": "全178行×14列（13測定値＋class）を元の順序・数値表記でCSV化。UCI APIの列名を付与し、変数説明・データ説明を日本語訳。イタリアの同じ地域で生産された、3つの異なるブドウ栽培品種に由来するワイン178試料の化学分析データです。13の化学分析指標と品種クラス（1–3）があり、欠損値はありません。品質点数や赤・白の区分ではありません。 原資料の測定単位欄は空欄なので%、g/L、mg/L等の単位を推定して付与していません。連続測定値はintervalとして登録し、測定尺度の厳密な性質は仮定していません。標準化・反転・補完・行抽出なし。"
+}

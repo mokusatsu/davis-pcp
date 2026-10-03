@@ -1,0 +1,25 @@
+{
+  "sourceFiles": [
+    {
+      "file": "turkiye-student-evaluation_generic.csv",
+      "sha256": "e5c4bf0f98af39adbc0bd23ddbc7ab1d5ffbcf028e7540a464ff6d725cb5f2eb",
+      "url": "https://archive.ics.uci.edu/static/public/262/turkiye+student+evaluation.zip"
+    }
+  ],
+  "inputPreparedSha256": "3cc28a9426253813715ec252c6c9394480d48c40da7d98fd90ba3cb940612e70",
+  "selectionSeed": 20261002,
+  "selectionSource": "https://archive.ics.uci.edu/dataset/262/turkiye+student+evaluation",
+  "sourceRowCount": 5820,
+  "weightStatus": "No publisher weight supplied",
+  "responseAnchors": "Unknown; numeric codes only",
+  "codebookSource": "UCI dataset variable descriptions",
+  "reviewedAtUtc": "2026-10-03",
+  "dataSha256": "2ed032a7727cda544178d3a0e37d93866fe8af7abd3993ba5d39b74c3329918f",
+  "codebookSha256": "24b2da67b6ee0e2f3a8668b37ad39af902c9b9b5624202ed881533c4c1365626",
+  "rowCount": 600,
+  "columnCount": 28,
+  "license": "CC-BY-4.0",
+  "sourceUrl": "https://archive.ics.uci.edu/dataset/262/turkiye+student+evaluation",
+  "citation": "Fokoue, E. & Gunduz, N. (2013). Turkiye Student Evaluation. UCI Machine Learning Repository. https://doi.org/10.24432/C5S02S",
+  "changes": "公開5,820授業評価レコードからseed=20261002で非復元抽出した600行。Q1–Q28だけを選択し、行照合ID・講師・授業・受講属性を除外。回答1–5、元設問全文、元行順を保持。言語アンカーは不明なので創作せず数字を表示。反転・補完・重み付けなし。5,820人の独立した回答者とは解釈しない。"
+}

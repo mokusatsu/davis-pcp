@@ -1,0 +1,218 @@
+{
+  "columns": [
+    {
+      "name": "worker_class",
+      "label": "Class of worker (ACLSWKR)（原データの変数説明）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Federal government": "Federal government",
+        "Local government": "Local government",
+        "Not in universe": "Not in universe",
+        "Private": "Private",
+        "Self-employed-incorporated": "Self-employed-incorporated",
+        "Self-employed-not incorporated": "Self-employed-not incorporated",
+        "State government": "State government",
+        "Without pay": "Without pay"
+      },
+      "categoryOrder": [
+        "Federal government",
+        "Local government",
+        "Not in universe",
+        "Private",
+        "Self-employed-incorporated",
+        "Self-employed-not incorporated",
+        "State government",
+        "Without pay"
+      ],
+      "missingCodes": [
+        "?"
+      ],
+      "missingReasons": {
+        "?": "missing"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "education",
+      "label": "Education (AHGA)（原データの変数説明）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "10th grade": "10th grade",
+        "11th grade": "11th grade",
+        "12th grade no diploma": "12th grade no diploma",
+        "1st 2nd 3rd or 4th grade": "1st 2nd 3rd or 4th grade",
+        "5th or 6th grade": "5th or 6th grade",
+        "7th and 8th grade": "7th and 8th grade",
+        "9th grade": "9th grade",
+        "Associates degree-academic program": "Associates degree-academic program",
+        "Associates degree-occup /vocational": "Associates degree-occup /vocational",
+        "Bachelors degree(BA AB BS)": "Bachelors degree(BA AB BS)",
+        "Doctorate degree(PhD EdD)": "Doctorate degree(PhD EdD)",
+        "High school graduate": "High school graduate",
+        "Less than 1st grade": "Less than 1st grade",
+        "Masters degree(MA MS MEng MEd MSW MBA)": "Masters degree(MA MS MEng MEd MSW MBA)",
+        "Prof school degree (MD DDS DVM LLB JD)": "Prof school degree (MD DDS DVM LLB JD)",
+        "Some college but no degree": "Some college but no degree"
+      },
+      "categoryOrder": [
+        "10th grade",
+        "11th grade",
+        "12th grade no diploma",
+        "1st 2nd 3rd or 4th grade",
+        "5th or 6th grade",
+        "7th and 8th grade",
+        "9th grade",
+        "Associates degree-academic program",
+        "Associates degree-occup /vocational",
+        "Bachelors degree(BA AB BS)",
+        "Doctorate degree(PhD EdD)",
+        "High school graduate",
+        "Less than 1st grade",
+        "Masters degree(MA MS MEng MEd MSW MBA)",
+        "Prof school degree (MD DDS DVM LLB JD)",
+        "Some college but no degree"
+      ],
+      "missingCodes": [
+        "?"
+      ],
+      "missingReasons": {
+        "?": "missing"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "MARSUPWT",
+      "label": "CPS population weight (MARSUPWT), original unnormalized（原データの変数説明）",
+      "scaleType": "ratio",
+      "role": "weight",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "migration_msa",
+      "label": "Migration code: change in MSA (MIGMTR1)（原データの変数説明）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Abroad to MSA": "Abroad to MSA",
+        "MSA to MSA": "MSA to MSA",
+        "MSA to nonMSA": "MSA to nonMSA",
+        "NonMSA to MSA": "NonMSA to MSA",
+        "NonMSA to nonMSA": "NonMSA to nonMSA",
+        "Nonmover": "Nonmover",
+        "Abroad to nonMSA": "Abroad to nonMSA"
+      },
+      "categoryOrder": [
+        "Abroad to MSA",
+        "Abroad to nonMSA",
+        "MSA to MSA",
+        "MSA to nonMSA",
+        "NonMSA to MSA",
+        "NonMSA to nonMSA",
+        "Nonmover"
+      ],
+      "missingCodes": [
+        "?",
+        "Not in universe"
+      ],
+      "missingReasons": {
+        "?": "missing",
+        "Not in universe": "not_applicable"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "migration_region",
+      "label": "Migration code: change in region (MIGMTR3)（原データの変数説明）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "Abroad": "Abroad",
+        "Different county same state": "Different county same state",
+        "Different region": "Different region",
+        "Different state same division": "Different state same division",
+        "Nonmover": "Nonmover",
+        "Same county": "Same county"
+      },
+      "categoryOrder": [
+        "Abroad",
+        "Different county same state",
+        "Different region",
+        "Different state same division",
+        "Nonmover",
+        "Same county"
+      ],
+      "missingCodes": [
+        "?",
+        "Not in universe"
+      ],
+      "missingReasons": {
+        "?": "missing",
+        "Not in universe": "not_applicable"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "weeks_worked",
+      "label": "Weeks worked in year (WKSWORK)（原データの変数説明）",
+      "scaleType": "ratio",
+      "role": "attribute",
+      "valueLabels": {},
+      "categoryOrder": [],
+      "missingCodes": [
+        "?"
+      ],
+      "missingReasons": {
+        "?": "missing"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "year",
+      "label": "Survey year as source 94/95（原データの変数説明）",
+      "scaleType": "nominal",
+      "role": "attribute",
+      "valueLabels": {
+        "94": "94",
+        "95": "95"
+      },
+      "categoryOrder": [
+        "94",
+        "95"
+      ],
+      "missingCodes": [
+        "?"
+      ],
+      "missingReasons": {
+        "?": "missing"
+      },
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "weightConfig": {
+    "weightColumnId": "MARSUPWT",
+    "weightType": "survey"
+  },
+  "multiResponseGroups": [],
+  "surveyDesign": null,
+  "licenseText": "Census-Income (KDD). (2000). UCI Machine Learning Repository. https://doi.org/10.24432/C5N30T\n出典: https://archive.ics.uci.edu/dataset/117/census+income+kdd\n\nCreative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\n原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。\n\nDAVIS-PCPでの変更: 1994/1995 CPS由来の公開訓練データから18歳以上600行をseed=20261002で抽出。原データの両端空白を除去し、7変数に限定。年齢・性別・出生国・行照合ID・所得額・資産額・家族情報は同梱しない。原人口重みMARSUPWTは正規化せず保持。?は欠損、移動項目のNot in universeは非該当。反転・補完なし。層・PSUがない部分標本のため正式なCPS母集団推計や完全な標本設計の再現には使えない。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}

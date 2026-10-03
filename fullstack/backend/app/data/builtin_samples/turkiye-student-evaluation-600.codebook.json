@@ -1,0 +1,708 @@
+{
+  "columns": [
+    {
+      "name": "Q1",
+      "label": "The semester course content, teaching method and evaluation system were provided at the start.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q2",
+      "label": "The course aims and objectives were clearly stated at the beginning of the period.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q3",
+      "label": "The course was worth the amount of credit assigned to it.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q4",
+      "label": "The course was taught according to the syllabus announced on the first day of class.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q5",
+      "label": "The class discussions, homework assignments, applications and studies were satisfactory.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q6",
+      "label": "The textbook and other courses resources were sufficient and up to date.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q7",
+      "label": "The course allowed field work, applications, laboratory, discussion and other studies.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q8",
+      "label": "The quizzes, assignments, projects and exams contributed to helping the learning.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q9",
+      "label": "I greatly enjoyed the class and was eager to actively participate during the lectures.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q10",
+      "label": "My initial expectations about the course were met at the end of the period or year.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q11",
+      "label": "The course was relevant and beneficial to my professional development.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q12",
+      "label": "The course helped me look at life and the world with a new perspective.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q13",
+      "label": "The Instructor's knowledge was relevant and up to date.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q14",
+      "label": "The Instructor came prepared for classes.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q15",
+      "label": "The Instructor taught in accordance with the announced lesson plan.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q16",
+      "label": "The Instructor was committed to the course and was understandable.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q17",
+      "label": "The Instructor arrived on time for classes.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q18",
+      "label": "The Instructor has a smooth and easy to follow delivery/speech.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q19",
+      "label": "The Instructor made effective use of class hours.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q20",
+      "label": "The Instructor explained the course and was eager to be helpful to students.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q21",
+      "label": "The Instructor demonstrated a positive approach to students.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q22",
+      "label": "The Instructor was open and respectful of the views of students about the course.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q23",
+      "label": "The Instructor encouraged participation in the course.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q24",
+      "label": "The Instructor gave relevant homework assignments/projects, and helped/guided students.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q25",
+      "label": "The Instructor responded to questions about the course inside and outside of the course.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q26",
+      "label": "The Instructor's evaluation system (midterm and final questions, projects, assignments, etc.) effectively measured the course objectives.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q27",
+      "label": "The Instructor provided solutions to exams and discussed them with students.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    },
+    {
+      "name": "Q28",
+      "label": "The Instructor treated all students in a right and objective manner.（回答コード1–5。公開元で言語アンカー未確認）",
+      "scaleType": "ordinal",
+      "role": "question",
+      "categoryOrder": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "valueLabels": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5"
+      },
+      "missingCodes": [],
+      "missingReasons": {},
+      "isReversed": false,
+      "multiResponseGroup": null,
+      "multiResponseOptionLabel": ""
+    }
+  ],
+  "multiResponseGroups": [],
+  "weightConfig": null,
+  "surveyDesign": null,
+  "licenseText": "Fokoue, E. & Gunduz, N. (2013). Turkiye Student Evaluation. UCI Machine Learning Repository. https://doi.org/10.24432/C5S02S\n出典: https://archive.ics.uci.edu/dataset/262/turkiye+student+evaluation\n\nCreative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\n原提供者・出典・ライセンスの表示を保持し、変更した旨を表示してください。許諾された利用を制限する追加の法的条件・技術的制限は課していません。\n\nDAVIS-PCPでの変更: 公開5,820授業評価レコードからseed=20261002で非復元抽出した600行。Q1–Q28だけを選択し、行照合ID・講師・授業・受講属性を除外。回答1–5、元設問全文、元行順を保持。言語アンカーは不明なので創作せず数字を表示。反転・補完・重み付けなし。5,820人の独立した回答者とは解釈しない。\n\nこのサンプルは公開資料から作成した分析操作の学習用データです。母集団の代表標本、公式推計、尺度の妥当性を保証するものではありません。原提供者による本アプリの推奨・承認を意味しません。データとコードブックの許諾はアプリのソフトウェアライセンスと独立します。提供データは無保証です。第三者の権利・プライバシー等は各許諾の範囲外となることがあります。"
+}
