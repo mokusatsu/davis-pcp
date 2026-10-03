@@ -53,3 +53,20 @@ it('rejects stale/foreign/incomplete snapshots before dispatch and keeps the cur
   local.dispatch(datasetValuesUpdated({ datasetId: 'd', dataRevision: 2 }))
   expect(() => readAnalysisWorkspaceSnapshot(saved, local.getState())).toThrow(/世代/)
 })
+
+it.each(['allVariables', 'variableOrder', 'variableMeta', 'targetVariableId', 'weightColumnId'])('rejects missing %s before restoring variable state', field => {
+  const local = setup()
+  const saved = createAnalysisWorkspaceSnapshot(local.getState())
+  delete (saved.globalVariables as any)[field]
+  expect(() => readAnalysisWorkspaceSnapshot(saved, local.getState())).toThrow(/使用変数/)
+})
+it('rejects unknown saved weight and malformed metadata instead of installing an unusable workspace', () => {
+  const local = setup()
+  const saved = createAnalysisWorkspaceSnapshot(local.getState())
+  saved.globalVariables.weightColumnId = 'foreign-weight'
+  expect(() => readAnalysisWorkspaceSnapshot(saved, local.getState())).toThrow(/重み変数/)
+  saved.globalVariables.weightColumnId = null
+  saved.globalVariables.variableMeta = { x: null } as any
+  expect(() => readAnalysisWorkspaceSnapshot(saved, local.getState())).toThrow(/使用変数/)
+  expect(local.getState().globalVariables.weightColumnId).toBe(null)
+})

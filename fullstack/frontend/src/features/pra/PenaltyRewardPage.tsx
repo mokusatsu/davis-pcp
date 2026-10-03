@@ -5,9 +5,9 @@ import { CHART_MARKERS } from '../charts/markerStyle'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Card, Row, Col, Typography, Space, Button, Tag,
   Alert, Spin, Empty, Divider,
@@ -16,12 +16,14 @@ import {
   AimOutlined, ArrowRightOutlined, ThunderboltOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../app/store'
-import { selectionApplied, pcpStateChanged, selectOrdinaryVariables } from '../../app/store'
+import { selectionApplied, pcpStateChanged } from '../../app/store'
 import { api } from '../../api/client'
 import GraphPanel from '../common/GraphPanel'
 import EChart from '../charts/EChart'
 import { kanoOption, praImpactOption } from './praCharts'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { kdaHandoffError, readKdaPraHandoff, type KdaPraHandoff } from './kdaHandoff'
+import { numericModelInputError, useNumericModelInputs } from '../models/kda/useNumericModelInputs'
 
 export interface PraAttribute {
   name: string
@@ -50,50 +52,67 @@ export interface PraResponse {
 export default function PenaltyRewardPage() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
+  const location = useLocation()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
+  const allRowIds = useSelector((s: RootState) => s.selection.allRowIds)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
 
-  const globalVars = useSelector(selectOrdinaryVariables)
-  const [allColumns, setAllColumns] = useState<string[]>([])
-  const columns = useMemo(
-    () => allColumns.filter((name) => globalVars.activeVariableIds.includes(name)),
-    [allColumns, globalVars.activeVariableIds],
-  )
-  const [outcome, setOutcome] = useState<string>('')
-  const [attributes, setAttributes] = useState<string[]>([])
+  const { columns, outcome, setOutcome, predictors: attributes, setPredictors: setAttributes, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
+  const [handoff, setHandoff] = useState<KdaPraHandoff | null>(null)
+  const [handoffError, setHandoffError] = useState<string | null>(null)
+  const handledNavigation = useRef<string | null>(null)
+  const [resultInputKey, setResultInputKey] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<PraResponse | null>(null)
   const runScope = useScopedRun(JSON.stringify([outcome, attributes]))
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
   const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
   const [runError, setRunError] = useState<string | null>(null)
-  useEffect(() => { setResult(null); setLoading(false); setRunError(null) }, [runScope.identity])
+  useEffect(() => { setResult(null); setResultInputKey(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!datasetId) return
-    let active = true
-    api.get<{ schema: Array<{ name: string; semanticType: string; physicalType: string }> }>(`/datasets/${datasetId}`)
-      .then((meta) => {
-        if (!active) return
-        const numCols = meta.schema
-          .filter((c) => c.semanticType === 'numeric' || c.physicalType === 'float' || c.physicalType === 'int')
-          .map((c) => c.name)
-        setAllColumns(numCols)
-        if (numCols.length >= 2) {
-          setOutcome(numCols[numCols.length - 1])
-          setAttributes(numCols.slice(0, numCols.length - 1))
-        }
-      })
-      .catch(() => {})
-    return () => { active = false }
-  }, [datasetId])
+  const sourceError = handoffError ?? (handoff ? kdaHandoffError(handoff, { datasetId, dataRevision, schemaRevision, rowIds: allRowIds }) : null)
+  const effectiveScope = handoff?.scopeSnapshot ?? runScope.scope
+  const currentInputKey = JSON.stringify([outcome, attributes, effectiveScope.scopeKey, handoff?.sourceRunId])
+  const dirty = !!result && resultInputKey !== currentInputKey
+  const inputError = sourceError ?? numericModelInputError(datasetId, columnsReady, columns, outcome, attributes, effectiveScope.count, '評価属性 (Attributes)')
 
-  const runEvaluation = async (targetOutcome?: string, targetAttrs?: string[]) => {
-    const o = targetOutcome || outcome
-    const a = targetAttrs || attributes
-    if (!datasetId || !o || a.length === 0) return
-    const ticket = runScope.begin()
+  // A navigation is a new handoff even if KeepAlive has mounted PRA before.
+  // Waiting for metadata prevents its initial defaults overwriting source inputs.
+  useEffect(() => {
+    if (location.pathname.replace(/\/$/, '') !== '/penalty-reward' || !columnsReady || handledNavigation.current === location.key) return
+    const state = location.state as { kdaHandoff?: unknown } | null
+    if (!state || !Object.prototype.hasOwnProperty.call(state, 'kdaHandoff')) return
+    handledNavigation.current = location.key
+    const incoming = readKdaPraHandoff(state.kdaHandoff)
+    runScope.begin() // invalidate a prior PRA request before replacing its inputs
+    setResult(null)
+    setResultInputKey(null)
+    setSelectedAttribute(null)
+    setLoading(false)
+    setRunError(null)
+    setHandoff(incoming)
+    setHandoffError(incoming ? null : 'KDAの引継ぎ情報を読み込めません。元のKDAから送り直すか、引継ぎを解除してください。')
+    if (incoming && !kdaHandoffError(incoming, { datasetId, dataRevision, schemaRevision, rowIds: allRowIds })) {
+      setOutcome(incoming.outcome)
+      setAttributes([...incoming.drivers])
+    }
+    // Only a navigation applies the source inputs; later edits must survive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, location.pathname, location.state, columnsReady])
+
+  const releaseHandoff = () => {
+    runScope.begin()
+    setLoading(false)
+    setHandoff(null)
+    setHandoffError(null)
+    setRunError(null)
+  }
+
+  const runEvaluation = async () => {
+    if (loading || inputError || !datasetId) return
+    const ticket = runScope.begin(effectiveScope)
+    const submittedInputKey = currentInputKey
     setRunError(null)
     setLoading(true)
     try {
@@ -102,12 +121,13 @@ export default function PenaltyRewardPage() {
         rowIds: ticket.scope.rowIds,
         expectedDataRevision: dataRevision,
         expectedSchemaRevision: schemaRevision,
-        outcome: o,
-        attributes: a,
+        outcome,
+        attributes: [...attributes],
       })
       if (!ticket.isCurrent()) return
       ticket.commit()
       setResult(res)
+      setResultInputKey(submittedInputKey)
       if (res.attributes.length > 0) {
         setSelectedAttribute(res.attributes[0].name)
       }
@@ -117,16 +137,6 @@ export default function PenaltyRewardPage() {
       if (ticket.isCurrent()) setLoading(false)
     }
   }
-
-  useEffect(() => {
-    setAttributes((prev) => {
-      const next = prev.filter((name) => columns.includes(name))
-      return next.length === prev.length ? prev : next
-    })
-    if (outcome && !columns.includes(outcome)) setOutcome('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns])
-
 
   const currentAttr = useMemo(() => {
     if (!result || !selectedAttribute) return null
@@ -198,8 +208,23 @@ export default function PenaltyRewardPage() {
       }}
       data-testid="penalty-reward-page"
     >
-      <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Alert type="info" message="現在の入力と異なる実行済み結果です。再実行すると更新されます。" />}
+      {handoff ? <Typography.Text type="secondary" data-testid="pra-inherited-scope">
+        要求対象: KDA実行時の{handoff.scopeSnapshot.label} {handoff.scopeSnapshot.count}行に固定
+        {handoff.scopeSnapshot.sampling && <> / seed {handoff.scopeSnapshot.sampling.seed ?? '未記録'}・抽出元{handoff.scopeSnapshot.sampling.sourceRowCount ?? '未記録'}行</>}
+        {' '}（上部の共通対象を変更しても引継ぎ対象は変わりません）
+      </Typography.Text> : <AnalysisScopeSummary snapshot={runScope.snapshot} />}
+      {(handoff || handoffError) && <Alert data-testid="pra-kda-handoff" type={sourceError ? 'warning' : 'info'} showIcon
+        message={sourceError ?? `実行済みKDAからの引継ぎ: ${handoff!.sourceRunId}`}
+        description={handoff && <>
+          <div>目的変数: {handoff.outcome} / 説明変数: {handoff.drivers.join(', ')} / R²: {(handoff.sourceConclusion.rSquared * 100).toFixed(1)}% / KDA有効{handoff.sourceConclusion.nValid}行（欠損除外後）</div>
+          <div>元のShapley重要度: {handoff.sourceConclusion.drivers.map(driver => `${driver.name} ${driver.importancePct.toFixed(1)}%`).join(', ')}</div>
+          <div>要求対象のうち、目的変数・説明変数に欠損のある行を共通のコードブック設定で除外します。変数設定を変えると有効行も変わる場合があります。</div>
+          <div>Penalty-Rewardでは低評価側と高評価側の非対称性を分析します。KDAのShapley重要度の頑健性を検証するものではありません。</div>
+          {(outcome !== handoff.outcome || JSON.stringify(attributes) !== JSON.stringify(handoff.drivers)) && <div>変数設定が元のKDAと異なります。対象行は引継ぎ時のままです。</div>}
+        </>}
+        action={<Button onClick={releaseHandoff}>引継ぎを解除して共通対象を使う</Button>} />}
+      {dirty && <Alert type="info" message={inputError ? '現在の入力と異なる実行済み結果です。入力の不足を修正すると再実行できます。' : '現在の入力と異なる実行済み結果です。再実行すると更新されます。'} />}
+      {columnsError && <Alert type="error" message={columnsError} action={<Button onClick={retryColumns}>列を再読込み</Button>} />}
       {runError && <Alert type="error" message={runError} />}
       {/* Header controls */}
       {(
@@ -239,6 +264,7 @@ export default function PenaltyRewardPage() {
                 type="primary"
                 icon={<ThunderboltOutlined />}
                 loading={loading}
+                disabled={!!inputError}
                 onClick={() => void runEvaluation()}
                 data-testid="pra-run-btn"
                 style={{ width: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
@@ -247,6 +273,7 @@ export default function PenaltyRewardPage() {
               </Button>
             </div>
           </div>
+          {inputError && !sourceError && <Alert type="warning" showIcon message={inputError} data-testid="pra-input-error" style={{ marginTop: 12 }} />}
         </Card>
       )}
 
@@ -258,6 +285,7 @@ export default function PenaltyRewardPage() {
 
       {result && (
         <>
+          <Typography.Text type="secondary" data-testid="pra-valid-population">このPRA結果の有効行数: {result.model.n_valid}行（目的変数・評価属性の欠損除外後）</Typography.Text>
           {/* Summary KPIs */}
           {(
             <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>

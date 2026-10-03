@@ -347,6 +347,12 @@ export const globalVariablesSlice = createSlice({
         if (state.weightColumnId && !ids.has(state.weightColumnId)) state.weightColumnId = null
       })
     }
+    builder.addCase(codebookSlice.actions.codebookReceived, (state, action) => {
+      if (state.datasetId !== action.payload.datasetId) return
+      state.activeEntities = reconcileEntities(state.activeEntities, action.payload.columns, action.payload.multiResponseGroups ?? [])
+      const ids = new Set(action.payload.columns.map(column => column.columnId))
+      if (state.weightColumnId && !ids.has(state.weightColumnId)) state.weightColumnId = null
+    })
     // Declaring a weight's meaning changes no column, so there is nothing to reconcile.
     builder.addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
       if (state.datasetId && state.datasetId !== action.payload.datasetId) return

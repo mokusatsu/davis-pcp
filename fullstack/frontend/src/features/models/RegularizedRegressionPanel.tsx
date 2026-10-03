@@ -6,7 +6,7 @@ import ColumnSelect from '../common/ColumnSelect'
 import AsyncExportButton from '../common/AsyncExportButton'
 import { useRequestIdentity } from '../common/useRequestIdentity'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { AnalysisScopeSummary, captureAnalysisRunContext, useAnalysisScope, type AnalysisScopeSnapshot } from '../selection/analysisScope'
+import { AnalysisScopeSummary, captureAnalysisRunContext, useAnalysisScope, useAnalysisViewActive, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { downloadRegularizedArtifact, exportRegularizedPredict, fetchRegularizedPredictions, fetchRegularizedRows, predictRegularizedRegression, runRegularizedRegression } from './rrApi'
 import type { RRAlgorithm, RRArtifact, RRCategory, RRCoefficient, RRContext, RRFitRow, RRLanguage, RRPage, RRPredictResponse, RRPredictRow, RRRequest, RRResponse } from './rrTypes'
 
@@ -92,6 +92,9 @@ export function referenceDisplay(result: Pick<RRResponse, 'details'>, choices: R
 }
 
 export default function RegularizedRegressionPanel(): JSX.Element {
+  const viewActive = useAnalysisViewActive()
+  const activeRef = useRef(viewActive)
+  activeRef.current = viewActive
   const selection = useSelector((state: RootState) => state.selection)
   const globalVariables = useSelector(selectOrdinaryVariables)
   const { columns, schemaRevision, weightConfig, surveyDesign, isLoading: codebookLoading } = useCodebook()
@@ -223,6 +226,7 @@ export default function RegularizedRegressionPanel(): JSX.Element {
   const format = (value: number | null | undefined) => formatRegularizedNumber(value, precision, scientific)
 
   const loadFitRows = async (source: RRResponse, page: number) => {
+    if (!activeRef.current) return
     const isCurrent = rowsRequest.begin()
     setRowsLoading(true); setRowsError(null); setRequestedFitPage(page)
     try {
@@ -235,10 +239,20 @@ export default function RegularizedRegressionPanel(): JSX.Element {
   useEffect(() => {
     setFitRows(null); setRowsError(null); setPrediction(null); setPredictionRows(null); setDisplayReferences({})
     setDisplayMode('original'); setDisplayDelta(1)
-    if (result?.capabilities.rows) void loadFitRows(result, 1)
+    setRequestedFitPage(1)
     // A completed fit owns these rows; scope and draft edits must not refetch or relabel them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result?.resultId])
+
+  useEffect(() => {
+    if (viewActive && result?.capabilities.rows
+      && (fitRows?.resultId !== result.resultId || fitRows.page !== requestedFitPage)) {
+      void loadFitRows(result, fitRows?.resultId === result.resultId ? requestedFitPage : 1)
+    }
+    return () => { rowsRequest.invalidate(); setRowsLoading(false) }
+    // Activity resumes unfinished rows without resetting completed input/result/display state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewActive, result?.resultId])
 
   const handleRun = async () => {
     if (!canRun || !target || tolerance === null || maxIterations === null || runPending.current) return
@@ -275,6 +289,7 @@ export default function RegularizedRegressionPanel(): JSX.Element {
     } finally { if (isCurrent()) { runPending.current = false; setLoading(false) } }
   }
   const loadPredictionRows = async (source: RRPredictResponse, page: number) => {
+    if (!activeRef.current) return
     const isCurrent = predictionRowsRequest.begin()
     setPredictionRowsLoading(true); setPredictionRowsError(null); setRequestedPredictionPage(page)
     try {
@@ -284,6 +299,14 @@ export default function RegularizedRegressionPanel(): JSX.Element {
       if (isCurrent()) setPredictionRowsError(errorMessage(failure, '予測行を取得できませんでした。'))
     } finally { if (isCurrent()) setPredictionRowsLoading(false) }
   }
+  useEffect(() => {
+    if (viewActive && prediction
+      && (predictionRows?.predictionId !== prediction.response.predictionId || predictionRows.page !== requestedPredictionPage)) {
+      void loadPredictionRows(prediction.response, predictionRows?.predictionId === prediction.response.predictionId ? requestedPredictionPage : 1)
+    }
+    return () => { predictionRowsRequest.invalidate(); setPredictionRowsLoading(false) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewActive, prediction?.response.predictionId])
   const handlePredict = async () => {
     if (!result || stale || loading || predictionPending.current || unsupportedWeight) return
     const source = result
@@ -297,7 +320,7 @@ export default function RegularizedRegressionPanel(): JSX.Element {
       const response = await predictRegularizedRegression(source.resultId, context, evaluate)
       if (!isCurrent() || currentResult.current?.resultId !== source.resultId) return
       setPrediction({ response, scope: startedScope, context, evaluate }); setPredictionRows(null)
-      void loadPredictionRows(response, 1)
+      setRequestedPredictionPage(1)
     } catch (failure) {
       if (isCurrent()) setPredictError(errorMessage(failure, '点予測に失敗しました。'))
     } finally { if (isCurrent()) { predictionPending.current = false; setPredicting(false) } }

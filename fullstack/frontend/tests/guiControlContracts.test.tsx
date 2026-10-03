@@ -159,7 +159,9 @@ it('L02 penalty actions wrap within their card and long execution text can grow 
     all_basic_dissatisfied_row_ids: ['r1', 'r2'],
   })
   const state = localStore().getState()
-  const local = configureStore({ reducer: () => ({ ...state, globalVariables: { ...state.globalVariables, activeEntities: columns.map(c => ({ kind: 'column', columnId: c.columnId })) } }) })
+  const local = configureStore({ reducer: () => ({ ...state,
+    selection: { ...state.selection, allRowIds: ['r1', 'r2', 'r3', 'r4'], activeRowIds: ['r1', 'r2', 'r3', 'r4'] },
+    globalVariables: { ...state.globalVariables, activeEntities: columns.map(c => ({ kind: 'column', columnId: c.columnId })) } }) })
   render(<Provider store={local}><MemoryRouter><PenaltyRewardPage /></MemoryRouter></Provider>)
   await waitFor(() => expect(screen.getByTestId('pra-outcome-select')).toHaveTextContent('delta'))
   const run = screen.getByTestId('pra-run-btn')

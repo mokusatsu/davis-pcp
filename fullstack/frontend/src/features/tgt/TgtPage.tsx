@@ -2,7 +2,7 @@ import { selectOrdinaryVariables } from '../../app/store'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useLocation } from 'react-router-dom'
-import { Space, Spin, Typography } from 'antd'
+import { Alert, Space, Spin, Typography } from 'antd'
 import type { RootState } from '../../app/store'
 import { selectEffectiveRowIds } from '../../app/store'
 import { useColumnarData } from '../pcp/useDatasetColumns'
@@ -12,12 +12,14 @@ import { ProjectionCircle } from './ProjectionCircle'
 import { TgtControlPanel } from './TgtControlPanel'
 import GraphPanel from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
+import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
 
 export default function TgtPage() {
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
   const activeVarIds = globalVars?.activeVariableIds
   const data = useColumnarData(selection.datasetId)
+  const { getColumn } = useCodebook()
 
   const numericColumns = useMemo(() => {
     if (!data) return []
@@ -45,58 +47,40 @@ export default function TgtPage() {
 
   // Active row IDs based on global observation scope
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const rowIds = useMemo(() => {
-    if (!data) return []
-    return effectiveRowIds
-  }, [data, effectiveRowIds])
-
-  // Compute standardized data matrix (N x p)
-  const dataMatrix = useMemo(() => {
-    if (!data || selectedColumns.length < 2 || rowIds.length === 0) return []
-
-    const p = selectedColumns.length
-    const rawCols: number[][] = []
-
-    for (const colName of selectedColumns) {
-      const numArr = data.numeric[colName]
-      if (!numArr) continue
-      const vals: number[] = []
-      for (const rId of rowIds) {
-        const rowIdx = data.rowIndex.get(rId)
-        const v = rowIdx !== undefined ? numArr[rowIdx] : 0
-        vals.push(Number.isFinite(v) ? v : 0)
-      }
-
-
-      // Compute mean and sample std
-      let sum = 0
-      for (const v of vals) sum += v
-      const mean = sum / vals.length
-
-      let sumSq = 0
-      for (const v of vals) sumSq += (v - mean) * (v - mean)
-      const std = Math.sqrt(sumSq / Math.max(vals.length - 1, 1)) || 1.0
-
-      // Standardize
-      const scaled = vals.map((v) => (v - mean) / std)
-      rawCols.push(scaled)
-    }
-
-    if (rawCols.length < p) return []
-
-    // Transpose to N x p
-    const N = rowIds.length
+  // Complete-case policy across every selected dimension. Keep the row IDs
+  // and matrix in one projection so selection, colors and groups stay aligned.
+  const projection = useMemo(() => {
+    const rowIds: string[] = []
     const matrix: number[][] = []
-    for (let i = 0; i < N; i++) {
-      const row: number[] = []
-      for (let j = 0; j < p; j++) {
-        row.push(rawCols[j][i])
-      }
-      matrix.push(row)
+    if (!data || selectedColumns.length < 2) return { rowIds, matrix, excluded: 0 }
+    const missingCodes = selectedColumns.map(name => new Set(getColumn(name)?.missingCodes ?? []))
+    for (const rowId of effectiveRowIds) {
+      const index = data.rowIndex.get(rowId)
+      if (index === undefined) continue
+      const values = selectedColumns.map((name, columnIndex) => {
+        const raw = data.columns[name]?.[index]
+        const code = normalizeCode(raw)
+        if (code === null || code.trim() === '' || missingCodes[columnIndex].has(code)) return NaN
+        const value = data.numeric[name]?.[index]
+        return typeof value === 'number' && Number.isFinite(value) ? value : NaN
+      })
+      if (!values.every(Number.isFinite)) continue
+      rowIds.push(rowId)
+      matrix.push(values)
     }
-
-    return matrix
-  }, [data, selectedColumns, rowIds])
+    // Standardize only the complete cases (sample standard deviation, ddof=1).
+    for (let j = 0; j < selectedColumns.length && matrix.length; j += 1) {
+      // Scale first so finite large magnitudes cannot overflow the mean/variance.
+      const magnitude = matrix.reduce((max, row) => Math.max(max, Math.abs(row[j])), 0) || 1
+      const scaled = matrix.map(row => row[j] / magnitude)
+      const mean = scaled.reduce((sum, value) => sum + value / scaled.length, 0)
+      const sumSq = scaled.reduce((sum, value) => sum + (value - mean) ** 2, 0)
+      const std = Math.sqrt(sumSq / Math.max(matrix.length - 1, 1)) || 1
+      for (let i = 0; i < matrix.length; i += 1) matrix[i][j] = (scaled[i] - mean) / std
+    }
+    return { rowIds, matrix, excluded: effectiveRowIds.length - rowIds.length }
+  }, [data, selectedColumns, effectiveRowIds, getColumn])
+  const { rowIds, matrix: dataMatrix } = projection
 
   // Engine instance
   const engine = useMemo(() => {
@@ -179,6 +163,12 @@ export default function TgtPage() {
           trailLength={trailLength}
           onTrailLengthChange={setTrailLength}
         />
+
+      <Alert type={projection.excluded ? 'warning' : 'info'} showIcon
+        data-testid="touring-missing-policy" message="欠損値の扱い: 選択した全変数が有効な行のみ投影（完全ケース）"
+        description={`共通対象 ${effectiveRowIds.length}行 / 投影 ${rowIds.length}行 / 欠損・無効値による除外 ${projection.excluded}行。コードブックの欠損コードも除外し、残った行で標準化します。0での補完は行いません。`} />
+      {selectedColumns.length >= 2 && !dataMatrix.length && <Alert type="warning"
+        message="投影できる有効行がありません。対象行・変数・欠損コードを確認してください。" />}
 
       {/* Action Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 860 }}>

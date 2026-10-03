@@ -1,3 +1,4 @@
+import { apiErrorFromResponse } from '../api/apiError'
 /**
  * Client RPC bridge to the Pyodide Web Worker.
  * Provides transparent replacements for HTTP fetch / upload / Arrow streaming.
@@ -97,13 +98,7 @@ class PyodideClient {
             if (msg.status >= 200 && msg.status < 300) {
               p.resolve(msg.data)
             } else {
-              const err: ApiError = msg.error || (typeof msg.data === 'object' && msg.data?.error) || {
-                code: 'HTTP_ERROR',
-                message: `HTTP ${msg.status}`,
-                details: {},
-                recoverable: true,
-                suggestedActions: [],
-              }
+              const err: ApiError = msg.error || apiErrorFromResponse(msg.data, msg.status)
               p.reject(err)
             }
           }

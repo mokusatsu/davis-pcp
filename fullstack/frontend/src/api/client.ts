@@ -1,4 +1,5 @@
 import { pyodideClient } from '../engine/pyodideClient'
+import { apiErrorFromResponse } from './apiError'
 
 const BASE = '/api/v1'
 
@@ -24,7 +25,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let error: ApiError = { code: 'HTTP_ERROR', message: `HTTP ${response.status}`, details: {}, recoverable: true, suggestedActions: [] }
     try {
       const body = await response.json()
-      if (body.error) error = body.error
+      error = apiErrorFromResponse(body, response.status)
     } catch { /* keep default */ }
     throw error
   }

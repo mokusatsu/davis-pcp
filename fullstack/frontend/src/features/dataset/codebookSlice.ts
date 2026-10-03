@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import {
-  CodebookColumn, MultiResponseGroup, SurveyDesignSpec, WeightConfig,
+  CodebookResponse, CodebookColumn, MultiResponseGroup, SurveyDesignSpec, WeightConfig,
   getCodebook, updateCodebook,
 } from '../../api/client'
 import type { RootState } from '../../app/store'
@@ -62,8 +62,13 @@ const initialState: CodebookState = {
 
 export const fetchCodebookThunk = createAsyncThunk(
   'codebook/fetch',
-  async (datasetId: string) => {
+  async (datasetId: string, { getState, requestId, rejectWithValue }) => {
     const res = await getCodebook(datasetId)
+    // Do not emit a fulfilled action to other slices after a prepared dataset
+    // or newer fetch superseded this request. Reducer-only guards are too late.
+    const current = (getState() as RootState).codebook
+    if (current.fetchRequestId !== requestId || current.datasetId !== datasetId)
+      return rejectWithValue('CODEBOOK_FETCH_SUPERSEDED')
     return res
   }
 )
@@ -145,6 +150,16 @@ export const codebookSlice = createSlice({
   name: 'codebook',
   initialState,
   reducers: {
+    codebookReceived(_state, action: PayloadAction<CodebookResponse>) {
+      // A prepared dataset is committed synchronously; invalidate any old fetch.
+      const value = action.payload
+      return { ...initialState, datasetId: value.datasetId, schemaRevision: value.schemaRevision,
+        columns: value.columns, draftColumns: structuredClone(value.columns),
+        multiResponseGroups: value.multiResponseGroups ?? [],
+        draftMultiResponseGroups: structuredClone(value.multiResponseGroups ?? []),
+        weightConfig: value.weightConfig ?? null, surveyDesign: value.surveyDesign ?? null,
+        activeColumnId: value.columns[0]?.columnId ?? null }
+    },
     codebookReset() {
       return { ...initialState }
     },
@@ -371,6 +386,7 @@ export const {
   quickValueLabelsApplied,
   draftReverted,
   codebookReset,
+  codebookReceived,
   draftMultiResponseGroupUpdated,
   draftMultiResponseGroupRemoved,
 } = codebookSlice.actions

@@ -47,6 +47,18 @@ def revision_token(session_id: str, revision: int) -> str:
     return hashlib.sha256(f"{session_id}:{revision}".encode()).hexdigest()[:16]
 
 
+def _validate_dataset_identity(dataset_id: str | None, state: dict[str, Any], *, workspace: bool = False) -> None:
+    # Workspace snapshots carry their own identity. Never store one under a
+    # different record, including updates that remove the snapshot identity.
+    if workspace or "datasetId" in state or "workspaceVersion" in state:
+        if not dataset_id or state.get("datasetId") != dataset_id:
+            raise BizError(
+                "SESSION_DATASET_MISMATCH", "セッションと保存内容のデータセットが一致しません。別のセッションとして保存してください。",
+                details={"datasetId": dataset_id, "snapshotDatasetId": state.get("datasetId")},
+                status_code=409,
+            )
+
+
 class SessionStore:
     def __init__(self, workspace: Path | None = None) -> None:
         path = (workspace or settings.workspace_dir) / "sessions"
@@ -62,6 +74,7 @@ class SessionStore:
         return con
 
     def create(self, name: str, dataset_id: str | None, state: dict[str, Any]) -> dict:
+        _validate_dataset_identity(dataset_id, state)
         import uuid
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
         now = _now()
@@ -94,7 +107,7 @@ class SessionStore:
     def list_sessions(self) -> list[dict]:
         with self._connect() as con:
             rows = con.execute(
-                "SELECT session_id, name, dataset_id, revision, state, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
+                "SELECT session_id, name, dataset_id, revision, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
             ).fetchall()
         result = []
         for row in rows:
@@ -103,7 +116,6 @@ class SessionStore:
                 "name": row["name"],
                 "datasetId": row["dataset_id"],
                 "revision": row["revision"],
-                "state": json.loads(row["state"]),
                 "createdAt": row["created_at"],
                 "updatedAt": row["updated_at"],
             }
@@ -112,11 +124,18 @@ class SessionStore:
 
     def update(self, session_id: str, state: dict[str, Any], expected_token: str | None, name: str | None = None) -> dict:
         with self._lock, self._connect() as con:
+            # Serialize read/check/write across store instances and processes,
+            # not just threads sharing this Python object.
+            con.execute("BEGIN IMMEDIATE")
             row = con.execute("SELECT * FROM sessions WHERE session_id=?", (session_id,)).fetchone()
             if row is None:
                 raise BizError("SESSION_NOT_FOUND", f"セッション {session_id} が見つかりません。", status_code=404)
             current = self._to_dict(row)
-            if expected_token is not None and expected_token != current["versionToken"]:
+            _validate_dataset_identity(current["datasetId"], state,
+                                       workspace="datasetId" in current["state"] or "workspaceVersion" in current["state"])
+            if not expected_token:
+                raise BizError("SESSION_VERSION_REQUIRED", "保存済みセッションを開き直してから保存してください。", status_code=409)
+            if expected_token != current["versionToken"]:
                 raise BizError(
                     "SESSION_CONFLICT",
                     "セッションは他のクライアントによって更新されています。",
@@ -131,7 +150,10 @@ class SessionStore:
                 "UPDATE sessions SET state=?, revision=?, name=?, updated_at=? WHERE session_id=?",
                 (json.dumps(state, ensure_ascii=False), new_revision, new_name, _now(), session_id),
             )
-        return self.get(session_id)
+            updated = con.execute("SELECT * FROM sessions WHERE session_id=?", (session_id,)).fetchone()
+            result = self._to_dict(updated)
+        # Return the revision this request wrote, never a later writer's token.
+        return result
 
     def delete(self, session_id: str) -> None:
         with self._lock, self._connect() as con:

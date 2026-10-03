@@ -12,6 +12,7 @@ import { TgtCanvas, tourOption } from '../src/features/tgt/TgtCanvas'
 const tourViewport=vi.hoisted(()=>({logicalWidth:860,logicalHeight:540,scale:1,zoom:null as number|null,dpr:1,revision:0}))
 const touringData = vi.hoisted(() => ({ rowIds: ['a', 'b'], rowIndex: new Map([['a', 0], ['b', 1]]),
   schema: ['x', 'y', 'z'].map(name => ({ name, semanticType: 'numeric' })),
+  columns: { x: [0, 1], y: [0, 2], z: [0, 3] },
   numeric: { x: new Float64Array([0, 1]), y: new Float64Array([0, 2]), z: new Float64Array([0, 3]) } }))
 vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: () => touringData }))
 vi.mock('../src/features/tgt/ProjectionCircle', () => ({ ProjectionCircle: () => null }))

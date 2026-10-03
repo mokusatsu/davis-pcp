@@ -10,7 +10,7 @@ import { l1Index, useL1ColorDomains } from '../../theme/useL1ColorDomain'
 import L1Legend from '../common/L1Legend'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Button, Card, Col, Dropdown, Empty, Pagination, Row, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Col, Dropdown, Empty, Pagination, Row, Space, Spin, Statistic, Tag, Typography } from 'antd'
 import { BarChartOutlined, CheckCircleOutlined, FilterOutlined, TableOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectionApplied, selectionCleared, focusSelected, deleteSelected, resetWorkingSet, selectEffectiveRowIds } from '../../app/store'
@@ -148,13 +148,22 @@ export default function StatisticsPage() {
     return [column.name, { numeric, values, numbers: numeric ? Float64Array.from(values, v => v === null ? NaN : Number(v)) : new Float64Array(0) }]
   })), [data, targetSchema, getColumn])
 
-  const [stats, setStats] = useState<StatsRow[]>([])
-  const [loadingStats, setLoadingStats] = useState(false)
+  const [statsAttempt, setStatsAttempt] = useState(0)
+  // Bind every displayed value to the exact current input, including revisions,
+  // codebook missing rules and column data. The render guard hides old values
+  // immediately, before the next effect starts its replacement request.
+  const statsInput = useMemo(() => ({ scopeKey: analysisScope.scopeKey, data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel, statsAttempt }),
+    [analysisScope.scopeKey, data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel, statsAttempt])
+  const [statsResult, setStatsResult] = useState<{ input: typeof statsInput; rows: StatsRow[]; error: string | null; pending: boolean } | null>(null)
+  const currentStats = statsResult?.input === statsInput ? statsResult : null
+  const stats = currentStats?.rows ?? []
+  const statsError = currentStats?.error ?? null
+  const loadingStats = viewActive && !!data && scopedIndexes.length > 0 && (!currentStats || currentStats.pending)
   useEffect(() => {
     if (!viewActive) return
-    if (!data || !scopedIndexes.length) { setStats([]); setLoadingStats(false); return }
+    if (!data || !scopedIndexes.length) return
     let cancelled = false
-    setLoadingStats(true)
+    setStatsResult({ input: statsInput, rows: [], error: null, pending: true })
     ;(async () => {
       try {
         const f = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '—' : v.toFixed(3))
@@ -209,15 +218,14 @@ export default function StatisticsPage() {
             })
           }
         }
-        if (!cancelled) setStats(rows)
-      } finally {
-        if (!cancelled) setLoadingStats(false)
+        if (!cancelled) setStatsResult({ input: statsInput, rows, error: null, pending: false })
+      } catch (error) {
+        if (!cancelled) setStatsResult({ input: statsInput, rows: [], pending: false,
+          error: error instanceof Error && error.message ? error.message : '原因を確認できませんでした' })
       }
-    })().catch(() => {
-      if (!cancelled) setLoadingStats(false)
-    })
+    })()
     return () => { cancelled = true }
-  }, [viewActive, data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel])
+  }, [viewActive, statsInput, data, scopedIndexes, targetSchema, columnValues, getColumn, formatValueLabel])
 
   const numericColumns = useMemo(
     () => targetSchema.filter((c) => columnValues[c.name].numeric).map((c) => c.name),
@@ -337,9 +345,12 @@ export default function StatisticsPage() {
 
       <L1Legend />
       <MultiResponseStatistics rowIds={effectiveRowIds} />
+      {statsError && <Alert type="error" showIcon message="記述統計量の集計に失敗しました"
+        description={`現在の対象の統計量は表示していません。再試行してください。詳細: ${statsError}`}
+        action={<Button onClick={() => setStatsAttempt(attempt => attempt + 1)}>再試行</Button>} />}
       {loadingStats && (
         <Card size="small" style={{ textAlign: 'center', padding: '30px 20px', background: '#fafafa', borderRadius: 8 }}>
-          <Spin size="large" tip="記述統計量を集計中..." />
+          <Space role="status" aria-live="polite"><Spin size="large" /><Typography.Text>記述統計量を集計中...</Typography.Text></Space>
         </Card>
       )}
 

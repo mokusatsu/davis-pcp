@@ -29,6 +29,11 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
   const [seed, setSeed] = useState<number | undefined>(42)
   const [targetScope, setTargetScope] = useState<'active' | 'all'>('active')
   const [samplingLoading, setSamplingLoading] = useState(false)
+  const [samplingError, setSamplingError] = useState<string | null>(null)
+  const [serverSeedError, setServerSeedError] = useState<string | null>(null)
+  const seedHint = 'Seedは0以上9007199254740991以下の整数で入力してください（例: 42）。空欄なら新しいシードを生成します。'
+  const seedInvalid = seed !== undefined && (!Number.isSafeInteger(seed) || seed < 0)
+  const seedError = seedInvalid ? seedHint : serverSeedError
 
   // Range form state (1-indexed inclusive)
   const [fromIndex, setFromIndex] = useState<number>(1)
@@ -37,7 +42,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
   const [rangeTarget, setRangeTarget] = useState<'active' | 'selected'>('active')
   const [rangeLoading, setRangeLoading] = useState(false)
 
-  useEffect(() => { requestVersion.current++; setSamplingLoading(false); setRangeLoading(false) }, [contextKey])
+  useEffect(() => { requestVersion.current++; setSamplingLoading(false); setRangeLoading(false); setSamplingError(null); setServerSeedError(null) }, [contextKey])
   useEffect(() => {
     if (!open || !obs.sampling.enabled) return
     setMethod(obs.sampling.method)
@@ -57,6 +62,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
   const previewCount = mode === 'count' ? Math.min(size, totalCandidates) : Math.max(1, Math.round(totalCandidates * (ratio / 100)))
 
   const handleApplySampling = async () => {
+    if (samplingLoading || seedInvalid) return
     if (!selection.datasetId) {
       message.error('データセットが読み込まれていません。')
       return
@@ -64,6 +70,8 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
     const version = ++requestVersion.current, startedContext = contextRef.current
     const current = () => version === requestVersion.current && startedContext === contextRef.current
     setSamplingLoading(true)
+    setSamplingError(null)
+    setServerSeedError(null)
     try {
       const payload: Record<string, unknown> = {
         method,
@@ -117,8 +125,9 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
       onClose()
     } catch (err) {
       if (!current()) return
-      const error = err as { message: string }
-      message.error(error.message || 'サンプリングに失敗しました。')
+      const error = err as { message?: string; details?: { fieldErrors?: Record<string, string> } }
+      if (error.details?.fieldErrors?.seed) setServerSeedError(seedHint)
+      setSamplingError(error.message || 'サンプリングに失敗しました。入力内容を確認して再試行してください。')
     } finally {
       if (current()) setSamplingLoading(false)
     }
@@ -249,12 +258,20 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                   <div style={{ marginTop: 4 }}>
                     <InputNumber
                       placeholder="完全ランダム"
+                      aria-label="乱数シード (Seed)"
+                      aria-describedby="sampling-seed-help"
+                      aria-invalid={Boolean(seedError)}
+                      status={seedError ? 'error' : undefined}
+                      step={1}
                       value={seed}
-                      onChange={(v) => setSeed(v ?? undefined)}
+                      onChange={(v) => { setSeed(v ?? undefined); setServerSeedError(null); setSamplingError(null) }}
                       data-testid="sampling-seed-input"
                     />{' '}
                     <Typography.Text type="secondary">（空欄は新しいシードを生成。抽出元と実効シードを保存します）</Typography.Text>
                   </div>
+                  <Typography.Text id="sampling-seed-help" type={seedError ? 'danger' : 'secondary'} role={seedError ? 'alert' : undefined}>
+                    {seedError ?? seedHint}
+                  </Typography.Text>
                 </div>
 
                 <div>
@@ -274,6 +291,8 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                   }%)`}
                 />
 
+                {samplingError && <Alert type="error" showIcon message="サンプリングに失敗しました"
+                  description={samplingError} data-testid="sampling-error" />}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
                   {obs?.sampling?.enabled ? (
                     <Button danger onClick={handleClearSampling} data-testid="clear-sampling-btn">
@@ -285,6 +304,7 @@ export const ObservationModal: React.FC<ObservationModalProps> = ({ open, defaul
                     <Button
                       type="primary"
                       loading={samplingLoading}
+                      disabled={seedInvalid || totalCandidates === 0}
                       onClick={handleApplySampling}
                       data-testid="apply-sampling-btn"
                     >

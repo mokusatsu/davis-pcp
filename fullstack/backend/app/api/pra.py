@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ..algorithms.pra.engine import evaluate_penalty_reward
 from ..domain.errors import BizError
+from ..domain.codebook_adapter import CodebookAdapter
 from ..domain.context import (
     check_revisions, collect_revisions, filter_scope_frame, resolve_row_ids, scope_hash,
 )
@@ -41,14 +42,19 @@ def run_pra_evaluation(req: PraRequest) -> dict[str, Any]:
 
     with store.lock(dataset_id):
         meta = store.get_meta(dataset_id)
-        revisions = collect_revisions(meta, store.load_codebook(dataset_id))
+        codebook = store.load_codebook(dataset_id) or {}
+        revisions = collect_revisions(meta, codebook)
         check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
         df = store.get_dataframe(dataset_id)
         scope_ids = resolve_row_ids(df, dataset_id, req.rowIds)
         df = filter_scope_frame(df, scope_ids)
     if df.height == 0:
         raise BizError("EMPTY_ANALYSIS_INPUT", "対象データ行が0件です。", status_code=422)
-    schema = meta.get("schema", [])
+    # Match KDA's analysis values, including coded missing values, non-finite
+    # numbers, reverse scoring and ordinal scores. Raw codes must never return
+    # as measurements simply because the user continues from KDA into PRA.
+    df = CodebookAdapter(df, codebook).analysis_frame()
+    schema = codebook.get("columns") or meta.get("schema", [])
 
     s_min = req.scaleMin if req.scale_min is None else req.scale_min
     s_max = req.scaleMax if req.scale_max is None else req.scale_max

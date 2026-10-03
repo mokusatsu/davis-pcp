@@ -1,5 +1,5 @@
 import AsyncExportButton from '../common/AsyncExportButton'
-import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
+import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, AnalysisViewActivityContext, useAnalysisViewActive, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
@@ -30,19 +30,31 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 export default function LinearRegressionPage(): JSX.Element {
+  const active = useAnalysisViewActive()
+  const { close } = useGraphExpansion()
+  const [regularizedVisited, setRegularizedVisited] = useState(false)
   const [method, setMethod] = useState<'ols' | 'regularized'>('ols')
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
     <Space wrap><span>回帰の方法:</span>
-      <Radio.Group aria-label="回帰の方法" value={method} onChange={event => setMethod(event.target.value)}>
+      <Radio.Group aria-label="回帰の方法" value={method} onChange={event => { close(); setMethod(event.target.value); if (event.target.value === 'regularized') setRegularizedVisited(true) }}>
         <Radio.Button value="ols">通常の重回帰（OLS）</Radio.Button>
         <Radio.Button value="regularized">正則化回帰</Radio.Button>
       </Radio.Group>
     </Space>
-    {method === 'ols' ? <OrdinaryLinearRegressionPanel /> : <RegularizedRegressionPanel />}
+    <div hidden={method !== 'ols'} data-testid="ols-panel"><AnalysisViewActivityContext.Provider value={active && method === 'ols'}>
+      <OrdinaryLinearRegressionPanel />
+    </AnalysisViewActivityContext.Provider></div>
+    {regularizedVisited && <div hidden={method !== 'regularized'} data-testid="regularized-panel"><AnalysisViewActivityContext.Provider value={active && method === 'regularized'}>
+      <RegularizedRegressionPanel />
+    </AnalysisViewActivityContext.Provider></div>}
   </div>
 }
 
 function OrdinaryLinearRegressionPanel(): JSX.Element {
+  const viewActive = useAnalysisViewActive()
+  const activeRef = useRef(viewActive)
+  activeRef.current = viewActive
+  const rowsSequence = useRef(0)
   const { openWhenAvailable } = useGraphExpansion()
   const dispatch = useDispatch<AppDispatch>()
   const selection = useSelector((s: RootState) => s.selection)
@@ -143,10 +155,18 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
   const selectionSequence = useRef(0)
   const predictionSequence = useRef(0)
   const mounted = useRef(true)
+  const activeWaiters = useRef(new Set<() => void>())
+  const releaseActiveWaiters = () => { for (const resolve of activeWaiters.current) resolve(); activeWaiters.current.clear() }
+  const waitUntilActive = async () => {
+    if (activeRef.current || !mounted.current) return
+    await new Promise<void>(resolve => { activeWaiters.current.add(resolve) })
+  }
+  useEffect(() => { if (viewActive) releaseActiveWaiters() }, [viewActive])
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
+      releaseActiveWaiters()
       runSequence.current += 1
       selectionSequence.current += 1
       predictionSequence.current += 1
@@ -166,6 +186,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
     runSequence.current += 1
     predictionSequence.current += 1
     selectionSequence.current += 1
+    releaseActiveWaiters()
     setCompleted(null)
     setSubmittedKey('')
     setError(null)
@@ -261,7 +282,6 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
         const fields = res.capabilities.materializeFitFields
         return fields.includes(f) ? f : (fields[0] ?? '')
       })
-      void fetchRows(res.resultId, startedContext)
     } catch (err) {
       if (runSequence.current !== seq || selectionRef.current.datasetId !== startedDataset
         || selectionRef.current.dataRevision !== startedDataRevision || schemaRef.current !== startedSchemaRevision) return
@@ -272,8 +292,10 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
   }
 
   const fetchRows = async (resultId: string, context: LRContext): Promise<void> => {
+    if (!activeRef.current) return
+    const rowSeq = ++rowsSequence.current
     const seq = runSequence.current
-    const isCurrent = () => runSequence.current === seq && selectionRef.current.datasetId === context.datasetId
+    const isCurrent = () => activeRef.current && rowsSequence.current === rowSeq && runSequence.current === seq && selectionRef.current.datasetId === context.datasetId
       && selectionRef.current.dataRevision === context.expectedDataRevision && schemaRef.current === context.expectedSchemaRevision
     setRowsLoading(true)
     setRowsError(null)
@@ -298,9 +320,20 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
       setRowsResultId(null)
       setRowsError(apiErrorMessage(err, '行の取得に失敗しました。'))
     } finally {
-      if (runSequence.current === seq) setRowsLoading(false)
+      if (rowsSequence.current === rowSeq) setRowsLoading(false)
     }
   }
+  useEffect(() => {
+    // A hidden method retains its fit; supplementary row requests resume only
+    // when shown. Never continue paging or accept an obsolete hidden request.
+    if (viewActive && result && resultContext && rowsResultId !== result.resultId) {
+      void fetchRows(result.resultId, resultContext)
+    }
+    return () => { rowsSequence.current += 1; setRowsLoading(false) }
+    // Rows belong to the completed fit, not to subsequent draft/scope edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewActive, result, resultContext])
+
   const figurePoints = useMemo(() => {
     const pts: { rowId: string; x: number; y: number; title: string }[] = []
     for (const r of rows) {
@@ -423,6 +456,8 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
       let offset: number | null = 0
       let total = 0
       while (offset !== null) {
+        await waitUntilActive()
+        if (!isCurrent()) return
         const page = await fetchLinearRegressionPredictions(startedResultId, res.predictionId, offset, 5000)
         if (!isCurrent()) return
         total = page.total
@@ -609,7 +644,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                     <GraphPanel
                       graphId="linear-regression/diagnostics"
                       title="残差診断散布図"
-                      available={tab === 'figure'}
+                      available={viewActive && tab === 'figure'}
                       sizing="intrinsic"
                       intrinsicSize={{ width: 560, height: 400 }}
                       controls={(
@@ -631,7 +666,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                         </Space>
                       )}
                     >
-                      <LinearRegressionFigure
+                      {viewActive && <LinearRegressionFigure
                         points={figurePoints}
                         xLabel={diagField === 'fitted' ? '適合値' : diagField === 'residual' ? '残差' : 'leverage'}
                         yLabel="残差"
@@ -642,7 +677,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                         onBrush={(b) => void handleBrush(b)}
                         svgRef={svgRef}
                         testId="lr-figure"
-                      />
+                      />}
                     </GraphPanel>
                     <L1Legend />
                   </Space>

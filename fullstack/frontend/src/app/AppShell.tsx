@@ -1,19 +1,18 @@
 import { SELECTION_LABELS } from '../features/selection/selectionLabels'
-import { createAnalysisWorkspaceSnapshot, readAnalysisWorkspaceSnapshot } from '../features/selection/workspaceSession'
-import { analysisWorkspaceRestored } from './store'
+import { useWorkspacePersistence } from './useWorkspacePersistence'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector, useStore } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Badge, Button, ConfigProvider, Dropdown, Grid, Input, Layout, List, Menu, Modal,
+  Alert, Badge, Button, ConfigProvider, Dropdown, Grid, Input, Layout, List, Menu, Modal,
   Select, Space, Tooltip, Typography, Upload, notification,
 } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   BarChartOutlined, ClearOutlined, DownloadOutlined, FileTextOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SaveOutlined, SafetyCertificateOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
-import type { RootState, AppDispatch, VariableMetaItem } from './store'
-import { datasetLoaded, selectionCleared, focusSelected, deleteSelected, observationScopeChanged, variablesInitialized } from './store'
+import type { RootState, AppDispatch } from './store'
+import { selectionCleared, focusSelected, deleteSelected, observationScopeChanged } from './store'
 import { api, downloadExport } from '../api/client'
 import { normalizePageKey, useGraphExpansion } from '../features/common/GraphExpansion'
 import GlobalHeaderControlBar from '../features/selection/GlobalHeaderControlBar'
@@ -227,7 +226,7 @@ export default function AppShell() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   }, [location.pathname])
   const selection = useSelector((s: RootState) => s.selection)
-  const workspaceStore = useStore<RootState>()
+  const workspaceCodebookId = useSelector((s: RootState) => s.codebook.datasetId)
   const mainContentRef = useRef<HTMLDivElement>(null)
   const { notifyRoute, session: graphSession } = useGraphExpansion()
   // Router 内の AppShell から正規化 pageKey と datasetId を共通部へ通知する
@@ -236,63 +235,36 @@ export default function AppShell() {
     notifyRoute(normalizePageKey(location.pathname), selection.datasetId ?? null)
   }, [location.pathname, selection.datasetId, notifyRoute])
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
+  const [datasetListError, setDatasetListError] = useState<string | null>(null)
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [saveModal, setSaveModal] = useState(false)
-  const [sessionName, setSessionName] = useState('')
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
-  const [revision, setRevision] = useState(0)
+  const notifySaved = useCallback((message: string) => notificationApi.success({ message }), [notificationApi])
+  const persistence = useWorkspacePersistence(notifySaved)
+  const { loadDataset } = persistence
   const [licenseModalOpen, setLicenseModalOpen] = useState(false)
 
   const refreshDatasets = useCallback(async () => {
-    const result = await api.get<{ datasets: DatasetListItem[] }>('/datasets').catch(() => ({ datasets: [] }))
-    setDatasets(result.datasets)
-    return result.datasets
+    try {
+      const result = await api.get<{ datasets: DatasetListItem[] }>('/datasets')
+      setDatasets(result.datasets); setDatasetListError(null)
+      return result.datasets
+    } catch (error) {
+      setDatasetListError(`データセット一覧を読み込めませんでした: ${(error as { message?: string }).message || String(error)}`)
+      return null
+    }
   }, [])
-
-  const loadDataset = useCallback(async (datasetId: string, name?: string) => {
-    const meta = await api.get<{
-      name: string
-      dataRevision: number
-      schema: Array<{
-        columnId: string
-        name: string
-        semanticType: string
-        physicalType?: string
-        missingCount?: number
-      }>
-    }>(`/datasets/${datasetId}`)
-    const { fetchArrowView } = await import('../api/client')
-    const data = await fetchArrowView(datasetId, [])
-    dispatch(datasetLoaded({ datasetId, name: name || meta.name, rowIds: data.__rowId__ as string[], dataRevision: meta.dataRevision }))
-
-    const colNames = meta.schema.map((c) => c.name)
-    const varMeta: Record<string, VariableMetaItem> = {}
-    meta.schema.forEach((c) => {
-      varMeta[c.name] = {
-        columnId: c.columnId,
-        name: c.name,
-        semanticType: (c.semanticType as any) || 'numeric',
-        physicalType: c.physicalType || 'Float64',
-        missingCount: c.missingCount || 0,
-        isTargetCandidate: c.semanticType === 'nominal' || c.semanticType === 'ordinal' || c.semanticType === 'categorical',
-      }
-    })
-    dispatch(variablesInitialized({ variables: colNames, meta: varMeta, datasetId }))
-    // Codebook fetch reconciles MA children into parent entities via
-    // globalVariablesSlice extraReducers (reconcileEntities).
-    await dispatch(codebookSlice.fetchCodebookThunk(datasetId))
-  }, [dispatch])
 
   // Bootstrap: auto-load built-in Iris sample on first launch.
   useEffect(() => {
     if (selection.datasetId) return
     let cancelled = false
+    const intent = persistence.beginDatasetIntent()
     void (async () => {
       const list = await refreshDatasets()
-      if (cancelled) return
+      if (cancelled || !list || intent === null || !persistence.isCurrentDatasetIntent(intent)) return
       if (list.length === 0) {
         const created = await api.post<{ datasetId: string; name: string }>('/datasets/import/sample', { name: 'Iris (built-in sample)' })
-        if (cancelled) return
+        if (cancelled || !persistence.isCurrentDatasetIntent(intent)) return
         await loadDataset(created.datasetId, created.name)
         await refreshDatasets()
       } else {
@@ -300,78 +272,36 @@ export default function AppShell() {
         const first = iris ?? list[0]
         await loadDataset(first.datasetId, first.name)
       }
-    })()
+    })().catch(error => { if (!cancelled) setDatasetListError(`初期データセットを読み込めませんでした: ${error.message || String(error)}`) })
+      .finally(() => { if (intent !== null) persistence.finishDatasetIntent(intent) })
     return () => {
       cancelled = true
     }
-  }, [selection.datasetId, refreshDatasets, loadDataset])
+  }, [selection.datasetId, refreshDatasets, loadDataset, bootstrapAttempt])
 
   const onDatasetSelected = async (datasetId: string) => {
     await loadDataset(datasetId)
   }
 
   const onImport = async (file: File) => {
+    // Import is a dataset intent from the moment the user submits the file,
+    // not from when its slower upload finishes. A later selection must win.
+    const intent = persistence.beginDatasetIntent()
+    if (intent === null) return
     try {
       const meta = await api.upload<{ datasetId: string; name: string }>('/datasets/import', file)
       await refreshDatasets()
-      await onDatasetSelected(meta.datasetId)
+      if (persistence.isCurrentDatasetIntent(intent)) {
+        const loaded = await loadDataset(meta.datasetId)
+        if (!loaded) return
+      }
       notificationApi.success({ message: 'import完了', description: `${meta.name} を取り込みました。` })
     } catch (error) {
       const err = error as { message: string; suggestedActions?: string[] }
       notificationApi.error({ message: 'import失敗', description: err.message, duration: 0 })
+    } finally {
+      persistence.finishDatasetIntent(intent)
     }
-  }
-
-  const saveSession = async () => {
-    if (!selection.datasetId) return
-    const state = { ...createAnalysisWorkspaceSnapshot(workspaceStore.getState()), savedAt: new Date().toISOString() }
-    if (currentSessionId) {
-      try {
-        const updated = await api.put<{ revision: number }>(`/sessions/${currentSessionId}`, { state })
-        setRevision(updated.revision)
-        notificationApi.success({ message: `保存済み (revision ${updated.revision})` })
-      } catch (error) {
-        const err = error as { code: string; message: string; details?: { state?: unknown } }
-        if (err.code === 'SESSION_CONFLICT') {
-          Modal.confirm({
-            title: 'セッション競合',
-            content: '他のクライアントが保存しています。再読込しますか？',
-            okText: '再読込',
-            cancelText: 'コピーとして保存',
-            onOk: async () => {
-              const server = await api.get<{ state: unknown }>(`/sessions/${currentSessionId}`)
-              try {
-                const restored = readAnalysisWorkspaceSnapshot(server.state, workspaceStore.getState())
-                dispatch(analysisWorkspaceRestored(restored))
-                notificationApi.info({ message: '共通分析対象を再読込しました。' })
-              } catch (error) { notificationApi.warning({ message: String(error) }) }
-              return server
-            },
-            onCancel: () => { void saveAsCopy() },
-          })
-        }
-      }
-    } else {
-      const created = await api.post<{ sessionId: string; revision: number }>('/sessions', {
-        name: sessionName || `Session ${new Date().toLocaleString('ja-JP')}`,
-        datasetId: selection.datasetId,
-        state,
-      })
-      setCurrentSessionId(created.sessionId)
-      setRevision(created.revision)
-      notificationApi.success({ message: `セッション保存 (revision ${created.revision})` })
-    }
-    setSaveModal(false)
-  }
-
-  const saveAsCopy = async () => {
-    const created = await api.post<{ sessionId: string; revision: number }>('/sessions', {
-      name: `${sessionName || 'Session'} (copy)`,
-      datasetId: selection.datasetId,
-      state: createAnalysisWorkspaceSnapshot(workspaceStore.getState()),
-    })
-    setCurrentSessionId(created.sessionId)
-    setRevision(created.revision)
   }
 
   const selectedCount = selection.selectedRowIds.length
@@ -385,8 +315,8 @@ export default function AppShell() {
       dispatch(codebookSlice.codebookReset())
       return
     }
-    void dispatch(codebookSlice.fetchCodebookThunk(selection.datasetId))
-  }, [selection.datasetId, selection.revision, dispatch])
+    if (workspaceCodebookId !== selection.datasetId) void dispatch(codebookSlice.fetchCodebookThunk(selection.datasetId))
+  }, [selection.datasetId, selection.revision, workspaceCodebookId, dispatch])
 
   const exportData = useCallback(async (
     datasetId: string,
@@ -476,13 +406,15 @@ export default function AppShell() {
             placeholder="データセット"
             style={{ minWidth: 200 }}
             optionFilterProp="label"
-            value={selection.datasetId ?? undefined}
+            value={persistence.pendingDataset ?? selection.datasetId ?? undefined}
+            loading={persistence.loadBusy}
+            disabled={persistence.saveBusy || Boolean(persistence.openingSession)}
             options={datasets.map((d) => ({ value: d.datasetId, label: `${d.name} (${d.rowCount}行)` }))}
             onChange={(value) => void onDatasetSelected(value)}
             onOpenChange={(visible) => { if (visible) void refreshDatasets() }}
             getPopupContainer={() => document.body}
           />
-          <Upload
+          <Upload disabled={persistence.saveBusy || persistence.loadBusy}
             accept=".csv,.tsv,.parquet,.arff,.arrow,.feather,.db,.sqlite"
             showUploadList={false}
             beforeUpload={(file) => {
@@ -492,11 +424,12 @@ export default function AppShell() {
               return false
             }}
           >
-            <Button data-testid="import-button" icon={<ImportOutlined />}>インポート</Button>
+            <Button disabled={persistence.saveBusy || persistence.loadBusy} data-testid="import-button" icon={<ImportOutlined />}>インポート</Button>
           </Upload>
-          <Button data-testid="save-button" icon={<SaveOutlined />} onClick={() => setSaveModal(true)} disabled={!selection.datasetId}>Save</Button>
+          <Button data-testid="save-button" icon={<SaveOutlined />} onClick={() => persistence.beginSave()} disabled={!selection.datasetId || persistence.loadBusy || persistence.saveBusy}>Save</Button>
+          <Button data-testid="open-session-button" onClick={persistence.showSessions} disabled={persistence.saveBusy || persistence.loadBusy}>セッションを開く</Button>
           <Tooltip title="Save As Copy">
-            <Button icon={<DownloadOutlined />} onClick={() => void saveAsCopy()} disabled={!selection.datasetId}>Save As</Button>
+            <Button icon={<DownloadOutlined />} onClick={() => persistence.beginSave(true)} disabled={!selection.datasetId || persistence.loadBusy || persistence.saveBusy}>Save As</Button>
           </Tooltip>
           <Dropdown
             getPopupContainer={() => document.body}
@@ -559,7 +492,7 @@ export default function AppShell() {
           >
             コードブック
           </Button>
-          {currentSessionId && <Badge count={`r${revision}`} style={{ backgroundColor: '#52c41a' }} />}
+          {persistence.identity?.datasetId === selection.datasetId && <Badge count={`r${persistence.identity?.revision}`} style={{ backgroundColor: '#52c41a' }} />}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
             <Button
               data-testid="license-button"
@@ -570,6 +503,9 @@ export default function AppShell() {
             </Button>
           </div>
         </div>
+        {datasetListError && <Alert type="error" showIcon message={datasetListError} action={<Button onClick={() => { if (selection.datasetId) void refreshDatasets(); else setBootstrapAttempt(value => value + 1) }}>一覧を再試行</Button>} />}
+        {persistence.loadBusy && <Typography.Text role="status">{persistence.openingSession ? 'セッションとデータセットを読み込んでいます…' : 'データセットを読み込んでいます…'}</Typography.Text>}
+        {persistence.loadError && <Alert type="error" showIcon message={persistence.loadError} action={<Button disabled={persistence.loadBusy} onClick={() => void persistence.retryLoad()}>再試行</Button>} />}
         <FeatureNavigation
           datasetId={selection.datasetId ?? null}
           expanded={Boolean(graphSession)}
@@ -612,12 +548,37 @@ export default function AppShell() {
       </Layout.Content>
       <Modal
         title="セッション保存"
-        open={saveModal}
-        onOk={() => void saveSession()}
-        onCancel={() => setSaveModal(false)}
+        destroyOnClose
+        open={persistence.saveModal}
+        onOk={() => void persistence.saveSession()}
+        onCancel={persistence.closeSave}
+        confirmLoading={persistence.saveBusy}
+        okButtonProps={{ disabled: persistence.saveBusy || persistence.loadBusy }}
+        cancelButtonProps={{ disabled: persistence.saveBusy || persistence.loadBusy }}
+        closable={!persistence.saveBusy && !persistence.loadBusy}
+        maskClosable={!persistence.saveBusy && !persistence.loadBusy}
+        keyboard={!persistence.saveBusy && !persistence.loadBusy}
         okText="保存"
       >
-        <Input data-testid="session-name" placeholder="セッション名" value={sessionName} onChange={(e) => setSessionName(e.target.value)} />
+        <Typography.Paragraph>共通分析対象（対象行・選択行・標本・使用変数・グループ）を保存します。各分析画面の計算結果や個別設定は含みません。</Typography.Paragraph>
+        <Input data-testid="session-name" aria-label="セッション名" placeholder="セッション名" value={persistence.sessionName} disabled={persistence.saveBusy || persistence.loadBusy} onChange={(e) => persistence.setSessionName(e.target.value)} />
+        {persistence.saveBusy && <Typography.Paragraph role="status">保存処理中は閉じられません。完了までお待ちください。</Typography.Paragraph>}
+        {persistence.saveError && <Alert type="error" showIcon message={persistence.saveError} />}
+        {persistence.conflict && <Space wrap>
+          <Button disabled={persistence.saveBusy || persistence.loadBusy} onClick={() => persistence.identity && void persistence.openSession(persistence.identity.sessionId)}>保存済みを開き直す</Button>
+          <Button disabled={persistence.saveBusy || persistence.loadBusy} onClick={() => void persistence.saveSession(true)}>コピーとして保存</Button>
+        </Space>}
+      </Modal>
+      <Modal title="保存済みセッションを開く" destroyOnClose open={persistence.sessionsModal} onCancel={persistence.closeSessions} footer={null}
+        closable={!persistence.loadBusy} maskClosable={!persistence.loadBusy} keyboard={!persistence.loadBusy}>
+        <Typography.Paragraph>保存時と同じデータセット・データ世代の共通分析対象を復元します。現在の共通設定は置き換わります。世代が異なるセッションは開けません。</Typography.Paragraph>
+        <Button loading={persistence.listBusy} disabled={persistence.loadBusy} onClick={() => void persistence.refreshSessions()}>一覧を再読込</Button>
+        {persistence.listError && <Alert type="error" showIcon message={persistence.listError} />}
+        <List loading={persistence.listBusy} locale={{ emptyText: '保存済みセッションがありません。' }} dataSource={persistence.sessions}
+          renderItem={item => <List.Item actions={[<Button key="open" aria-label={`${item.name} を開く`} loading={persistence.openingSession === item.sessionId}
+            disabled={persistence.loadBusy} onClick={() => void persistence.openSession(item.sessionId)}>開く</Button>]}>
+            <List.Item.Meta title={item.name} description={`データセット: ${item.datasetId} / revision ${item.revision}${item.updatedAt ? ` / ${item.updatedAt}` : ''}`} />
+          </List.Item>} />
       </Modal>
       <LicenseModal open={licenseModalOpen} onClose={() => setLicenseModalOpen(false)} />
       <CodebookEditorModal />

@@ -54,6 +54,8 @@ frontendを事前ビルドし、FastAPIが同一origin (http://127.0.0.1:8420) �
 
 PCAページでは通常PCAと独立したSparsePCAも利用できる。非加重の疎な再構成係数、得点計算係数、直接相関、得点図、保存結果のCSV/JSON出力に対応する。設定と指標の意味・計算上限は [SparsePCA](docs/SPARSE_PCA.md) を参照。
 
+保存対象・再開方法・分析の引継ぎと欠損方針は [分析ワークフロー](docs/WORKFLOW_RELIABILITY.md) を参照。
+
 ## import対応形式
 
 CSV / TSV / Parquet / Arrow IPC(Feather) / ARFF / SQLite(.db/.sqlite のtable選択) / 組込みIris sample。

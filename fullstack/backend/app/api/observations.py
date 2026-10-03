@@ -25,7 +25,8 @@ class SamplingRequest(BaseModel):
     method: str = Field("without_replacement", pattern="^(with_replacement|without_replacement)$")
     size: Optional[int] = None
     ratio: Optional[float] = None
-    seed: Optional[int] = Field(default=42, ge=0)
+    # Seeds must survive a JSON/JavaScript round trip without rounding or coercion.
+    seed: Optional[int] = Field(default=42, ge=0, le=9007199254740991, strict=True)
     activeRowIds: Optional[List[str]] = None
     expectedDataRevision: int | None = None
     expectedSchemaRevision: int | None = None

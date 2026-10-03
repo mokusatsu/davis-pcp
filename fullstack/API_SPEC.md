@@ -36,8 +36,8 @@ OpenAPI: `GET /api/openapi.json` (Swagger UI: `/api/docs`) を正本とする。
 | POST | /api/v1/models | decision_tree/random_forest(treeStructures/leafMembership/featureImportance) |
 | GET | /api/v1/models/{rid}[/leaves] | 結果(リーフrow集合) |
 | POST | /api/v1/models/logistic | ロジスティック回帰(係数、推論の可否、予測確率) |
-| GET/POST | /api/v1/sessions | session一覧/作成 |
-| GET/PUT/DELETE | /api/v1/sessions/{sid} | 取得/更新(versionToken競合時409)/削除 |
+| GET/POST | /api/v1/sessions | session一覧（メタデータのみ）/作成 |
+| GET/PUT/DELETE | /api/v1/sessions/{sid} | 取得/更新(versionToken必須、競合・dataset不一致時409)/削除 |
 | POST | /api/v1/sessions/migrate-static-v1 | 静的v1状態JSON migration |
 | POST | /api/v1/exports | selected/active/all × csv/parquet/arrow |
 | GET | /api/v1/exports/session/{sid} | session JSON download |

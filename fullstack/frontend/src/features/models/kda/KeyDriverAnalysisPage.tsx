@@ -17,9 +17,11 @@ import {
   ArrowRightOutlined,
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../../../app/store'
-import { pcpStateChanged, selectOrdinaryVariables } from '../../../app/store'
+import { pcpStateChanged } from '../../../app/store'
 import { api } from '../../../api/client'
 import GraphPanel from '../../common/GraphPanel'
+import { captureKdaPraHandoff, type KdaPraHandoff } from '../../pra/kdaHandoff'
+import { numericModelInputError, useNumericModelInputs } from './useNumericModelInputs'
 
 export interface DriverItem {
   name: string
@@ -58,47 +60,23 @@ export default function KeyDriverAnalysisPage() {
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
-  const globalVars = useSelector(selectOrdinaryVariables)
-  const [allColumns, setAllColumns] = useState<string[]>([])
-  const columns = useMemo(
-    () => allColumns.filter((name) => globalVars.activeVariableIds.includes(name)),
-    [allColumns, globalVars.activeVariableIds],
-  )
-  const [outcome, setOutcome] = useState<string>('')
-  const [drivers, setDrivers] = useState<string[]>([])
+  const { columns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<KdaResponse | null>(null)
   const runScope = useScopedRun(JSON.stringify([outcome, drivers]))
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
   const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
   const [runError, setRunError] = useState<string | null>(null)
-  useEffect(() => { setResult(null); setLoading(false); setRunError(null) }, [runScope.identity])
+  const [resultHandoff, setResultHandoff] = useState<KdaPraHandoff | null>(null)
+  useEffect(() => { setResult(null); setResultHandoff(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [whatIfDeltas, setWhatIfDeltas] = useState<Record<string, number>>({})
 
-  // Fetch columns
-  useEffect(() => {
-    if (!datasetId) return
-    let active = true
-    api.get<{ schema: Array<{ name: string; semanticType: string; physicalType: string }> }>(`/datasets/${datasetId}`)
-      .then((meta) => {
-        if (!active) return
-        const numCols = meta.schema
-          .filter((c) => c.semanticType === 'numeric' || c.physicalType === 'float' || c.physicalType === 'int')
-          .map((c) => c.name)
-        setAllColumns(numCols)
-        if (numCols.length >= 2) {
-          setOutcome(numCols[numCols.length - 1])
-          setDrivers(numCols.slice(0, numCols.length - 1))
-        }
-      })
-      .catch(() => {})
-    return () => { active = false }
-  }, [datasetId])
+  const inputError = numericModelInputError(datasetId, columnsReady, columns, outcome, drivers, runScope.scope.count, '説明変数 (Drivers)')
 
-  const calculateKda = async (targetOutcome?: string, targetDrivers?: string[]) => {
-    const o = targetOutcome || outcome
-    const d = targetDrivers || drivers
-    if (!datasetId || !o || d.length === 0) return
+  const calculateKda = async () => {
+    if (loading || inputError || !datasetId) return
+    const o = outcome
+    const d = [...drivers]
     const ticket = runScope.begin()
     setRunError(null)
     setLoading(true)
@@ -114,6 +92,12 @@ export default function KeyDriverAnalysisPage() {
       if (!ticket.isCurrent()) return
       ticket.commit()
       setResult(res)
+      setResultHandoff(captureKdaPraHandoff({
+        version: 1, kind: 'kda-to-pra', sourceRunId: res.run_id, datasetId, dataRevision, schemaRevision,
+        outcome: o, drivers: d, scopeSnapshot: ticket.scope,
+        sourceConclusion: { kind: 'shapley-importance', method: res.method, rSquared: res.model.r_squared, nValid: res.model.n_valid,
+          drivers: res.drivers.map(driver => ({ name: driver.name, importancePct: driver.importance_pct, direction: driver.direction })) },
+      }))
       // reset what-if deltas
       const initialDeltas: Record<string, number> = {}
       res.drivers.forEach((drv) => {
@@ -126,16 +110,6 @@ export default function KeyDriverAnalysisPage() {
       if (ticket.isCurrent()) setLoading(false)
     }
   }
-
-  useEffect(() => {
-    setDrivers((prev) => {
-      const next = prev.filter((name) => columns.includes(name))
-      return next.length === prev.length ? prev : next
-    })
-    if (outcome && !columns.includes(outcome)) setOutcome('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns])
-
 
   // Compute what-if predicted change
   const predictedOutcome = useMemo(() => {
@@ -165,13 +139,10 @@ export default function KeyDriverAnalysisPage() {
   }
 
   const handleSendToPenaltyReward = () => {
-    if (!result) return
-    navigate('/penalty-reward')
+    if (!resultHandoff) return
+    navigate('/penalty-reward', { state: { kdaHandoff: captureKdaPraHandoff(resultHandoff) } })
   }
 
-  const handleSendToRobustness = () => {
-    navigate('/robustness')
-  }
 
   return (
     <div
@@ -186,7 +157,8 @@ export default function KeyDriverAnalysisPage() {
       data-testid="kda-page"
     >
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Alert type="info" message="現在の入力と異なる実行済み結果です。再実行すると更新されます。" />}
+      {runScope.dirty && <Alert type="info" message={inputError ? '現在の入力と異なる実行済み結果です。入力の不足を修正すると再実行できます。' : '現在の入力と異なる実行済み結果です。再実行すると更新されます。'} />}
+      {columnsError && <Alert type="error" message={columnsError} action={<Button onClick={retryColumns}>列を再読込み</Button>} />}
       {runError && <Alert type="error" message={runError} />}
       {/* Configuration Header */}
       {(
@@ -224,6 +196,7 @@ export default function KeyDriverAnalysisPage() {
                 type="primary"
                 icon={<RocketOutlined />}
                 loading={loading}
+                disabled={!!inputError}
                 onClick={() => void calculateKda()}
                 data-testid="kda-run-btn"
                 style={{ marginTop: 22, width: '100%' }}
@@ -232,6 +205,7 @@ export default function KeyDriverAnalysisPage() {
               </Button>
             </Col>
           </Row>
+          {inputError && <Alert type="warning" showIcon message={inputError} data-testid="kda-input-error" style={{ marginTop: 12 }} />}
         </Card>
       )}
 
@@ -402,12 +376,15 @@ export default function KeyDriverAnalysisPage() {
                     </Button>
                     <Button
                       icon={<ThunderboltOutlined />}
-                      onClick={handleSendToRobustness}
+                      disabled
+                      aria-describedby="kda-robustness-unavailable"
                       data-testid="send-robustness-btn"
                     >
                       Check Robustness
                     </Button>
                   </Space>
+                  <Typography.Text type="secondary">実行済みKDAの目的変数・説明変数・要求対象行をPenalty-Rewardへ引き継ぎ、低評価側と高評価側の非対称性を別途分析します。</Typography.Text>
+                  <Typography.Text type="secondary" id="kda-robustness-unavailable">KDAのShapley重要度の頑健性検証には未対応です。Robustnessの平均値検証では代用できません。</Typography.Text>
                 </div>
               }
               data-testid="kda-whatif-simulator"
