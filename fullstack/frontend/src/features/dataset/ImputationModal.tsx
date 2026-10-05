@@ -6,7 +6,7 @@ import EChart from '../charts/EChart'
 import { imputationHistogramOption } from './preprocessingCharts'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -99,6 +99,25 @@ const EXCLUDED_REASON_LABELS: Record<string, string> = {
   PREDICTOR_IS_TARGET: '補完対象のため除外',
 }
 
+function inRange(value: number | null, min: number, max = Infinity): value is number {
+  return value !== null && Number.isFinite(value) && value >= min && value <= max
+}
+
+/** Preserve invalid drafts instead of silently clamping or rounding on blur. */
+function ImputationNumberField({ label, value, onChange, min, max, step = 1, invalid, validationId }: {
+  label: string; value: number | null; onChange: (value: number | null) => void
+  min: number; max?: number; step?: number; invalid: boolean; validationId: string
+}) {
+  return <InputNumber aria-label={label} aria-invalid={invalid || undefined}
+    aria-describedby={invalid ? validationId : undefined} status={invalid ? 'error' : undefined}
+    value={value} min={min} max={max} step={step} changeOnBlur={false} onChange={onChange}
+    onInput={text => {
+      // InputNumber does not emit onChange for every out-of-range draft.
+      const parsed = text.trim() === '' ? NaN : Number(text)
+      onChange(Number.isFinite(parsed) ? parsed : null)
+    }} />
+}
+
 export default function ImputationModal({
   open,
   datasetId,
@@ -117,11 +136,23 @@ export default function ImputationModal({
   const [predictorCols, setPredictorCols] = useState<string[]>([])
 
   // Parameters
-  const [tabdiffSteps, setTabdiffSteps] = useState<number>(20)
-  const [temperature, setTemperature] = useState<number>(1.0)
-  const [knnNeighbors, setKnnNeighbors] = useState<number>(5)
+  const [tabdiffSteps, setTabdiffSteps] = useState<number | null>(20)
+  const [temperature, setTemperature] = useState<number | null>(1.0)
+  const [knnNeighbors, setKnnNeighbors] = useState<number | null>(5)
   const [constantVal, setConstantVal] = useState<string>('0')
-  const [seed, setSeed] = useState<number>(42)
+  const [seed, setSeed] = useState<number | null>(42)
+  const validationId = useId()
+  const validSteps = inRange(tabdiffSteps, 5, 100) && Number.isInteger(tabdiffSteps)
+  const validTemperature = inRange(temperature, 0.1, 2)
+  const validNeighbors = inRange(knnNeighbors, 1, 50) && Number.isInteger(knnNeighbors)
+  const validSeed = inRange(seed, 0, Number.MAX_SAFE_INTEGER) && Number.isSafeInteger(seed)
+  const invalidSettings = [
+    strategy === 'tabdiff' && !validSteps && '逆拡散ステップ数 T（5〜100の整数）',
+    strategy === 'tabdiff' && !validTemperature && '温度（0.1〜2）',
+    strategy === 'tabdiff' && !validSeed && `シード（0〜${Number.MAX_SAFE_INTEGER}の整数）`,
+    strategy === 'knn' && !validNeighbors && '近傍数 k（1〜50の整数）',
+  ].filter(Boolean)
+  const canSubmit = selectedCols.length > 0 && invalidSettings.length === 0
 
   // Preview state
   const [previewLoading, setPreviewLoading] = useState<boolean>(false)
@@ -141,14 +172,20 @@ export default function ImputationModal({
   const predictorOptions = useMemo(
     () =>
       columns
-        .filter((c) => !c.multiResponseGroup && c.role !== 'weight'
+        .filter((c) => !selectedCols.includes(c.name) && !c.multiResponseGroup && c.role !== 'weight'
           && ['interval', 'ratio'].includes(c.scaleType))
         .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
-    [columns],
+    [columns, selectedCols],
   )
+  // Use the same eligible, disjoint projection for the picker and both requests.
+  // Search only changes visibility and must never remove a valid selection.
+  const selectedPredictors = useMemo(() => predictorCols.filter(name => predictorOptions.some(option => option.value === name)),
+    [predictorCols, predictorOptions])
 
   const buildOptions = useCallback((): Record<string, any> => {
-    const options: Record<string, any> = { seed }
+    // Other strategies do not use the seed, but the plan still expects a number.
+    // Keep an invalid hidden draft editable when returning to tabdiff.
+    const options: Record<string, any> = { seed: strategy === 'tabdiff' || validSeed ? seed : 42 }
     if (strategy === 'tabdiff') {
       options.num_steps = tabdiffSteps
       options.temperature = temperature
@@ -158,17 +195,18 @@ export default function ImputationModal({
       options.constant_value = constantVal
     }
     return options
-  }, [seed, strategy, tabdiffSteps, temperature, knnNeighbors, constantVal])
+  }, [seed, validSeed, strategy, tabdiffSteps, temperature, knnNeighbors, constantVal])
 
   const buildBody = useCallback(() => ({
     columns: selectedCols,
     // "auto" means the server picks every usable column.
-    predictorColumns: predictorMode === 'manual' ? predictorCols : undefined,
+    predictorColumns: predictorMode === 'manual' ? selectedPredictors : undefined,
     strategy,
     options: buildOptions(),
-  }), [selectedCols, predictorMode, predictorCols, strategy, buildOptions])
+  }), [selectedCols, predictorMode, selectedPredictors, strategy, buildOptions])
 
   const settingsKey = useMemo(() => JSON.stringify(buildBody()), [buildBody])
+  const currentPreview = previewedSettings === settingsKey ? previewData : null
   const previewRequest = useRequestIdentity(JSON.stringify([datasetId, open, active, settingsKey]))
 
   // F005-G51: columnsWithMissingは親の再レンダーごとに新参照になるため、
@@ -198,7 +236,7 @@ export default function ImputationModal({
   useEffect(() => { setPreviewLoading(false) }, [datasetId, open, active, settingsKey])
 
   const fetchPreview = async () => {
-    if (!open || !active || selectedCols.length === 0) return null
+    if (!open || !active || !canSubmit) return null
     const current = previewRequest.begin()
     setPreviewLoading(true)
     try {
@@ -222,6 +260,10 @@ export default function ImputationModal({
     if (busy.current || !open || !active) return
     if (selectedCols.length === 0) {
       message.warning('補完対象の列を1つ以上選択してください。')
+      return
+    }
+    if (invalidSettings.length > 0) {
+      message.warning(`設定を確認してください: ${invalidSettings.join('、')}`)
       return
     }
     busy.current = true
@@ -258,8 +300,8 @@ export default function ImputationModal({
     `${col.name} ${getColumn(col.name)?.label ?? ''}`.toLocaleLowerCase().includes(targetSearch.trim().toLocaleLowerCase()))
   const hiddenTargetCount = selectedCols.filter(name => !filteredTargets.some(col => col.name === name)).length
 
-  const activePreview = previewData?.perColumn.find((c) => c.column === previewCol)
-    ?? previewData?.perColumn[0]
+  const activePreview = currentPreview?.perColumn.find((c) => c.column === previewCol)
+    ?? currentPreview?.perColumn[0]
 
   return (
     <Modal
@@ -286,7 +328,8 @@ export default function ImputationModal({
           key="preview"
           onClick={() => void fetchPreview()}
           loading={previewLoading}
-          disabled={executing || selectedCols.length === 0}
+          disabled={executing || !canSubmit}
+          aria-describedby={invalidSettings.length ? validationId : undefined}
         >
           プレビュー更新
         </Button>,
@@ -295,7 +338,8 @@ export default function ImputationModal({
           type="primary"
           onClick={() => void handleApply()}
           loading={executing}
-          disabled={executing || selectedCols.length === 0}
+          disabled={executing || !canSubmit}
+          aria-describedby={invalidSettings.length ? validationId : undefined}
           data-testid="btn-execute-imputation"
         >
           補完を適用
@@ -357,10 +401,7 @@ export default function ImputationModal({
                 { label: 'Constant (定数)', value: 'constant' },
               ]}
               value={strategy}
-              onChange={(v) => {
-                setStrategy(String(v))
-                setPreviewData(null)
-              }}
+              onChange={(v) => setStrategy(String(v))}
             />
 
             {strategy === 'tabdiff' && (
@@ -378,15 +419,18 @@ export default function ImputationModal({
                 <Space wrap size="middle">
                   <Space>
                     <Typography.Text style={{ fontSize: 12 }}>逆拡散ステップ数 T:</Typography.Text>
-                    <InputNumber min={5} max={100} value={tabdiffSteps} onChange={(v) => setTabdiffSteps(Number(v) ?? 20)} />
+                    <ImputationNumberField label="逆拡散ステップ数 T" min={5} max={100} value={tabdiffSteps}
+                      onChange={setTabdiffSteps} invalid={!validSteps} validationId={validationId} />
                   </Space>
                   <Space>
                     <Typography.Text style={{ fontSize: 12 }}>温度 (Temperature):</Typography.Text>
-                    <InputNumber min={0.1} max={2.0} step={0.1} value={temperature} onChange={(v) => setTemperature(Number(v) ?? 1.0)} />
+                    <ImputationNumberField label="温度 (Temperature)" min={0.1} max={2.0} step={0.1} value={temperature}
+                      onChange={setTemperature} invalid={!validTemperature} validationId={validationId} />
                   </Space>
                   <Space>
                     <Typography.Text style={{ fontSize: 12 }}>シード:</Typography.Text>
-                    <InputNumber min={0} value={seed} onChange={(v) => setSeed(Number(v) ?? 42)} />
+                    <ImputationNumberField label="シード" min={0} max={Number.MAX_SAFE_INTEGER} value={seed}
+                      onChange={setSeed} invalid={!validSeed} validationId={validationId} />
                   </Space>
                 </Space>
               </div>
@@ -395,16 +439,19 @@ export default function ImputationModal({
             {strategy === 'knn' && (
               <Space>
                 <Typography.Text style={{ fontSize: 12 }}>近傍数 k:</Typography.Text>
-                <InputNumber min={1} max={50} value={knnNeighbors} onChange={(v) => setKnnNeighbors(Number(v) ?? 5)} />
+                <ImputationNumberField label="近傍数 k" min={1} max={50} value={knnNeighbors}
+                  onChange={setKnnNeighbors} invalid={!validNeighbors} validationId={validationId} />
               </Space>
             )}
 
             {strategy === 'constant' && (
               <Space>
                 <Typography.Text style={{ fontSize: 12 }}>補完定数値:</Typography.Text>
-                <Input style={{ width: 160 }} value={constantVal} onChange={(e) => setConstantVal(e.target.value)} />
+                <Input aria-label="補完定数値" style={{ width: 160 }} value={constantVal} onChange={(e) => setConstantVal(e.target.value)} />
               </Space>
             )}
+            {invalidSettings.length > 0 && <Alert id={validationId} type="warning" showIcon
+              message={`設定を確認してください: ${invalidSettings.join('、')}`} />}
           </Space>
         </Card>
 
@@ -418,39 +465,35 @@ export default function ImputationModal({
                 { label: '個別に指定', value: 'manual' },
               ]}
               value={predictorMode}
-              onChange={(v) => {
-                setPredictorMode(String(v) as 'auto' | 'manual')
-                setPreviewData(null)
-              }}
+              onChange={(v) => setPredictorMode(String(v) as 'auto' | 'manual')}
             />
             {predictorMode === 'manual' && (
               <SelectColumn
                 data-testid="impute-predictors"
+                roleName="補完の説明変数"
+                aria-label="補完の説明変数"
                 mode="multiple"
                 style={{ width: '100%' }}
                 placeholder="説明変数を選択"
-                value={predictorCols}
-                onChange={(v) => {
-                  setPredictorCols((v as string[]) ?? [])
-                  setPreviewData(null)
-                }}
-                options={predictorOptions.filter((o) => !selectedCols.includes(o.value))}
+                value={selectedPredictors}
+                onChange={(v) => setPredictorCols((v as string[]) ?? [])}
+                options={predictorOptions}
               />
             )}
             <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
               説明変数は補完の条件付けにのみ使われ、値は書き換えられません。目的列を説明変数に指定することはできません。
               非数値の列・MA設問・ウェイト列は自動選択から除外されます。
             </Typography.Paragraph>
-            {previewData && previewData.excludedColumns.length > 0 && (
+            {currentPreview && currentPreview.excludedColumns.length > 0 && (
               <Space wrap size={[4, 4]}>
-                {previewData.excludedColumns.map((e) => (
+                {currentPreview.excludedColumns.map((e) => (
                   <Tag key={`${e.column}-${e.reason}`} color="default" style={{ margin: 0 }}>
                     {e.column}: {EXCLUDED_REASON_LABELS[e.reason] ?? e.reason}
                   </Tag>
                 ))}
               </Space>
             )}
-            {(previewData?.warnings ?? []).map((w) => (
+            {(currentPreview?.warnings ?? []).map((w) => (
               <Alert key={w.code} type="warning" message={`${w.code}: ${w.message}`} showIcon />
             ))}
           </Space>
@@ -462,7 +505,7 @@ export default function ImputationModal({
           title={
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>4. 補完プレビュー &amp; 分布比較</span>
-              {previewData && previewData.perColumn.length > 1 && (
+              {currentPreview && currentPreview.perColumn.length > 1 && (
                 <Space>
                   <Typography.Text style={{ fontSize: 12 }}>対象列:</Typography.Text>
                   <Radio.Group
@@ -470,7 +513,7 @@ export default function ImputationModal({
                     value={activePreview?.column}
                     onChange={(e) => setPreviewCol(e.target.value)}
                   >
-                    {previewData.perColumn.map((c) => (
+                    {currentPreview.perColumn.map((c) => (
                       <Radio.Button key={c.column} value={c.column}>
                         <ColumnQuestionTooltip nameOrId={c.column}>{c.column}</ColumnQuestionTooltip>
                       </Radio.Button>
@@ -486,7 +529,7 @@ export default function ImputationModal({
             <div style={{ textAlign: 'center', padding: 24 }}>
               <Spin tip="プレビュー計算中..." />
             </div>
-          ) : previewData && activePreview ? (
+          ) : currentPreview && activePreview ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Comparison Stat Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -560,7 +603,9 @@ export default function ImputationModal({
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: 16, color: '#64748b' }}>
-              「プレビュー更新」をクリックすると、選択した補完アルゴリズムによる分布変化が視覚化されます。
+              {previewData && !currentPreview
+                ? '設定が変更されています。「プレビュー更新」で現在の設定の分布を確認できます。'
+                : '「プレビュー更新」をクリックすると、選択した補完アルゴリズムによる分布変化が視覚化されます。'}
             </div>
           )}
         </Card>

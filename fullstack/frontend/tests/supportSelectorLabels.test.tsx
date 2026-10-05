@@ -56,13 +56,13 @@ function mount(page: ReactElement) {
   return { local, dispatch }
 }
 
-async function openPicker(picker: HTMLElement) {
-  fireEvent.click(within(picker).getByRole('button', { name: '変数を選択' }))
-  const search = await screen.findByRole('textbox', { name: '変数名・質問文で絞り込み' })
+async function openPicker(picker: HTMLElement, roleName = '') {
+  fireEvent.click(within(picker).getByRole('button', { name: roleName ? `${roleName}を選択` : '変数を選択' }))
+  const search = await screen.findByRole('textbox', { name: roleName ? `${roleName}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み' })
   // Ant Design's test IDs repeat across nested modals, so locate this dialog
   // through its unique search control rather than its aria-labelledby target.
   const dialog = search.closest('[role="dialog"]') as HTMLElement
-  const results = within(dialog).getByLabelText('検索結果')
+  const results = within(dialog).getByLabelText(roleName ? `${roleName}の検索結果` : '検索結果')
   return { dialog, results, search }
 }
 
@@ -101,7 +101,7 @@ describe('imputation predictor selector labels', () => {
       onClose={vi.fn()} onSuccess={vi.fn()} />)
     fireEvent.click(screen.getByRole('radio', { name: '個別に指定' }))
     const picker = screen.getByTestId('impute-predictors').closest('.column-select-multi-wrap') as HTMLElement
-    const { dialog, results, search } = await openPicker(picker)
+    const { dialog, results, search } = await openPicker(picker, '補完の説明変数')
     // Preserve exclusion of targets, categorical variables, MA children, and weights.
     expect(within(results).getAllByRole('checkbox')).toHaveLength(2)
     expectOption(results, 'Numeric')

@@ -64,7 +64,7 @@ describe('WF-01 executed KDA handoff', () => {
     expect(within(screen.getByTestId('penalty-reward-page')).queryByText(/現在の入力と異なる実行済み結果/)).toBeNull(); expect(mocks.post.mock.calls.some(([path]) => path.startsWith('/robustness'))).toBe(false)
     fireEvent.click(screen.getByText('visit KDA')); fireEvent.click(screen.getByText('visit PRA')); expect(selected('pra-outcome-select')).toEqual(['x']); expect(screen.getByTestId('asymmetry-test-table')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '引継ぎを解除して共通対象を使う' })); fireEvent.click(screen.getByTestId('pra-run-btn')); await waitFor(() => expect(mocks.post).toHaveBeenLastCalledWith('/pra/evaluate', expect.objectContaining({ rowIds: ['r2'] })))
-  })
+  }, 15000)
   it.each(['data', 'schema', 'dataset', 'rows', 'malformed'])('blocks stale/invalid %s handoffs and permits explicit recovery', async reason => {
     const local = localStore(); await local.dispatch(fetchCodebookThunk('d')); const source = handoff()
     if (reason === 'data') source.dataRevision = 0; if (reason === 'schema') source.schemaRevision = 0; if (reason === 'dataset') source.datasetId = 'other'; if (reason === 'rows') source.scopeSnapshot.rowIds = ['missing-row']

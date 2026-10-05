@@ -4,10 +4,12 @@ import EChart from '../charts/EChart'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Alert, Button, Card, Col, Descriptions, InputNumber, Row, Segmented, Space, Spin, Statistic, Tag, Typography, message,
+  Alert, Button, Card, Col, Descriptions, InputNumber, Radio, Row, Space, Spin, Statistic, Tag, Typography, message,
 } from 'antd'
 import { AimOutlined, BranchesOutlined, CheckCircleOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
@@ -71,6 +73,27 @@ interface ModelResponse {
 
 interface LeafRow { key: string; leafId: string; count: number; rowIds: string[] }
 
+function validInteger(value: number | null, min: number, max: number): value is number {
+  return value !== null && Number.isInteger(value) && value >= min && value <= max
+}
+
+/** Keep invalid drafts visible instead of silently rounding or clamping them on blur. */
+function ModelNumberField({ id, testId, label, help, value, onChange, min, max, step = 1, invalid }: {
+  id: string; testId: string; label: string; help: string; value: number | null
+  onChange: (value: number | null) => void; min: number; max: number; step?: number; invalid: boolean
+}) {
+  return <AnalysisField label={label} htmlFor={id} help={help}>
+    <InputNumber id={id} data-testid={testId} aria-describedby={`${id}-help`} aria-invalid={invalid || undefined}
+      size="small" style={{ width: '100%' }} value={value} min={min} max={max} step={step}
+      status={invalid ? 'error' : undefined} changeOnBlur={false} onChange={onChange}
+      onInput={text => {
+        // InputNumber omits onChange for some out-of-range or unparseable drafts.
+        const parsed = text.trim() === '' ? NaN : Number(text)
+        onChange(Number.isFinite(parsed) ? parsed : null)
+      }} />
+  </AnalysisField>
+}
+
 export default function ModelsPage() {
   const questionText = useQuestionText()
   const dispatch = useDispatch()
@@ -88,8 +111,8 @@ export default function ModelsPage() {
   const candidates = codebookColumns.filter(c => ['question', 'attribute'].includes(c.role)
     && (c.multiResponseGroup ? current?.children.includes(c.name) && groups.some(g => g.groupId === c.multiResponseGroup)
       : ['nominal', 'ordinal', 'interval', 'ratio'].includes(c.scaleType) && globalVariables.activeVariableIds.includes(c.name)))
-  const [maxDepth, setMaxDepth] = useState(4)
-  const [nEstimators, setNEstimators] = useState(100)
+  const [maxDepth, setMaxDepth] = useState<number | null>(4)
+  const [nEstimators, setNEstimators] = useState<number | null>(100)
   const storedModel = useSelector((s: RootState) => s.selection.modelResult) as ModelResponse | null
   const [result, setResult] = useState<ModelResponse | null>(storedModel)
   // Follow store resets (dataset switch clears modelResult — audit R4-1).
@@ -104,6 +127,15 @@ export default function ModelsPage() {
   const targetGroup = candidates.find(c => c.name === targetValue)?.multiResponseGroup
   const featureCandidates = candidates.filter(c => c.name !== targetValue && (!targetGroup || c.multiResponseGroup !== targetGroup))
   const numericColumns = (current?.names ?? []).filter(name => featureCandidates.some(c => c.name === name))
+  const validDepth = validInteger(maxDepth, 1, 20)
+  const validEstimators = validInteger(nEstimators, 10, 500)
+  const invalidSettings = [
+    !validDepth && '木の最大深さ（1〜20の整数）',
+    modelType === 'random_forest' && !validEstimators && '決定木の本数（10〜500の整数）',
+  ].filter(Boolean)
+  const canRun = Boolean(targetValue) && numericColumns.length > 0 && invalidSettings.length === 0
+  const settingsSummary = `最大深さ: ${maxDepth ?? '未入力'}`
+    + (modelType === 'random_forest' ? ` / 決定木の本数: ${nEstimators ?? '未入力'}` : '')
   const inputContext = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, rowIds, numericColumns,
     targetValue, modelType, maxDepth, nEstimators])
   const runScope = useScopedRun(inputContext)
@@ -112,7 +144,7 @@ export default function ModelsPage() {
   }, [runScope.identity, dispatch])
 
   const runModel = async () => {
-    if (!selection.datasetId || !targetValue || !numericColumns.length) return
+    if (!selection.datasetId || !targetValue || !canRun) return
     const ticket = runScope.begin()
     const isCurrent = ticket.isCurrent
     setRunning(true)
@@ -125,7 +157,8 @@ export default function ModelsPage() {
         features: numericColumns.filter((c) => c !== targetValue),
         target: targetValue,
         maxDepth,
-        nEstimators,
+        // A retained invalid forest-only draft must not send null/fractions for a decision tree.
+        nEstimators: validEstimators ? nEstimators : 100,
         seed: 42,
         rowIds: ticket.scope.rowIds,
         expectedSchemaRevision: schemaRevision,
@@ -171,71 +204,73 @@ export default function ModelsPage() {
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
 
-      {(
-        <Card size="small" style={{ background: '#fafafa' }}>
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <Typography.Text strong style={{ fontSize: 13 }}>機械学習モデル設定:</Typography.Text>
-              <Button
-                data-testid="run-model"
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                loading={running}
-                disabled={!targetValue || !numericColumns.length}
-                onClick={() => void runModel()}
-              >
-                モデル学習
-              </Button>
-            </div>
-            <Segmented
-              data-testid="model-type"
-              options={[{ label: '決定木 (Decision Tree)', value: 'decision_tree' }, { label: 'ランダムフォレスト (Random Forest)', value: 'random_forest' }]}
-              value={modelType}
-              onChange={(v) => setModelType(v as typeof modelType)}
-            />
-            <Row gutter={[16, 8]} align="middle">
-              <Col>
-                <Space size={6}>
-                  <Typography.Text style={{ fontSize: 12 }}>目的変数:</Typography.Text>
-                  <Select data-testid="target-column" size="small" style={{ minWidth: 160 }} value={targetValue} onChange={setTarget}
-                    options={allColumns.map((c) => ({ value: c, label: c }))} />
-                </Space>
-              </Col>
-              <Col>
-                <Space size={6}>
-                  <Typography.Text style={{ fontSize: 12 }}>木の最大深さ:</Typography.Text>
-                  <InputNumber data-testid="max-depth" size="small" min={1} max={20} value={maxDepth} onChange={(v) => setMaxDepth(Number(v) ?? 4)} />
-                </Space>
-              </Col>
-              {modelType === 'random_forest' && (
-                <Col>
-                  <Space size={6}>
-                    <Typography.Text style={{ fontSize: 12 }}>決定木の本数:</Typography.Text>
-                    <InputNumber data-testid="n-estimators" size="small" min={10} max={500} step={10} value={nEstimators} onChange={(v) => setNEstimators(Number(v) ?? 100)} />
-                  </Space>
-                </Col>
-              )}
-              <Col>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  説明変数: {numericColumns.length}項目
-                </Typography.Text>
-              </Col>
-            </Row>
-            <Space wrap>
-              <Typography.Text>説明変数:</Typography.Text>
-              <Select mode="multiple" aria-label="モデルの説明変数" style={{ minWidth: 300 }} maxTagCount={4} value={numericColumns}
+      <Card title="機械学習モデルの設定" size="small" className="analysis-setup">
+        <div className="analysis-form-stack">
+          <Typography.Text type="secondary">目的変数・説明変数とモデルを選び、学習を実行します。入力の変更は次回の実行に適用されます。</Typography.Text>
+          <div className="analysis-variable-grid">
+            <AnalysisField label="目的変数" htmlFor="model-target" help="予測する列を1つ選びます。共通の有効変数に含まれる質問・属性が候補です。">
+              <Select id="model-target" data-testid="target-column" aria-label="モデルの目的変数" aria-describedby="model-target-help"
+                roleName="モデルの目的変数" size="small" placeholder="目的変数を選択" style={{ width: '100%' }} value={targetValue} onChange={setTarget}
+                options={allColumns.map(c => ({ value: c, label: c }))}
+                emptyHint={{ roleLabel: '目的変数', reason: '目的変数の候補がありません。',
+                  guidance: '共通の有効変数で質問・属性を選択してください。コードブックで役割・尺度を確認できます。MA選択肢は下の追加ボタンから候補に追加します。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+            </AnalysisField>
+            <AnalysisField label="説明変数" htmlFor="model-features" help="1列以上選びます。目的変数と同じ列・同じMA設問の選択肢は説明変数にできません。">
+              <Select id="model-features" mode="multiple" aria-label="モデルの説明変数" aria-describedby="model-features-help"
+                roleName="モデルの説明変数" size="small" placeholder="説明変数を選択" style={{ width: '100%' }} maxTagCount={4} value={numericColumns}
                 options={featureCandidates.map(c => ({ value: c.name, label: c.multiResponseOptionLabel || c.label || c.name }))}
-                onChange={(names: string[]) => setChosen({ datasetId: selection.datasetId!, names, children: current?.children ?? [] })} />
-              <MaAxisPicker allowCount={false} groups={groups} columns={codebookColumns} onAdd={axes => {
-                const added = axes.map(axis => codebookColumns.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
-                setChosen({ datasetId: selection.datasetId!, names: [...new Set([...numericColumns, ...added])], children: [...new Set([...(current?.children ?? []), ...added])] })
-              }} />
-              <Typography.Text type="secondary">MAの重要度は子別です。</Typography.Text>
-            </Space>
-            {error && <Alert type="error" showIcon message={error.message} style={{ marginTop: 6 }} />}
-          </Space>
-        </Card>
-      )}
+                onChange={(names: string[]) => setChosen({ datasetId: selection.datasetId!, names, children: current?.children ?? [] })}
+                emptyHint={{ roleLabel: '説明変数', reason: '説明変数の候補がありません。',
+                  guidance: '共通の有効変数で、目的変数とは異なる質問・属性を選択してください。同じMA設問の選択肢は使えません。コードブックで役割・尺度を確認できます。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+            </AnalysisField>
+          </div>
+          <div className="analysis-inline-fields">
+            <MaAxisPicker allowCount={false} groups={groups} columns={codebookColumns} onAdd={axes => {
+              const added = axes.map(axis => codebookColumns.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
+              setChosen({ datasetId: selection.datasetId!, names: [...new Set([...numericColumns, ...added])], children: [...new Set([...(current?.children ?? []), ...added])] })
+            }} />
+            <Typography.Text type="secondary">MAの重要度は子別です。</Typography.Text>
+          </div>
+          <AnalysisField label={<span id="model-type-label">モデル</span>}>
+            <div role="radiogroup" aria-labelledby="model-type-label" className="analysis-method-switch">
+              <Radio.Group data-testid="model-type" name="model-type" value={modelType}
+                onChange={event => setModelType(event.target.value)} optionType="button" buttonStyle="solid">
+                <Radio.Button value="decision_tree">決定木 (Decision Tree)</Radio.Button>
+                <Radio.Button value="random_forest">ランダムフォレスト (Random Forest)</Radio.Button>
+              </Radio.Group>
+            </div>
+          </AnalysisField>
+          <AnalysisSettings title="モデルの詳細設定" summary={settingsSummary} attention={invalidSettings.length > 0}>
+            <div className="analysis-variable-grid">
+              <ModelNumberField id="model-max-depth" testId="max-depth" label="木の最大深さ" help="1〜20の整数を指定します。標準値は4です。"
+                min={1} max={20} value={maxDepth} onChange={setMaxDepth} invalid={!validDepth} />
+              {modelType === 'random_forest' && <ModelNumberField id="model-n-estimators" testId="n-estimators" label="決定木の本数" help="10〜500の整数を指定します。標準値は100です。"
+                min={10} max={500} step={10} value={nEstimators} onChange={setNEstimators} invalid={!validEstimators} />}
+            </div>
+          </AnalysisSettings>
+          <AnalysisSettings title="手法と結果の見方" summary="自動判定・欠損・MA選択肢と実行済み結果について">
+            <Typography.Text>目的変数の尺度から分類・回帰を自動判定します。乱数 seed は42です。</Typography.Text>
+            <Typography.Text>欠損やMA回答状態による行の除外は実行結果で確認できます。MAの特徴量重要度は選択肢ごとに表示します。</Typography.Text>
+            <Typography.Text>実行後の特徴量重要度・決定木・リーフは表示中の結果に対応します。リーフ選択は共通の選択に反映されます。</Typography.Text>
+          </AnalysisSettings>
+          {error && <Alert type="error" showIcon message={error.message} />}
+          <AnalysisRunRow>
+            <Typography.Text type={canRun ? 'secondary' : 'warning'} role="status" id="model-run-guidance">
+              {invalidSettings.length > 0 ? `詳細設定を確認してください: ${invalidSettings.join('、')}`
+                : !targetValue ? '目的変数を1列選択してください。'
+                  : !numericColumns.length ? '説明変数を1列以上選択してください。'
+                    : `目的変数: ${targetValue} / 説明変数: ${numericColumns.length}項目`}
+            </Typography.Text>
+            <Button data-testid="run-model" type="primary" icon={<ThunderboltOutlined />} loading={running}
+              disabled={!canRun} aria-describedby="model-run-guidance" onClick={() => void runModel()}
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
+              モデル学習
+            </Button>
+          </AnalysisRunRow>
+        </div>
+      </Card>
 
       {/* Summary KPI Cards */}
       {result && <Typography.Text type="secondary">
