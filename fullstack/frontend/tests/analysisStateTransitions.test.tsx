@@ -205,7 +205,13 @@ it.each([
   expect(screen.queryByText('有効な2つの数値列を選択してください。')).not.toBeInTheDocument()
   const first = vi.mocked(api.post).mock.calls[0]
   expect(first[0]).toBe(endpoint)
-  const retry = screen.getByRole('button', { name: '再試行' })
+  // The alert can render before request cleanup and Ant Design's loading state settle.
+  const retry = await waitFor(() => {
+    const button = screen.getByRole('button', { name: '再試行', exact: true })
+    expect(button).toBeEnabled()
+    expect(button).not.toHaveClass('ant-btn-loading')
+    return button
+  })
   retry.focus()
   expect(retry).toHaveFocus()
   fireEvent.click(retry)
