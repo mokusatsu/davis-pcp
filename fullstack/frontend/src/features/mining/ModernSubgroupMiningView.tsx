@@ -1,5 +1,6 @@
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import { Select as AntSelect } from 'antd'
+import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -143,12 +144,16 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const [verificationInfo, setVerificationInfo] = useState<VerificationInfo | null>(null)
   const [verifying, setVerifying] = useState(false)
   /** Only used to offer independent-verification targets; never the analysis subject. */
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
   const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
 
   const inputContext = JSON.stringify([context, miningMode, maxDepth, minGroupSize, topK])
   const runScope = useScopedRun(inputContext)
   const [runInput, setRunInput] = useState<Record<string, unknown> | null>(null)
   const verificationVersion = useRef(0)
+  const verificationPending = useRef(false)
+  const datasetListVersion = useRef(0)
   const resultRef = useRef(result)
   resultRef.current = result
   const identityRef = useRef(runScope.identity)
@@ -157,6 +162,12 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
   useEffect(() => {
     verificationVersion.current += 1
+    datasetListVersion.current += 1
+    verificationPending.current = false
+    setVerificationModalOpen(false)
+    setDatasets([])
+    setDatasetsLoading(false)
+    setDatasetsError(null)
     setRunInput(null)
     setVerifying(false)
     setResult(null)
@@ -167,15 +178,39 @@ export const ModernSubgroupMiningView: React.FC = () => {
     setVerificationInfo(null)
   }, [runScope.identity])
 
-  // The picker has to be filled before it opens, or 独立データ指定 looks dead;
-  // the current dataset is filtered out by the modal itself.
+  useEffect(() => () => {
+    verificationVersion.current += 1
+    datasetListVersion.current += 1
+  }, [])
+
+  const cancelVerification = useCallback(() => {
+    verificationVersion.current += 1
+    datasetListVersion.current += 1
+    verificationPending.current = false
+    setVerifying(false)
+    setDatasetsLoading(false)
+    setVerificationModalOpen(false)
+  }, [])
+
+  // Refresh the eligible independent datasets; ignore a closed or superseded picker.
   const openVerificationModal = useCallback(() => {
+    const version = ++datasetListVersion.current
+    setDatasets([])
+    setDatasetsLoading(true)
+    setDatasetsError(null)
+    setError(null)
     setVerificationModalOpen(true)
     void api.get<{ datasets: { datasetId: string; name: string; rowCount: number }[] }>('/datasets')
-      .then((res) => setDatasets((res.datasets ?? []).map((d) => ({
-        value: d.datasetId, label: `${d.name}（${d.rowCount}行）`,
-      }))))
-      .catch(() => setDatasets([]))
+      .then((res) => {
+        if (version !== datasetListVersion.current) return
+        setDatasetsLoading(false)
+        setDatasets((res.datasets ?? []).map((d) => ({ value: d.datasetId, label: `${d.name}（${d.rowCount}行）` })))
+      })
+      .catch(() => {
+        if (version !== datasetListVersion.current) return
+        setDatasetsLoading(false)
+        setDatasetsError('データセットを取得できませんでした')
+      })
   }, [])
 
   /**
@@ -184,9 +219,14 @@ export const ModernSubgroupMiningView: React.FC = () => {
    * whichever algorithm pinned it. Only the hash is sent, never candidate ids.
    */
   const runVerification = async (config: VerificationConfig) => {
+    if (verificationPending.current) return
+    if (config.method === 'independent' && (datasetsLoading || datasetsError || !config.independent_dataset_id
+      || config.independent_dataset_id === datasetId
+      || !datasets.some(dataset => dataset.value === config.independent_dataset_id))) return
     if (!datasetId || !result?.candidateSetHash || !runInput) return
     const version = ++verificationVersion.current, sourceResult = result, sourceIdentity = runScope.identity
     const isCurrent = () => version === verificationVersion.current && resultRef.current === sourceResult && identityRef.current === sourceIdentity
+    verificationPending.current = true
     setVerifying(true)
     setError(null)
     try {
@@ -210,7 +250,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
         suggestedActions: Array.isArray(e?.suggestedActions) ? e.suggestedActions : undefined,
       })
     } finally {
-      if (isCurrent()) setVerifying(false)
+      if (isCurrent()) { verificationPending.current = false; setVerifying(false) }
     }
   }
 
@@ -218,7 +258,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
   const runAutoMining = async (overrideMode?: 'auto' | 'standard' | 'emm_kendall') => {
     if (!datasetId || !targets.ready) return
     const ticket = runScope.begin()
-    verificationVersion.current++; setVerifying(false)
+    cancelVerification()
     setLoading(true)
     setError(null)
     // A new exploration pins a new candidate set, so any previous verification
@@ -341,99 +381,45 @@ export const ModernSubgroupMiningView: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Typography.Text type="warning">表示中の探索結果と検証母集団は実行時の対象を保持しています。</Typography.Text>}
-
-      {/* Top Header & Omnipresent Control Bar */}
-      <Card size="small" style={{ background: '#fafafa' }}>
-        {targets.control}
-        <Row gutter={[12, 12]} align="middle">
-          <Col xs={24} md={7}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
-              探索アルゴリズム:
-            </Typography.Text>
-            <Radio.Group
-              value={miningMode}
-              onChange={(e) => {
-                const newMode = e.target.value
-                setMiningMode(newMode)
-              }}
-              buttonStyle="solid"
-              size="small"
-            >
-              <Radio.Button value="auto">全自動 (標準 ＋ EMM)</Radio.Button>
-              <Radio.Button value="standard">複合条件のみ</Radio.Button>
-              <Radio.Button value="emm_kendall">相関特異性のみ</Radio.Button>
-            </Radio.Group>
-          </Col>
-
-          <Col xs={12} md={3}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>最大深さ:</Typography.Text>
-            <AntSelect
-              style={{ width: '100%' }}
-              size="small"
-              value={maxDepth}
-              onChange={setMaxDepth}
-              options={[
-                { label: '1 (単一属性/区間)', value: 1 },
-                { label: '2 (2属性の複合条件)', value: 2 },
-              ]}
-            />
-          </Col>
-
-          <Col xs={12} md={3}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>最小人数:</Typography.Text>
-            <InputNumber
-              style={{ width: '100%' }}
-              size="small"
-              min={5}
-              max={500}
-              value={minGroupSize}
-              onChange={(v) => setMinGroupSize(v || 30)}
-            />
-          </Col>
-
-          <Col xs={12} md={3}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>表示上限:</Typography.Text>
-            <InputNumber
-              style={{ width: '100%' }}
-              size="small"
-              min={1}
-              max={30}
-              value={topK}
-              onChange={(v) => setTopK(v || 12)}
-            />
-          </Col>
-
-          <Col xs={12} md={4}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>
-              <FilterOutlined /> 質問絞り込み:
-            </Typography.Text>
-            <Select
-              style={{ width: '100%' }}
-              size="small"
-              value={filterQuestion}
-              onChange={setFilterQuestion}
-              options={[
-                { label: '全ての質問 (全件表示)', value: 'all' },
-                ...availableQuestionsInResults.map((q) => ({ label: q, value: q })),
-              ]}
-            />
-          </Col>
-
-          <Col xs={24} md={4} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-            <Button
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              onClick={() => void runAutoMining()}
-              loading={loading}
-              disabled={!targets.ready}
-              style={{ width: '100%' }}
-            >
+      <Card title="サブグループ発見の設定" size="small" className="analysis-setup">
+        <div className="analysis-form-stack">
+          <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />
+          <Typography.Text type="secondary">属性変数と質問変数を選んで探索します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
+          {targets.control}
+          <AnalysisSettings title="サブグループ発見の詳細設定" summary={`手法: ${miningMode === 'auto' ? '全自動' : miningMode === 'standard' ? '複合条件のみ' : '相関特異性のみ'} / 最大深さ: ${maxDepth} / 最小人数: ${minGroupSize} / 表示上限: ${topK}`}>
+            <AnalysisField label="探索アルゴリズム">
+              <Radio.Group aria-label="探索アルゴリズム" value={miningMode} onChange={(e) => setMiningMode(e.target.value)} buttonStyle="solid" size="small">
+                <Radio.Button value="auto">全自動 (標準 ＋ EMM)</Radio.Button>
+                <Radio.Button value="standard">複合条件のみ</Radio.Button>
+                <Radio.Button value="emm_kendall">相関特異性のみ</Radio.Button>
+              </Radio.Group>
+            </AnalysisField>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="最大深さ" htmlFor="modern-mining-depth">
+                <AntSelect id="modern-mining-depth" style={{ width: '100%' }} size="small" value={maxDepth} onChange={setMaxDepth}
+                  options={[{ label: '1 (単一属性/区間)', value: 1 }, { label: '2 (2属性の複合条件)', value: 2 }]} />
+              </AnalysisField>
+              <AnalysisField label="最小人数" htmlFor="modern-mining-min-size">
+                <InputNumber id="modern-mining-min-size" style={{ width: '100%' }} size="small" min={5} max={500} value={minGroupSize} onChange={(v) => setMinGroupSize(v ?? 30)} />
+              </AnalysisField>
+              <AnalysisField label="表示上限" htmlFor="modern-mining-top-k">
+                <InputNumber id="modern-mining-top-k" style={{ width: '100%' }} size="small" min={1} max={30} value={topK} onChange={(v) => setTopK(v ?? 12)} />
+              </AnalysisField>
+            </div>
+          </AnalysisSettings>
+          <AnalysisSettings title="探索と検証の見方" summary="複合条件・Kendall-EMM・固定した候補の検証について">
+            <Typography.Text>複合条件では属性を組み合わせたサブグループを探します。Kendall-EMMは二値ではない数値の質問ペアについて相関の違いを探します。</Typography.Text>
+            <Typography.Text>探索結果は確証ではありません。検証は探索時の候補集合と対象を固定します。ホールドアウト・交差検証は事後的な安定性確認で、検証のαは0.05です。</Typography.Text>
+          </AnalysisSettings>
+          {result && runScope.dirty && <Typography.Text type="warning" role="status">表示中の探索結果と検証母集団は実行時の対象を保持しています。再探索すると変数・設定・対象を更新します。</Typography.Text>}
+          {!targets.ready && <Typography.Text type="secondary" role="status">属性変数と質問変数をそれぞれ1つ以上選択してください。</Typography.Text>}
+          <AnalysisRunRow>
+            <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => void runAutoMining()} loading={loading} disabled={!datasetId || !targets.ready}
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
               指定対象で実行
             </Button>
-          </Col>
-        </Row>
+          </AnalysisRunRow>
+        </div>
       </Card>
 
       {/* Dataset not selected prompt */}
@@ -490,6 +476,14 @@ export const ModernSubgroupMiningView: React.FC = () => {
           }
         />
       )}
+
+      {result && <Card title="表示中の結果の絞り込み" size="small" className="analysis-setup">
+        <AnalysisField label={<><FilterOutlined /> 質問絞り込み</>} htmlFor="modern-mining-result-filter" help="実行済みの探索結果だけを絞り込みます。探索する質問は上の質問変数で指定します。">
+          <Select id="modern-mining-result-filter" roleName="探索結果の質問絞り込み" aria-describedby="modern-mining-result-filter-help"
+            style={{ width: '100%' }} size="small" value={filterQuestion} onChange={setFilterQuestion}
+            options={[{ label: '全ての質問 (全件表示)', value: 'all' }, ...availableQuestionsInResults.map(q => ({ label: q, value: q }))]} />
+        </AnalysisField>
+      </Card>}
 
       {/* Summary KPI Cards */}
       {result && (
@@ -892,12 +886,16 @@ export const ModernSubgroupMiningView: React.FC = () => {
       )}
       <VerificationConfigModal
         open={verificationModalOpen}
+        pending={verifying}
+        error={error?.message ?? null}
         candidateCount={result?.candidates?.length ?? 0}
         candidateSetHash={result?.candidateSetHash ?? null}
         datasets={datasets}
+        datasetsLoading={datasetsLoading}
+        datasetsError={datasetsError}
         currentDatasetId={datasetId}
         alpha={VERIFICATION_ALPHA}
-        onCancel={() => setVerificationModalOpen(false)}
+        onCancel={cancelVerification}
         onRun={(config) => void runVerification(config)}
       />
     </div>

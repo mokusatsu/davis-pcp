@@ -18,7 +18,6 @@ import {
   Slider,
   InputNumber,
   Tag,
-  Space,
   Typography,
   Spin,
   Alert,
@@ -89,6 +88,11 @@ export interface FeatureRankingResponse {
   evidenceClass: string
 }
 
+function metricRank(row: VariableRankItem, metric: keyof VariableRankItem['scores']) {
+  const score = row.scores[metric]
+  return score && Number.isFinite(score.normalizedScore) && Number.isFinite(score.rank) ? score.rank : undefined
+}
+
 function MethodInfoTip({ methodKey, display, taskType }: {
   methodKey: string
   display?: { displayName: string; formula: string; scope: string; deprecatedAlias: string }
@@ -147,7 +151,7 @@ export default function FeatureRankingPage() {
     'f_statistic',
   ])
   const [topK, setTopK] = useState<number>(3)
-  const [rankingMetric, setRankingMetric] = useState<string>('borda')
+  const [requestedRankingMetric, setRankingMetric] = useState<string>('borda')
   const [highlightedVar, setHighlightedVar] = useState<string | null>(null)
   const [usePermutation, setUsePermutation] = useState<boolean>(true)
 
@@ -206,6 +210,28 @@ export default function FeatureRankingPage() {
     }
   }
 
+  // Result scores, not the current configuration or methodDisplay (which lists
+  // every method), determine which sorts can describe this completed run.
+  const rankingMetricOptions = useMemo(() => {
+    const supervised = result?.taskType !== 'unsupervised'
+    const metrics: { value: keyof VariableRankItem['scores']; label: string }[] = [
+      { value: 'relieff', label: supervised ? 'ReliefF順' : '分散（教師なし代理指標）順' },
+      { value: 'mutualInfo', label: supervised ? '相互情報量順' : '平均絶対相関（教師なし代理指標）順' },
+      { value: 'randomForest', label: 'Random Forest順' },
+      { value: 'fStatistic', label: 'ANOVA F順' },
+      { value: 'pcaDispersion', label: 'PCA分散順' },
+    ]
+    return [{ value: 'borda', label: '統合Borda順' }, ...metrics.filter(({ value }) =>
+      (supervised || (value !== 'randomForest' && value !== 'fStatistic'))
+      && (value !== 'randomForest' || result?.importanceMetadata?.mdi?.available !== false)
+      && result?.rankings.some(row => metricRank(row, value) !== undefined))]
+  }, [result])
+  const rankingMetric = rankingMetricOptions.some(option => option.value === requestedRankingMetric)
+    ? requestedRankingMetric : 'borda'
+  useEffect(() => {
+    if (result) setRankingMetric(rankingMetric)
+  }, [result, rankingMetric])
+
   // Top-K items based on selection metric
   const sortedRankings = useMemo(() => {
     if (!result) return []
@@ -213,18 +239,19 @@ export default function FeatureRankingPage() {
     if (rankingMetric === 'borda') {
       items.sort((a, b) => a.overallRank - b.overallRank)
     } else {
-      items.sort((a, b) => {
-        const sa = a.scores[rankingMetric as keyof typeof a.scores]?.normalizedScore ?? -1
-        const sb = b.scores[rankingMetric as keyof typeof b.scores]?.normalizedScore ?? -1
-        return sb - sa
-      })
+      // Backend ranks retain distinctions lost in rounded display scores.
+      const rank = (item: VariableRankItem) => metricRank(item, rankingMetric as keyof VariableRankItem['scores']) ?? Infinity
+      items.sort((a, b) => rank(a) - rank(b))
     }
     return items
   }, [result, rankingMetric])
 
+  const scoredRankings = useMemo(() => rankingMetric === 'borda' ? sortedRankings
+    : sortedRankings.filter(row => metricRank(row, rankingMetric as keyof VariableRankItem['scores']) !== undefined),
+  [sortedRankings, rankingMetric])
   const topKVariables = useMemo(() => {
-    return sortedRankings.slice(0, topK).map((r) => r.variable)
-  }, [sortedRankings, topK])
+    return scoredRankings.slice(0, topK).map((r) => r.variable)
+  }, [scoredRankings, topK])
 
   const pairwiseCorr = useMemo(() => {
     if (!result) return new Map<string, number>()
@@ -462,7 +489,7 @@ export default function FeatureRankingPage() {
         >
           <Row gutter={[16, 10]} align="middle" justify="space-between">
             <Col xs={24} md={14}>
-              <Space wrap size="middle" align="center">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', minWidth: 0 }}>
                 <Typography.Text strong style={{ color: '#1d39c4' }}>
                   上位 K 変数の一括選択:
                 </Typography.Text>
@@ -486,19 +513,16 @@ export default function FeatureRankingPage() {
                 </div>
                 <AntSelect
                   size="small"
+                  aria-label="上位Kの評価指標"
+                  title={rankingMetricOptions.find(option => option.value === rankingMetric)?.label}
                   value={rankingMetric}
                   onChange={setRankingMetric}
-                  style={{ width: 140 }}
-                  options={[
-                    { value: 'borda', label: '統合Borda順' },
-                    { value: 'relieff', label: 'ReliefF順' },
-                    { value: 'mutualInfo', label: '相互情報量順' },
-                    { value: 'randomForest', label: 'Random Forest順' },
-                    { value: 'fStatistic', label: 'ANOVA F順' },
-                  ]}
+                  style={{ width: 300, maxWidth: '100%', minWidth: 0 }}
+                  popupMatchSelectWidth={false}
+                  options={rankingMetricOptions}
                   data-testid="ranking-metric-select"
                 />
-              </Space>
+              </div>
               <div style={{ marginTop: 6 }}>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   選択対象:
@@ -508,6 +532,11 @@ export default function FeatureRankingPage() {
                     <ColumnQuestionTooltip nameOrId={v}>{v}</ColumnQuestionTooltip>
                   </Tag>
                 ))}
+                {scoredRankings.length < result.rankings.length && (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    この指標にスコアのある {scoredRankings.length} 変数のみ選択対象です
+                  </Typography.Text>
+                )}
               </div>
             </Col>
             <Col xs={24} md={10} style={{ textAlign: 'right' }}>
@@ -516,7 +545,7 @@ export default function FeatureRankingPage() {
                 icon={<CheckCircleOutlined />}
                 onClick={handleApplyToActiveVariables}
                 data-testid="apply-to-active-vars-btn"
-                style={{ background: '#2f54eb' }}
+                style={{ background: '#2f54eb', whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}
               >
                 上部共通 Variable Selector へ適用 (Apply to Active Variables)
               </Button>

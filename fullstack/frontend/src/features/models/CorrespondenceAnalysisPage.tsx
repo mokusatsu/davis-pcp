@@ -261,7 +261,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
   const categoricalHint = (side: string) => ({
     roleLabel: side,
     reason: '現在の共通選択内に使えるカテゴリ変数がありません。',
-    guidance: '共通選択で対象列を含め、コードブックで尺度が名義・順序・二値のいずれかか確認してください。MA選択肢列は使用できません。',
+    guidance: '共通選択で対象列を含め、コードブックで尺度が名義・順序になっているか確認してください。MA選択肢列は使用できません。',
     onOpenCodebook: openCodebook,
   })
   const missingOptions = [

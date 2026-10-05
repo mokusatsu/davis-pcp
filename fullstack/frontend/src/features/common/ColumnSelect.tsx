@@ -25,7 +25,9 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
   const { getColumn } = useCodebook()
   const options = (props.options ?? []).flatMap((o: any) => o.options ?? [o])
   const isMultiple = props.mode === 'multiple'
-  const value = 'value' in props ? props.value : uncontrolledValue
+  const rawValue = 'value' in props ? props.value : uncontrolledValue
+  // Callers use '' for an unchosen scalar, but an explicit empty option is a real value.
+  const value = rawValue === '' && !options.some((o: any) => o.value === '') ? null : rawValue
   const committed = Array.isArray(value) ? value : (value == null ? [] : [value])
   const dialogValue = tmpValue ?? committed
   const { roleName, emptyHint, style, className, onDropdownVisibleChange, dropdownRender, onOpenChange, ...selectProps } = props as any

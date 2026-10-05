@@ -4,10 +4,12 @@ import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { Select as AntSelect } from 'antd'
 import Select from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Alert, Button, Card, Col, Descriptions, Dropdown, InputNumber, Row, Segmented, Space, Spin, Statistic, Tag, Typography, message,
+  Alert, Button, Card, Col, Descriptions, Dropdown, InputNumber, Radio, Row, Space, Spin, Statistic, Tag, Typography, message,
 } from 'antd'
 import { AppstoreOutlined, BranchesOutlined, CheckCircleOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import React from 'react'
@@ -62,6 +64,38 @@ interface ClusterResponse {
   categoryMatrices?: Record<string, Record<string, { categories: string[]; matrix: number[][] }>> | null
 }
 
+const CLUSTER_METHODS = [
+  { label: 'KMeans', value: 'kmeans' },
+  { label: 'KMedoids', value: 'kmedoids' },
+  { label: 'Divisive', value: 'divisive' },
+  { label: 'EM(GMM)', value: 'gmm' },
+  { label: '階層的', value: 'agglomerative' },
+  { label: 'Cobweb', value: 'cobweb' },
+  { label: 'DISC (AAAI 2026)', value: 'disc' },
+  { label: 'Class変数', value: 'class_variable' },
+]
+
+function inRange(value: number | null, min: number, max = Infinity): value is number {
+  return value !== null && Number.isFinite(value) && value >= min && value <= max
+}
+
+/** Keep empty and out-of-range drafts explicit, including before Run receives a click. */
+function ClusterNumberField({ id, label, help, value, onChange, min, max, step = 1, invalid }: {
+  id: string; label: string; help: string; value: number | null; onChange: (value: number | null) => void
+  min: number; max?: number; step?: number; invalid: boolean
+}) {
+  return <AnalysisField label={label} htmlFor={id} help={help}>
+    <InputNumber id={id} data-testid={id} aria-describedby={`${id}-help`} aria-invalid={invalid || undefined}
+      size="small" style={{ width: '100%' }} value={value} min={min} max={max} step={step}
+      status={invalid ? 'error' : undefined} changeOnBlur={false} onChange={onChange}
+      onInput={text => {
+        // InputNumber does not emit onChange for every out-of-range draft.
+        const parsed = text.trim() === '' ? NaN : Number(text)
+        onChange(Number.isFinite(parsed) ? parsed : null)
+      }} />
+  </AnalysisField>
+}
+
 export default function ClustersPage() {
   const dispatch = useDispatch()
   const selection = useSelector((s: RootState) => s.selection)
@@ -72,14 +106,14 @@ export default function ClustersPage() {
   const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
   const { columns: definitions, schemaRevision } = useCodebook()
   const [method, setMethod] = useState('kmeans')
-  const [k, setK] = useState(3)
-  const [seed, setSeed] = useState(42)
+  const [k, setK] = useState<number | null>(3)
+  const [seed, setSeed] = useState<number | null>(42)
   const [linkage, setLinkage] = useState('average')
   const [distance, setDistance] = useState('euclidean')
-  const [acuity, setAcuity] = useState(0.1)
-  const [cutoff, setCutoff] = useState(0.001)
-  const [alphaSmooth, setAlphaSmooth] = useState(0.6)
-  const [numWeight, setNumWeight] = useState(1.0)
+  const [acuity, setAcuity] = useState<number | null>(0.1)
+  const [cutoff, setCutoff] = useState<number | null>(0.001)
+  const [alphaSmooth, setAlphaSmooth] = useState<number | null>(0.6)
+  const [numWeight, setNumWeight] = useState<number | null>(1.0)
   const [error, setError] = useState<{ message: string } | null>(null)
   const [running, setRunning] = useState(false)
 
@@ -110,6 +144,31 @@ export default function ClustersPage() {
   const categoricalColumns = mixed ? [...selectedNominal, ...maColumns] : []
   const [requestedClass, setClassColumn] = useState<string | null>(null)
   const classColumn = classCandidates.includes(requestedClass ?? '') ? requestedClass : null
+  const usesSeed = ['kmeans', 'divisive', 'gmm', 'disc'].includes(method)
+  // The sklearn-backed methods require uint32 seeds; DISC uses NumPy's Generator.
+  const seedMax = method === 'disc' ? Number.MAX_SAFE_INTEGER : 4294967295
+  const validK = inRange(k, 2, 20) && Number.isInteger(k)
+  const validSeed = inRange(seed, 0, seedMax) && Number.isSafeInteger(seed)
+  const validAcuity = inRange(acuity, 0.01)
+  const validCutoff = inRange(cutoff, 0.0001)
+  const validAlpha = inRange(alphaSmooth, 0.01, 5)
+  const validWeight = inRange(numWeight, 0.1, 10)
+  const invalidSettings = [
+    method !== 'class_variable' && !validK && 'クラスタ数 k（2〜20の整数）',
+    usesSeed && !validSeed && `乱数 seed（0〜${seedMax}の整数）`,
+    method === 'cobweb' && !validAcuity && 'Acuity（0.01以上）',
+    method === 'cobweb' && !validCutoff && 'Cutoff（0.0001以上）',
+    method === 'disc' && !validAlpha && 'Alpha平滑化（0.01〜5）',
+    method === 'disc' && !validWeight && '数値重み（0.1〜10）',
+  ].filter(Boolean)
+  const hasInputs = method === 'class_variable' ? Boolean(classColumn) : numericColumns.length + categoricalColumns.length > 0
+  const canRun = hasInputs && invalidSettings.length === 0
+  const settingsSummary = method === 'class_variable' ? 'クラス列の値で分類（k・乱数は不使用）'
+    : `k: ${k ?? '未入力'}${usesSeed ? ` / seed: ${seed ?? '未入力'}` : ''}`
+      + (method === 'agglomerative' ? ` / 連結法: ${linkage}` : '')
+      + (['agglomerative', 'kmedoids'].includes(method) ? ` / 距離: ${distance}` : '')
+      + (method === 'cobweb' ? ` / Acuity: ${acuity ?? '未入力'} / Cutoff: ${cutoff ?? '未入力'}` : '')
+      + (method === 'disc' ? ` / Alpha: ${alphaSmooth ?? '未入力'} / 数値重み: ${numWeight ?? '未入力'}` : '')
   const inputKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, activeRowIds,
     numericColumns, categoricalColumns, classColumn, method, k, seed, linkage, distance, acuity, cutoff, alphaSmooth, numWeight])
   const [resultInput, setResultInput] = useState<{ resultId: string; key: string } | null>(null)
@@ -123,7 +182,7 @@ export default function ClustersPage() {
   const theme = vizTheme(false)
 
   const runClustering = async () => {
-    if (!selection.datasetId) return
+    if (!selection.datasetId || !canRun) return
     const ticket = runScope.begin()
     setRunning(true)
     setError(null)
@@ -134,18 +193,19 @@ export default function ClustersPage() {
         expectedDataRevision: selection.dataRevision,
         expectedSchemaRevision: schemaRevision,
         method,
-        k,
-        seed,
+        // Unused invalid drafts remain editable, but cannot send null to the API's numeric fields.
+        k: validK ? k : 3,
+        seed: validSeed ? seed : 42,
         linkage,
         distance,
         classColumn: method === 'class_variable' ? classColumn : undefined,
         columns: numericColumns,
         categoricalColumns: categoricalColumns.length > 0 ? categoricalColumns : undefined,
         scaling: 'zscore',
-        acuity,
-        cutoff,
-        alphaSmooth,
-        numWeight,
+        acuity: validAcuity ? acuity : 0.1,
+        cutoff: validCutoff ? cutoff : 0.001,
+        alphaSmooth: validAlpha ? alphaSmooth : 0.6,
+        numWeight: validWeight ? numWeight : 1.0,
       })
       if (!ticket.isCurrent()) return
       ticket.commit()
@@ -185,133 +245,138 @@ export default function ClustersPage() {
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
 
-        <Card size="small" style={{ background: '#fafafa' }}>
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <Typography.Text strong style={{ fontSize: 13 }}>クラスタリング手法:</Typography.Text>
-              <Button
-                data-testid="run-clustering"
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                loading={running}
-                onClick={() => void runClustering()}
-              >
-                クラスタリング実行
-              </Button>
-            </div>
-            <Segmented
-              data-testid="cluster-method"
-              options={[
-                { label: 'KMeans', value: 'kmeans' },
-                { label: 'KMedoids', value: 'kmedoids' },
-                { label: 'Divisive', value: 'divisive' },
-                { label: 'EM(GMM)', value: 'gmm' },
-                { label: '階層的', value: 'agglomerative' },
-                { label: 'Cobweb', value: 'cobweb' },
-                { label: 'DISC (AAAI 2026)', value: 'disc' },
-                { label: 'Class変数', value: 'class_variable' },
-              ]}
-              value={method}
-              onChange={(v) => setMethod(String(v))}
-            />
-            <Space wrap direction="vertical" size={4} style={{ width: '100%' }}>
-              <Space wrap align="center">
-                <Typography.Text style={{ fontSize: 12 }}>数値列:</Typography.Text>
-                <Select data-testid="cluster-numeric-columns" mode="multiple" size="small" placeholder="投入する数値列を選択"
-                  style={{ minWidth: 260 }} value={selectedNumeric}
-                  options={numericCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
-                  onChange={names => setChosenNumeric(names)} />
-              </Space>
-              {mixed && (
-                <Space wrap align="center">
-                  <Typography.Text style={{ fontSize: 12 }}>カテゴリ列:</Typography.Text>
-                  <Select data-testid="cluster-categorical-columns" mode="multiple" size="small" placeholder="投入するカテゴリ列を選択"
-                    style={{ minWidth: 260 }} value={selectedNominal}
-                    options={nominalCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
-                    onChange={names => setChosenNominal(names)} />
-                </Space>
-              )}
-              <Space wrap>
-                <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
-                  const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
-                  setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
-                }} />
-                <Select data-testid="cluster-ma-columns" mode="multiple" size="small" placeholder="追加したMA選択肢" value={maColumns}
-                  style={{ minWidth: 220 }} options={maColumns.map(name => ({ value: name, label: definitions.find(column => column.name === name)?.multiResponseOptionLabel || name }))}
-                  onChange={names => setAdded({ datasetId: selection.datasetId, names })} />
-              </Space>
-            </Space>
-            {method !== 'class_variable' ? (
-              <Row gutter={[16, 8]} align="middle">
-                <Col>
-                  <Space size={6}>
-                    <Typography.Text style={{ fontSize: 12 }}>クラスタ数 k:</Typography.Text>
-                    <InputNumber data-testid="cluster-k" size="small" min={2} max={20} value={k} onChange={(v) => setK(Number(v) ?? 2)} />
-                  </Space>
-                </Col>
-                <Col>
-                  <Space size={6}>
-                    <Typography.Text style={{ fontSize: 12 }}>乱数 seed:</Typography.Text>
-                    <InputNumber data-testid="cluster-seed" size="small" min={0} value={seed} onChange={(v) => setSeed(Number(v) ?? 0)} />
-                  </Space>
-                </Col>
-                {method === 'agglomerative' && (
-                  <Col>
-                    <Space size={6} wrap>
-                      <Typography.Text style={{ fontSize: 12 }}>連結法:</Typography.Text>
-                      <AntSelect data-testid="linkage" size="small" value={linkage} onChange={setLinkage} style={{ width: 170 }}
-                        options={[
-                          { value: 'nearest', label: 'Nearest（最短距離法）' },
-                          { value: 'farthest', label: 'Farthest（最長距離法）' },
-                          { value: 'average', label: 'Average' },
-                          { value: 'group_average', label: 'Group Average' },
-                        ]} />
-                      <Typography.Text style={{ fontSize: 12 }}>距離尺度:</Typography.Text>
-                      <AntSelect data-testid="distance" size="small" value={distance} onChange={setDistance} style={{ width: 160 }}
-                        options={[
-                          { value: 'euclidean', label: 'Euclidean' },
-                          { value: 'standard_euclidean', label: 'Standard Euclidean' },
-                          { value: 'city_block', label: 'City-block' },
-                        ]} />
-                    </Space>
-                  </Col>
-                )}
-                {method === 'cobweb' && (
-                  <Col>
-                    <Space size={6} wrap>
-                      <Typography.Text style={{ fontSize: 12 }}>Acuity:</Typography.Text>
-                      <InputNumber data-testid="cobweb-acuity" size="small" min={0.01} step={0.05} value={acuity} onChange={(v) => setAcuity(Number(v) ?? 0.1)} />
-                      <Typography.Text style={{ fontSize: 12 }}>Cutoff:</Typography.Text>
-                      <InputNumber data-testid="cobweb-cutoff" size="small" min={0.0001} step={0.001} value={cutoff} onChange={(v) => setCutoff(Number(v) ?? 0.001)} />
-                    </Space>
-                  </Col>
-                )}
-                {method === 'disc' && (
-                  <Col>
-                    <Space size={6} wrap>
-                      <Typography.Text style={{ fontSize: 12 }}>Alpha平滑化:</Typography.Text>
-                      <InputNumber data-testid="disc-alpha" size="small" min={0.01} max={5.0} step={0.1} value={alphaSmooth} onChange={(v) => setAlphaSmooth(Number(v) ?? 0.6)} />
-                      <Typography.Text style={{ fontSize: 12 }}>数値重み:</Typography.Text>
-                      <InputNumber data-testid="disc-num-weight" size="small" min={0.1} max={10.0} step={0.5} value={numWeight} onChange={(v) => setNumWeight(Number(v) ?? 1.0)} />
-                    </Space>
-                  </Col>
-                )}
-                <Col>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    分析対象: 数値列 {numericColumns.length}本{categoricalColumns.length > 0 ? ` + カテゴリ列 ${categoricalColumns.length}本` : ''}（z-score標準化）
-                  </Typography.Text>
-                </Col>
-              </Row>
+      <Card title="クラスタリングの設定" size="small" className="analysis-setup">
+        <div className="analysis-form-stack">
+          <Typography.Text type="secondary">変数と手法を選び、クラスタリングを実行します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
+          <div className="analysis-variable-grid">
+            {method === 'class_variable' ? (
+              <AnalysisField label="正解ラベル列" htmlFor="cluster-class-column" help="名義尺度の列、または追加したMA選択肢を1つ選び、その値で分類します。">
+                <Select id="cluster-class-column" aria-label="クラスタリングの正解ラベル列" aria-describedby="cluster-class-column-help"
+                  roleName="クラスタリングの正解ラベル列" data-testid="class-column" size="small" placeholder="クラス列を選択"
+                  style={{ width: '100%' }} value={classColumn} onChange={setClassColumn}
+                  options={classCandidates.map(name => ({ value: name, label: name }))}
+                  emptyHint={{ roleLabel: '正解ラベル', reason: '正解ラベル列の候補がありません。',
+                    guidance: '共通の有効変数で名義尺度の質問・属性を選択してください。MA選択肢は下の追加ボタンから候補に追加できます。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+              </AnalysisField>
             ) : (
-              <Space>
-                <Typography.Text style={{ fontSize: 12 }}>正解ラベル列:</Typography.Text>
-                <Select data-testid="class-column" size="small" placeholder="クラス列" style={{ width: 200 }} value={classColumn} onChange={setClassColumn}
-                  options={classCandidates.map((c) => ({ value: c, label: c }))} />
-              </Space>
+              <AnalysisField label="数値列" htmlFor="cluster-numeric-columns" help="共通の有効変数から順序・間隔・比率尺度の列を選びます。数値列はz-score標準化します。">
+                <Select id="cluster-numeric-columns" aria-label="クラスタリングの数値列" aria-describedby="cluster-numeric-columns-help"
+                  roleName="クラスタリングの数値列" data-testid="cluster-numeric-columns" mode="multiple" size="small" placeholder="投入する数値列を選択"
+                  style={{ width: '100%' }} value={selectedNumeric}
+                  options={numericCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
+                  onChange={names => setChosenNumeric(names)}
+                  emptyHint={{ roleLabel: '数値', reason: '数値列の候補がありません。',
+                    guidance: '共通の有効変数を確認してください。コードブックで質問・属性の役割と順序・間隔・比率尺度を確認できます。MA選択肢は下の追加ボタンから追加します。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+              </AnalysisField>
             )}
-            {error && <Alert type="error" showIcon message={error.message} style={{ marginTop: 6 }} />}
-          </Space>
-        </Card>
+            {mixed && (
+              <AnalysisField label="カテゴリ列" htmlFor="cluster-categorical-columns" help="名義尺度の列を選びます。Cobweb・DISCでは数値列なしでもカテゴリ列だけで実行できます。">
+                <Select id="cluster-categorical-columns" aria-label="クラスタリングのカテゴリ列" aria-describedby="cluster-categorical-columns-help"
+                  roleName="クラスタリングのカテゴリ列" data-testid="cluster-categorical-columns" mode="multiple" size="small" placeholder="投入するカテゴリ列を選択"
+                  style={{ width: '100%' }} value={selectedNominal}
+                  options={nominalCandidates.map(name => ({ value: name, label: `${name}: ${definitions.find(column => column.name === name)?.label || name}` }))}
+                  onChange={names => setChosenNominal(names)}
+                  emptyHint={{ roleLabel: 'カテゴリ', reason: 'カテゴリ列の候補がありません。',
+                    guidance: '共通の有効変数で名義尺度の質問・属性を選択してください。MA選択肢は下の追加ボタンから追加できます。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+              </AnalysisField>
+            )}
+          </div>
+          <div className="analysis-variable-grid">
+            <AnalysisField label="追加したMA選択肢" htmlFor="cluster-ma-columns"
+              help={method === 'class_variable' ? '追加した選択肢は正解ラベル列の候補になります。' : mixed ? '追加した選択肢はカテゴリ列として投入します。' : '追加した選択肢は数値列（0/1）として投入します。'}>
+              <Select id="cluster-ma-columns" aria-label="クラスタリングに追加したMA選択肢" aria-describedby="cluster-ma-columns-help"
+                roleName="クラスタリングに追加したMA選択肢" data-testid="cluster-ma-columns" mode="multiple" size="small" placeholder="追加したMA選択肢"
+                value={maColumns} style={{ width: '100%' }}
+                options={maColumns.map(name => ({ value: name, label: definitions.find(column => column.name === name)?.multiResponseOptionLabel || name }))}
+                onChange={names => setAdded({ datasetId: selection.datasetId, names })}
+                emptyHint={{ roleLabel: 'MA選択肢', reason: 'MA選択肢はまだ追加されていません。',
+                  guidance: '共通の有効変数でMA設問を選び、「MA軸を追加」から選択肢を追加してください。コードブックでMA設問の定義を確認できます。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
+            </AnalysisField>
+          </div>
+          <div className="analysis-inline-fields">
+            <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+              const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+              setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+            }} />
+          </div>
+          <AnalysisField label="クラスタリング手法">
+            <div role="radiogroup" aria-label="クラスタリング手法" className="analysis-method-switch">
+              <Radio.Group name="cluster-method" data-testid="cluster-method" size="small"
+                value={method} onChange={event => setMethod(event.target.value)}>
+                {CLUSTER_METHODS.map(option => <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>)}
+              </Radio.Group>
+            </div>
+          </AnalysisField>
+          {method !== 'class_variable' && (
+            <AnalysisSettings title="クラスタリングの詳細設定" summary={settingsSummary} attention={invalidSettings.length > 0}>
+              <div className="analysis-variable-grid">
+                <ClusterNumberField id="cluster-k" label="クラスタ数 k" help="2〜20の整数を指定します。標準値は3です。実際に使える対象行数の確認は実行時に行います。"
+                  min={2} max={20} value={k} onChange={setK} invalid={!validK} />
+                {usesSeed && <ClusterNumberField id="cluster-seed" label="乱数 seed" help={`0〜${seedMax}の整数を指定します。標準値は42です。`}
+                  min={0} max={seedMax} value={seed} onChange={setSeed} invalid={!validSeed} />}
+                {method === 'agglomerative' && (
+                  <AnalysisField label="連結法" htmlFor="cluster-linkage" help="標準設定はAverageです。">
+                    <AntSelect id="cluster-linkage" aria-describedby="cluster-linkage-help" data-testid="linkage" size="small"
+                      value={linkage} onChange={setLinkage} style={{ width: '100%' }} options={[
+                        { value: 'nearest', label: 'Nearest（最短距離法）' },
+                        { value: 'farthest', label: 'Farthest（最長距離法）' },
+                        { value: 'average', label: 'Average' },
+                        { value: 'group_average', label: 'Group Average' },
+                      ]} />
+                  </AnalysisField>
+                )}
+                {['agglomerative', 'kmedoids'].includes(method) && (
+                  <AnalysisField label="距離尺度" htmlFor="cluster-distance" help="標準設定はEuclideanです。">
+                    <AntSelect id="cluster-distance" aria-describedby="cluster-distance-help" data-testid="distance" size="small"
+                      value={distance} onChange={setDistance} style={{ width: '100%' }} options={[
+                        { value: 'euclidean', label: 'Euclidean' },
+                        { value: 'standard_euclidean', label: 'Standard Euclidean' },
+                        { value: 'city_block', label: 'City-block' },
+                      ]} />
+                  </AnalysisField>
+                )}
+                {method === 'cobweb' && <>
+                  <ClusterNumberField id="cobweb-acuity" label="Acuity" help="0.01以上を指定します。標準値は0.1です。"
+                    min={0.01} step={0.05} value={acuity} onChange={setAcuity} invalid={!validAcuity} />
+                  <ClusterNumberField id="cobweb-cutoff" label="Cutoff" help="0.0001以上を指定します。標準値は0.001です。"
+                    min={0.0001} step={0.001} value={cutoff} onChange={setCutoff} invalid={!validCutoff} />
+                </>}
+                {method === 'disc' && <>
+                  <ClusterNumberField id="disc-alpha" label="Alpha平滑化" help="0.01〜5を指定します。標準値は0.6です。"
+                    min={0.01} max={5} step={0.1} value={alphaSmooth} onChange={setAlphaSmooth} invalid={!validAlpha} />
+                  <ClusterNumberField id="disc-num-weight" label="数値重み" help="0.1〜10を指定します。標準値は1です。"
+                    min={0.1} max={10} step={0.5} value={numWeight} onChange={setNumWeight} invalid={!validWeight} />
+                </>}
+              </div>
+            </AnalysisSettings>
+          )}
+          <AnalysisSettings title="手法と結果の見方" summary="変数・MA選択肢と実行済み結果について">
+            <Typography.Text>Cobweb・DISCは数値列とカテゴリ列を扱います。Class変数は選んだ列の値で分類し、クラスタ数や乱数は使いません。</Typography.Text>
+            <Typography.Text>MA選択肢は有効回答を0/1として使い、MA回答状態による行除外を行います。数値列の定数・全欠損の列は除外し、残る数値の欠損は対象行の平均で補完します。</Typography.Text>
+            <Typography.Text>実行後のグループ選択やグラフ操作は表示中の結果に対して行います。分類は共通の色分け・選択に反映されます。</Typography.Text>
+          </AnalysisSettings>
+          {error && <Alert type="error" showIcon message={error.message} />}
+          <AnalysisRunRow>
+            <Typography.Text type={canRun ? 'secondary' : 'warning'} role="status" id="cluster-run-guidance">
+              {invalidSettings.length > 0 ? `詳細設定を確認してください: ${invalidSettings.join('、')}`
+                : !hasInputs ? method === 'class_variable' ? '正解ラベル列を1つ選択してください。'
+                  : mixed ? '数値列・カテゴリ列・MA選択肢のいずれかを1つ以上選択してください。'
+                    : '数値列またはMA選択肢を1つ以上選択してください。'
+                  : method === 'class_variable' ? `正解ラベル列: ${classColumn}`
+                    : `分析対象: 数値列 ${numericColumns.length}本${categoricalColumns.length > 0 ? ` + カテゴリ列 ${categoricalColumns.length}本` : ''}（z-score標準化）`}
+            </Typography.Text>
+            <Button data-testid="run-clustering" type="primary" icon={<PlayCircleOutlined />} loading={running}
+              disabled={!canRun} aria-describedby="cluster-run-guidance" onClick={() => void runClustering()}
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
+              クラスタリング実行
+            </Button>
+          </AnalysisRunRow>
+        </div>
+      </Card>
 
       {stored && !resultMatchesInput && <Alert type="info" showIcon data-testid="cluster-previous-result"
         message="表示中の結果は現在の入力と異なるか、入力条件を確認できません。現在の条件で分類するには再実行してください。" />}

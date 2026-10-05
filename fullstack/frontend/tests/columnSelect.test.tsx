@@ -24,6 +24,68 @@ function openPicker(title = '変数を選択') {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('ColumnSelect accessible purpose and empty guidance', () => {
+  it.each(['controlled', 'uncontrolled'])('treats an unchosen empty scalar as empty through cancel and reopen (%s)', control => {
+    const change = vi.fn()
+    const valueProps = control === 'controlled' ? { value: '' } : { defaultValue: '' }
+    const { container } = mount(<ColumnSelect {...valueProps} options={options} placeholder="目的変数を指定" onChange={change} />)
+    expect(container.querySelector('.ant-select-selection-placeholder')).toHaveTextContent('目的変数を指定')
+    expect(container.querySelector('.ant-select-selection-item')).toBeNull()
+    const dialog = openPicker()
+    expect(within(dialog).getByRole('status')).toHaveTextContent(/^0件選択中$/)
+    expect(within(dialog).getByRole('button', { name: /決\s*定/ })).toBeDisabled()
+    for (const radio of within(dialog).getAllByRole('radio')) expect(radio).not.toBeChecked()
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Q1/ }))
+    expect(within(dialog).getByRole('button', { name: /決\s*定/ })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }))
+    expect(change).not.toHaveBeenCalled()
+
+    const reopened = openPicker()
+    expect(within(reopened).getByRole('status')).toHaveTextContent(/^0件選択中$/)
+    expect(within(reopened).getByRole('button', { name: /決\s*定/ })).toBeDisabled()
+    expect(within(reopened).getByRole('radio', { name: /Q1/ })).not.toBeChecked()
+    fireEvent.click(within(reopened).getByRole('radio', { name: /Q2/ }))
+    fireEvent.click(within(reopened).getByRole('button', { name: /決\s*定/ }))
+    expect(change).toHaveBeenCalledOnce()
+    expect(change).toHaveBeenCalledWith('Q2', options[1])
+    if (control === 'uncontrolled') {
+      expect(container.querySelector('.ant-select-selection-item')).toHaveTextContent('Q2')
+      expect(within(openPicker()).getByRole('radio', { name: /Q2/ })).toBeChecked()
+    } else {
+      expect(container.querySelector('.ant-select-selection-placeholder')).toHaveTextContent('目的変数を指定')
+    }
+  })
+
+  it.each([false, true])('preserves an explicitly offered empty option, including disabled retention (disabled=%s)', disabled => {
+    const change = vi.fn()
+    const empty = { value: '', label: '指定なし', disabled }
+    const { container } = mount(<ColumnSelect value="" options={[{ label: '選択肢', options: [empty, ...options] }]} placeholder="変数を指定" onChange={change} />)
+    expect(container.querySelector('.ant-select-selection-item')).toHaveTextContent('指定なし')
+    expect(container.querySelector('.ant-select-selection-placeholder')).toBeNull()
+    const dialog = openPicker()
+    const radio = within(dialog).getByRole('radio', { name: '指定なし' })
+    expect(radio).toBeChecked()
+    if (disabled) expect(radio).toBeDisabled()
+    expect(within(dialog).getByRole('status')).toHaveTextContent(/^1件選択中$/)
+    expect(within(dialog).getByRole('button', { name: /決\s*定/ })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: /決\s*定/ }))
+    expect(change).toHaveBeenCalledOnce()
+    expect(change).toHaveBeenCalledWith('', empty)
+    expect(within(openPicker()).getByRole('radio', { name: '指定なし' })).toBeChecked()
+  })
+
+  it.each([
+    { mode: undefined, value: 'retained', count: 1 },
+    { mode: 'multiple', value: ['retained', ''], count: 2 },
+  ])('does not prune retained values or empty array members (mode=$mode)', ({ mode, value, count }) => {
+    const change = vi.fn()
+    mount(<ColumnSelect mode={mode} value={value} options={options} onChange={change} />)
+    const dialog = openPicker()
+    expect(within(dialog).getByRole('status')).toHaveTextContent(`${count}件選択中（検索結果外 ${count}件）`)
+    expect(within(dialog).getByRole('button', { name: /決\s*定/ })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole('button', { name: /決\s*定/ }))
+    expect(change).toHaveBeenCalledWith(value, mode ? [undefined, undefined] : undefined)
+  })
+
   it('keeps native radio selection independent across retained picker dialogs', () => {
     const rowChange = vi.fn()
     const columnChange = vi.fn()

@@ -1,6 +1,7 @@
 import Statistic from '../common/RoundedStatistic'
-import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
+import { useScopedRun, AnalysisScopeSummary, AnalysisViewActivityContext, useAnalysisViewActive } from '../selection/analysisScope'
 import { Select as AntSelect } from 'antd'
+import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import VerificationConfigModal, { type VerificationConfig } from './VerificationConfigModal'
@@ -99,6 +100,7 @@ export interface MiningResult {
 
 export default function SubgroupMiningPage() {
   const dispatch = useDispatch<AppDispatch>()
+  const pageActive = useAnalysisViewActive()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
@@ -119,12 +121,16 @@ export default function SubgroupMiningPage() {
   const [verificationInfo, setVerificationInfo] = useState<VerificationInfo | null>(null)
   const [verifying, setVerifying] = useState(false)
   /** Only used to offer independent-verification targets; never the analysis subject. */
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
   const [datasets, setDatasets] = useState<{ value: string; label: string }[]>([])
   const context = useMemo(() => JSON.stringify([datasetId, dataRevision, schemaRevision, rowIds, targets.attributes, targets.questions, alpha, minGroupSize]),
     [datasetId, dataRevision, schemaRevision, rowIds, targets.attributes.join('|'), targets.questions.join('|'), alpha, minGroupSize])
   const runScope = useScopedRun(context)
   const [runInput, setRunInput] = useState<Record<string, unknown> | null>(null)
   const verificationVersion = useRef(0)
+  const verificationPending = useRef(false)
+  const datasetListVersion = useRef(0)
   const resultRef = useRef(miningResult)
   resultRef.current = miningResult
   const identityRef = useRef(runScope.identity)
@@ -133,24 +139,58 @@ export default function SubgroupMiningPage() {
 
   useEffect(() => {
     verificationVersion.current += 1
+    datasetListVersion.current += 1
+    verificationPending.current = false
+    setVerificationModalOpen(false)
+    setDatasets([])
+    setDatasetsLoading(false)
+    setDatasetsError(null)
     setRunInput(null)
     setVerifying(false)
     setMiningResult(null); setSelectedInsightId(null); setLoading(false); setError(null)
     setVerificationResult(null); setVerificationInfo(null); setInferenceMode('exploration')
   }, [runScope.identity])
 
-  // The picker has to be filled before it is opened, or 独立データ指定 looks
-  // like a dead option; the current dataset is filtered out by the modal.
+  useEffect(() => () => {
+    verificationVersion.current += 1
+    datasetListVersion.current += 1
+  }, [])
+
+  const cancelVerification = useCallback(() => {
+    verificationVersion.current += 1
+    datasetListVersion.current += 1
+    verificationPending.current = false
+    setVerifying(false)
+    setDatasetsLoading(false)
+    setVerificationModalOpen(false)
+  }, [])
+
+  // Refresh the eligible independent datasets; ignore a closed or superseded picker.
   const openVerificationModal = useCallback(() => {
+    const version = ++datasetListVersion.current
+    setDatasets([])
+    setDatasetsLoading(true)
+    setDatasetsError(null)
+    setError(null)
     setVerificationModalOpen(true)
     void api.get<{ datasets: { datasetId: string; name: string; rowCount: number }[] }>('/datasets')
-      .then((res) => setDatasets((res.datasets ?? []).map((d) => ({
-        value: d.datasetId, label: `${d.name}（${d.rowCount}行）`,
-      }))))
-      .catch(() => setDatasets([]))
+      .then((res) => {
+        if (version !== datasetListVersion.current) return
+        setDatasetsLoading(false)
+        setDatasets((res.datasets ?? []).map((d) => ({ value: d.datasetId, label: `${d.name}（${d.rowCount}行）` })))
+      })
+      .catch(() => {
+        if (version !== datasetListVersion.current) return
+        setDatasetsLoading(false)
+        setDatasetsError('データセットを取得できませんでした')
+      })
   }, [])
 
   const runVerification = async (config: VerificationConfig) => {
+    if (verificationPending.current) return
+    if (config.method === 'independent' && (datasetsLoading || datasetsError || !config.independent_dataset_id
+      || config.independent_dataset_id === datasetId
+      || !datasets.some(dataset => dataset.value === config.independent_dataset_id))) return
     if (!datasetId || !miningResult || !runInput) return
     if (!miningResult.candidateSetHash) {
       setError({ message: '候補集合が発行されていません。もう一度探索してください。' })
@@ -158,6 +198,7 @@ export default function SubgroupMiningPage() {
     }
     const version = ++verificationVersion.current, sourceResult = miningResult, sourceIdentity = runScope.identity
     const isCurrent = () => version === verificationVersion.current && resultRef.current === sourceResult && identityRef.current === sourceIdentity
+    verificationPending.current = true
     setVerifying(true)
     setError(null)
     try {
@@ -179,14 +220,14 @@ export default function SubgroupMiningPage() {
       if (!isCurrent()) return
       setError({ message: err?.message || '検証の実行に失敗しました。' })
     } finally {
-      if (isCurrent()) setVerifying(false)
+      if (isCurrent()) { verificationPending.current = false; setVerifying(false) }
     }
   }
 
   const runMining = async () => {
     if (!datasetId || !targets.ready) return
     const ticket = runScope.begin()
-    verificationVersion.current++; setVerifying(false)
+    cancelVerification()
     setLoading(true)
     setError(null)
     // A new exploration pins a new candidate set, so a previous verification of
@@ -263,12 +304,12 @@ export default function SubgroupMiningPage() {
       }}
       data-testid="subgroup-mining-page"
     >
-      <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Typography.Text type="warning">表示中の探索結果と検証母集団は実行時の対象を保持しています。</Typography.Text>}
-
       <Tabs
         activeKey={activeTab}
-        onChange={(k) => setActiveTab(k as 'modern' | 'classic')}
+        onChange={(k) => {
+          if (k !== 'classic') cancelVerification()
+          setActiveTab(k as 'modern' | 'classic')
+        }}
         type="card"
 
         style={{
@@ -286,7 +327,7 @@ export default function SubgroupMiningPage() {
                 現代的サブグループ発見 (複合条件 / Kendall-EMM)
               </span>
             ),
-            children: <ModernSubgroupMiningView />,
+            children: <AnalysisViewActivityContext.Provider value={pageActive && activeTab === 'modern'}><ModernSubgroupMiningView /></AnalysisViewActivityContext.Provider>,
           },
           {
             key: 'classic',
@@ -298,65 +339,43 @@ export default function SubgroupMiningPage() {
             ),
             children: (
               <>
-                {/* Control bar */}
-                {(
-                  <Card size="small" style={{ marginBottom: 12, flexShrink: 0 }}>
+                <Card title="単変量マイニングの設定" size="small" className="analysis-setup" style={{ marginBottom: 12, flexShrink: 0 }}>
+                  <div className="analysis-form-stack">
+                    <AnalysisScopeSummary label="次回実行の対象" snapshot={miningResult ? runScope.snapshot : null} />
+                    <Typography.Text type="secondary">属性変数と質問変数を選んで探索します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
                     {targets.control}
-                    <Row gutter={[12, 12]} align="middle">
-          <Col xs={12} md={3}>
-            <Typography.Text strong>FDR α:</Typography.Text>
-            <AntSelect
-              style={{ width: '100%', marginTop: 4 }}
-              value={alpha}
-              onChange={setAlpha}
-              disabled={inferenceMode === 'exploration'}
-              options={[
-                { label: '0.01 (厳格)', value: 0.01 },
-                { label: '0.05 (標準)', value: 0.05 },
-                { label: '0.10 (探索的)', value: 0.10 },
-              ]}
-            />
-          </Col>
-          <Col xs={12} md={3}>
-            <Typography.Text strong>Min Group Size:</Typography.Text>
-            <InputNumber
-              style={{ width: '100%', marginTop: 4 }}
-              min={2}
-              max={1000}
-              value={minGroupSize}
-              onChange={(val) => setMinGroupSize(val || 10)}
-            />
-          </Col>
-          <Col xs={24} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <Button
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              onClick={() => void runMining()}
-              loading={loading}
-              data-testid="mining-run-button"
-              disabled={!targets.ready}
-              style={{ width: '100%', marginTop: 22 }}
-            >
-              Run Auto Mining
-            </Button>
-          </Col>
-          <Col xs={24} md={6} style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <Button
-              icon={<CheckCircleOutlined />}
-              onClick={openVerificationModal}
-              loading={verifying}
-              data-testid="mining-to-verification-btn"
-              // Verification re-tests the pinned set, so without a hash there
-              // is nothing to verify — the run would only be refused.
-              disabled={!miningResult || !miningResult.candidateSetHash}
-              style={{ width: '100%', marginTop: 22 }}
-            >
-              検証モードへ移行
-            </Button>
-          </Col>
-                    </Row>
-                  </Card>
-                )}
+                    <AnalysisSettings title="単変量マイニングの詳細設定" summary={`最小人数: ${minGroupSize} / FDR α: ${alpha}`}>
+                      <div className="analysis-variable-grid">
+                        <AnalysisField label="FDR α" htmlFor="classic-mining-alpha" help="探索中は変更できません。検証後に変更すると、次回の独立データ検証に使うαを選べます。">
+                          <AntSelect id="classic-mining-alpha" aria-describedby="classic-mining-alpha-help"
+                            style={{ width: '100%' }} value={alpha} onChange={setAlpha} disabled={inferenceMode === 'exploration'}
+                            options={[{ label: '0.01 (厳格)', value: 0.01 }, { label: '0.05 (標準)', value: 0.05 }, { label: '0.10 (探索的)', value: 0.10 }]} />
+                        </AnalysisField>
+                        <AnalysisField label="最小人数 (Min Group Size)" htmlFor="classic-mining-min-size">
+                          <InputNumber id="classic-mining-min-size" style={{ width: '100%' }} min={2} max={1000} value={minGroupSize} onChange={(val) => setMinGroupSize(val ?? 10)} />
+                        </AnalysisField>
+                      </div>
+                    </AnalysisSettings>
+                    <AnalysisSettings title="探索と検証の見方" summary="探索候補・固定した候補の検証について">
+                      <Typography.Text>選んだ属性と質問の組み合わせから差の候補を探します。探索結果は確証ではありません。</Typography.Text>
+                      <Typography.Text>検証は探索時の候補集合と対象を固定して行います。ホールドアウト・交差検証は事後的な安定性確認です。</Typography.Text>
+                    </AnalysisSettings>
+                    {miningResult && runScope.dirty && <Typography.Text type="warning" role="status">表示中の探索結果と検証母集団は実行時の対象を保持しています。再探索すると変数・設定・対象を更新します。</Typography.Text>}
+                    {!targets.ready && <Typography.Text type="secondary" role="status">属性変数と質問変数をそれぞれ1つ以上選択してください。</Typography.Text>}
+                    <AnalysisRunRow>
+                      <Button icon={<CheckCircleOutlined />} onClick={openVerificationModal} loading={verifying}
+                        data-testid="mining-to-verification-btn" disabled={loading || !miningResult?.candidateSetHash}
+                        style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
+                        検証モードへ移行
+                      </Button>
+                      <Button type="primary" icon={<ThunderboltOutlined />} onClick={() => void runMining()} loading={loading}
+                        data-testid="mining-run-button" disabled={!datasetId || !targets.ready}
+                        style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
+                        Run Auto Mining
+                      </Button>
+                    </AnalysisRunRow>
+                  </div>
+                </Card>
 
                 {/* Error Alert Display */}
                 {error && (
@@ -884,12 +903,16 @@ export default function SubgroupMiningPage() {
       />
       <VerificationConfigModal
         open={verificationModalOpen}
+        pending={verifying}
+        error={error?.message ?? null}
         candidateCount={miningResult?.candidates?.length ?? 0}
         candidateSetHash={miningResult?.candidateSetHash ?? null}
         datasets={datasets}
+        datasetsLoading={datasetsLoading}
+        datasetsError={datasetsError}
         currentDatasetId={datasetId}
         alpha={alpha}
-        onCancel={() => setVerificationModalOpen(false)}
+        onCancel={cancelVerification}
         onRun={(config) => void runVerification(config)}
       />
     </div>

@@ -123,6 +123,7 @@ it('keeps contingency semantics and acknowledgement required and exposes double-
 it('explains an empty shared selection and opens the existing codebook editor', () => {
   const { local } = mount({ active: ['x', 'y'] })
   expect(screen.getAllByText(/現在の共通選択内に使えるカテゴリ変数がありません/)).toHaveLength(2)
+  expect(screen.getAllByText(/コードブックで尺度が名義・順序になっているか確認してください/)).toHaveLength(2)
   fireEvent.click(screen.getAllByRole('button', { name: 'コードブックを開く' })[0])
   expect(local.getState().codebook.isEditorOpen).toBe(true)
 })

@@ -74,7 +74,7 @@ describe('I22 shared in-flight mutation contract',()=>{
  })
  it('I09 hides the mining modal on route change and calls its close handler',async()=>{
   const close=vi.fn()
-  const ui=<VerificationConfigModal open candidateCount={2} candidateSetHash="hash" datasets={[]} currentDatasetId="d" alpha={0.05} onCancel={close} onRun={()=>{}}/>
+  const ui=<VerificationConfigModal open pending={false} candidateCount={2} candidateSetHash="hash" datasets={[]} currentDatasetId="d" alpha={0.05} onCancel={close} onRun={()=>{}}/>
   const view=render(wrap(ui))
   await waitFor(()=>expect(screen.getByRole('dialog')).toBeVisible())
   view.rerender(wrap(ui,false))
