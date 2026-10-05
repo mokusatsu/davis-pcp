@@ -39,7 +39,7 @@ vi.mock('../src/features/models/LinearRegressionFigure', () => ({ default: ({ on
 const rowIds = Array.from({ length: 12 }, (_, i) => `r${i + 1}`)
 const scopes = { all: rowIds, active: rowIds.slice(0, 8), selected: ['r2', 'r4'], sampled: ['r1', 'r5', 'r9'] }
 const cases = [
-  { name: 'CA', Page: CorrespondenceAnalysisPage, path: '/models/ca', run: 'ca-run', point: 'ca-point', columns: [['行変数', ['A']], ['列変数', ['B']]] },
+  { name: 'CA', Page: CorrespondenceAnalysisPage, path: '/models/ca', run: 'ca-run', point: 'ca-point', columns: [['CAの行変数', ['A']], ['CAの列変数', ['B']]] },
   { name: 'MCA', Page: MultipleCorrespondencePage, path: '/models/mca', run: 'mca-run', point: 'mca-individual-svg', columns: [['nominal/ordinalを選択', ['A', 'B']]] },
   { name: 'FAMD', Page: FamdPage, path: '/models/famd', run: 'famd-run', point: 'famd-individual-svg', columns: [['interval/ratioを選択', ['X']], ['nominal/ordinalを選択', ['A']]] },
   { name: 'LR', Page: LinearRegressionPage, path: '/models/linear-regression', run: 'lr-run', point: 'lr-point', columns: [['目的変数を選択', ['Outcome']], ['数値を選択', ['X']]] },
@@ -143,7 +143,7 @@ for (const test of cases) {
     if (test.name !== 'CA') await waitFor(() => expect(get.mock.calls.some(([path]) => path.includes('/rows?'))).toBe(true))
     const dispatch = vi.spyOn(local, 'dispatch')
     act(() => local.dispatch({ type: 'test/selection', payload: ['r3', 'r6'] }))
-    expect(view.getByText(/対象または設定が変更されています/)).toBeInTheDocument()
+    expect(view.getByText(test.name === 'CA' ? /対象または次回の分析設定が変更されています/ : /対象または設定が変更されています/)).toBeInTheDocument()
     for (let i = 0; i < 2; i++) {
       if (test.name !== 'CA' || i === 0) fireEvent.click(view.getByTestId(test.point))
       if (test.name === 'CA') fireEvent.click(view.getByRole('button', { name: /原行IDへ解決して選択/ }))
@@ -251,7 +251,7 @@ for (const test of cases) {
     await waitFor(() => expect(view.getByTestId(test.run)).not.toHaveClass('ant-btn-loading'))
     expect(view.getAllByTestId('analysis-scope-summary')[0]).toHaveTextContent('全体 (All) 12行')
     expect(view.getAllByTestId('analysis-scope-summary')[0]).toHaveTextContent('この結果: 選択中の行 (Selected) 2行')
-    expect(view.getByText(/対象または設定が変更されています/)).toBeInTheDocument()
+    expect(view.getByText(test.name === 'CA' ? /対象または次回の分析設定が変更されています/ : /対象または設定が変更されています/)).toBeInTheDocument()
     expect(post.mock.calls.filter(([path]) => path === test.path)).toHaveLength(1)
   })
   it(`${test.name} rejects a fit response from an earlier data revision`, async () => {
@@ -387,12 +387,12 @@ it('CA contingency keeps a structural row-label column while restricting analysi
     Array.from(select.options).forEach(option => { option.selected = values.includes(option.value) })
     fireEvent.change(select)
   }
-  choose('行ラベル', ['A'])
-  choose('数値セル列（2列以上）', ['Outcome', 'X'])
-  fireEvent.click(view.getByRole('radio', { name: 'mass' }))
+  choose('CAの行ラベル列', ['A'])
+  choose('CAの数値セル列', ['Outcome', 'X'])
+  fireEvent.click(view.getByRole('radio', { name: '質量 (mass)' }))
   act(() => local.dispatch({ type: 'test/variables', payload: ['Outcome', 'X'] }))
   expect(view.getByTestId('ca-run')).not.toBeDisabled()
-  expect(view.getByLabelText('行ラベル')).toHaveValue('A')
+  expect(view.getByLabelText('CAの行ラベル列')).toHaveValue('A')
   fireEvent.click(view.getByTestId('ca-run'))
   await waitFor(() => expect(post.mock.calls.some(([path]) => path === cases[0].path)).toBe(true))
   const body = post.mock.calls.find(([path]) => path === cases[0].path)![1]

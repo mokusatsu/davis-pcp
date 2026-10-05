@@ -42,11 +42,12 @@ function mount(page: ReactElement) {
   return render(<Provider store={local}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{page}</MemoryRouter></Provider>)
 }
 
-async function openPicker(index: number) {
-  fireEvent.click(screen.getAllByRole('button', { name: '変数を選択' })[index])
-  const dialog = await screen.findByRole('dialog', { name: '変数を選択' })
-  return { dialog, results: within(dialog).getByLabelText('検索結果'),
-    search: within(dialog).getByRole('textbox', { name: '変数名・質問文で絞り込み' }) }
+async function openPicker(index: number, roleName?: string) {
+  const name = roleName ? `${roleName}を選択` : '変数を選択'
+  fireEvent.click(roleName ? screen.getByRole('button', { name }) : screen.getAllByRole('button', { name })[index])
+  const dialog = await screen.findByRole('dialog', { name })
+  return { dialog, results: within(dialog).getByLabelText(roleName ? `${roleName}の検索結果` : '検索結果'),
+    search: within(dialog).getByRole('textbox', { name: roleName ? `${roleName}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み' }) }
 }
 
 function expectOption(results: HTMLElement, name: string, question?: string) {
@@ -68,15 +69,15 @@ function selectedText(element: Element) {
 }
 
 async function expectLabels(container: HTMLElement, index: number, multiple: boolean,
-  same: string, name: string, question: string) {
-  const first = await openPicker(index)
+  same: string, name: string, question: string, roleName?: string) {
+  const first = await openPicker(index, roleName)
   fireEvent.click(expectOption(first.results, same))
   await commit(first.dialog)
   const picker = container.querySelectorAll('.column-select-multi-wrap')[index]
   const selected = () => Array.from(picker.querySelectorAll(multiple ? '.ant-tag' : '.ant-select-selection-item'), selectedText)
   await waitFor(() => expect(selected()).toEqual([same]))
 
-  const { dialog, results, search } = await openPicker(index)
+  const { dialog, results, search } = await openPicker(index, roleName)
   expectOption(results, name, question)
   for (const query of [name, question]) {
     fireEvent.change(search, { target: { value: query } })
@@ -108,7 +109,8 @@ describe('CA selector labels', () => {
   ])('keeps $label names and questions distinct in search and selection', async ({ index, contingency, multiple, same, name, question }) => {
     const { container } = mount(<CorrespondenceAnalysisPage />)
     if (contingency) fireEvent.click(screen.getByRole('radio', { name: '分割表' }))
-    await expectLabels(container, index, multiple, same, name, question)
+    await expectLabels(container, index, multiple, same, name, question, contingency
+      ? (index === 0 ? 'CAの行ラベル列' : 'CAの数値セル列') : (index === 0 ? 'CAの行変数' : 'CAの列変数'))
   })
 })
 

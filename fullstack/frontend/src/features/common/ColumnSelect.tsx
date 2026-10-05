@@ -7,6 +7,8 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 
 export interface ColumnSelectEmptyHint {
   roleLabel: string
+  reason?: string
+  guidance?: string
   onOpenCodebook: () => void
 }
 
@@ -24,8 +26,12 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
   const value = 'value' in props ? props.value : uncontrolledValue
   const committed = Array.isArray(value) ? value : (value == null ? [] : [value])
   const dialogValue = tmpValue ?? committed
-  const { emptyHint, style, className, onDropdownVisibleChange, dropdownRender, onOpenChange, ...selectProps } = props as any
+  const { roleName, emptyHint, style, className, onDropdownVisibleChange, dropdownRender, onOpenChange, ...selectProps } = props as any
   const hint = emptyHint as ColumnSelectEmptyHint | undefined
+  const pickerRole = typeof roleName === 'string' ? roleName.trim() : ''
+  const pickerTitle = pickerRole ? `${pickerRole}を選択` : '変数を選択'
+  const searchLabel = pickerRole ? `${pickerRole}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み'
+  const resultsLabel = pickerRole ? `${pickerRole}の検索結果` : '検索結果'
   const maxCount = isMultiple && Number.isFinite(props.maxCount) ? Math.max(0, props.maxCount) : Infinity
   const prevOpen = useRef<boolean>(props.open ?? false)
   const handleOpenChange = (visible: boolean) => {
@@ -90,7 +96,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
   }
   const emptyGuide = hint && options.length === 0 ? (
     <div style={{ padding: 12, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
-      <span style={{ whiteSpace: 'pre-line' }}>{`${hint.roleLabel}変数がありません\nコードブックで${hint.roleLabel}変数を指定してください`}</span>
+      <span style={{ whiteSpace: 'pre-line' }}>{hint.reason ?? `${hint.roleLabel}変数がありません`}{'\n'}{hint.guidance ?? `コードブックで${hint.roleLabel}変数を指定してください`}</span>
       <Button size="small" disabled={props.disabled} onClick={openCodebook}>コードブックを開く</Button>
     </div>
   ) : undefined
@@ -117,7 +123,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
       .column-select-multi-wrap .column-select-multi-fix .ant-select-arrow { right: 8px; }
     `}</style>
     <span className="column-select-multi-wrap" style={wrapStyle}>
-      <Button aria-label="変数を選択" title="変数を選択" icon={<SearchOutlined />} size={props.size}
+      <Button aria-label={pickerTitle} title={pickerTitle} icon={<SearchOutlined />} size={props.size}
         onClick={() => { if (!props.disabled) { setTmpValue(null); setDialogSearch(''); handleOpenChange(false); setPickerOpen(true) } }}
         className="column-select-search-btn" disabled={props.disabled} />
       <Select {...selectProps} ref={ref} value={value} onChange={change}
@@ -147,7 +153,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
           {active && <div aria-live="polite" style={{ padding: 8, whiteSpace: 'pre-wrap', maxHeight: 140, overflow: 'auto' }}>{activeOption?.questionText ?? <ColumnQuestionText nameOrId={active} />}</div>}
         </>} />
     </span>
-    <Modal title="変数を選択" zIndex={1050} open={pickerOpen} onCancel={() => setPickerOpen(false)} onDeactivate={() => setPickerOpen(false)}
+    <Modal title={pickerTitle} zIndex={1050} open={pickerOpen} onCancel={() => setPickerOpen(false)} onDeactivate={() => setPickerOpen(false)}
       okText="決定" cancelText="キャンセル" getContainer={() => document.body}
       okButtonProps={{ disabled: props.disabled || (!isMultiple && dialogValue.length === 0 && !props.allowClear) || dialogValue.length > maxCount }}
       footer={(_, { OkBtn, CancelBtn }) => <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
@@ -161,7 +167,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
         setPickerOpen(false)
       }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <Input aria-label="変数名・質問文で絞り込み" placeholder="変数名・質問文で絞り込み" value={dialogSearch}
+        <Input aria-label={searchLabel} placeholder="変数名・質問文で絞り込み" value={dialogSearch}
           onChange={e => setDialogSearch(e.target.value)} allowClear disabled={props.disabled} style={{ flex: '1 1 220px' }} />
         {isMultiple ? <>
           <Button type="link" disabled={props.disabled || !eligibleOptions.length || dialogValue.length >= maxCount} onClick={() => {
@@ -173,7 +179,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
             onClick={() => setTmpValue(dialogValue.filter(v => !eligibleOptions.some((o: any) => o.value === v)))}>検索結果を全解除</Button>
         </> : props.allowClear && <Button type="link" disabled={props.disabled} onClick={() => setTmpValue([])}>選択解除</Button>}
       </div>
-      <div role={isMultiple ? 'group' : 'radiogroup'} aria-label="検索結果" style={{ maxHeight: 320, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div role={isMultiple ? 'group' : 'radiogroup'} aria-label={resultsLabel} style={{ maxHeight: 320, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
         {dialogOptions.map((o: any) => {
           const { primary, secondary } = details(o)
           const label = <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{primary}{secondary && <small style={{ color: '#666', display: 'block' }}>{secondary}</small>}</span>
@@ -182,7 +188,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
             ? <Checkbox key={String(o.value)} checked={checked} disabled={props.disabled || o.disabled || (!checked && dialogValue.length >= maxCount)} onChange={e => setOption(o, e.target.checked)} style={{ marginInlineStart: 0 }}>{label}</Checkbox>
             : <Radio key={String(o.value)} name="column-select-dialog" checked={checked} disabled={props.disabled || o.disabled} onChange={() => setOption(o, true)} style={{ marginInlineStart: 0 }}>{label}</Radio>
         })}
-        {dialogOptions.length === 0 && (emptyGuide ?? <div style={{ color: '#999', padding: 8 }}>該当する変数がありません</div>)}
+        {dialogOptions.length === 0 && (emptyGuide ?? <div style={{ color: '#999', padding: 8 }}>該当する変数がありません{options.length > 0 && <><br />検索条件を変更または解除してください</>}</div>)}
       </div>
     </Modal>
   </>

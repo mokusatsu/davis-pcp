@@ -29,7 +29,7 @@ vi.mock('../src/features/selection/SelectionMenu', () => ({ default: () => null,
 const rowIds = Array.from({ length: 12 }, (_, i) => `r${i + 1}`)
 const scopes = { all: rowIds, active: rowIds.slice(0, 8), selected: ['r2', 'r4'], sampled: ['r1', 'r5', 'r9'] }
 const cases = [
-  { name: 'CA', Page: CorrespondenceAnalysisPage, path: '/models/ca', run: 'ca-run', point: 'ca-point', columns: [['行変数', ['A']], ['列変数', ['B']]] },
+  { name: 'CA', Page: CorrespondenceAnalysisPage, path: '/models/ca', run: 'ca-run', point: 'ca-point', columns: [['CAの行変数', ['A']], ['CAの列変数', ['B']]] },
   { name: 'MCA', Page: MultipleCorrespondencePage, path: '/models/mca', run: 'mca-run', point: 'mca-individual-svg', columns: [['nominal/ordinalを選択', ['A', 'B']]] },
   { name: 'FAMD', Page: FamdPage, path: '/models/famd', run: 'famd-run', point: 'famd-individual-svg', columns: [['interval/ratioを選択', ['X']], ['nominal/ordinalを選択', ['A']]] },
   { name: 'LR', Page: LinearRegressionPage, path: '/models/linear-regression', run: 'lr-run', point: 'lr-point', columns: [['目的変数を選択', ['Outcome']], ['数値を選択', ['X']]] },

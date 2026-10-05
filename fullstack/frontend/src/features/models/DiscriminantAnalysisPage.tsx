@@ -7,6 +7,8 @@ import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
@@ -266,147 +268,97 @@ export default function DiscriminantAnalysisPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
-      <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
-
-      {/* Configuration Card */}
-      {<Card size="small" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 12]} align="middle">
-          <Col xs={24} sm={12} md={6}>
-            <Typography.Text strong>目的クラス Y (Target / Class):</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={targetColumn}
-              onChange={setTargetColumn}
-              options={allColumns.map((c) => ({ label: c, value: c }))}
-              placeholder="クラス変数を選択"
-              data-testid="discriminant-target-select"
-            />
-          </Col>
-
-          <Col xs={24} sm={12} md={8}>
-            <Typography.Text strong>説明変数 X (Features):</Typography.Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', marginTop: 4 }}
-              value={selectedFeatures}
-              onChange={setSelectedFeatures}
-              options={numericColumns.filter((c) => c !== targetColumn).map((c) => ({ label: c, value: c }))}
-              placeholder="説明変数を選択"
-              maxTagCount={3}
-              data-testid="discriminant-features-select"
-            />
-          </Col>
-
-          <Col xs={24} sm={12} md={5}>
-            <Typography.Text strong>手法 (Method):</Typography.Text>
-            <div style={{ marginTop: 4 }}>
-              <Radio.Group
-                size="small"
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                data-testid="discriminant-method-radio"
-              >
-                <Radio.Button value="lda">LDA</Radio.Button>
-                <Radio.Button value="qda">QDA</Radio.Button>
-                <Radio.Button value="stepwise">Stepwise</Radio.Button>
-              </Radio.Group>
+      <Card title="判別分析の設定" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
+        <div className="analysis-form-stack">
+          <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />
+          <Typography.Text type="secondary">目的クラスと説明変数を選び、分析を実行します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
+          <div className="analysis-variable-grid">
+            <AnalysisField label="目的クラス Y (Target / Class)" htmlFor="discriminant-target" help="分類したいクラスを持つ変数を1つ選びます。">
+              <Select id="discriminant-target" aria-label="判別分析の目的クラス" aria-describedby="discriminant-target-help"
+                roleName="判別分析の目的クラス" style={{ width: '100%' }} value={targetColumn} onChange={setTargetColumn}
+                options={allColumns.map((c) => ({ label: c, value: c }))}
+                emptyHint={{ roleLabel: '目的', reason: '目的クラスの候補がありません。',
+                  guidance: '共通の有効変数を確認してください。コードブックで質問・属性の役割と尺度を確認できます。MA選択肢は下の追加ボタンから候補に追加します。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                placeholder="クラス変数を選択" data-testid="discriminant-target-select" />
+            </AnalysisField>
+            <AnalysisField label="説明変数 X (Features)" htmlFor="discriminant-features" help="順序・間隔・比率尺度の変数、または追加したMA選択肢を1つ以上選びます。目的クラスと同じ列・同じMAの選択肢は除外されます。">
+              <Select id="discriminant-features" aria-label="判別分析の説明変数" aria-describedby="discriminant-features-help"
+                roleName="判別分析の説明変数" mode="multiple" style={{ width: '100%' }} value={selectedFeatures} onChange={setSelectedFeatures}
+                options={numericColumns.map((c) => ({ label: c, value: c }))}
+                emptyHint={{ roleLabel: '説明', reason: '説明変数の候補がありません。',
+                  guidance: '共通の有効変数・尺度と目的クラスの選択を確認してください。目的クラスと同じ列・同じMAの選択肢は候補になりません。MA選択肢は下の追加ボタンから追加できます。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                placeholder="説明変数を選択" maxTagCount={3} data-testid="discriminant-features-select" />
+            </AnalysisField>
+          </div>
+          <Space wrap>
+            <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+              const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+              setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+            }} />
+            <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
+          </Space>
+          <AnalysisSettings title="判別分析の詳細設定" summary={`手法: ${method === 'stepwise' ? 'Stepwise' : method.toUpperCase()} / 縮小: ${method === 'qda' ? 'QDAでは不使用' : shrinkage === 'none' ? 'なし' : 'Auto'} / 事前確率: ${priors === 'proportional' ? '比率' : '等確率'}${method === 'stepwise' ? ` / 投入F: ${fEnter}・除外F: ${fRemove}` : ''}`}>
+            <Typography.Text type="secondary">次回の分析に使います。標準設定はLDA・縮小なし・事前確率はクラスの比率です。</Typography.Text>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="手法 (Method)">
+                <Radio.Group name="discriminant-method" aria-label="判別分析の手法" size="small" value={method} onChange={(e) => setMethod(e.target.value)} data-testid="discriminant-method-radio">
+                  <Radio.Button value="lda">LDA</Radio.Button>
+                  <Radio.Button value="qda">QDA</Radio.Button>
+                  <Radio.Button value="stepwise">Stepwise</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
+              <AnalysisField label="縮小 (Shrinkage)" help="QDAでは使用しません。LDA・Stepwiseに戻すと選択した値を使います。">
+                <Radio.Group name="discriminant-shrinkage" aria-label="判別分析の縮小" size="small" value={shrinkage} onChange={(e) => setShrinkage(e.target.value)} disabled={method === 'qda'}>
+                  <Radio.Button value="none">None</Radio.Button>
+                  <Radio.Button value="auto">Auto</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
+              <AnalysisField label="事前確率 (Priors)" help="クラスの比率を使うか、各クラスを等確率として扱うかを選びます。">
+                <Radio.Group name="discriminant-priors" aria-label="判別分析の事前確率" size="small" value={priors} onChange={(e) => setPriors(e.target.value)}>
+                  <Radio.Button value="proportional">比率</Radio.Button>
+                  <Radio.Button value="uniform">等確率</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
             </div>
-          </Col>
-
-          <Col xs={24} sm={12} md={5}>
-            <Typography.Text strong>縮小 (Shrinkage):</Typography.Text>
-            <div style={{ marginTop: 4 }}>
-              <Radio.Group
-                size="small"
-                value={shrinkage}
-                onChange={(e) => setShrinkage(e.target.value)}
-                disabled={method === 'qda'}
-              >
-                <Radio.Button value="none">None</Radio.Button>
-                <Radio.Button value="auto">Auto</Radio.Button>
-              </Radio.Group>
-            </div>
-          </Col>
-          <Col xs={24} sm={12} md={5}>
-            <Typography.Text strong>事前確率 (Priors):</Typography.Text>
-            <div style={{ marginTop: 4 }}>
-              <Radio.Group
-                size="small"
-                value={priors}
-                onChange={(e) => setPriors(e.target.value)}
-              >
-                <Radio.Button value="proportional">比率</Radio.Button>
-                <Radio.Button value="uniform">等確率</Radio.Button>
-              </Radio.Group>
-            </div>
-          </Col>
-        </Row>
-
-        <Space style={{ marginTop: 12 }} wrap>
-          <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
-            const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
-            setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
-          }} />
-          <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
-        </Space>
-
-        {method === 'stepwise' && (
-          <Row gutter={[16, 8]} style={{ marginTop: 12 }} align="middle">
-            <Col xs={12} sm={6}>
-              <Typography.Text style={{ fontSize: 12 }}>投入 F値 (F-Enter):</Typography.Text>
-              <InputNumber
-                size="small"
-                value={fEnter}
-                onChange={(v) => setFEnter(v ?? 3.84)}
-                step={0.1}
-                style={{ width: '100%' }}
-              />
-            </Col>
-            <Col xs={12} sm={6}>
-              <Typography.Text style={{ fontSize: 12 }}>除外 F値 (F-Remove):</Typography.Text>
-              <InputNumber
-                size="small"
-                value={fRemove}
-                onChange={(v) => setFRemove(v ?? 2.71)}
-                step={0.1}
-                style={{ width: '100%' }}
-              />
-            </Col>
-            <Col xs={24} sm={12}>
-              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                ※ WilksのΛを最小化し、偏F検定により寄与する変数を自動選択します。
-              </Typography.Text>
-            </Col>
-          </Row>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, flexWrap: 'wrap', gap: 10 }}>
-          <Button
-            type="primary"
-            icon={<ThunderboltOutlined />}
-            onClick={handleRunAnalysis}
-            loading={loading}
-            data-testid="run-discriminant-btn"
-          >
-            判別分析実行 (Run Analysis)
-          </Button>
-
-          {result && (
-            <Space size={12}>
-              <Button
-                icon={<AimOutlined />}
-                danger
-                onClick={handleSelectMisclassified}
-                disabled={result.misclassifiedRowIds.length === 0}
-                data-testid="select-misclassified-btn"
-              >
-                誤分類サンプル選択 (Misclassified: {result.misclassifiedRowIds.length})
-              </Button>
-            </Space>
-          )}
+            {method === 'stepwise' && <div className="analysis-variable-grid">
+              <AnalysisField label="投入 F値 (F-Enter)" htmlFor="discriminant-f-enter" help="変数を投入する基準です。標準値は3.84です。">
+                <InputNumber id="discriminant-f-enter" aria-describedby="discriminant-f-enter-help" size="small" value={fEnter}
+                  onChange={(v) => setFEnter(v ?? 3.84)} step={0.1} style={{ width: '100%' }} />
+              </AnalysisField>
+              <AnalysisField label="除外 F値 (F-Remove)" htmlFor="discriminant-f-remove" help="変数を除外する基準です。標準値は2.71です。">
+                <InputNumber id="discriminant-f-remove" aria-describedby="discriminant-f-remove-help" size="small" value={fRemove}
+                  onChange={(v) => setFRemove(v ?? 2.71)} step={0.1} style={{ width: '100%' }} />
+              </AnalysisField>
+            </div>}
+          </AnalysisSettings>
+          <AnalysisSettings title="手法と結果の見方" summary="LDA・QDA・Stepwiseと実行済み結果について">
+            <Typography.Text>LDAはクラス間で共通の共分散、QDAはクラスごとの共分散を使います。Stepwiseでは偏F検定により寄与する変数を自動選択します。</Typography.Text>
+            <Typography.Text>欠損を含む行は解析から除外されます。実行後の誤分類サンプル選択やグラフの操作は表示中の結果に対して行います。</Typography.Text>
+          </AnalysisSettings>
+          {result && runScope.dirty && <Typography.Text type="warning" role="status">変数・設定または対象が変更されています。表示中の結果は前回実行分です。再実行すると更新されます。</Typography.Text>}
+          {(!targetColumn || selectedFeatures.length === 0) && <Typography.Text type="secondary" role="status">目的クラスと1つ以上の説明変数を選択してください。</Typography.Text>}
+          <AnalysisRunRow>
+            <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleRunAnalysis} loading={loading}
+              disabled={!selection.datasetId || !targetColumn || selectedFeatures.length === 0} data-testid="run-discriminant-btn"
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }}>
+              判別分析実行 (Run Analysis)
+            </Button>
+          </AnalysisRunRow>
         </div>
+      </Card>
 
+      {result && <Card title="表示中の結果の操作" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
+        <div className="analysis-form-stack">
+          <Typography.Text type="secondary">表示中の実行済み結果から誤分類サンプルを選択します。</Typography.Text>
+          <div className="analysis-inline-fields">
+            <Button icon={<AimOutlined />} danger onClick={handleSelectMisclassified} disabled={result.misclassifiedRowIds.length === 0} data-testid="select-misclassified-btn"
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', textAlign: 'start' }}>
+              誤分類サンプル選択 (Misclassified: {result.misclassifiedRowIds.length})
+            </Button>
+          </div>
+        </div>
         {result && result.excludedRowCount > 0 && (
           <Alert
             type="warning"

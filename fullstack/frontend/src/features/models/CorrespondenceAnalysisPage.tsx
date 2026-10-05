@@ -1,5 +1,7 @@
 import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -10,7 +12,7 @@ import type { AppDispatch, RootState } from '../../app/store'
 import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import type { CAResponse } from './caTypes'
 import type { MapScaling } from './caMap'
@@ -98,7 +100,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     ? [rowVar, colVar].filter((id): id is string => Boolean(id) && !categoricalOptions.some(option => option.value === id))
     : valueCols.filter(id => !numericOptions.some(option => option.value === id))
   const draftKey = JSON.stringify([datasetId, inputKind, rowVar, colVar, rowLabelCol, valueCols,
-    cellSemantics, ack, mapScaling, analysisScope.scopeKey, effectiveMissing, weightChoice,
+    cellSemantics, ack, analysisScope.scopeKey, effectiveMissing, weightChoice,
     selection.dataRevision, schemaRevision, unavailableVariables])
   const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
@@ -125,7 +127,8 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     missingPolicy: effectiveMissing,
   })
 
-  const canRun = unavailableVariables.length === 0 && (inputKind === 'respondents'
+  const weightConflict = inputKind === 'contingency' && weightChoice === 'dataset' && Boolean(savedWeightColumnId)
+  const canRun = !weightConflict && unavailableVariables.length === 0 && (inputKind === 'respondents'
     ? Boolean(datasetId && rowVar && colVar && rowVar !== colVar)
     : Boolean(datasetId && rowLabelCol && valueCols.length >= 2
       && rowLabelOptions.some(option => option.value === rowLabelCol)
@@ -166,7 +169,6 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
         || schemaRef.current !== startedSchemaRev) return
       setCompleted({ result: res, context: startedContext, snapshot: startedScope })
       setSubmittedKey(startedKey)
-      setMapScaling((res.details.mapScaling as MapScaling) ?? 'symmetric')
       setSelectedCats(new Set())
       setSelectInfo(null)
       message.success('コレスポンデンス分析を実行しました。')
@@ -255,106 +257,113 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
     && (result.meta.dataRevision !== liveRevisions.data || result.meta.schemaRevision !== liveRevisions.schema)
   const shownStale = resultStale || effectiveStale
 
+  const openCodebook = () => dispatch(editorModalOpened())
+  const categoricalHint = (side: string) => ({
+    roleLabel: side,
+    reason: '現在の共通選択内に使えるカテゴリ変数がありません。',
+    guidance: '共通選択で対象列を含め、コードブックで尺度が名義・順序・二値のいずれかか確認してください。MA選択肢列は使用できません。',
+    onOpenCodebook: openCodebook,
+  })
+  const missingOptions = [
+    { value: 'exclude', label: '欠損を除外' },
+    { value: 'include_missing', label: '欠損を含める' },
+    { value: 'separate_not_applicable', label: '非該当を分離' },
+  ]
+  const missingLabel = missingOptions.find(option => option.value === effectiveMissing)?.label
+  const weightSummary = weightChoice === 'dataset'
+    ? (savedWeightColumnId ? `重み: データ設定（${savedWeightType ?? '種類未宣言'}）` : '重み: データ設定（なし）') : '重みなし'
+
   if (!datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
   return (
     <div data-testid="correspondence-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {(
-        <Card size="small" title="コレスポンデンス分析 (CA)">
-          <Space wrap align="center">
-            <Radio.Group value={inputKind} onChange={(e) => setInputKind(e.target.value)}>
+      <Card size="small" title="コレスポンデンス分析 (CA)" className="analysis-setup">
+        <div className="analysis-form-stack">
+          <Typography.Text type="secondary">変数と入力形式を選び、必要に応じて次回の分析設定を変更してください。</Typography.Text>
+          <AnalysisField label="入力形式">
+            <Radio.Group aria-label="CAの入力形式" value={inputKind} onChange={(e) => setInputKind(e.target.value)}>
               <Radio.Button value="respondents">回答者データ</Radio.Button>
               <Radio.Button value="contingency">分割表</Radio.Button>
             </Radio.Group>
-            {inputKind === 'respondents' ? (
-              <>
-                <span>行変数</span>
-                <SelectColumn
-                  style={{ minWidth: 200 }}
-                  placeholder="行変数"
-                  value={rowVar}
-                  onChange={(v) => setRowVar(v as string)}
-                  options={categoricalOptions}
-                />
-                <span>列変数</span>
-                <SelectColumn
-                  style={{ minWidth: 200 }}
-                  placeholder="列変数"
-                  value={colVar}
-                  onChange={(v) => setColVar(v as string)}
-                  options={categoricalOptions}
-                />
-              </>
-            ) : (
-              <>
-                <span>行ラベル列</span>
-                <SelectColumn
-                  style={{ minWidth: 180 }}
-                  placeholder="行ラベル"
-                  value={rowLabelCol}
-                  onChange={(v) => setRowLabelCol(v as string)}
-                  options={rowLabelOptions}
-                />
-                <span>セル列</span>
-                <SelectColumn
-                  mode="multiple"
-                  style={{ minWidth: 240 }}
-                  placeholder="数値セル列（2列以上）"
-                  value={valueCols}
-                  onChange={(v) => setValueCols(v as string[])}
-                  options={numericOptions}
-                />
-                <Radio.Group value={cellSemantics} onChange={(e) => setCellSemantics(e.target.value)}>
-                  <Radio.Button value="frequency">frequency</Radio.Button>
-                  <Radio.Button value="mass">mass</Radio.Button>
-                </Radio.Group>
-                {cellSemantics === 'frequency' && (
-                  <label>
-                    <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-                    セルが独立した観測の度数であることを確認する
-                  </label>
-                )}
-              </>
-            )}
-            <AnalysisScopeSummary snapshot={completed?.snapshot} />
-            <Select
-              style={{ minWidth: 140 }}
-              value={inputKind === 'contingency' ? 'exclude' : missingPolicy}
-              onChange={(v) => setMissingPolicy(v)}
-              options={[
-                { value: 'exclude', label: '欠損を除外' },
-                { value: 'include_missing', label: '欠損を含める' },
-                { value: 'separate_not_applicable', label: '非該当を分離' },
-              ]}
-              disabled={inputKind === 'contingency'}
-            />
-            <Select
-              style={{ minWidth: 170 }}
-              value={weightChoice}
-              onChange={(v) => setWeightChoice(v)}
-              options={[
-                { value: 'dataset', label: savedWeightColumnId ? `重み: データ設定 (${savedWeightType ?? '未宣言'})` : '重み: データ設定（なし）' },
-                { value: 'none', label: '重みなし' },
-              ]}
-            />
-            <Radio.Group value={mapScaling} onChange={(e) => setMapScaling(e.target.value)}>
-              <Radio.Button value="symmetric">対称</Radio.Button>
-              <Radio.Button value="row_principal">行主</Radio.Button>
-              <Radio.Button value="column_principal">列主</Radio.Button>
-            </Radio.Group>
-            <Button type="primary" data-testid="ca-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>
-              実行
-            </Button>
-            <SelectionMenu />
-          </Space>
-          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-            重み: {weightChoice === 'dataset' ? (savedWeightColumnId ? `データ設定（${savedWeightType ?? '種類未宣言'}）` : 'データ設定（なし）') : 'なし'}。分割表モードではdataset重みがあると二重ウェイトで実行できません。カテゴリ点に回答者のL1色は割り当てません。
-          </Typography.Text>
+          </AnalysisField>
+          <div className="analysis-variable-grid">
+            {inputKind === 'respondents' ? <>
+              <AnalysisField label="行変数（必須）" htmlFor="ca-row-variable" help="共通選択内のカテゴリ変数から選択します。">
+                <SelectColumn id="ca-row-variable" aria-describedby="ca-row-variable-help" aria-label="CAの行変数" roleName="CAの行変数"
+                  style={{ width: '100%', minWidth: 0 }} placeholder="行変数" value={rowVar}
+                  onChange={(v) => setRowVar(v as string)} options={categoricalOptions}
+                  emptyHint={categoricalHint('行')} />
+              </AnalysisField>
+              <AnalysisField label="列変数（必須）" htmlFor="ca-column-variable" help="行変数とは異なるカテゴリ変数を選択します。">
+                <SelectColumn id="ca-column-variable" aria-describedby="ca-column-variable-help" aria-label="CAの列変数" roleName="CAの列変数"
+                  style={{ width: '100%', minWidth: 0 }} placeholder="列変数" value={colVar}
+                  onChange={(v) => setColVar(v as string)} options={categoricalOptions}
+                  emptyHint={categoricalHint('列')} />
+              </AnalysisField>
+            </> : <>
+              <AnalysisField label="行ラベル列（必須）" htmlFor="ca-row-label" help="カテゴリ・文字列・IDの列を選択します。">
+                <SelectColumn id="ca-row-label" aria-describedby="ca-row-label-help" aria-label="CAの行ラベル列" roleName="CAの行ラベル列"
+                  style={{ width: '100%', minWidth: 0 }} placeholder="行ラベル" value={rowLabelCol}
+                  onChange={(v) => setRowLabelCol(v as string)} options={rowLabelOptions}
+                  emptyHint={{ roleLabel: '行ラベル', reason: '行ラベルに使えるカテゴリ・文字列・ID列がありません。',
+                    guidance: 'コードブックで列の尺度を確認してください。MA選択肢列は使用できません。', onOpenCodebook: openCodebook }} />
+              </AnalysisField>
+              <AnalysisField label="数値セル列（必須・2列以上）" htmlFor="ca-value-columns" help="共通選択内の間隔・比例尺度の列を選択します。">
+                <SelectColumn id="ca-value-columns" aria-describedby="ca-value-columns-help" aria-label="CAの数値セル列" roleName="CAの数値セル列" mode="multiple"
+                  style={{ width: '100%', minWidth: 0 }} placeholder="数値セル列（2列以上）" value={valueCols}
+                  onChange={(v) => setValueCols(v as string[])} options={numericOptions}
+                  emptyHint={{ roleLabel: '数値セル', reason: '現在の共通選択内に使える間隔・比例尺度の列がありません。',
+                    guidance: '共通選択で対象列を含め、コードブックで尺度を確認してください。MA選択肢列は使用できません。', onOpenCodebook: openCodebook }} />
+              </AnalysisField>
+            </>}
+          </div>
+          {inputKind === 'contingency' && <>
+            <AnalysisField label="セル値の意味">
+              <Radio.Group aria-label="CAのセル値の意味" value={cellSemantics} onChange={(e) => setCellSemantics(e.target.value)}>
+                <Radio.Button value="frequency">度数 (frequency)</Radio.Button>
+                <Radio.Button value="mass">質量 (mass)</Radio.Button>
+              </Radio.Group>
+            </AnalysisField>
+            {cellSemantics === 'frequency' && <label>
+              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+              セルが独立した観測の度数であることを確認する
+            </label>}
+            <Typography.Text type="secondary">分割表の対象件数はカテゴリ行数です（回答者数ではありません）。</Typography.Text>
+          </>}
+          <AnalysisScopeSummary snapshot={completed?.snapshot} />
+          <AnalysisSettings title="重み・欠損値（次回の分析）" attention={weightConflict}
+            summary={`${weightSummary} ／ ${missingLabel}`}>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="欠損値の扱い" htmlFor="ca-missing-policy" help={inputKind === 'contingency' ? '分割表では欠損を除外します。' : undefined}>
+                <Select id="ca-missing-policy" aria-describedby={inputKind === 'contingency' ? 'ca-missing-policy-help' : undefined} aria-label="CAの欠損値の扱い" style={{ width: '100%' }}
+                  value={effectiveMissing} onChange={(v) => setMissingPolicy(v)}
+                  options={missingOptions} disabled={inputKind === 'contingency'} />
+              </AnalysisField>
+              <AnalysisField label="重み" htmlFor="ca-weight" help="分割表にデータ設定の重みを重ねて適用することはできません。">
+                <Select id="ca-weight" aria-describedby="ca-weight-help" aria-label="CAの重み" style={{ width: '100%' }} value={weightChoice}
+                  onChange={(v) => setWeightChoice(v)} options={[
+                    { value: 'dataset', label: savedWeightColumnId ? `データ設定 (${savedWeightType ?? '未宣言'})` : 'データ設定（なし）' },
+                    { value: 'none', label: '重みなし' },
+                  ]} />
+              </AnalysisField>
+            </div>
+          </AnalysisSettings>
+          <AnalysisSettings title="入力・配置図のヘルプ" summary="入力形式、重みと配置図の読み方">
+            <Typography.Text>回答者データでは異なる2つのカテゴリ変数を選択します。分割表では行ラベル列と2列以上の数値セル列を選択し、セル値が独立した観測の度数か質量かを指定します。</Typography.Text>
+            <Typography.Text>カテゴリ点に回答者のL1色は割り当てません。配置方法は結果の表示設定で、再推定せずに切り替えられます。</Typography.Text>
+            <CaHelp />
+          </AnalysisSettings>
           {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
-          {inputKind === 'contingency' && <Typography.Text type="secondary">分割表の対象件数はカテゴリ行数です（回答者数ではありません）。</Typography.Text>}
-          {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
-        </Card>
-      )}
+          {weightConflict && <Alert type="warning" message="分割表にはデータ設定の重みを適用できません。「重み・欠損値」で「重みなし」を選択してください。" />}
+          {dirty && <Alert type="warning" message="対象または次回の分析設定が変更されています。表示中の結果は前回実行分です。" />}
+          <AnalysisRunRow>
+            {!canRun && !weightConflict && <Typography.Text type="secondary">{inputKind === 'respondents'
+              ? '異なる行変数と列変数を選択してください。'
+              : '行ラベル列と数値セル列を2列以上選択し、度数の場合は確認してください。'}</Typography.Text>}
+            <Button type="primary" data-testid="ca-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>実行</Button>
+          </AnalysisRunRow>
+        </div>
+      </Card>
       {error && <Alert type="error" message={error} />}
       {loading && <Spin tip="CAを計算中…" />}
       {result && (
@@ -362,8 +371,8 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
           <Card
             size="small"
             title={
-              <Space>
-                <Tag>この結果の対象: {completed?.snapshot.label} / rev {result.meta.dataRevision} (n={result.meta.scopeCount} {(result.config as { input?: { kind?: string } }).input?.kind === 'contingency' ? 'カテゴリ行' : '行'})</Tag>
+              <Space wrap>
+                <Tag className="analysis-status-tag">この結果の対象: {completed?.snapshot.label} / rev {result.meta.dataRevision} (n={result.meta.scopeCount} {(result.config as { input?: { kind?: string } }).input?.kind === 'contingency' ? 'カテゴリ行' : '行'})</Tag>
                 <Tag>有効 {result.meta.fitCount}</Tag>
                 <Tag>{result.meta.weightApplied ? `加重 (${result.meta.weightType ?? ''})` : '非加重'}</Tag>
                 {(result.meta.resultState === 'stale' || shownStale) && <Tag color="orange">stale（古い版）</Tag>}
@@ -371,7 +380,15 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               </Space>
             }
           >
-            <CaHelp />
+            <div className="analysis-setup analysis-form-stack" style={{ marginBottom: 12 }}>
+              <AnalysisField label="配置図の表示設定" htmlFor="ca-map-scaling" help="表示中の結果にすぐ反映します。再推定は不要です。設定JSONは実行時の設定を出力します。">
+                <Radio.Group id="ca-map-scaling" aria-describedby="ca-map-scaling-help" aria-label="CAの配置方法" value={mapScaling} onChange={(e) => setMapScaling(e.target.value)}>
+                  <Radio.Button value="symmetric">対称</Radio.Button>
+                  <Radio.Button value="row_principal">行主</Radio.Button>
+                  <Radio.Button value="column_principal">列主</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
+            </div>
             <GraphPanel
               graphId="ca/map"
               title="行・列カテゴリ配置図"
@@ -430,7 +447,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               <CategoryTable title="行カテゴリ" rows={result.details.rowCategories} rank={rank} />
               <CategoryTable title="列カテゴリ" rows={result.details.columnCategories} rank={rank} />
             </div>
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, overflowX: 'auto' }}>
               <Typography.Text strong>元の二元表</Typography.Text>
               <table style={{ borderCollapse: 'collapse', marginTop: 4 }}>
                 <tbody>

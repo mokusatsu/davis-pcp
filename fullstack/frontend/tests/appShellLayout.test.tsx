@@ -7,6 +7,20 @@ import AppShell from '../src/app/AppShell'
 import { globalObservationsSlice, selectionReducer, store } from '../src/app/store'
 import { SELECTION_LABELS } from '../src/features/selection/selectionLabels'
 
+const drawerMotion = vi.hoisted(() => ({ holdOpening: false, changed: vi.fn() }))
+vi.mock('antd', async importOriginal => {
+  const actual = await importOriginal<typeof import('antd')>()
+  return { ...actual, Drawer: (props: import('antd').DrawerProps) => <actual.Drawer {...props}
+    // Hold the real rc-motion prepare phase. Unlike jsdom's usual no-motion
+    // path, this keeps rc-drawer's animatedVisible false until opening ends.
+    {...(drawerMotion.holdOpening ? { motion: {
+      motionName: 'test-drawer-opening',
+      onAppearPrepare: () => new Promise<void>(() => {}),
+      onEnterPrepare: () => new Promise<void>(() => {}),
+    } } : {})}
+    afterOpenChange={open => { drawerMotion.changed(open); props.afterOpenChange?.(open) }} /> }
+})
+
 vi.mock('../src/app/KeepAliveOutlet', () => ({ default: () => <div data-testid="analysis-content">Analysis content</div> }))
 vi.mock('../src/features/common/LicenseModal', () => ({ default: () => null }))
 vi.mock('../src/features/dataset/CodebookEditorModal', () => ({ default: () => null }))
@@ -19,6 +33,8 @@ vi.mock('../src/api/client', () => ({ api: { get: async () => ({ columns: [], da
 
 let resizeViewport: (width: number) => void
 beforeEach(() => {
+  drawerMotion.holdOpening = false
+  drawerMotion.changed.mockClear()
   let width = 1024
   const queries: { query: MediaQueryList; listeners: Set<(event: MediaQueryListEvent) => void> }[] = []
   const matches = (query: string) => query.includes('min-width')
@@ -151,6 +167,7 @@ it.each(['Escape', 'close', 'mask'])('dismisses and reopens the mobile drawer wi
   const toggle = screen.getByTestId('toggle-sidebar')
   fireEvent.click(toggle)
   const dialog = await screen.findByRole('dialog', { name: '選択行', exact: true })
+  await waitFor(() => expect(drawerMotion.changed).toHaveBeenCalledWith(true))
   const close = within(dialog).getByRole('button', { name: '選択行サイドバーを閉じる' })
   // rc-util downgrades layout effects in NODE_ENV=test, so its portal's initial
   // autofocus runs before attachment in jsdom. Exercise the real focus trap
@@ -164,6 +181,50 @@ it.each(['Escape', 'close', 'mask'])('dismisses and reopens the mobile drawer wi
   expect(toggle).toHaveFocus()
   fireEvent.click(toggle)
   await screen.findByRole('dialog', { name: '選択行', exact: true })
+})
+
+it.each(['Escape', 'close', 'mask'])('restores focus when opening is interrupted before the motion callback (%s)', dismissal => {
+  drawerMotion.holdOpening = true
+  resizeViewport(375)
+  mount()
+  const toggle = screen.getByTestId('toggle-sidebar')
+  for (let attempt = 0; attempt < 2; attempt++) {
+    fireEvent.click(toggle)
+    const dialog = screen.getByRole('dialog', { name: '選択行', exact: true })
+    const close = within(dialog).getByRole('button', { name: '選択行サイドバーを閉じる' })
+    expect(drawerMotion.changed).not.toHaveBeenCalledWith(true)
+    close.focus()
+    if (dismissal === 'Escape') fireEvent.keyDown(close, { key: 'Escape', keyCode: 27 })
+    else if (dismissal === 'close') fireEvent.click(close)
+    else fireEvent.click(dialog.closest('.ant-drawer')!.querySelector('.ant-drawer-mask')!)
+    expect(dialog).not.toBeInTheDocument()
+    expect(drawerMotion.changed).not.toHaveBeenCalledWith(false)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  }
+})
+
+it.each(['route', 'breakpoint'])('does not force focus to the opener when %s changes interrupt opening', async cause => {
+  drawerMotion.holdOpening = true
+  resizeViewport(375)
+  mount(['r1'])
+  const toggle = screen.getByTestId('toggle-sidebar')
+  fireEvent.click(toggle)
+  const dialog = screen.getByRole('dialog', { name: '選択行', exact: true })
+  const focusToggle = vi.spyOn(toggle, 'focus')
+  if (cause === 'route') {
+    fireEvent.click(within(dialog).getByTestId('sidebar-stats-button'))
+    expect(screen.getByTestId('navigation-current')).toHaveTextContent('記述統計（Statistics）')
+  } else {
+    const content = screen.getByRole('main', { name: '分析画面' })
+    content.focus()
+    resizeViewport(768)
+    expect(content).toHaveFocus()
+    expect(screen.getByTestId('selected-sidebar')).toBeInTheDocument()
+  }
+  await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  expect(focusToggle).not.toHaveBeenCalled()
+  expect(drawerMotion.changed).not.toHaveBeenCalled()
 })
 
 it('keeps the mobile drawer connected to central selection and closes it after statistics navigation', async () => {

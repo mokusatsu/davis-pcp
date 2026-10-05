@@ -7,6 +7,8 @@ import { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Table from '../common/ColumnTable'
 import GraphPanel from '../common/GraphPanel'
 import Select from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Card,
@@ -388,124 +390,88 @@ export default function LogisticRegressionPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="logistic-regression-page">
-      <AnalysisScopeSummary snapshot={runScope.snapshot} />
-      {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
-
-      {/* Control Card */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 12]} align="middle">
-          <Col xs={24} sm={12} md={6}>
-            <Typography.Text strong>目的変数 Y (Binary Target):</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              value={targetColumn}
-              onChange={setTargetColumn}
-              options={allColumns.map((c) => ({ label: c, value: c }))}
-              placeholder="目的変数を選択"
-              data-testid="logistic-target-select"
-            />
-          </Col>
-
-          <Col xs={24} sm={12} md={10}>
-            <Typography.Text strong>説明変数 X (Features):</Typography.Text>
-            <Select
-              mode="multiple"
-              style={{ width: '100%', marginTop: 4 }}
-              value={selectedFeatures}
-              onChange={setSelectedFeatures}
-              options={numericColumns.filter((c) => c !== targetColumn).map((c) => ({ label: c, value: c }))}
-              placeholder="説明変数を選択"
-              maxTagCount={3}
-              data-testid="logistic-features-select"
-            />
-          </Col>
-
-          <Col xs={24} sm={12} md={4}>
-            <Typography.Text strong>正則化:</Typography.Text>
-            <div style={{ marginTop: 4 }}>
-              <Radio.Group
-                size="small"
-                value={regularization}
-                onChange={(e) => setRegularization(e.target.value)}
-              >
-                <Radio.Button value="none">None</Radio.Button>
-                <Radio.Button value="l2">L2</Radio.Button>
-                <Radio.Button value="l1">L1</Radio.Button>
-              </Radio.Group>
+      <Card title="ロジスティック回帰の設定" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
+        <div className="analysis-form-stack">
+          <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />
+          <Typography.Text type="secondary">目的変数と説明変数を選び、モデルを学習します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
+          <div className="analysis-variable-grid">
+            <AnalysisField label="目的変数 Y (Binary Target)" htmlFor="logistic-target" help="2クラスを持つ変数を1つ選びます。">
+              <Select id="logistic-target" aria-label="ロジスティック回帰の目的変数" aria-describedby="logistic-target-help"
+                roleName="ロジスティック回帰の目的変数" style={{ width: '100%' }}
+                value={targetColumn} onChange={setTargetColumn}
+                options={allColumns.map((c) => ({ label: c, value: c }))}
+                emptyHint={{ roleLabel: '目的', reason: '目的変数の候補がありません。',
+                  guidance: '共通の有効変数を確認してください。コードブックで質問・属性の役割と尺度を確認できます。MA選択肢は下の追加ボタンから候補に追加します。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                placeholder="目的変数を選択" data-testid="logistic-target-select" />
+            </AnalysisField>
+            <AnalysisField label="説明変数 X (Features)" htmlFor="logistic-features" help="順序・間隔・比率尺度の変数、または追加したMA選択肢を1つ以上選びます。目的変数と同じ列・同じMAの選択肢は除外されます。">
+              <Select id="logistic-features" aria-label="ロジスティック回帰の説明変数" aria-describedby="logistic-features-help"
+                roleName="ロジスティック回帰の説明変数" mode="multiple" style={{ width: '100%' }}
+                value={selectedFeatures} onChange={setSelectedFeatures}
+                options={numericColumns.map((c) => ({ label: c, value: c }))}
+                emptyHint={{ roleLabel: '説明', reason: '説明変数の候補がありません。',
+                  guidance: '共通の有効変数・尺度と目的変数の選択を確認してください。目的変数と同じ列・同じMAの選択肢は候補になりません。MA選択肢は下の追加ボタンから追加できます。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                placeholder="説明変数を選択" maxTagCount={3} data-testid="logistic-features-select" />
+            </AnalysisField>
+          </div>
+          <Space wrap>
+            <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
+              const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
+              setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
+            }} />
+            <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
+          </Space>
+          <AnalysisSettings title="モデルの詳細設定" summary={`正則化: ${regularization === 'none' ? 'なし' : regularization.toUpperCase()}${regularization !== 'none' ? ` / C値: ${cValue}` : ''} / 切片: ${intercept ? 'あり' : 'なし'}`}>
+            <Typography.Text type="secondary">次回のモデル学習に使います。標準設定は正則化なし・切片ありです。</Typography.Text>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="正則化" help="必要に応じてL1・L2を選びます。C値は正則化を使う場合に指定します。">
+                <Radio.Group name="logistic-regularization" aria-label="ロジスティック回帰の正則化" size="small" value={regularization} onChange={(e) => setRegularization(e.target.value)}>
+                  <Radio.Button value="none">None</Radio.Button>
+                  <Radio.Button value="l2">L2</Radio.Button>
+                  <Radio.Button value="l1">L1</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
+              {regularization !== 'none' && <AnalysisField label="C値 (Inverse Penalty)" htmlFor="logistic-c-value" help="正則化の強さの逆数です。値が小さいほど強く正則化します。標準値は1です。">
+                <InputNumber id="logistic-c-value" aria-describedby="logistic-c-value-help" size="small" min={0.001} max={1000} step={0.1}
+                  value={cValue} onChange={(v) => setCValue(v ?? 1.0)} style={{ width: '100%' }} />
+              </AnalysisField>}
             </div>
-            <div style={{ marginTop: 6 }}>
-              <Checkbox checked={intercept} onChange={(e) => setIntercept(e.target.checked)}>
-                切片項 (Intercept)
-              </Checkbox>
-            </div>
-          </Col>
-
-          {regularization !== 'none' && (
-            <Col xs={24} sm={12} md={4}>
-              <Typography.Text strong>C値 (Inverse Penalty):</Typography.Text>
-              <div style={{ marginTop: 4 }}>
-                <InputNumber
-                  size="small"
-                  min={0.001}
-                  max={1000}
-                  step={0.1}
-                  value={cValue}
-                  onChange={(v) => setCValue(v ?? 1.0)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-            </Col>
-          )}
-
-          <Col xs={24} sm={24} md={4} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            <Button
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              onClick={handleRunModel}
-              loading={loading}
-              data-testid="run-logistic-btn"
-              style={{ flex: 1 }}
-            >
+            <Checkbox checked={intercept} onChange={(e) => setIntercept(e.target.checked)}>切片項 (Intercept)</Checkbox>
+          </AnalysisSettings>
+          <AnalysisSettings title="変数と結果の見方" summary="2クラスの目的変数・MA選択肢・分類閾値について">
+            <Typography.Text>目的変数は2クラス、説明変数は数値として扱う変数を選びます。欠損を含む行は解析から除外されます。</Typography.Text>
+            <Typography.Text>実行後のCutoffは、学習済みの予測確率をクラスに分ける閾値です。変更すると混同行列と誤分類の表示が更新されます。係数や予測確率は再推定されません。</Typography.Text>
+          </AnalysisSettings>
+          {result && runScope.dirty && <Typography.Text type="warning" role="status">変数・設定または対象が変更されています。表示中の結果は前回実行分です。再実行すると更新されます。</Typography.Text>}
+          {(!targetColumn || selectedFeatures.length === 0) && <Typography.Text type="secondary" role="status">目的変数と1つ以上の説明変数を選択してください。</Typography.Text>}
+          <AnalysisRunRow>
+            <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleRunModel} loading={loading}
+              disabled={!selection.datasetId || !targetColumn || selectedFeatures.length === 0} data-testid="run-logistic-btn">
               モデル学習 (Run)
             </Button>
-          </Col>
-        </Row>
-        <Space style={{ marginTop: 12 }} wrap>
-          <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
-            const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
-            setAdded({ datasetId: selection.datasetId, names: [...new Set([...(added.datasetId === selection.datasetId ? added.names : []), ...names])] })
-          }} />
-          <Typography.Text type="secondary">追加したMA選択肢は目的変数・説明変数の候補になります。</Typography.Text>
-        </Space>
+          </AnalysisRunRow>
+        </div>
+      </Card>
 
-        {result && (
-          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Typography.Text strong>Cutoff 閾値:</Typography.Text>
-              <Slider
-                min={0.01}
-                max={0.99}
-                step={0.01}
-                value={cutoff}
-                onChange={setCutoff}
-                style={{ width: 180 }}
-                data-testid="logistic-cutoff-slider"
-              />
+      {result && <Card title="表示中の結果の操作" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
+        <div className="analysis-form-stack">
+          <AnalysisField label="分類閾値 (Cutoff)" help="表示中の学習済み予測確率にすぐ反映されます。モデルの再学習は行いません。">
+            <div className="analysis-inline-fields">
+              <Slider ariaLabelForHandle="表示中の結果の分類閾値" min={0.01} max={0.99} step={0.01}
+                value={cutoff} onChange={setCutoff} style={{ width: 180, maxWidth: '100%' }} data-testid="logistic-cutoff-slider" />
               <Tag color="blue">{cutoff.toFixed(2)}</Tag>
             </div>
-
-            <Button
-              icon={<AimOutlined />}
-              onClick={handleSelectMisclassified}
-              danger
-              disabled={!dynamicMetrics || dynamicMetrics.misclassifiedRowIds.length === 0}
-              data-testid="select-misclassified-btn"
-            >
+          </AnalysisField>
+          <div className="analysis-inline-fields">
+            <Button icon={<AimOutlined />} onClick={handleSelectMisclassified} danger
+              disabled={!dynamicMetrics || dynamicMetrics.misclassifiedRowIds.length === 0} data-testid="select-misclassified-btn"
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', textAlign: 'start' }}>
               誤分類サンプルを一括選択 (FP+FN: {dynamicMetrics?.misclassifiedRowIds.length ?? 0})
             </Button>
           </div>
-        )}
-
+        </div>
         {result && result.excludedRowCount > 0 && (
           <Alert
             type="warning"
@@ -521,7 +487,7 @@ export default function LogisticRegressionPage() {
           description="説明変数で2クラスを完全に分離できます。通常の最尤推定では有限の係数が定まらないため、係数・標準誤差・p値・信頼区間を通常の推論として解釈できません。正則化や変数の見直しを検討してください。" />}
         {result?.diagnostics?.completeSeparation === null && <Alert type="warning" showIcon style={{ marginTop: 12 }}
           message="完全分離の診断を確定できませんでした。" />}
-      </Card>
+      </Card>}
 
       {/* Main Content Area */}
       {loading ? (
@@ -545,8 +511,9 @@ export default function LogisticRegressionPage() {
                 size="small"
                 title={
                   <Space wrap size={8}>
-                      <Typography.Text style={{ fontSize: 12 }}>着目軸:</Typography.Text>
+                      <label htmlFor="logistic-focus-axis" style={{ fontSize: 12 }}>表示する着目軸:</label>
                       <Select
+                        id="logistic-focus-axis" aria-label="表示中の結果の着目軸" roleName="表示中の結果の着目軸"
                         size="small"
                         value={focusAxis}
                         onChange={setFocusAxis}

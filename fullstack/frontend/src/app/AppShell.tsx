@@ -576,7 +576,7 @@ export default function AppShell() {
           icon={sidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
           onClick={(event) => {
             if (isMobileSidebar) {
-              // Drawer restores focus to its opener after Escape/mask/close.
+              // Record the opener for Drawer's normal animation-end restore.
               event.currentTarget.focus()
               setMobileSidebarOpen((open) => !open)
             } else setDesktopSidebarOpen((open) => !open)
@@ -606,7 +606,13 @@ export default function AppShell() {
         placement="right"
         width="min(320px, calc(100vw - 24px))"
         open={isMobileSidebar && mobileSidebarOpen}
-        onClose={() => setMobileSidebarOpen(false)}
+        onClose={() => {
+          setMobileSidebarOpen(false)
+          // A close during the opening animation can unmount rc-drawer before
+          // its afterOpenChange(false) focus restore. Handle explicit dismissal
+          // here, without changing route/dataset/breakpoint auto-dismissal.
+          sidebarToggleRef.current?.focus({ preventScroll: true })
+        }}
         closable={{ 'aria-label': '選択行サイドバーを閉じる' }}
         destroyOnHidden
         styles={{ body: { padding: 12 } }}
