@@ -1,5 +1,6 @@
 import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -11,7 +12,7 @@ import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
 import { useRowColorResolver } from '../../theme/useRowColor'
@@ -300,53 +301,28 @@ export default function MultipleCorrespondencePage(): JSX.Element {
   return (
     <div data-testid="mca-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {(
-        <Card size="small" title="多重対応分析（MCA）">
-          <Space wrap align="center">
-            <span>分析変数（2つ以上）</span>
-            <SelectColumn
-              mode="multiple"
-              style={{ minWidth: 280 }}
-              placeholder="nominal/ordinalを選択"
-              value={variables}
-              onChange={(v) => setVariables(v as string[])}
-              options={ordinaryOptions}
-            />
+        <Card size="small" title="多重対応分析（MCA）" className="analysis-setup">
+          <div className="analysis-form-stack">
             <AnalysisScopeSummary snapshot={completed?.snapshot} />
-            <Select
-              style={{ minWidth: 150 }}
-              value={missingPolicy}
-              onChange={(v) => setMissingPolicy(v)}
-              options={[
-                { value: 'exclude', label: '欠損を除外' },
-                { value: 'include_missing', label: '欠損を含める' },
-                { value: 'separate_not_applicable', label: '非該当を分離' },
-              ]}
-            />
-            <Select
-              style={{ minWidth: 130 }}
-              value={weightChoice}
-              onChange={(v) => setWeightChoice(v)}
-              options={[
-                { value: 'dataset', label: '重み:データ設定' },
-                { value: 'none', label: '重み:なし' },
-              ]}
-            />
-            <Select
-              style={{ minWidth: 120 }}
-              value={inertiaAdjustment}
-              onChange={(v) => setInertiaAdjustment(v)}
-              options={[
-                { value: 'raw', label: 'raw慣性' },
-                { value: 'benzecri', label: 'Benzécri補正' },
-              ]}
-            />
-            <Button type="primary" data-testid="mca-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>
-              実行
-            </Button>
-            <SelectionMenu />
-          </Space>
+            <AnalysisField label="分析変数（2つ以上）" htmlFor="mca-variables">
+              <SelectColumn id="mca-variables" mode="multiple" style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={variables} onChange={v => setVariables(v as string[])} options={ordinaryOptions} />
+            </AnalysisField>
+            <AnalysisSettings title="詳細設定" summary={`欠損: ${missingPolicy === 'exclude' ? '除外' : missingPolicy === 'include_missing' ? '含める' : '非該当を分離'} ／ 重み: ${weightChoice === 'dataset' ? 'データ設定' : 'なし'} ／ 慣性: ${inertiaAdjustment === 'raw' ? 'raw' : 'Benzécri'} ／ MA: ${maMode === 'ordinary_only' ? '通常のみ' : '子を含める'}`}>
+              <div className="analysis-variable-grid">
+                <AnalysisField label="欠損値の扱い" htmlFor="mca-missing">
+                  <Select id="mca-missing" style={{ width: '100%' }} value={missingPolicy} onChange={setMissingPolicy} options={[
+                    { value: 'exclude', label: '欠損を除外' }, { value: 'include_missing', label: '欠損を含める' }, { value: 'separate_not_applicable', label: '非該当を分離' },
+                  ]} />
+                </AnalysisField>
+                <AnalysisField label="重み" htmlFor="mca-weight">
+                  <Select id="mca-weight" style={{ width: '100%' }} value={weightChoice} onChange={setWeightChoice} options={[{ value: 'dataset', label: 'データ設定' }, { value: 'none', label: 'なし' }]} />
+                </AnalysisField>
+              <AnalysisField label="慣性の表示" htmlFor="mca-inertia">
+                <Select id="mca-inertia" style={{ width: '100%' }} value={inertiaAdjustment} onChange={setInertiaAdjustment} options={[{ value: 'raw', label: 'raw慣性' }, { value: 'benzecri', label: 'Benzécri補正' }]} />
+              </AnalysisField>
+              </div>
           <Space wrap align="center" style={{ marginTop: 8 }}>
-            <span>MA詳細設定</span>
+            <span>複数回答（MA）の扱い</span>
             <Radio.Group value={maMode} onChange={(e) => setMaMode(e.target.value)}>
               <Radio.Button value="ordinary_only">通常のみ</Radio.Button>
               <Radio.Button value="explicit_binary_options">MA子を含める</Radio.Button>
@@ -354,7 +330,7 @@ export default function MultipleCorrespondencePage(): JSX.Element {
             {maMode === 'explicit_binary_options' && (
               <SelectColumn
                 mode="multiple"
-                style={{ minWidth: 240 }}
+                style={{ width: '100%' }}
                 placeholder="MA子を選択（明示採用のみ）"
                 value={variables.filter((v) => maOptions.some((o) => o.value === v))}
                 onChange={(ids) => {
@@ -365,11 +341,17 @@ export default function MultipleCorrespondencePage(): JSX.Element {
               />
             )}
           </Space>
+
+            </AnalysisSettings>
+          </div>
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
             ordinalは数値間隔を仮定しないカテゴリとして扱います。MA親・count・未解決仮想列は拒否します。MA子は明示選択のみ採用し、非選択もカテゴリです。surveyの推測統計・有意軸は表示しません。
           </Typography.Text>
           {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
           {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
+          <AnalysisRunRow>
+            <Button type="primary" data-testid="mca-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>実行</Button>
+          </AnalysisRunRow>
         </Card>
       )}
       {error && <Alert type="error" message={error} />}

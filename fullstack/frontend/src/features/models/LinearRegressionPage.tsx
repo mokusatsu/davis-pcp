@@ -22,6 +22,7 @@ import {
 } from './lrApi'
 import LinearRegressionFigure from './LinearRegressionFigure'
 import RegularizedRegressionPanel from './RegularizedRegressionPanel'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   const { message: msg, code } = (err ?? {}) as { message?: unknown; code?: unknown }
@@ -35,7 +36,7 @@ export default function LinearRegressionPage(): JSX.Element {
   const [regularizedVisited, setRegularizedVisited] = useState(false)
   const [method, setMethod] = useState<'ols' | 'regularized'>('ols')
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-    <Space wrap><span>回帰の方法:</span>
+    <Space wrap className="analysis-method-switch"><span>回帰の方法:</span>
       <Radio.Group aria-label="回帰の方法" value={method} onChange={event => { close(); setMethod(event.target.value); if (event.target.value === 'regularized') setRegularizedVisited(true) }}>
         <Radio.Button value="ols">通常の重回帰（OLS）</Radio.Button>
         <Radio.Button value="regularized">正則化回帰</Radio.Button>
@@ -60,7 +61,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
   const selection = useSelector((s: RootState) => s.selection)
   const analysisScope = useAnalysisScope()
   const codebook = useCodebook()
-  const { columns, schemaRevision } = codebook
+  const { columns, schemaRevision, weightConfig } = codebook
   const datasetId = selection.datasetId
   const { getColor } = useRowColorResolver()
 
@@ -231,7 +232,41 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
   })
 
   const predictorIds = useMemo(() => [...numSel, ...catSel], [numSel, catSel])
-  const canRun = Boolean(datasetId && target && predictorIds.length >= 1 && !predictorIds.includes(target ?? '') && unavailableVariables.length === 0)
+  const ordinalMissing = numSel.some(id => colById.get(id)?.scaleType === 'ordinal' && !ordinalAck[id])
+  const variableIssue = !datasetId ? 'データセットを選択してください。'
+    : !target ? '目的変数を1列選択してください。'
+      : !predictorIds.length ? '数値またはカテゴリの説明変数を1つ以上選択してください。'
+        : predictorIds.includes(target) ? '目的変数は説明変数に含められません。'
+          : new Set(predictorIds).size !== predictorIds.length ? '同じ列を数値とカテゴリの両方に指定できません。'
+            : unavailableVariables.length ? '使用列が共通選択から外れました。再指定してください。'
+              : ordinalMissing ? '順序変数を数値として使うには、等間隔仮定を確認してください。' : null
+  const surveyWeight = weightChoice === 'dataset' && weightConfig?.weightType === 'survey'
+  const settingsIssues = [
+    !Number.isFinite(confidenceLevel) || confidenceLevel <= 0 || confidenceLevel >= 1
+      ? '信頼水準は0より大きく1未満の値にしてください。' : null,
+    interactions.some(pair => pair.some(id => !predictorIds.includes(id)))
+      ? '交互作用に、現在の説明変数にない列があります。交互作用を削除するか、説明変数に追加してください。' : null,
+    new Set(interactions.map(pair => [...pair].sort().join('\u0000'))).size !== interactions.length
+      ? '同じ交互作用が重複しています。詳細設定で重複を削除してください。' : null,
+    catSel.some(id => references[id] !== undefined && !(colById.get(id)?.categoryOrder ?? []).includes(references[id]!))
+      ? '指定した基準カテゴリが現在の列定義にありません。基準を再指定するか自動に戻してください。' : null,
+    weightChoice === 'dataset' && weightConfig && !['frequency', 'survey'].includes(weightConfig.weightType ?? '')
+      ? '重みの種類が不明です。コードブックの設定を確認するか、明示的に重みなしを選択してください。' : null,
+    surveyWeight && ['hc3', 'classical'].includes(covariance)
+      ? '調査ウェイトには共分散「自動」または「taylor」を選択してください。' : null,
+    covariance === 'taylor' && !surveyWeight
+      ? '共分散「taylor」にはデータ設定の調査ウェイトが必要です。' : null,
+  ].filter((issue): issue is string => Boolean(issue))
+  const canRun = !variableIssue && settingsIssues.length === 0
+  const settingsSummary = [
+    intercept ? '切片あり' : '切片なし',
+    `共分散 ${covariance === 'auto' ? '自動' : covariance}`,
+    `信頼水準 ${Number((confidenceLevel * 100).toFixed(2))}%`,
+    weightChoice === 'none' ? '重みなし' : weightConfig ? `重み ${weightConfig.weightType ?? '不明'}` : 'データ重み未設定（無加重）',
+    missingPolicy === 'exclude' ? '欠損を除外' : missingPolicy === 'include_missing' ? '欠損カテゴリ' : '非該当を分離',
+    ...(interactions.length ? [`交互作用 ${interactions.length}件`] : []),
+    ...(catSel.filter(id => references[id] !== undefined).length ? [`基準カテゴリ指定 ${catSel.filter(id => references[id] !== undefined).length}件`] : []),
+  ].join(' / ')
 
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !target || !canRun) return
@@ -526,86 +561,88 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Card title="重回帰分析" size="small">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '8px 16px', alignItems: 'start' }}>
-          <Space wrap style={{ gridColumn: '1 / -1' }}>
-            <span>対象:</span>
-            <AnalysisScopeSummary snapshot={completed?.snapshot} />
-            <span>重み:</span>
-            <Radio.Group value={weightChoice} onChange={(e) => setWeightChoice(e.target.value)}>
-              <Radio.Button value="dataset">データ設定</Radio.Button>
-              <Radio.Button value="none">なし</Radio.Button>
-            </Radio.Group>
-            <span>欠損:</span>
-            <SelectSetting value={missingPolicy} onChange={setMissingPolicy} style={{ width: 160 }} options={[
-              { value: 'exclude', label: '除外' },
-              { value: 'include_missing', label: '欠損カテゴリ' },
-              { value: 'separate_not_applicable', label: '非該当を分離' },
-            ]} />
-          </Space>
-          <Space wrap style={{ minWidth: 0 }}>
-            <span>目的変数:</span>
-            <SelectColumn value={target} onChange={setTarget} options={targetOptions} placeholder="目的変数を選択" style={{ width: 280 }} />
-          </Space>
-          <Space wrap style={{ minWidth: 0 }}>
-            <span>数値説明変数:</span>
-            <SelectColumn mode="multiple" value={numSel} onChange={setNumSel} style={{ width: 320 }} options={numericOptions} placeholder="数値を選択" />
-          </Space>
+      <Card title="重回帰分析" size="small" className="analysis-setup">
+        <div className="analysis-form-stack">
+          <AnalysisScopeSummary snapshot={completed?.snapshot} />
+          <div className="analysis-variable-grid">
+            <AnalysisField label="目的変数" htmlFor="lr-target" help="予測・説明したい連続の数値を1列選びます。">
+              <SelectColumn id="lr-target" aria-describedby="lr-target-help" value={target} onChange={setTarget} options={targetOptions} placeholder="目的変数を選択" style={{ width: '100%' }} />
+            </AnalysisField>
+            <AnalysisField label="数値説明変数" htmlFor="lr-numeric" help="数値・カテゴリのいずれかから、説明変数を1つ以上選びます。">
+              <SelectColumn id="lr-numeric" aria-describedby="lr-numeric-help" mode="multiple" value={numSel} onChange={setNumSel} style={{ width: '100%' }} options={numericOptions} placeholder="数値を選択" />
+            </AnalysisField>
+            <AnalysisField label="カテゴリ説明変数" htmlFor="lr-categorical" help="グループなどのカテゴリを選びます。使わない場合は空欄で構いません。">
+              <SelectColumn id="lr-categorical" aria-describedby="lr-categorical-help" mode="multiple" value={catSel} onChange={setCatSel} style={{ width: '100%' }} options={categoricalOptions} placeholder="カテゴリを選択" />
+            </AnalysisField>
+          </div>
           {numSel.filter((id) => colById.get(id)?.scaleType === 'ordinal').map((id) => (
-            <Space key={id} style={{ minWidth: 0 }}>
-              <Checkbox checked={Boolean(ordinalAck[id])} onChange={(e) => setOrdinalAck({ ...ordinalAck, [id]: e.target.checked })}>
-                {colById.get(id)?.label ?? id} を順序得点として使用（等間隔仮定）
-              </Checkbox>
-            </Space>
+            <Checkbox key={id} checked={Boolean(ordinalAck[id])} onChange={(e) => setOrdinalAck({ ...ordinalAck, [id]: e.target.checked })}>
+              {colById.get(id)?.label ?? id} を順序得点として使用（等間隔仮定）
+            </Checkbox>
           ))}
-          <Space wrap style={{ minWidth: 0 }}>
-            <span>カテゴリ説明変数:</span>
-            <SelectColumn mode="multiple" value={catSel} onChange={setCatSel} style={{ width: 320 }} options={categoricalOptions} placeholder="カテゴリを選択" />
-          </Space>
-          {catSel.map((id) => (
-            <Space key={id} style={{ minWidth: 0 }}>
-              <span>{colById.get(id)?.label ?? id} の基準:</span>
-              <SelectSetting
-                value={references[id] ?? null}
-                onChange={(v) => setReferences({ ...references, [id]: v ?? undefined })}
-                style={{ width: 240 }}
-                allowClear
-                placeholder="自動（先頭水準）"
-                options={(colById.get(id)?.categoryOrder ?? []).map((c) => ({ value: c, label: c }))}
-              />
-            </Space>
-          ))}
-          <Space wrap style={{ gridColumn: '1 / -1' }}>
-            <span>交互作用:</span>
-            <SelectColumn value={interDraft[0]} onChange={(v) => setInterDraft([v, interDraft[1]])} style={{ width: 200 }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
-            <span>×</span>
-            <SelectColumn value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: 200 }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
-            <Button onClick={() => {
-              if (interDraft[0] && interDraft[1] && interDraft[0] !== interDraft[1]) {
-                setInteractions([...interactions, [interDraft[0], interDraft[1]]])
-                setInterDraft([null, null])
-              }
-            }}>追加</Button>
-            {interactions.map((pair, i) => (
-              <Tag key={i} closable onClose={() => setInteractions(interactions.filter((_, j) => j !== i))}>{pair.join(' × ')}</Tag>
-            ))}
-          </Space>
-          <Space wrap style={{ gridColumn: '1 / -1' }}>
+          <AnalysisSettings title="回帰の詳細設定" summary={settingsSummary} attention={settingsIssues.length > 0}>
+            <Typography.Text type="secondary">必要に応じて変更してください。標準設定は切片あり・共分散自動・信頼水準95%です。</Typography.Text>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="重み" help="データ設定のウェイトを使います。無加重で分析する場合のみ「なし」を選びます。">
+                <Radio.Group aria-label="重回帰の重み" value={weightChoice} onChange={(e) => setWeightChoice(e.target.value)}>
+                  <Radio.Button value="dataset">データ設定</Radio.Button>
+                  <Radio.Button value="none">なし</Radio.Button>
+                </Radio.Group>
+              </AnalysisField>
+              <AnalysisField label="欠損の扱い" htmlFor="lr-missing" help="初期設定は欠損を含む行の除外です。カテゴリとして扱う方法にも変更できます。">
+                <SelectSetting id="lr-missing" aria-describedby="lr-missing-help" value={missingPolicy} onChange={setMissingPolicy} style={{ width: '100%' }} options={[
+                  { value: 'exclude', label: '除外' },
+                  { value: 'include_missing', label: '欠損カテゴリ' },
+                  { value: 'separate_not_applicable', label: '非該当を分離' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="共分散" htmlFor="lr-covariance" help="係数の標準誤差・信頼区間の計算方法です。自動では重みの種類に合わせて選びます。">
+                <SelectSetting id="lr-covariance" aria-describedby="lr-covariance-help" value={covariance} onChange={setCovariance} style={{ width: '100%' }} options={[
+                  { value: 'auto', label: '自動' }, { value: 'hc3', label: 'HC3' },
+                  { value: 'classical', label: 'classical' }, { value: 'taylor', label: 'taylor' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="信頼水準" htmlFor="lr-confidence" help="0〜1で指定します。0.95は95%の信頼区間を表します。">
+                <InputNumber id="lr-confidence" aria-describedby="lr-confidence-help" value={confidenceLevel} onChange={(v) => setConfidenceLevel(typeof v === 'number' ? v : 0.95)} min={0.01} max={0.99} step={0.01} style={{ width: '100%' }} />
+              </AnalysisField>
+            </div>
             <Checkbox checked={intercept} onChange={(e) => setIntercept(e.target.checked)}>切片あり</Checkbox>
-            <span>共分散:</span>
-            <SelectSetting value={covariance} onChange={setCovariance} style={{ width: 160 }} options={[
-              { value: 'auto', label: '自動' },
-              { value: 'hc3', label: 'HC3' },
-              { value: 'classical', label: 'classical' },
-              { value: 'taylor', label: 'taylor' },
-            ]} />
-            <span>信頼水準:</span>
-            <InputNumber value={confidenceLevel} onChange={(v) => setConfidenceLevel(typeof v === 'number' ? v : 0.95)} min={0.01} max={0.99} step={0.01} />
+            {catSel.length > 0 && <div className="analysis-variable-grid">
+              {catSel.map((id) => (
+                <AnalysisField key={id} label={`${colById.get(id)?.label ?? id} の基準`} htmlFor={`lr-reference-${id}`} help="係数を比較する基準カテゴリです。未指定では先頭水準を使います。">
+                  <SelectSetting id={`lr-reference-${id}`} aria-describedby={`lr-reference-${id}-help`} value={references[id] ?? null}
+                    onChange={(v) => setReferences({ ...references, [id]: v ?? undefined })}
+                    style={{ width: '100%' }} allowClear placeholder="自動（先頭水準）"
+                    options={(colById.get(id)?.categoryOrder ?? []).map((c) => ({ value: c, label: c }))} />
+                </AnalysisField>
+              ))}
+            </div>}
+            <AnalysisField label="交互作用" help="ある説明変数の効果が別の変数によって変わる場合に追加します。通常は空欄のまま実行できます。">
+              <div className="analysis-inline-fields">
+                <AnalysisField label="変数1" htmlFor="lr-interaction-first">
+                  <SelectColumn id="lr-interaction-first" value={interDraft[0]} onChange={(v) => setInterDraft([v ?? null, interDraft[1]])} style={{ width: '100%' }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+                </AnalysisField>
+                <AnalysisField label="変数2" htmlFor="lr-interaction-second">
+                  <SelectColumn id="lr-interaction-second" value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: '100%' }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+                </AnalysisField>
+                <Button disabled={!interDraft[0] || !interDraft[1] || interDraft[0] === interDraft[1]} onClick={() => {
+                  if (interDraft[0] && interDraft[1] && interDraft[0] !== interDraft[1]) {
+                    setInteractions([...interactions, [interDraft[0], interDraft[1]]])
+                    setInterDraft([null, null])
+                  }
+                }}>追加</Button>
+              </div>
+              <Space wrap>{interactions.map((pair, i) => (
+                <Tag key={i} closable onClose={() => setInteractions(interactions.filter((_, j) => j !== i))}>{pair.map(id => colById.get(id)?.name ?? id).join(' × ')}</Tag>
+              ))}</Space>
+            </AnalysisField>
+          </AnalysisSettings>
+          {settingsIssues.length > 0 && <Alert data-testid="lr-settings-issues" type="error" showIcon message={settingsIssues.join(' ')} />}
+          {variableIssue && <Typography.Text type="secondary" role="status">{variableIssue}</Typography.Text>}
+          {dirty && <Tag color="orange">対象または設定が変更されています。結果は前回実行分です</Tag>}
+          <AnalysisRunRow>
             <Button data-testid="lr-run" type="primary" onClick={() => void handleRun()} disabled={!canRun} loading={loading}>実行</Button>
-            {dirty && <Tag color="orange">対象または設定が変更されています。結果は前回実行分です</Tag>}
-          </Space>
-          {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
-          {!canRun && <Typography.Text type="secondary">目的変数1列・説明変数1つ以上（目的変数と重複不可）を選択してください。</Typography.Text>}
+          </AnalysisRunRow>
         </div>
       </Card>
 

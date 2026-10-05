@@ -1,0 +1,35 @@
+.analysis-setup { min-width: 0; }
+.analysis-form-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.analysis-variable-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; align-items: start; }
+.analysis-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.analysis-field-label { font-weight: 500; overflow-wrap: anywhere; }
+.analysis-field > span[data-testid] { display: block; min-width: 0; width: 100%; }
+.analysis-field-help, .analysis-settings-summary { color: #666; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.analysis-inline-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
+.analysis-inline-fields > * { max-width: 100%; }
+.analysis-settings { border: 1px solid #d9d9d9; border-radius: 8px; background: #fafafa; min-width: 0; }
+.analysis-settings > summary { cursor: pointer; padding: 12px; overflow-wrap: anywhere; }
+.analysis-settings > summary:focus-visible { outline: 2px solid #1677ff; outline-offset: 2px; border-radius: 6px; }
+.analysis-settings-title { font-weight: 500; }
+.analysis-settings-summary { display: block; padding-inline-start: 17px; margin-top: 4px; }
+.analysis-settings-attention { display: block; color: #ad6800; padding-inline-start: 17px; font-size: 12px; }
+.analysis-settings-content { padding: 0 12px 12px; }
+.analysis-run-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; min-width: 0; }
+.analysis-run-row > .ant-btn { flex-shrink: 0; }
+.analysis-run-row > :not(.ant-btn) { min-width: 0; overflow-wrap: anywhere; }
+.analysis-status-tag,
+.analysis-setup .analysis-run-row > .ant-tag,
+.analysis-setup .analysis-form-stack > .ant-tag { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.analysis-setup .ant-space-item { min-width: 0; max-width: 100%; }
+.analysis-setup .ant-radio-group { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
+.analysis-setup .ant-radio-button-wrapper, .analysis-method-switch .ant-radio-button-wrapper { height: auto; min-height: 32px; white-space: normal; }
+.analysis-method-switch { min-width: 0; }
+.analysis-method-switch .ant-radio-group { display: inline-flex; flex-wrap: wrap; }
+.analysis-setup .ant-alert-message, .analysis-setup .ant-typography { overflow-wrap: anywhere; }
+.analysis-setup .ant-input-number, .analysis-setup .ant-select, .analysis-setup .ant-input { max-width: 100%; }
+.analysis-setup .ant-card-head { min-width: 0; }
+.analysis-setup .ant-card-head-title { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 575px) {
+  .analysis-setup .ant-card-body { padding: 12px; }
+  .analysis-run-row { align-items: flex-start; }
+}

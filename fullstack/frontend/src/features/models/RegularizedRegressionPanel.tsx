@@ -4,6 +4,7 @@ import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select, Space
 import { selectOrdinaryVariables, type RootState } from '../../app/store'
 import ColumnSelect from '../common/ColumnSelect'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
 import { useRequestIdentity } from '../common/useRequestIdentity'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { AnalysisScopeSummary, captureAnalysisRunContext, useAnalysisScope, useAnalysisViewActive, type AnalysisScopeSnapshot } from '../selection/analysisScope'
@@ -216,6 +217,40 @@ export default function RegularizedRegressionPanel(): JSX.Element {
     && maxIterations !== null && Number.isInteger(maxIterations) && maxIterations >= 100 && maxIterations <= 100000
   const canRun = validVariables && validSolver && !unsupportedWeight && !codebookLoading
     && (selectionMode === 'cv' ? validCV : validLambda && (algorithm !== 'elasticnet' || validRatio))
+  const variableIssue = !datasetId ? 'データセットを選択してください。'
+    : codebookLoading ? '変数の情報を読み込んでいます。'
+      : !target ? '目的変数を1列選択してください。'
+        : !predictorIds.length ? '数値またはカテゴリの説明変数を1つ以上選択してください。'
+          : predictorIds.includes(target) ? '目的変数は説明変数に含められません。'
+            : new Set(predictorIds).size !== predictorIds.length ? '同じ列を数値とカテゴリの両方に指定できません。'
+              : unavailableVariables.length ? '使用列が共通選択から外れました。再指定してください。'
+                : ordinalMissing ? '順序変数を数値として使うには、等間隔仮定を確認してください。' : null
+  const settingsIssues = [
+    weightError,
+    selectionMode === 'manual' && !validLambda ? 'λ は有限の正の値が必要です。λ=0 は通常の重回帰（OLS）を選択してください。' : null,
+    selectionMode === 'manual' && algorithm === 'elasticnet' && !validRatio
+      ? 'Elastic Net のρは0より大きく1未満です。0はRidge、1はLassoを選択してください。' : null,
+    selectionMode === 'cv' && groupedCV
+      ? 'PSU・層・反復ウェイトの設定があるデータにランダム行CVは使えません。グループ依存に対応するCVは未実装です。' : null,
+    selectionMode === 'cv' ? lambdaCandidates.error : null,
+    selectionMode === 'cv' && algorithm === 'elasticnet' ? ratioCandidates.error : null,
+    selectionMode === 'cv' && (folds === null || !Number.isInteger(folds) || folds < 2 || folds > 20)
+      ? 'CVのfold数は2〜20の整数にしてください。' : null,
+    selectionMode === 'cv' && (seed === null || !Number.isInteger(seed) || seed < 0 || seed > 4294967295)
+      ? 'CVのseedは0〜4294967295の整数にしてください。' : null,
+    selectionMode === 'cv' && folds !== null && lambdaCandidates.values.length * (algorithm === 'elasticnet' ? ratioCandidates.values.length : 1) * folds > 2000
+      ? 'CVの候補数×fold数は合計2000 fits以内にしてください。' : null,
+    selectionMode === 'cv' && !independentRows ? 'CVを使うには、各行を独立した観測として分割できることを確認してください。' : null,
+    !validSolver ? '許容誤差は0より大きく0.1以下、最大反復回数は100〜100000の整数にしてください。' : null,
+  ].filter((issue): issue is string => Boolean(issue))
+  const settingsSummary = [
+    selectionMode === 'manual' ? `手動 λ=${lambdaValue ?? '未指定'}（固定値・CV未使用）${algorithm === 'elasticnet' ? ` / ρ=${l1Ratio ?? '未指定'}` : ''}`
+      : `CV ${folds ?? '未指定'}分割 / seed=${seed ?? '未指定'} / λ候補 ${lambdaCandidates.values.length}個${lambdaGrid !== '0.001, 0.01, 0.1, 1, 10' ? '（変更あり）' : ''}${algorithm === 'elasticnet' ? ` / ρ候補 ${ratioCandidates.values.length}個${ratioGrid !== '0.1, 0.5, 0.9' ? '（変更あり）' : ''}` : ''}`,
+    standardize ? '標準化あり' : '標準化なし', intercept ? '切片あり' : '切片なし',
+    weightChoice === 'none' ? '重みなし' : weightConfig ? `重み ${weightConfig.weightType ?? '不明'}` : 'データ重み未設定（無加重）',
+    missingPolicy === 'exclude' ? '欠損を除外' : missingPolicy === 'include_missing' ? '欠損カテゴリ' : '非該当を分離',
+    ...(tolerance !== 1e-8 || maxIterations !== 10000 ? [`許容誤差 ${tolerance ?? '未指定'} / 最大反復 ${maxIterations ?? '未指定'}`] : []),
+  ].join(' / ')
   const draftKey = JSON.stringify([identity, target, numeric, categorical, ordinalAcknowledged, intercept, standardize,
     lambdaValue, missingPolicy, weightChoice, scope.scopeKey, unavailableVariables, weightConfig, surveyDesign,
     algorithm, l1Ratio, selectionMode, folds, seed, lambdaGrid, ratioGrid, independentRows, tolerance, maxIterations])
@@ -381,70 +416,99 @@ export default function RegularizedRegressionPanel(): JSX.Element {
   const activePredictionRows = predictionRows?.predictionId === activePrediction?.response.predictionId ? predictionRows : null
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-    <Card title="正則化回帰" size="small">
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <Space wrap><AnalysisScopeSummary snapshot={result ? completed?.scope : null} />
-          <span>重み:</span><Radio.Group aria-label="正則化の重み" value={weightChoice} onChange={event => setWeightChoice(event.target.value)}>
-            <Radio.Button value="dataset">データ設定</Radio.Button><Radio.Button value="none">なし（明示）</Radio.Button>
-          </Radio.Group>
-          <span>{weightChoice === 'none' ? '無加重' : weightConfig ? `${weightConfig.weightType ?? '不明'}: ${weightConfig.weightColumnId}` : 'データ重み未設定（無加重）'}</span>
-          <Select aria-label="正則化の欠損処理" value={missingPolicy} onChange={setMissingPolicy} style={{ width: 180 }} options={[
-            { value: 'exclude', label: '欠損を除外' }, { value: 'include_missing', label: '欠損カテゴリ' },
-            { value: 'separate_not_applicable', label: '非該当を分離' },
-          ]} />
-        </Space>
-        {weightError && <Alert type="error" message={weightError} showIcon />}
-        {weightChoice === 'none' && weightConfig && <Alert type="warning" message="明示的に無加重を選択しています。データに設定されたウェイトは学習・評価に使用しません。" showIcon />}
-        <Space wrap>
-          <span>目的変数:</span><ColumnSelect aria-label="正則化の目的変数" placeholder="正則化の目的変数" value={target} onChange={setTarget} options={targetOptions} style={{ width: 280 }} />
-          <span>数値説明変数:</span><ColumnSelect aria-label="正則化の数値説明変数" placeholder="正則化の数値説明変数" mode="multiple" value={numeric} onChange={setNumeric} options={numericOptions} style={{ width: 320 }} />
-          <span>カテゴリ説明変数:</span><ColumnSelect aria-label="正則化のカテゴリ説明変数" placeholder="正則化のカテゴリ説明変数" mode="multiple" value={categorical} onChange={setCategorical} options={categoricalOptions} style={{ width: 320 }} />
-        </Space>
+    <Card title="正則化回帰" size="small" className="analysis-setup">
+      <div className="analysis-form-stack">
+        <AnalysisScopeSummary snapshot={result ? completed?.scope : null} />
+        <div className="analysis-variable-grid">
+          <AnalysisField label="目的変数" htmlFor="rr-target" help="予測したい連続の数値を1列選びます。">
+            <ColumnSelect id="rr-target" aria-describedby="rr-target-help" aria-label="正則化の目的変数" placeholder="正則化の目的変数" value={target} onChange={setTarget} options={targetOptions} style={{ width: '100%' }} />
+          </AnalysisField>
+          <AnalysisField label="数値説明変数" htmlFor="rr-numeric" help="数値・カテゴリのいずれかから、説明変数を1つ以上選びます。">
+            <ColumnSelect id="rr-numeric" aria-describedby="rr-numeric-help" aria-label="正則化の数値説明変数" placeholder="正則化の数値説明変数" mode="multiple" value={numeric} onChange={setNumeric} options={numericOptions} style={{ width: '100%' }} />
+          </AnalysisField>
+          <AnalysisField label="カテゴリ説明変数" htmlFor="rr-categorical" help="グループなどのカテゴリを選びます。使わない場合は空欄で構いません。">
+            <ColumnSelect id="rr-categorical" aria-describedby="rr-categorical-help" aria-label="正則化のカテゴリ説明変数" placeholder="正則化のカテゴリ説明変数" mode="multiple" value={categorical} onChange={setCategorical} options={categoricalOptions} style={{ width: '100%' }} />
+          </AnalysisField>
+        </div>
         {numeric.filter(id => columnById.get(id)?.scaleType === 'ordinal').map(id => <Checkbox key={id} checked={Boolean(ordinalAcknowledged[id])}
           onChange={event => setOrdinalAcknowledged(previous => ({ ...previous, [id]: event.target.checked }))}>
           {columnById.get(id)?.label ?? id} を順序得点として使用（等間隔仮定）</Checkbox>)}
-        <Space wrap>
-          <Radio.Group aria-label="正則化アルゴリズム" value={algorithm} onChange={event => setAlgorithm(event.target.value)}>
+        <AnalysisField label="アルゴリズム" help="Ridgeは係数を縮小し、Lassoは変数の絞り込みも行います。Elastic Netは両方を組み合わせます。">
+          <Radio.Group className="analysis-method-switch" aria-label="正則化アルゴリズム" value={algorithm} onChange={event => setAlgorithm(event.target.value)}>
             <Radio.Button value="ridge">Ridge</Radio.Button><Radio.Button value="lasso">Lasso</Radio.Button><Radio.Button value="elasticnet">Elastic Net</Radio.Button>
           </Radio.Group>
-          <Radio.Group aria-label="正則化強度の選択" value={selectionMode} onChange={event => setSelectionMode(event.target.value)}>
-            <Radio.Button value="manual">手動</Radio.Button><Radio.Button value="cv">交差検証（CV）</Radio.Button>
-          </Radio.Group>
-          {selectionMode === 'manual' && <label>λ（正の値） <InputNumber aria-label="正則化強度 λ" value={lambdaValue} onChange={setLambdaValue} step={0.1} /></label>}
-          {selectionMode === 'manual' && algorithm === 'elasticnet' && <label>L1比率 ρ <InputNumber aria-label="L1比率 ρ" value={l1Ratio} onChange={setL1Ratio} step={0.1} /></label>}
-          <Checkbox checked={intercept} onChange={event => setIntercept(event.target.checked)}>切片あり</Checkbox>
-          <Checkbox checked={standardize} onChange={event => setStandardize(event.target.checked)}>説明変数を学習時に標準化</Checkbox>
-        </Space>
-        {selectionMode === 'manual' && !validLambda && <Alert type="error" message="λ は有限の正の値が必要です。λ=0 は通常の重回帰（OLS）を選択してください。" />}
-        {selectionMode === 'manual' && algorithm === 'elasticnet' && !validRatio && <Alert type="error" message="Elastic Net のρは0より大きく1未満です。0はRidge、1はLassoを選択してください。" />}
-        {selectionMode === 'cv' && <Space direction="vertical" style={{ width: '100%' }}>
-          <Space wrap>
-            <label>fold数 <InputNumber aria-label="CV fold数" value={folds} onChange={setFolds} min={2} max={20} precision={0} /></label>
-            <label>seed <InputNumber aria-label="CV seed" value={seed} onChange={setSeed} min={0} max={4294967295} precision={0} /></label>
-            <label>λ候補（カンマ区切り） <Input aria-label="CV λ候補" value={lambdaGrid} onChange={event => setLambdaGrid(event.target.value)} style={{ width: 300 }} /></label>
-            {algorithm === 'elasticnet' && <label>ρ候補（0.01以上1未満） <Input aria-label="CV ρ候補" value={ratioGrid} onChange={event => setRatioGrid(event.target.value)} style={{ width: 220 }} /></label>}
-          </Space>
-          <Checkbox checked={independentRows} onChange={event => setIndependentRows(event.target.checked)}>各行を独立した観測としてランダムに分割してよいことを確認しました</Checkbox>
-          {groupedCV && <Alert type="error" message="PSU・層・反復ウェイトの設定があるデータにランダム行CVは使えません。グループ依存に対応するCVは未実装です。" />}
-          {lambdaCandidates.error && <Alert type="error" message={lambdaCandidates.error} />}
-          {algorithm === 'elasticnet' && ratioCandidates.error && <Alert type="error" message={ratioCandidates.error} />}
-          {!validCV && !lambdaCandidates.error && (algorithm !== 'elasticnet' || !ratioCandidates.error) && !groupedCV && <Typography.Text type="warning">独立性の確認、fold数2〜20、uint32のseed、合計2000 fits以内の候補を指定してください。</Typography.Text>}
-          <Typography.Text type="secondary">分割単位はデータの行です。frequencyの複製を別foldには分けません。foldの学習行だけで尺度・カテゴリを決め、検証加重SSE合計÷検証重み合計を最小化します。</Typography.Text>
-          <Alert type="warning" message="既存の変換・補完列の上流処理について、CVの情報漏洩は検証できません。グループ・時系列・反復測定の依存がある場合はランダム行CVを使わないでください。" />
-        </Space>}
-        <details><summary>ソルバーの詳細設定</summary><Space wrap style={{ paddingTop: 8 }}>
-          <label>許容誤差 <InputNumber aria-label="ソルバー許容誤差" value={tolerance} onChange={setTolerance} /></label>
-          <label>最大反復回数 <InputNumber aria-label="ソルバー最大反復回数" value={maxIterations} onChange={setMaxIterations} min={100} max={100000} precision={0} /></label>
-        </Space></details>
-        {!validSolver && <Alert type="error" message="許容誤差は0より大きく0.1以下、最大反復回数は100〜100000の整数にしてください。" />}
-        {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
-        {!validVariables && <Typography.Text type="secondary">連続の目的変数1列と説明変数1つ以上を指定してください。重複列は使えず、順序得点には確認が必要です。</Typography.Text>}
-        <Typography.Text type="secondary">主効果のみ・点予測専用。目的変数の標準化や補完は行いません。既存の変換列は現在の値を入力に使用します。</Typography.Text>
-        <Space wrap><Button type="primary" data-testid="rr-run" disabled={!canRun || loading} loading={loading} onClick={() => void handleRun()}>正則化を実行</Button>
+        </AnalysisField>
+        <AnalysisSettings title="正則化の詳細設定" summary={settingsSummary} attention={settingsIssues.length > 0}>
+          <Typography.Text type="secondary">初期設定はRidge・手動 λ=0.1・標準化ありです。λ=0.1は固定の初期値で、このデータに合わせて調整した値ではありません。</Typography.Text>
+          <AnalysisField label="正則化強度の選び方" help="手動では指定した強度を使います。交差検証（CV）では候補を比較して強度を選びます。">
+            <Radio.Group aria-label="正則化強度の選択" value={selectionMode} onChange={event => setSelectionMode(event.target.value)}>
+              <Radio.Button value="manual">手動</Radio.Button><Radio.Button value="cv">交差検証（CV）</Radio.Button>
+            </Radio.Group>
+          </AnalysisField>
+          {selectionMode === 'manual' && <div className="analysis-variable-grid">
+            <AnalysisField label="正則化強度 λ" htmlFor="rr-lambda" help="大きいほど係数を強く縮小します。0より大きい値を指定します。">
+              <InputNumber id="rr-lambda" aria-describedby="rr-lambda-help" aria-label="正則化強度 λ" value={lambdaValue} onChange={setLambdaValue} step={0.1} style={{ width: '100%' }} />
+            </AnalysisField>
+            {algorithm === 'elasticnet' && <AnalysisField label="L1比率 ρ" htmlFor="rr-ratio" help="0に近いほどRidge寄り、1に近いほどLasso寄りです。0と1の間を指定します。">
+              <InputNumber id="rr-ratio" aria-describedby="rr-ratio-help" aria-label="L1比率 ρ" value={l1Ratio} onChange={setL1Ratio} step={0.1} style={{ width: '100%' }} />
+            </AnalysisField>}
+          </div>}
+          {selectionMode === 'cv' && <div className="analysis-form-stack">
+            <div className="analysis-variable-grid">
+              <AnalysisField label="fold数" htmlFor="rr-folds" help="学習と検証に分ける数です。2〜20で指定します。">
+                <InputNumber id="rr-folds" aria-describedby="rr-folds-help" aria-label="CV fold数" value={folds} onChange={setFolds} min={2} max={20} precision={0} style={{ width: '100%' }} />
+              </AnalysisField>
+              <AnalysisField label="seed" htmlFor="rr-seed" help="ランダム分割を再現するための整数です。">
+                <InputNumber id="rr-seed" aria-describedby="rr-seed-help" aria-label="CV seed" value={seed} onChange={setSeed} min={0} max={4294967295} precision={0} style={{ width: '100%' }} />
+              </AnalysisField>
+              <AnalysisField label="λ候補（カンマ区切り）" htmlFor="rr-lambda-grid" help="比較する正の強度を指定します。候補数×fold数は合計2000以下です。">
+                <Input id="rr-lambda-grid" aria-describedby="rr-lambda-grid-help" aria-label="CV λ候補" value={lambdaGrid} onChange={event => setLambdaGrid(event.target.value)} />
+              </AnalysisField>
+              {algorithm === 'elasticnet' && <AnalysisField label="ρ候補（カンマ区切り）" htmlFor="rr-ratio-grid" help="0.01以上1未満の比率を比較します。各λ候補と組み合わせます。">
+                <Input id="rr-ratio-grid" aria-describedby="rr-ratio-grid-help" aria-label="CV ρ候補" value={ratioGrid} onChange={event => setRatioGrid(event.target.value)} />
+              </AnalysisField>}
+            </div>
+            <Checkbox checked={independentRows} onChange={event => setIndependentRows(event.target.checked)}>各行を独立した観測としてランダムに分割してよいことを確認しました</Checkbox>
+            <Typography.Text type="secondary">分割単位はデータの行です。frequencyの複製を別foldには分けません。foldの学習行だけで尺度・カテゴリを決め、検証加重SSE合計÷検証重み合計を最小化します。</Typography.Text>
+            <Alert type="warning" message="既存の変換・補完列の上流処理について、CVの情報漏洩は検証できません。グループ・時系列・反復測定の依存がある場合はランダム行CVを使わないでください。" />
+          </div>}
+          <AnalysisField label="前処理" help="初期設定は説明変数の標準化あり・切片ありです。目的変数の標準化や欠損の補完は行いません。">
+            <Space wrap>
+              <Checkbox checked={intercept} onChange={event => setIntercept(event.target.checked)}>切片あり</Checkbox>
+              <Checkbox checked={standardize} onChange={event => setStandardize(event.target.checked)}>説明変数を学習時に標準化</Checkbox>
+            </Space>
+          </AnalysisField>
+          <div className="analysis-variable-grid">
+            <AnalysisField label="重み" help="frequencyのウェイトに対応します。無加重へは自動で切り替えません。">
+              <Radio.Group aria-label="正則化の重み" value={weightChoice} onChange={event => setWeightChoice(event.target.value)}>
+                <Radio.Button value="dataset">データ設定</Radio.Button><Radio.Button value="none">なし（明示）</Radio.Button>
+              </Radio.Group>
+              <Typography.Text type="secondary">{weightChoice === 'none' ? '無加重' : weightConfig ? `${weightConfig.weightType ?? '不明'}: ${weightConfig.weightColumnId}` : 'データ重み未設定（無加重）'}</Typography.Text>
+            </AnalysisField>
+            <AnalysisField label="欠損の扱い" htmlFor="rr-missing" help="初期設定は欠損を含む行の除外です。カテゴリとして扱う方法にも変更できます。">
+              <Select id="rr-missing" aria-describedby="rr-missing-help" aria-label="正則化の欠損処理" value={missingPolicy} onChange={setMissingPolicy} style={{ width: '100%' }} options={[
+                { value: 'exclude', label: '欠損を除外' }, { value: 'include_missing', label: '欠損カテゴリ' },
+                { value: 'separate_not_applicable', label: '非該当を分離' },
+              ]} />
+            </AnalysisField>
+            <AnalysisField label="ソルバー許容誤差" htmlFor="rr-tolerance" help="収束判定の厳しさです。通常は初期値1e-8のまま使えます。">
+              <InputNumber id="rr-tolerance" aria-describedby="rr-tolerance-help" aria-label="ソルバー許容誤差" value={tolerance} onChange={setTolerance} style={{ width: '100%' }} />
+            </AnalysisField>
+            <AnalysisField label="ソルバー最大反復回数" htmlFor="rr-iterations" help="計算の上限です。初期値は10000回です。">
+              <InputNumber id="rr-iterations" aria-describedby="rr-iterations-help" aria-label="ソルバー最大反復回数" value={maxIterations} onChange={setMaxIterations} min={100} max={100000} precision={0} style={{ width: '100%' }} />
+            </AnalysisField>
+          </div>
+        </AnalysisSettings>
+        {weightChoice === 'none' && weightConfig && <Alert type="warning" message="明示的に無加重を選択しています。データに設定されたウェイトは学習・評価に使用しません。" showIcon />}
+        <Typography.Text type="secondary">主効果のみ・点予測専用。既存の変換列は現在の値を入力に使用します。</Typography.Text>
+        {settingsIssues.length > 0 && <Alert data-testid="rr-settings-issues" type="error" showIcon message={settingsIssues.join(' ')} />}
+        {variableIssue && <Typography.Text type="secondary" role="status">{variableIssue}</Typography.Text>}
+        {dirty && <Tag color="orange">対象または設定が変更されています。結果と出力は前回の完了モデルです</Tag>}
+        <AnalysisRunRow>
           {(loading || predicting) && <Button onClick={cancelPending}>待機をキャンセル</Button>}
-          {dirty && <Tag color="orange">対象または設定が変更されています。結果と出力は前回の完了モデルです</Tag>}
-        </Space>
-      </Space>
+          <Button type="primary" data-testid="rr-run" disabled={!canRun || loading} loading={loading} onClick={() => void handleRun()}>正則化を実行</Button>
+        </AnalysisRunRow>
+      </div>
     </Card>
     {error && <Alert type="error" message={error} showIcon />}
     {notice && <Alert type="info" message={notice} />}

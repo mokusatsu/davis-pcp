@@ -1,5 +1,6 @@
 import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -12,7 +13,7 @@ import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
-import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
+import { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
 import L1Legend from '../common/L1Legend'
 import { useRowColorResolver } from '../../theme/useRowColor'
@@ -375,51 +376,32 @@ export default function FamdPage(): JSX.Element {
   return (
     <div data-testid="famd-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {(
-        <Card size="small" title="混合データ因子分析（FAMD）">
-          <Space wrap align="center">
-            <span>数値列</span>
-            <SelectColumn
-              mode="multiple"
-              style={{ minWidth: 280 }}
-              placeholder="interval/ratioを選択"
-              value={numericVars}
-              onChange={(v) => setNumericVars(v as string[])}
-              options={numericOptions}
-            />
-            <span>カテゴリ列</span>
-            <SelectColumn
-              mode="multiple"
-              style={{ minWidth: 280 }}
-              placeholder="nominal/ordinalを選択"
-              value={categoricalVars}
-              onChange={(v) => setCategoricalVars(v as string[])}
-              options={categoricalOptions}
-            />
+        <Card size="small" title="混合データ因子分析（FAMD）" className="analysis-setup">
+          <div className="analysis-form-stack">
             <AnalysisScopeSummary snapshot={completed?.snapshot} />
-            <Select
-              style={{ minWidth: 150 }}
-              value={missingPolicy}
-              onChange={(v) => setMissingPolicy(v)}
-              options={[
-                { value: 'exclude', label: '欠損を除外' },
-                { value: 'include_missing', label: '欠損を含める' },
-                { value: 'separate_not_applicable', label: '非該当を分離' },
-              ]}
-            />
-            <Select
-              style={{ minWidth: 130 }}
-              value={weightChoice}
-              onChange={(v) => setWeightChoice(v)}
-              options={[
-                { value: 'dataset', label: '重み:データ設定' },
-                { value: 'none', label: '重み:なし' },
-              ]}
-            />
-            <Button type="primary" data-testid="famd-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>
-              実行
-            </Button>
-            <SelectionMenu />
-          </Space>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="数値列" htmlFor="famd-numeric" help="間隔・比例尺度の列を1つ以上">
+                <SelectColumn id="famd-numeric" aria-describedby="famd-numeric-help" mode="multiple" style={{ width: '100%' }} placeholder="interval/ratioを選択" value={numericVars} onChange={v => setNumericVars(v as string[])} options={numericOptions} />
+              </AnalysisField>
+              <AnalysisField label="カテゴリ列" htmlFor="famd-categorical" help="名義・順序尺度の列を1つ以上">
+                <SelectColumn id="famd-categorical" aria-describedby="famd-categorical-help" mode="multiple" style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={categoricalVars} onChange={v => setCategoricalVars(v as string[])} options={categoricalOptions} />
+              </AnalysisField>
+            </div>
+            <AnalysisSettings title="詳細設定" summary={`欠損: ${missingPolicy === 'exclude' ? '除外' : missingPolicy === 'include_missing' ? '含める' : '非該当を分離'} ／ 重み: ${weightChoice === 'dataset' ? 'データ設定' : 'なし'}`}>
+              <div className="analysis-variable-grid">
+                <AnalysisField label="欠損値の扱い" htmlFor="famd-missing">
+                  <Select id="famd-missing" style={{ width: '100%' }} value={missingPolicy} onChange={setMissingPolicy} options={[
+                    { value: 'exclude', label: '欠損を除外' }, { value: 'include_missing', label: '欠損を含める' }, { value: 'separate_not_applicable', label: '非該当を分離' },
+                  ]} />
+                </AnalysisField>
+                <AnalysisField label="重み" htmlFor="famd-weight">
+                  <Select id="famd-weight" style={{ width: '100%' }} value={weightChoice} onChange={setWeightChoice} options={[{ value: 'dataset', label: 'データ設定' }, { value: 'none', label: 'なし' }]} />
+                </AnalysisField>
+
+              </div>
+
+            </AnalysisSettings>
+          </div>
           <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
             ordinalは等間隔得点に変換しません。数値化が必要な場合は既存変換で派生列を作成してください。MA親・子・countは指定できません。
           </Typography.Text>
@@ -433,6 +415,9 @@ export default function FamdPage(): JSX.Element {
           )}
           {unavailableVariables.length > 0 && <Alert type="warning" message="使用列が共通選択から外れました。再指定してください。" />}
           {dirty && <Alert type="warning" style={{ marginTop: 8 }} message="対象または設定が変更されています。結果は前回実行分です。" />}
+          <AnalysisRunRow>
+            <Button type="primary" data-testid="famd-run" loading={loading} disabled={!canRun} onClick={() => void handleRun()}>実行</Button>
+          </AnalysisRunRow>
         </Card>
       )}
       {error && <Alert type="error" message={error} />}

@@ -7,14 +7,14 @@ import * as rrApi from '../src/features/models/rrApi'
 import RegularizedRegressionPanel, { categoryKey, formatRegularizedNumber, parseRegularizedCandidates, referenceDisplay, regularizedDeltaEffect } from '../src/features/models/RegularizedRegressionPanel'
 import type { RRResponse } from '../src/features/models/rrTypes'
 
-vi.mock('../src/features/common/ColumnSelect', () => ({ default: (props: any) => <select aria-label={props['aria-label']}
+vi.mock('../src/features/common/ColumnSelect', () => ({ default: (props: any) => <select id={props.id} aria-label={props['aria-label']}
   multiple={props.mode === 'multiple'} value={props.value ?? ''} onChange={event => props.onChange(props.mode === 'multiple'
     ? Array.from(event.target.selectedOptions, option => option.value) : event.target.value)}>
   {props.mode !== 'multiple' && <option value="">選択</option>}
   {props.options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
 </select> }))
 vi.mock('antd', async importOriginal => ({ ...await importOriginal<any>(), Select: (props: any) => <select
-  aria-label={props['aria-label']} value={props.value} onChange={event => props.onChange(event.target.value)}>
+  id={props.id} aria-label={props['aria-label']} value={props.value} onChange={event => props.onChange(event.target.value)}>
   {props.options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
 </select> }))
 function state(id = 'd') {
@@ -24,12 +24,13 @@ function state(id = 'd') {
       columns: ['Outcome', 'X', 'Z', 'Group', 'Ordered'].map(name => ({ columnId: name, name, label: name,
         role: 'question', scaleType: name === 'Group' ? 'nominal' : name === 'Ordered' ? 'ordinal' : 'ratio' })) } } as any
 }
-function mount(initial = state()) {
+function mount(initial = state(), openSettings = true) {
   const local = configureStore({ reducer: (s = initial, action: any) => action.type === 'fixture/replace' ? action.payload : s,
     middleware: get => get({ serializableCheck: false }) })
   const view = render(<Provider store={local}><RegularizedRegressionPanel /></Provider>)
   fireEvent.change(screen.getByLabelText('正則化の目的変数'), { target: { value: 'Outcome' } })
   fireEvent.change(screen.getByLabelText('正則化の数値説明変数'), { target: { value: 'X' } })
+  if (openSettings) view.container.querySelector('details')!.open = true
   return { local, ...view }
 }
 function deferred<T = any>() {
@@ -399,4 +400,70 @@ it('computes signed numeric and ordinal increments and distinguishes nonzero und
   expect(regularizedDeltaEffect({ ...coefficient, estimate: 0, exactZero: true }, 1)).toEqual({ value: 0, reason: null })
   expect(regularizedDeltaEffect(coefficient, Infinity).value).toBeNull()
   expect(regularizedDeltaEffect(coefficient, null).value).toBeNull()
+})
+
+it('starts with collapsed optional settings, visible algorithm and unchanged fixed Ridge preset', async () => {
+  const { container } = mount(state(), false)
+  const settings = container.querySelector('details')!
+  expect(settings).not.toHaveAttribute('open')
+  expect(screen.getByRole('radio', { name: 'Ridge' }).closest('label')).toHaveClass('ant-radio-button-wrapper-checked')
+  expect(screen.getByLabelText('正則化強度 λ')).not.toBeVisible()
+  expect(settings.querySelector('summary')).toHaveTextContent('手動 λ=0.1（固定値・CV未使用）')
+  expect(screen.getByTestId('rr-run').closest('.analysis-run-row')).toBeInTheDocument()
+  expect(screen.getByTestId('rr-run')).toHaveClass('ant-btn-primary')
+  await run()
+  expect(rrApi.runRegularizedRegression).toHaveBeenCalledWith(expect.objectContaining({ algorithm: 'ridge',
+    lambdaValue: .1, l1Ratio: .5, selection: 'manual', cv: null, intercept: true, standardize: true,
+    tolerance: 1e-8, maxIterations: 10000 }))
+})
+
+it('retains hidden tuning and preprocessing after disclosure and algorithm round trips', async () => {
+  const { container } = mount(state(), false)
+  const settings = container.querySelector('details')!
+  fireEvent.click(settings.querySelector('summary')!)
+  fireEvent.change(screen.getByLabelText('正則化強度 λ'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('ソルバー許容誤差'), { target: { value: '0.000001' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: '説明変数を学習時に標準化' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '切片あり' }))
+  fireEvent.click(settings.querySelector('summary')!)
+  fireEvent.click(screen.getByRole('radio', { name: 'Elastic Net' }))
+  fireEvent.click(screen.getByRole('radio', { name: 'Ridge' }))
+  expect(settings).not.toHaveAttribute('open')
+  expect(settings.querySelector('summary')).toHaveTextContent('手動 λ=2（固定値・CV未使用） / 標準化なし / 切片なし')
+  expect(settings.querySelector('summary')).toHaveTextContent('許容誤差 0.000001')
+  fireEvent.click(settings.querySelector('summary')!)
+  expect(Number((screen.getByLabelText('正則化強度 λ') as HTMLInputElement).value)).toBe(2)
+  expect(screen.getByRole('checkbox', { name: '説明変数を学習時に標準化' })).not.toBeChecked()
+  fireEvent.click(settings.querySelector('summary')!)
+  await run()
+  expect(rrApi.runRegularizedRegression).toHaveBeenCalledWith(expect.objectContaining({ lambdaValue: 2,
+    standardize: false, intercept: false, tolerance: .000001, maxIterations: 10000, selection: 'manual', cv: null }))
+})
+
+it('keeps invalid hidden solver feedback visible and prevents a request', () => {
+  const { container } = mount(state(), false)
+  const settings = container.querySelector('details')!
+  fireEvent.click(settings.querySelector('summary')!)
+  fireEvent.change(screen.getByLabelText('ソルバー許容誤差'), { target: { value: '-1' } })
+  fireEvent.click(settings.querySelector('summary')!)
+  expect(settings).not.toHaveAttribute('open')
+  expect(settings.querySelector('summary')).toHaveTextContent('設定を確認してください')
+  expect(screen.getByTestId('rr-settings-issues')).toBeVisible()
+  expect(screen.getByTestId('rr-settings-issues')).toHaveTextContent('許容誤差は0より大きく0.1以下')
+  expect(screen.getByTestId('rr-run')).toBeDisabled()
+  fireEvent.click(screen.getByTestId('rr-run'))
+  expect(rrApi.runRegularizedRegression).not.toHaveBeenCalled()
+})
+
+it('opens previously hidden weight settings when the dataset gains unsupported weights', () => {
+  const { local, container } = mount(state(), false)
+  const settings = container.querySelector('details')!
+  const previous = local.getState()
+  act(() => local.dispatch({ type: 'fixture/replace', payload: { ...previous,
+    codebook: { ...previous.codebook, weightConfig: { weightColumnId: 'weight', weightType: 'survey' } } } }))
+  expect(settings).toHaveAttribute('open')
+  expect(screen.getByTestId('rr-settings-issues')).toHaveTextContent('調査ウェイト')
+  expect(screen.getByTestId('rr-run')).toBeDisabled()
+  expect(screen.getByRole('radio', { name: 'データ設定' })).toBeChecked()
+  expect(rrApi.runRegularizedRegression).not.toHaveBeenCalled()
 })

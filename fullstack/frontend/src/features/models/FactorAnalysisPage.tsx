@@ -11,6 +11,7 @@ import { fetchProvenanceThunk } from '../dataset/provenanceSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import SelectColumn from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
 import GraphPanel from '../common/GraphPanel'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import type { EFAContext, EFAResponse } from './efaApi'
@@ -77,9 +78,12 @@ export default function FactorAnalysisPage(): JSX.Element {
   const [treat, setTreat] = useState<Record<string, Treat>>({})
   const [reverse, setReverse] = useState<Record<string, boolean>>({})
   const [ack, setAck] = useState<Record<string, boolean>>({})
-  const [correlation, setCorrelation] = useState<'pearson' | 'polychoric'>('polychoric')
+  const [correlationMode, setCorrelationMode] = useState<'auto' | 'pearson' | 'polychoric'>('auto')
   const [extraction, setExtraction] = useState<'minres' | 'ml'>('minres')
-  const [nFactors, setNFactors] = useState<number>(2)
+  const [nFactorsOverride, setNFactorsOverride] = useState<number | null>(null)
+  // The backend identification rule permits only one factor with 3–4 items.
+  // Keep the previous two-factor default for larger sets, unless explicitly changed.
+  const nFactors = nFactorsOverride ?? (items.length >= 3 && items.length <= 4 ? 1 : 2)
   const [compareText, setCompareText] = useState<string>('')
   const [rotation, setRotation] = useState<'promax' | 'varimax' | 'none'>('promax')
   const [scoreMethod, setScoreMethod] = useState<'none' | 'regression' | 'bartlett'>('none')
@@ -100,7 +104,6 @@ export default function FactorAnalysisPage(): JSX.Element {
   const [submittedKey, setSubmittedKey] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-  const [inputErrors, setInputErrors] = useState<string[]>([])
   const [comparison, setComparison] = useState<Record<string, unknown> | null>(null)
   const [rows, setRows] = useState<{ rowId: string; scores: (number | null)[] }[]>([])
   const [rowsTotal, setRowsTotal] = useState<number>(0)
@@ -122,9 +125,6 @@ export default function FactorAnalysisPage(): JSX.Element {
   const schemaRef = useRef(schemaRevision)
   schemaRef.current = schemaRevision
 
-  const draftKey = JSON.stringify([datasetId, items, treat, reverse, ack, correlation, extraction, nFactors, compareText, rotation, scoreMethod, paEnabled, paIter, sensEnabled, sensAck, analysisScope.scopeKey, weightMode, selection.dataRevision, schemaRevision])
-  const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
-
   useEffect(() => {
     runSequence.current += 1
     selectionSequence.current += 1
@@ -134,7 +134,6 @@ export default function FactorAnalysisPage(): JSX.Element {
     setPredictionInfo(null)
     setSubmittedKey('')
     setError(null)
-    setInputErrors([])
     setComparison(null)
     setRows([])
     setRowsTotal(0)
@@ -179,20 +178,74 @@ export default function FactorAnalysisPage(): JSX.Element {
     }
   }), [items, treat, reverse, ack, colById])
 
-  const compareFactors = useMemo(() => compareText.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v >= 1).map((v) => Math.floor(v)), [compareText])
-  const canRun = items.length >= 3 && Boolean(datasetId) && analysisScope.count > 0
+  const allOrdinal = variables.length > 0 && variables.every((v) => v.treatment === 'ordinal')
+  const correlation = correlationMode === 'auto' ? (allOrdinal ? 'polychoric' : 'pearson') : correlationMode
+  const correlationLabel = correlation === 'polychoric' ? 'Polychoric' : 'Pearson'
+  const treatmentSummary = items.length === 0
+    ? '通常は尺度をそのまま使用します。順序項目の逆転や連続近似を行う場合に変更してください。'
+    : [
+      ['順序モデル', variables.filter((v) => v.treatment === 'ordinal').length],
+      ['連続', variables.filter((v) => v.treatment === 'continuous').length],
+      ['連続近似', variables.filter((v) => v.treatment === 'continuous_approximation').length],
+      ['近似の同意待ち', variables.filter((v) => v.treatment === 'continuous_approximation' && !v.approximationAcknowledged).length],
+      ['逆転', variables.filter((v) => v.reverse).length],
+    ].filter(([, count]) => Number(count) > 0).map(([label, count]) => label + ' ' + count + '項目').join(' / ')
+  const compareFactors = useMemo(() => compareText.trim() ? compareText.split(',').map((v) => Number(v.trim())) : [], [compareText])
+  const factorIsIdentified = (count: number) => Number.isInteger(count) && count >= 1 && count < items.length
+    && (items.length - count) ** 2 - items.length - count >= 0
+  const itemIssues: string[] = []
+  const methodIssues: string[] = []
+  const weightIssues: string[] = []
+  for (const v of variables) {
+    const label = colById.get(v.columnId)?.label || v.columnId
+    if (v.measurement === 'ordinal' && (!v.categoryOrder || v.categoryOrder.length < 2)) {
+      itemIssues.push('順序項目「' + label + '」のカテゴリ順序が不足しています。コードブックで2水準以上の順序を設定してください。')
+    }
+    if (v.treatment === 'continuous_approximation' && !v.approximationAcknowledged) {
+      itemIssues.push('「' + label + '」の連続近似には、項目ごとの等間隔の明示同意が必要です。')
+    }
+  }
+  if (variables.some((v) => v.treatment === 'ordinal') && !allOrdinal) {
+    itemIssues.push('順序モデルと連続項目は混在できません。項目を選び直すか、「項目の扱い・逆転」で順序項目の連続近似を選び、項目ごとに同意してください。')
+  }
+  if (variables.length > 0 && (allOrdinal ? correlation !== 'polychoric' : correlation !== 'pearson')) {
+    methodIssues.push(allOrdinal ? '順序モデルでは相関をPolychoricにしてください。' : '連続項目・連続近似では相関をPearsonにしてください。')
+  }
+  if (allOrdinal && extraction !== 'minres') methodIssues.push('順序モデルの抽出はMINRES／ULS系を選択してください。')
+  if (allOrdinal && scoreMethod !== 'none') methodIssues.push('順序モデルでは因子得点を計算できません。得点を「なし」にしてください。')
+  if (items.length >= 3 && !factorIsIdentified(nFactors)) {
+    methodIssues.push('選択した' + items.length + '項目では因子数' + nFactors + 'を推定できません。因子数を減らすか、項目を追加してください。')
+  }
+  if (compareText.trim() && (compareText.split(',').some((value) => !value.trim())
+    || compareFactors.some((value) => !Number.isInteger(value) || value < 1)
+    || new Set(compareFactors).size !== compareFactors.length)) {
+    methodIssues.push('候補比較には重複のない正の整数をカンマ区切りで入力してください。')
+  } else if (items.length >= 3 && compareFactors.some((value) => !factorIsIdentified(value))) {
+    methodIssues.push('候補比較に選択項目数では推定できない因子数があります。候補を減らすか、項目を追加してください。')
+  }
+  if (!Number.isInteger(paIter) || paIter < 100 || paIter > 10000) methodIssues.push('平行分析の反復数は100～10000の整数を入力してください。')
+  if (sensEnabled) {
+    if (!sensAck) methodIssues.push('感度比較には連続近似の独立同意が必要です。')
+    if (!paEnabled) methodIssues.push('感度比較を使う場合は平行分析を有効にしてください。')
+    if (variables.some((v) => v.measurement !== 'ordinal')) methodIssues.push('感度比較は元の尺度がすべて順序尺度の項目に限り利用できます。')
+  }
+  if (weightMode === 'dataset' && codebook.weightConfig?.weightColumnId) {
+    weightIssues.push('このデータには重みが設定されています。EFAは非加重のみ対応のため、「重み・欠損値」で「なし（明示）」を選ぶ必要があります。')
+  }
+  const setupIssues = [...itemIssues, ...methodIssues, ...weightIssues]
+  const canRun = items.length >= 3 && Boolean(datasetId) && analysisScope.count > 0 && setupIssues.length === 0
+  const requiredMessage = !datasetId ? 'データセットを読み込んでください。'
+    : analysisScope.count === 0 ? '分析対象が0行です。共通の分析対象で行を選択してください。'
+      : items.length < 3 ? '項目を3つ以上選択してください（現在' + items.length + '項目）。'
+        : setupIssues.length > 0 ? '設定の確認が必要です。上の案内を確認してください。'
+          : items.length + '項目 / ' + nFactors + '因子 / ' + correlationLabel
+  const errorPanel = !error ? null : /FA_WEIGHT|weight/i.test(error) ? 'weight'
+    : /categoryOrder|treatment|column|カテゴリ|項目/i.test(error) ? 'items' : 'method'
+  const draftKey = JSON.stringify([datasetId, items, treat, reverse, ack, correlation, extraction, nFactors, compareText, rotation, scoreMethod, paEnabled, paIter, sensEnabled, sensAck, analysisScope.scopeKey, weightMode, selection.dataRevision, schemaRevision])
+  const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
 
   const handleRun = async (): Promise<void> => {
-    if (!datasetId || analysisScope.count === 0) return
-    const errs: string[] = []
-    if (items.length < 3) errs.push('項目を3つ以上選択してください。')
-    for (const v of variables) {
-      const label = colById.get(v.columnId)?.label ?? v.columnId
-      if (v.measurement === 'ordinal' && (!v.categoryOrder || v.categoryOrder.length < 2)) errs.push('順序項目 ' + label + ' のcategoryOrderが不足しています。')
-      if (v.treatment === 'continuous_approximation' && !v.approximationAcknowledged) errs.push('連続近似 ' + label + ' には項目ごとの明示同意が必要です。')
-    }
-    setInputErrors(errs)
-    if (errs.length) return
+    if (!canRun || loading) return
     const seq = ++runSequence.current
     selectionSequence.current += 1
     setSelecting(false)
@@ -422,89 +475,118 @@ export default function FactorAnalysisPage(): JSX.Element {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Card title="探索的因子分析（EFA）" size="small">
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
+      <Card title="探索的因子分析（EFA）" size="small" className="analysis-setup">
+        <div className="analysis-form-stack">
           <Space wrap>
             <AnalysisScopeSummary label="次回の分析対象" />
             <Tag>非加重・完全ケースのみ</Tag>
           </Space>
-          <Space wrap>
-            <span>重み:</span>
-            <Radio.Group value={weightMode} onChange={(e) => setWeightMode(e.target.value)}>
-              <Radio.Button value="dataset">データ設定</Radio.Button>
-              <Radio.Button value="none">なし（明示）</Radio.Button>
-            </Radio.Group>
-            {weightMode === 'dataset' && (
-              <Typography.Text type="secondary">dataset重みが有効な場合はFA_WEIGHT_UNSUPPORTEDで拒否されます。明示noneは別試行です。</Typography.Text>
-            )}
-          </Space>
-          <Space wrap align="start">
-            <span>項目（3つ以上）:</span>
-            <SelectColumn mode="multiple" value={items} onChange={setItems} style={{ minWidth: 360 }} options={itemOptions} placeholder="項目を選択" />
-          </Space>
-          {items.map((id) => {
-            const c = colById.get(id)
-            const isOrd = c?.scaleType === 'ordinal'
-            return (
-              <Space key={id} wrap>
-                <span>{c?.label ?? id}:</span>
-                {isOrd ? (
-                  <>
-                    <SelectSetting value={treat[id] ?? 'ordinal'} onChange={(v) => setTreat({ ...treat, [id]: v })} style={{ width: 180 }} options={[
-                      { value: 'ordinal', label: '順序モデル' },
-                      { value: 'continuous_approximation', label: '連続近似' },
-                    ]} />
-                    <Checkbox checked={Boolean(reverse[id])} onChange={(e) => setReverse({ ...reverse, [id]: e.target.checked })}>逆転</Checkbox>
-                    {(treat[id] ?? 'ordinal') === 'continuous_approximation' && (
-                      <Checkbox checked={Boolean(ack[id])} onChange={(e) => setAck({ ...ack, [id]: e.target.checked })}>等間隔の明示同意</Checkbox>
-                    )}
-                  </>
-                ) : (<Tag>連続</Tag>)}
-              </Space>
-            )
-          })}
-          <Space wrap>
-            <span>相関:</span>
-            <SelectSetting value={correlation} onChange={setCorrelation} style={{ width: 150 }} options={[
-              { value: 'polychoric', label: 'Polychoric' },
-              { value: 'pearson', label: 'Pearson' },
-            ]} />
-            <span>抽出:</span>
-            <SelectSetting value={extraction} onChange={setExtraction} style={{ width: 180 }} options={[
-              { value: 'minres', label: 'MINRES／ULS系' },
-              { value: 'ml', label: 'ML' },
-            ]} />
-            <span>因子数:</span>
-            <InputNumber value={nFactors} onChange={(v) => setNFactors(typeof v === 'number' ? v : 2)} min={1} />
-            <span>候補比較:</span>
-            <Input value={compareText} onChange={(e) => setCompareText(e.target.value)} style={{ width: 140 }} placeholder="例: 1,3" />
-            <span>回転:</span>
-            <SelectSetting value={rotation} onChange={setRotation} style={{ width: 130 }} options={[
-              { value: 'promax', label: 'Promax' },
-              { value: 'varimax', label: 'Varimax' },
-              { value: 'none', label: '無回転' },
-            ]} />
-            <span>得点:</span>
-            <SelectSetting value={scoreMethod} onChange={setScoreMethod} style={{ width: 150 }} options={[
-              { value: 'none', label: 'なし' },
-              { value: 'regression', label: 'regression' },
-              { value: 'bartlett', label: 'bartlett' },
-            ]} />
-          </Space>
-          <Space wrap>
-            <Checkbox checked={paEnabled} onChange={(e) => setPaEnabled(e.target.checked)}>平行分析</Checkbox>
-            {paEnabled && (<span>反復: <InputNumber value={paIter} onChange={(v) => setPaIter(typeof v === 'number' ? v : 500)} min={100} max={10000} /></span>)}
-            <Checkbox checked={sensEnabled} onChange={(e) => setSensEnabled(e.target.checked)}>感度比較</Checkbox>
-            {sensEnabled && (<Checkbox checked={sensAck} onChange={(e) => setSensAck(e.target.checked)}>連続近似の独立同意</Checkbox>)}
+          <AnalysisField label="項目（必須・3つ以上）" htmlFor="efa-items"
+            help="順序尺度または連続尺度の項目を選びます。まずは既定の設定で実行し、必要な場合だけ下の設定を変更してください。">
+            <SelectColumn id="efa-items" aria-describedby="efa-items-help" mode="multiple" value={items} onChange={setItems} style={{ width: '100%', minWidth: 0 }} options={itemOptions} placeholder="項目を選択" />
+          </AnalysisField>
+          <AnalysisSettings title="項目の扱い・逆転"
+            summary={treatmentSummary}
+            attention={itemIssues.length > 0 || errorPanel === 'items'}>
+            <Typography.Text type="secondary">順序項目は既定で順序モデルとして扱います。連続近似は等間隔とみなす判断が必要です。自動では変更しません。</Typography.Text>
+            {items.length === 0 && <Typography.Text type="secondary">項目を選ぶと、項目ごとの設定が表示されます。</Typography.Text>}
+            {items.map((id, index) => {
+              const c = colById.get(id)
+              const isOrd = c?.scaleType === 'ordinal'
+              return (
+                <AnalysisField key={id} label={c?.label || c?.name || id} htmlFor={isOrd ? 'efa-treatment-' + index : undefined}
+                  help={isOrd ? '逆転はコードブックのカテゴリ順序に沿って反転します。' : '連続項目としてそのまま使用します。'}>
+                  {isOrd ? (
+                    <div className="analysis-inline-fields">
+                      <SelectSetting id={'efa-treatment-' + index} aria-describedby={'efa-treatment-' + index + '-help'} value={treat[id] ?? 'ordinal'} onChange={(v) => setTreat({ ...treat, [id]: v })} style={{ width: 200 }} options={[
+                        { value: 'ordinal', label: '順序モデル' },
+                        { value: 'continuous_approximation', label: '連続近似' },
+                      ]} />
+                      <Checkbox checked={Boolean(reverse[id])} onChange={(e) => setReverse({ ...reverse, [id]: e.target.checked })}>逆転</Checkbox>
+                      {(treat[id] ?? 'ordinal') === 'continuous_approximation' && (
+                        <Checkbox checked={Boolean(ack[id])} onChange={(e) => setAck({ ...ack, [id]: e.target.checked })}>等間隔の明示同意</Checkbox>
+                      )}
+                    </div>
+                  ) : <Tag>連続</Tag>}
+                </AnalysisField>
+              )
+            })}
+          </AnalysisSettings>
+          <AnalysisSettings title="分析方法・詳細設定"
+            summary={'現在: ' + (correlationMode === 'auto' ? '相関は自動（' + correlationLabel + '）' : correlationLabel) + ' / ' + nFactors + '因子' + (nFactorsOverride === null ? '（項目数に応じた初期値）' : '') + ' / ' + (extraction === 'minres' ? 'MINRES' : 'ML') + ' / ' + rotation + ' / 平行分析' + (paEnabled ? paIter + '回' : 'なし')
+              + (scoreMethod !== 'none' ? ' / 得点: ' + scoreMethod : '') + (compareText.trim() ? ' / 候補比較: ' + compareText : '')
+              + (sensEnabled ? ' / 感度比較あり' + (sensAck ? '' : '（同意待ち）') : '')}
+            attention={methodIssues.length > 0 || errorPanel === 'method'}>
+            <div className="analysis-variable-grid">
+              <AnalysisField label="相関" htmlFor="efa-correlation"
+                help="自動では、すべて順序モデルならPolychoric、連続項目または同意済みの連続近似ならPearsonを使います。">
+                <SelectSetting id="efa-correlation" aria-describedby="efa-correlation-help" value={correlationMode} onChange={setCorrelationMode} style={{ width: '100%' }} options={[
+                  { value: 'auto', label: '自動（項目の扱いに合わせる）' },
+                  { value: 'polychoric', label: 'Polychoric' },
+                  { value: 'pearson', label: 'Pearson' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="抽出" htmlFor="efa-extraction" help="既定はMINRES／ULS系です。MLは連続項目・連続近似の場合に選べます。">
+                <SelectSetting id="efa-extraction" aria-describedby="efa-extraction-help" value={extraction} onChange={setExtraction} style={{ width: '100%' }} options={[
+                  { value: 'minres', label: 'MINRES／ULS系' }, { value: 'ml', label: 'ML' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="因子数" htmlFor="efa-factor-count" help="既定は2因子です。3～4項目では推定可能な1因子を初期値にします。変更後は指定した数を維持します。">
+                <div className="analysis-inline-fields">
+                  <InputNumber id="efa-factor-count" aria-describedby="efa-factor-count-help" value={nFactors} onChange={(v) => setNFactorsOverride(v)} min={1} precision={0} />
+                  {nFactorsOverride !== null && <Button size="small" onClick={() => setNFactorsOverride(null)}>初期設定に戻す</Button>}
+                </div>
+              </AnalysisField>
+              <AnalysisField label="候補比較" htmlFor="efa-compare-factors" help="任意です。別の因子数も比較したい場合に、正の整数をカンマ区切りで指定します。">
+                <Input id="efa-compare-factors" aria-describedby="efa-compare-factors-help" value={compareText} onChange={(e) => setCompareText(e.target.value)} placeholder="例: 1,3" />
+              </AnalysisField>
+              <AnalysisField label="回転" htmlFor="efa-rotation" help="既定は因子間の相関を許すPromaxです。Varimaxは直交回転、無回転は抽出したまま表示します。">
+                <SelectSetting id="efa-rotation" aria-describedby="efa-rotation-help" value={rotation} onChange={setRotation} style={{ width: '100%' }} options={[
+                  { value: 'promax', label: 'Promax' }, { value: 'varimax', label: 'Varimax' }, { value: 'none', label: '無回転' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="得点" htmlFor="efa-score-method" help="既定は「なし」です。連続項目・連続近似の因子得点が必要な場合に選びます。順序モデルでは利用できません。">
+                <SelectSetting id="efa-score-method" aria-describedby="efa-score-method-help" value={scoreMethod} onChange={setScoreMethod} style={{ width: '100%' }} options={[
+                  { value: 'none', label: 'なし' }, { value: 'regression', label: 'regression' }, { value: 'bartlett', label: 'bartlett' },
+                ]} />
+              </AnalysisField>
+              <AnalysisField label="平行分析" htmlFor="efa-pa-enabled" help="既定で有効です。ランダムな参照データと固有値を比較し、因子数の判断材料を表示します。指定した因子数は変更しません。">
+                <Checkbox id="efa-pa-enabled" aria-describedby="efa-pa-enabled-help" checked={paEnabled} onChange={(e) => setPaEnabled(e.target.checked)}>平行分析を行う</Checkbox>
+                {paEnabled && <AnalysisField label="反復数" htmlFor="efa-pa-iterations" help="既定は500回です。回数を増やすと計算時間が長くなります。">
+                  <InputNumber id="efa-pa-iterations" aria-describedby="efa-pa-iterations-help" value={paIter} onChange={(v) => setPaIter(typeof v === 'number' ? v : 500)} min={100} max={10000} precision={0} />
+                </AnalysisField>}
+              </AnalysisField>
+              <AnalysisField label="感度比較" htmlFor="efa-sensitivity" help="既定は無効です。すべて順序尺度の項目について連続近似との違いを調べます。平行分析と独立した同意が必要です。">
+                <Checkbox id="efa-sensitivity" aria-describedby="efa-sensitivity-help" checked={sensEnabled} onChange={(e) => { setSensEnabled(e.target.checked); if (!e.target.checked) setSensAck(false) }}>感度比較を行う</Checkbox>
+                {sensEnabled && <Checkbox checked={sensAck} onChange={(e) => setSensAck(e.target.checked)}>連続近似の独立同意</Checkbox>}
+              </AnalysisField>
+            </div>
+          </AnalysisSettings>
+          <AnalysisSettings title="重み・欠損値" summary={'重み: ' + (weightMode === 'dataset' ? 'データ設定を確認' : 'なし（明示）') + ' / 欠損行は除外'}
+            attention={weightIssues.length > 0 || errorPanel === 'weight'}>
+            <AnalysisField label="重み" help="EFAは非加重のみ対応です。データ設定に重みがある場合、そのままでは実行できません。非加重でよい場合だけ「なし（明示）」を選んでください。">
+              <Radio.Group aria-label="重み" value={weightMode} onChange={(e) => setWeightMode(e.target.value)}>
+                <Radio.Button value="dataset">データ設定</Radio.Button>
+                <Radio.Button value="none">なし（明示）</Radio.Button>
+              </Radio.Group>
+            </AnalysisField>
+            <Typography.Text type="secondary">欠損値の扱いは完全ケースのみです。選択項目に欠損のある行を除外して計算します。</Typography.Text>
+          </AnalysisSettings>
+          {itemIssues.length > 0 && <Alert type="warning" message="項目の扱い・逆転を確認してください" description={itemIssues.join(' / ')} showIcon />}
+          {methodIssues.length > 0 && <Alert type="warning" message="分析方法・詳細設定を確認してください" description={methodIssues.join(' / ')} showIcon />}
+          {weightIssues.length > 0 && <Alert type="warning" message="重み・欠損値を確認してください" description={weightIssues.join(' / ')} showIcon />}
+          {error && <Alert type="error" message={error}
+            description={(errorPanel === 'weight' ? '重み・欠損値' : errorPanel === 'items' ? '項目の扱い・逆転' : '分析方法・詳細設定') + 'を開いて設定を確認してください。'} showIcon />}
+          <AnalysisRunRow>
+            <div aria-live="polite">
+              <Typography.Text type="secondary">{requiredMessage}</Typography.Text>
+              {dirty && <div><Tag color="orange" className="analysis-status-tag">設定が変更されています。結果は前回実行分です</Tag></div>}
+            </div>
             <Button type="primary" onClick={() => void handleRun()} disabled={!canRun} loading={loading}>実行</Button>
-            {dirty && <Tag color="orange">設定が変更されています。結果は前回実行分です</Tag>}
-          </Space>
-          {!canRun && <Typography.Text type="secondary">項目を3つ以上選択してください。旧入力の自動変換はありません。</Typography.Text>}
-        </Space>
+          </AnalysisRunRow>
+        </div>
       </Card>
 
-      {inputErrors.length > 0 && (<Alert type="error" message="入力エラー" description={inputErrors.join(' / ')} showIcon />)}
-      {error && <Alert type="error" message={error} showIcon />}
       {loading && <Spin tip="計算中" />}
 
       {result && (
