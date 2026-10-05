@@ -33,6 +33,8 @@ py.FS.mkdirTree('/acceptance')
 py.FS.writeFile('/acceptance/check.py', readFileSync(resolve(root, 'scripts/check_sample_campaign_runtime.py')))
 py.FS.writeFile('/acceptance/turkiye-reference.json', readFileSync(resolve(root,
   'fullstack/backend/tests/fixtures/turkiye_r_reference/references.json')))
+py.FS.writeFile('/acceptance/atopp-reference.json', readFileSync(resolve(root,
+  'fullstack/backend/tests/fixtures/atopp_r_reference/references.json')))
 py.runPython(`
 import sys, os, runpy, pyodide, sklearn
 assert pyodide.__version__ == '0.27.7', pyodide.__version__
@@ -41,6 +43,7 @@ sys.path.insert(0, '/app')
 os.environ['DAVIS_PCP_WASM'] = '1'
 os.environ['DAVIS_PCP_WORKSPACE'] = '/acceptance/workspace'
 os.environ['SAMPLE_CAMPAIGN_TURKIYE_REFERENCE'] = '/acceptance/turkiye-reference.json'
+os.environ['SAMPLE_CAMPAIGN_ATOPP_REFERENCE'] = '/acceptance/atopp-reference.json'
 acceptance = runpy.run_path('/acceptance/check.py')
 from app.main import app
 `)

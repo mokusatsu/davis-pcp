@@ -370,6 +370,42 @@ async def run_acceptance(output_path: str) -> dict:
         expected_tail = (norm.sf(9) - norm.sf(10)) ** 2
         assert abs(tail / expected_tail - 1) < 1e-12 and error <= 1e-10
         checks.append("polychoric:extreme_positive_tail_survival_probability")
+
+        # Raw ATOPP31 is an exploratory numerical control, not a validated
+        # final scale or a claim that the three-factor model fits well.
+        reference_path = os.environ.get("SAMPLE_CAMPAIGN_ATOPP_REFERENCE")
+        if reference_path is None:
+            reference_path = str(Path(__file__).resolve().parents[1] /
+                "fullstack/backend/tests/fixtures/atopp_r_reference/references.json")
+        reference = json.loads(Path(reference_path).read_text())
+        did = "ds-builtin-" + reference["sampleId"]
+        book = store.load_codebook(did)
+        raw_atopp = store.get_dataframe(did)
+        assert len(book["columns"]) == 31 and all(not spec["isReversed"] for spec in book["columns"])
+        for mode in ("pearson", "polychoric"):
+            config = {**payload, "context": {"datasetId": did, "expectedDataRevision": 1,
+                    "expectedSchemaRevision": book["schemaRevision"], "weightMode": "none"},
+                "correlation": mode, "extraction": "ml" if mode == "pearson" else "minres",
+                "variables": [{"columnId": spec["columnId"], "measurement": "ordinal",
+                    "categoryOrder": spec["categoryOrder"],
+                    "treatment": "continuous_approximation" if mode == "pearson" else "ordinal",
+                    "approximationAcknowledged": mode == "pearson"} for spec in book["columns"]]}
+            started = time.perf_counter()
+            response = await client.post("models/factor-analysis", json=config)
+            timings["atopp_raw31_" + mode] = time.perf_counter() - started
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["meta"]["fitCount"] == 541 and result["summary"]["nVariables"] == 31
+            assert result["summary"]["solutionStatus"] == "admissible"
+            expected = reference[mode]
+            details = result["details"]
+            np.testing.assert_allclose(details["sampleCorrelation"], expected["sampleCorrelation"],
+                                       atol=1e-12 if mode == "pearson" else 1e-6, rtol=0)
+            for key in ("uniqueness", "reproducedCorrelation"):
+                np.testing.assert_allclose(details[key], expected[key], atol=1e-5, rtol=0)
+            assert abs(result["summary"]["objective"]["value"] - expected["metrics"]["objective"]) < 1e-7
+            assert store.get_dataframe(did).equals(raw_atopp) and store.load_codebook(did) == book
+            checks.append("atopp:raw31_" + mode + "_independent_R_reference_no_scoring")
     result = {"runtime": sys.platform, "passed": len(checks), "checks": checks, "timingsSeconds": timings}
     (arrow_views / "expected.json").write_text(json.dumps(arrow_expectations, ensure_ascii=False, allow_nan=False))
     Path(output_path).write_text(json.dumps(result, ensure_ascii=False, indent=2))

@@ -12,26 +12,30 @@ import { ProjectionCircle } from './ProjectionCircle'
 import { TgtControlPanel } from './TgtControlPanel'
 import GraphPanel from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
-import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import { touringAnalysisValues } from './touringProjection'
 
 export default function TgtPage() {
   const selection = useSelector((s: RootState) => s.selection)
   const globalVars = useSelector(selectOrdinaryVariables)
   const activeVarIds = globalVars?.activeVariableIds
   const data = useColumnarData(selection.datasetId)
-  const { getColumn } = useCodebook()
+  const { columns, getColumn } = useCodebook()
 
-  const numericColumns = useMemo(() => {
+  const candidates = useMemo(() => {
     if (!data) return []
-    return data.schema
-      .filter((c) => c.semanticType === 'numeric' && activeVarIds.includes(c.name))
-      .map((c) => c.name)
-  }, [data, activeVarIds])
+    const present = new Set(data.schema.map(column => column.name))
+    return columns.filter(column => present.has(column.name) && activeVarIds.includes(column.name)
+      && !column.multiResponseGroup && ['question', 'attribute'].includes(column.role)
+      && ['interval', 'ratio', 'ordinal'].includes(column.scaleType))
+  }, [data, columns, activeVarIds])
+  const numericColumns = useMemo(() => candidates.map(column => column.name), [candidates])
 
   const [chosen, setChosen] = useState<{ datasetId: string | null; names: string[] } | null>(null)
   const current = chosen?.datasetId === selection.datasetId ? chosen : null
-  const selectedColumns = useMemo(() => (current?.names ?? numericColumns.slice(0, 6))
-    .filter((name) => numericColumns.includes(name)), [current, numericColumns])
+  const selectedColumns = useMemo(() => (current?.names
+    ?? candidates.filter(column => column.scaleType !== 'ordinal').map(column => column.name).slice(0, 6))
+    .filter((name) => numericColumns.includes(name)), [current, candidates, numericColumns])
   const setSelectedColumns = (names: string[]) => setChosen({ datasetId: selection.datasetId, names })
   const [isPlaying, setIsPlaying] = useState(true)
   const [isTracking, setIsTracking] = useState(true)
@@ -52,18 +56,14 @@ export default function TgtPage() {
   const projection = useMemo(() => {
     const rowIds: string[] = []
     const matrix: number[][] = []
-    if (!data || selectedColumns.length < 2) return { rowIds, matrix, excluded: 0 }
-    const missingCodes = selectedColumns.map(name => new Set(getColumn(name)?.missingCodes ?? []))
+    if (!data || selectedColumns.length < 2) return { rowIds, matrix, excluded: 0, errors: [] as string[] }
+    const analysisColumns = selectedColumns.map(name => touringAnalysisValues(getColumn(name)!, data.columns[name] ?? []))
+    const errors = analysisColumns.map(column => column.error).filter((error): error is string => error !== null)
+    if (errors.length) return { rowIds, matrix, excluded: effectiveRowIds.length, errors }
     for (const rowId of effectiveRowIds) {
       const index = data.rowIndex.get(rowId)
       if (index === undefined) continue
-      const values = selectedColumns.map((name, columnIndex) => {
-        const raw = data.columns[name]?.[index]
-        const code = normalizeCode(raw)
-        if (code === null || code.trim() === '' || missingCodes[columnIndex].has(code)) return NaN
-        const value = data.numeric[name]?.[index]
-        return typeof value === 'number' && Number.isFinite(value) ? value : NaN
-      })
+      const values = analysisColumns.map(column => column.values[index] ?? NaN)
       if (!values.every(Number.isFinite)) continue
       rowIds.push(rowId)
       matrix.push(values)
@@ -78,7 +78,7 @@ export default function TgtPage() {
       const std = Math.sqrt(sumSq / Math.max(matrix.length - 1, 1)) || 1
       for (let i = 0; i < matrix.length; i += 1) matrix[i][j] = (scaled[i] - mean) / std
     }
-    return { rowIds, matrix, excluded: effectiveRowIds.length - rowIds.length }
+    return { rowIds, matrix, excluded: effectiveRowIds.length - rowIds.length, errors }
   }, [data, selectedColumns, effectiveRowIds, getColumn])
   const { rowIds, matrix: dataMatrix } = projection
 
@@ -136,7 +136,7 @@ export default function TgtPage() {
   if (numericColumns.length < 3) {
     return (
       <EmptyStatePanel
-        message="Grand Tour には3つ以上の数値変数が必要です。上部の変数セレクタから追加してください。"
+        message="Grand Tour には3つ以上の分析可能な変数（間隔・比率・明示選択する順序尺度）が必要です。上部の変数セレクタから追加してください。"
         minVariables={3}
       />
     )
@@ -164,9 +164,11 @@ export default function TgtPage() {
           onTrailLengthChange={setTrailLength}
         />
 
+      <Alert type="info" showIcon message="順序尺度は対象変数で明示的に選択してください。コードブックの順序順位と逆転を投影に使います。ID・名義尺度・重み・MA子は対象外です。" />
+      {projection.errors.map(error => <Alert key={error} type="error" showIcon message={error} />)}
       <Alert type={projection.excluded ? 'warning' : 'info'} showIcon
         data-testid="touring-missing-policy" message="欠損値の扱い: 選択した全変数が有効な行のみ投影（完全ケース）"
-        description={`共通対象 ${effectiveRowIds.length}行 / 投影 ${rowIds.length}行 / 欠損・無効値による除外 ${projection.excluded}行。コードブックの欠損コードも除外し、残った行で標準化します。0での補完は行いません。`} />
+        description={`共通対象 ${effectiveRowIds.length}行 / 投影 ${rowIds.length}行 / 欠損・無効値による除外 ${projection.excluded}行。コードブックの欠損コード・有効範囲を適用し、残った行で標準化します。0での補完は行いません。`} />
       {selectedColumns.length >= 2 && !dataMatrix.length && <Alert type="warning"
         message="投影できる有効行がありません。対象行・変数・欠損コードを確認してください。" />}
 

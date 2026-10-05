@@ -74,7 +74,14 @@ function chooseConjoint(view: ReturnType<typeof render>) {
 }
 
 
-for (const page of ['efa', 'conjoint'] as const) it(`${page} exports every offered table format with progress, error and retry protection`, async () => {
+const exportCases = [
+  ...['変数CSV', '診断CSV', 'PA CSV'].map(label => ({ page: 'efa' as const, label })),
+  ...['coefficients CSV', 'coefficients JSON', 'diagnostics CSV', 'diagnostics JSON', 'rows CSV', 'rows JSON', 'utilities CSV', 'utilities JSON', 'モデルJSON']
+    .map(label => ({ page: 'conjoint' as const, label })),
+]
+// Each button owns independent async state. Give each format a fresh page and the
+// normal per-test deadline instead of accumulating nine accessible-query cycles.
+it.each(exportCases)('$page exports $label with progress, error and retry protection', async ({ page, label }) => {
   const view = render(<Provider store={localStore()}>{page === 'efa' ? <FactorAnalysisPage /> : <ConjointPage />}</Provider>)
   if (page === 'efa') {
     chooseMultiple(view.getByLabelText('項目を選択') as HTMLSelectElement, ['i1', 'i2', 'i3'])
@@ -90,22 +97,18 @@ for (const page of ['efa', 'conjoint'] as const) it(`${page} exports every offer
   // Keep repeated export queries inside the active panel instead of scanning the full model form.
   const exportPanel = within(view.getByRole('tabpanel', { name: page === 'efa' ? '得点操作' : '保存・出力' }))
   const exportTable = page === 'efa' ? vi.spyOn(efa, 'exportEFATable') : vi.spyOn(conjoint, 'exportConjointTable')
-  const labels = page === 'efa' ? ['変数CSV', '診断CSV', 'PA CSV']
-    : ['coefficients CSV', 'coefficients JSON', 'diagnostics CSV', 'diagnostics JSON', 'rows CSV', 'rows JSON', 'utilities CSV', 'utilities JSON', 'モデルJSON']
-  for (const label of labels) {
-    let reject!: (error: unknown) => void
-    exportTable.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail }))
-    const initial = exportTable.mock.calls.length, button = exportPanel.getByRole('button', { name: label })
-    fireEvent.click(button); fireEvent.click(button)
-    expect(exportTable.mock.calls.length - initial).toBe(1)
-    expect(button).toBeDisabled()
-    expect(button).toHaveAttribute('aria-busy', 'true')
-    await act(async () => reject(new Error('export offline')))
-    expect(await exportPanel.findByText(`${label}を保存できませんでした: export offline`)).toHaveAttribute('role', 'alert')
-    expect(button).toBeEnabled()
-    exportTable.mockResolvedValueOnce(undefined)
-    fireEvent.click(button)
-    await waitFor(() => expect(exportPanel.getByText(`${label}のダウンロードを開始しました`)).toHaveAttribute('role', 'status'))
-    expect(exportTable.mock.calls.length - initial).toBe(2)
-  }
+  let reject!: (error: unknown) => void
+  exportTable.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail }))
+  const initial = exportTable.mock.calls.length, button = exportPanel.getByRole('button', { name: label })
+  fireEvent.click(button); fireEvent.click(button)
+  expect(exportTable.mock.calls.length - initial).toBe(1)
+  expect(button).toBeDisabled()
+  expect(button).toHaveAttribute('aria-busy', 'true')
+  await act(async () => reject(new Error('export offline')))
+  expect(await exportPanel.findByText(`${label}を保存できませんでした: export offline`)).toHaveAttribute('role', 'alert')
+  expect(button).toBeEnabled()
+  exportTable.mockResolvedValueOnce(undefined)
+  fireEvent.click(button)
+  await waitFor(() => expect(exportPanel.getByText(`${label}のダウンロードを開始しました`)).toHaveAttribute('role', 'status'))
+  expect(exportTable.mock.calls.length - initial).toBe(2)
 })
