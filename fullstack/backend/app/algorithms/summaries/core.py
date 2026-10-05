@@ -70,12 +70,12 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
     # invalid rather than rescuing them as nominal ranks (AV03).
     declared_order = [normalize_code(v) for v in (spec.get("categoryOrder") or [])]
     declared_domain = {c for c in declared_order if c is not None} - missing_code_set
-    ordered_valid_codes = [c for c in ordered_valid_codes if c in declared_domain] if declared_domain else list(ordered_valid_codes)
+    ordered_valid_codes = [c for c in ordered_valid_codes if c in declared_domain] if declared_order else list(ordered_valid_codes)
 
     def _is_invalid_code(code: str) -> bool:
         if code in missing_code_set:
             return False
-        if declared_domain and code not in declared_domain:
+        if declared_order and code not in declared_domain:
             return True
         if scale_type in ("ratio", "interval", "numeric"):
             try:
@@ -118,7 +118,7 @@ def question_summary(series: pl.Series, spec: dict | None = None, adapter: Codeb
 
     # Continuous distributions follow numeric magnitude, not encounter order.
     # A declared order remains authoritative (including reverse-score bounds).
-    if scale_type in ("ratio", "interval", "numeric") and not declared_domain:
+    if scale_type in ("ratio", "interval", "numeric") and not declared_order:
         ordered_valid_codes = sorted(
             (code for code in ordered_valid_codes if not _is_invalid_code(code)), key=float
         )
@@ -308,27 +308,9 @@ def summarize(
         # Always enrich with denominators, distribution, and auxiliaryStats
         q_summary = question_summary(df[name], spec, adapter=adapter)
         col_summary.update(q_summary)
-        # The headline numeric stats share the declared-domain rule: values
-        # outside a declared categoryOrder are invalid, not analysis values.
-        if column_types.get(name) == "numeric" and adapter is not None and spec is not None:
-            declared = {normalize_code(v) for v in (spec.get("categoryOrder") or [])}
-            declared.discard(None)
-            missing_set = {normalize_code(v) for v in (spec.get("missingCodes") or [])}
-            missing_set.discard(None)
-            declared = declared - missing_set
-            raw_vals = df[name].to_list()
-            analysis_vals = [v for v in (adapter.analysis_series(name).to_list()) if v is not None]
-            if declared:
-                analysis_vals = [
-                    v for v, raw in zip(adapter.analysis_series(name).to_list(), raw_vals)
-                    if v is not None and normalize_code(raw) in declared
-                ]
-            col_summary["count"] = len(analysis_vals)
-            if analysis_vals:
-                arr = np.array(analysis_vals, dtype=float)
-                col_summary["mean"] = float(arr.mean())
-                col_summary["min"] = float(arr.min())
-                col_summary["max"] = float(arr.max())
+        # All headline moments/frequencies use the same normalized series.
+        # Applying a second filter only to mean/count would leave SD and
+        # quantiles inconsistent with the declared-domain denominators.
         if weights is not None:
             col_summary["weighted"] = _weighted_column_summary(df[name], spec, weights, adapter=adapter)
         result[name] = col_summary
@@ -359,13 +341,13 @@ def _weighted_column_summary(
     declared_order_w = [normalize_code(v) for v in (spec.get("categoryOrder") or [])]
     declared_domain_w = {c for c in declared_order_w if c is not None} - missing_codes
     ordered = [c for c in adapter.get_ordered_categories(series.name) if c not in missing_codes]
-    if declared_domain_w:
+    if declared_order_w:
         ordered = [c for c in ordered if c in declared_domain_w]
 
     def _w_invalid(code: str) -> bool:
         if code in missing_codes:
             return False
-        if declared_domain_w and code not in declared_domain_w:
+        if declared_order_w and code not in declared_domain_w:
             return True
         if scale_type in ("ratio", "interval", "numeric"):
             try:

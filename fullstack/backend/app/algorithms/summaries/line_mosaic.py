@@ -72,7 +72,7 @@ def compute_line_mosaic(
     if codebook:
         for c in set(col_vars + row_vars + ([target_variable] if target_variable else [])):
             if c in df.columns:
-                df = df.with_columns(adapter.mask_missing_values(c).map_elements(normalize_code, return_dtype=pl.String))
+                df = df.with_columns(adapter.mask_analysis_values(c).map_elements(normalize_code, return_dtype=pl.String))
     def levels(name: str) -> list[str]:
         if codebook:
             ordered = adapter.get_ordered_categories(name)

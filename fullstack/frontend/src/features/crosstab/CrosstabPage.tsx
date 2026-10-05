@@ -104,8 +104,12 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return typeof code === 'string' && code ? `${message}（${code}）` : message
 }
 
-function escapeFormulaPrefix(value: string): string {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value
+function csvCell(value: unknown): string {
+  const raw = value == null ? '' : String(value)
+  // Keep typed numeric statistics numeric, including negative residuals.
+  // Text codes/labels still need formula-injection protection.
+  const text = typeof value === 'string' && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
 export function crosstabToCsv(result: CrosstabResponse): string {
@@ -116,21 +120,21 @@ export function crosstabToCsv(result: CrosstabResponse): string {
     const row = [cell.rowCategoryId, cell.rowLabel, cell.colCategoryId, cell.colLabel,
       cell.unweightedCount, cell.count, cell.rowPct ?? '', cell.colPct ?? '',
       cell.totalPct ?? '', cell.expectedCount, cell.asr ?? '', cell.significance, cell.rowIdCount]
-    lines.push(row.map((v) => escapeFormulaPrefix(String(v))).join(','))
+    lines.push(row.map(csvCell).join(','))
   }
   lines.push('')
-  lines.push(`# datasetId,${result.meta.datasetId}`)
-  lines.push(`# dataRevision,${result.meta.dataRevision}`)
-  lines.push(`# schemaRevision,${result.meta.schemaRevision}`)
-  lines.push(`# scope,${result.meta.scope}`)
-  lines.push(`# scopeHash,${result.meta.scopeHash}`)
-  lines.push(`# weightApplied,${result.meta.weightApplied}`)
+  lines.push(['# datasetId', result.meta.datasetId].map(csvCell).join(','))
+  lines.push(['# dataRevision', result.meta.dataRevision].map(csvCell).join(','))
+  lines.push(['# schemaRevision', result.meta.schemaRevision].map(csvCell).join(','))
+  lines.push(['# scope', result.meta.scope].map(csvCell).join(','))
+  lines.push(['# scopeHash', result.meta.scopeHash].map(csvCell).join(','))
+  lines.push(['# weightApplied', result.meta.weightApplied].map(csvCell).join(','))
   lines.push(`# missingPolicy,`)
   // Provenance travels with the export: which weight *meaning* produced these
   // numbers is not recoverable from the numbers themselves.
   const provenance = result.analysisProvenance
   for (const [key, value] of Object.entries(provenance ?? {})) {
-    lines.push(`# ${key},${value ?? ''}`)
+    lines.push([`# ${key}`, value].map(csvCell).join(','))
   }
   return lines.join('\n')
 }

@@ -591,7 +591,7 @@ def run_modern_subgroup_mining(
     if has_codebook:
         df = df.with_columns([
             adapter.analysis_series(c) if (adapter.get_column_spec_optional(c) or {}).get("role") == "question"
-            else adapter.mask_missing_values(c)
+            else adapter.mask_analysis_values(c)
             for c in df.columns if adapter.get_column_spec_optional(c)
         ])
     actual_row_id = row_id_col

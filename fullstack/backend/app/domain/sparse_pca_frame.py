@@ -73,6 +73,8 @@ def _convert(raw, spec):
     code = normalize_code(raw)
     if raw is None or code is None or code in spec["missingCodes"] or (isinstance(raw, str) and not raw.strip()):
         return None, "missing"
+    if spec["categoryOrder"] and code not in spec["categoryOrder"]:
+        return None, "invalid"
     if spec["scaleType"] == "ordinal":
         order = [v for v in spec["categoryOrder"] if v not in spec["missingCodes"]]
         if code not in order:

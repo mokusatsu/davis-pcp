@@ -244,7 +244,7 @@ def qqplot_summary(req: QQPlotRequest) -> dict:
         df = df.filter(pl.col("__rowId__").is_in(list(wanted)))
     if req.column in df.columns:
         adapter = CodebookAdapter(df, codebook)
-        masked = adapter.mask_missing_values(req.column)
+        masked = adapter.mask_analysis_values(req.column)
         analysis = adapter.analysis_series(req.column) if (adapter.get_column_spec_optional(req.column) or {}).get("scaleType") in ("ordinal", "interval", "ratio", "numeric") else masked
         df = df.with_columns(analysis.alias(req.column))
     return compute_qqplot(df, column=req.column, plotting_position=req.plottingPosition)

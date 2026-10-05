@@ -247,6 +247,8 @@ def prepare_efa_frame(dataset_id: str, req: dict, store: DatasetStore) -> dict[s
                 # E006: honour the column's missingCodes (codes AND their
                 # numeric values) instead of float-convertibility alone.
                 missing_numeric: set[float] = set()
+                declared_order = spec.get("categoryOrder") or []
+                declared_domain = {normalize_code(value) for value in declared_order}
                 for mc in missing_codes:
                     try:
                         missing_numeric.add(float(mc))
@@ -267,6 +269,12 @@ def prepare_efa_frame(dataset_id: str, req: dict, store: DatasetStore) -> dict[s
                         row_missing_flags.append(not is_na)
                         row_notapp_flags.append(is_na)
                         row_invalid_flags.append(False)
+                        continue
+                    if declared_order and code not in declared_domain:
+                        vals.append(np.nan)
+                        row_missing_flags.append(False)
+                        row_notapp_flags.append(False)
+                        row_invalid_flags.append(True)
                         continue
                     try:
                         f = float(val)
@@ -379,6 +387,8 @@ def prepare_efa_frame(dataset_id: str, req: dict, store: DatasetStore) -> dict[s
                            if is_not_applicable_reason(
                                missing_reasons.get(c, "")
                                if isinstance(missing_reasons, dict) else "")}
+                declared_order = spec.get("categoryOrder") or []
+                declared_domain = {normalize_code(value) for value in declared_order}
                 missing_numeric: set[float] = set()
                 for mc in missing_codes:
                     try:
@@ -395,6 +405,11 @@ def prepare_efa_frame(dataset_id: str, req: dict, store: DatasetStore) -> dict[s
                             row_notapp[i] = True
                         else:
                             row_missing[i] = True
+                        continue
+                    if declared_order and code not in declared_domain:
+                        row_invalid[i] = True
+                        row_missing[i] = False
+                        row_notapp[i] = False
                         continue
                     try:
                         f = float(val)

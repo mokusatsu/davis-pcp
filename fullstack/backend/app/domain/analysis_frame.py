@@ -189,7 +189,7 @@ def _classify_category(raw: Any, spec: dict, missing_policy: str) -> tuple[str |
     declared = {normalize_code(v) for v in order}
     declared.discard(None)
     declared -= missing_codes
-    if declared and code not in declared:
+    if order and code not in declared:
         return None, "value", "invalid"
     return code, "value", "ok"
 
@@ -804,6 +804,9 @@ def _numeric_value(raw: Any, spec: dict[str, Any] | None = None) -> tuple[float 
         missing_codes.discard(None)
         if code is None or code in missing_codes:
             return None, "missing"
+        order = spec.get("categoryOrder") or []
+        if order and code not in {normalize_code(value) for value in order}:
+            return None, "invalid"
     if raw is None:
         return None, "missing"
     if isinstance(raw, bool):

@@ -70,10 +70,14 @@ def _initial_psi(r: np.ndarray, q: int, lower: float) -> np.ndarray:
     p = r.shape[0]
     try:
         inv = linalg.solve(r, np.eye(p), assume_a="pos")
-        smc = 1.0 / np.clip(np.diag(inv), 1e-12, None)
+        residual_variance = 1.0 / np.clip(np.diag(inv), 1e-12, None)
     except Exception:
-        smc = np.full(p, 0.5)
-    base = (1.0 - 0.5 * q / p) / np.clip(smc, 1e-12, None)
+        # Preserve the conservative fallback; accepted ML inputs normally
+        # pass positive-definiteness validation before reaching this kernel.
+        return np.clip(np.full(p, (1.0 - 0.5 * q / p) / 0.5), lower, 1.0)
+    # The residual variance is already 1 / diag(inv(R)); dividing by it
+    # again incorrectly drives correlated-item starts to the upper bound.
+    base = (1.0 - 0.5 * q / p) * residual_variance
     return np.clip(base, lower, 1.0)
 
 

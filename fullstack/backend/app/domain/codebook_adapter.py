@@ -145,7 +145,9 @@ class CodebookAdapter:
 
         ordered: List[str] = []
         if order:
-            ordered = _iter_unique(
+            # A declared domain is closed. Adding observed, undeclared codes
+            # here would admit invalid responses and shift reversed ranks.
+            return _iter_unique(
                 [v for v in [normalize_code(v) for v in order] if v is not None and v not in missing_codes]
             )
 
@@ -196,15 +198,37 @@ class CodebookAdapter:
         is_missing = normalized_series.is_null() | normalized_series.is_in(list(missing_codes))
         return self.df.select(pl.when(is_missing).then(None).otherwise(pl.col(col_name)).alias(col_name)).to_series()
 
+    def _mask_declared_domain(self, col_name: str, series: pl.Series) -> pl.Series:
+        """Exclude invalid codes without dropping or reordering observations."""
+        spec = self.get_column_spec_optional(col_name) or {}
+        order = spec.get("categoryOrder") or []
+        if not order:
+            return series
+        allowed = {normalize_code(value) for value in order}
+        allowed.discard(None)
+        return series.map_elements(
+            lambda value: value if normalize_code(value) in allowed else None,
+            return_dtype=series.dtype,
+            skip_nulls=False,
+        )
+
+    def mask_analysis_values(self, col_name: str) -> pl.Series:
+        """Keep raw codes for valid observations, masking missing/invalid ones."""
+        return self._mask_declared_domain(col_name, self.mask_missing_values(col_name))
+
     def analysis_series(self, col_name: str) -> pl.Series:
-        """Normalize ordinal scores and exclude missing codes before analysis."""
+        """Normalize scores and exclude missing/declared-invalid analysis values."""
         from .errors import BizError
 
         spec = self.get_column_spec_optional(col_name) or {}
-        series = self.mask_missing_values(col_name)
+        series = self.mask_analysis_values(col_name)
         if spec.get("scaleType") == "ordinal":
             categories = self.get_ordered_categories(col_name)
             if not categories:
+                if spec.get("categoryOrder"):
+                    # A declared domain containing only missing codes has no
+                    # valid scores; it is not an invitation to infer a domain.
+                    return pl.Series(col_name, [None] * len(series), dtype=pl.Float64)
                 # 順序未確定の ordinal は subset ごとに推定せず 422。
                 # 数値コードのみの列は update_codebook 時に全データから
                 # 数値昇順で categoryOrder に確定されるため、ここに来るのは
@@ -240,7 +264,7 @@ class CodebookAdapter:
         """逆転項目 (isReversed=True) の場合、値を反転（max + min - X）させた数値を返却"""
         from .errors import BizError
 
-        series = self.mask_missing_values(col_name)
+        series = self.mask_analysis_values(col_name)
         spec = self.get_column_spec_optional(col_name)
         if not spec or not spec.get("isReversed", False):
             return series
@@ -249,20 +273,6 @@ class CodebookAdapter:
         category_order = spec.get("categoryOrder") or []
         missing_codes = {normalize_code(v) for v in (spec.get("missingCodes") or [])}
         missing_codes.discard(None)
-        # A declared discrete domain (non-empty categoryOrder) is authoritative:
-        # values outside it are invalid, never donors for an expanded reverse
-        # bound, and never analysis values (AV02).
-        declared_domain = {normalize_code(v) for v in category_order}
-        declared_domain.discard(None)
-        declared_domain -= missing_codes
-        if declared_domain:
-            domain_list = list(declared_domain)
-            series = series.map_elements(
-                lambda v: v if (normalize_code(v) is None or normalize_code(v) in declared_domain) else None,
-                return_dtype=series.dtype,
-                skip_nulls=False,
-            )
-            numeric_series = series.map_elements(_to_float_if_possible, return_dtype=pl.Float64, skip_nulls=False)
         category_order_values = [v for v in [_to_float_if_possible(v) for v in category_order]
                                  if v is not None and normalize_code(v) not in missing_codes]
 

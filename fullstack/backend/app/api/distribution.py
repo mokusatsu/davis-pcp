@@ -42,7 +42,7 @@ def get_fedf(req: FedfRequest) -> dict[str, Any]:
     resolved_columns = req.columns if req.columns is not None else [c for c in df.columns if c != "__rowId__"]
     if resolved_columns:
         adapter = CodebookAdapter(df, codebook)
-        masked = [adapter.mask_missing_values(c) for c in resolved_columns
+        masked = [adapter.analysis_series(c) for c in resolved_columns
                   if c in df.columns]
         if masked:
             df = df.with_columns(masked)
