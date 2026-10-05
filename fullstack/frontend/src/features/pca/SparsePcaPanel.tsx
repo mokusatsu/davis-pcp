@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, InputNumber, Radio, Select, Space, Table, Typography } from 'antd'
 import { hovered, selectOrdinaryVariables, selectionApplied, type RootState } from '../../app/store'
 import ColumnSelect from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import AsyncExportButton from '../common/AsyncExportButton'
 import { useRequestIdentity } from '../common/useRequestIdentity'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -32,6 +34,8 @@ interface Completed {
 
 export default function SparsePcaPanel() {
   const dispatch = useDispatch()
+  const controlId = useId()
+  const columnsId = `${controlId}-columns`
   const selection = useSelector((state: RootState) => state.selection)
   const globalVariables = useSelector(selectOrdinaryVariables)
   const { columns, schemaRevision, weightConfig, surveyDesign, isLoading: codebookLoading } = useCodebook()
@@ -161,54 +165,64 @@ export default function SparsePcaPanel() {
       && currentView.current.resultId === started.resultId && currentView.current.exportTable === started.exportTable)
   }
   const field = (key: keyof SparsePcaSettings, label: string, min: number, max?: number, step?: number) =>
-    <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{label}
+    <label style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minWidth: 0, maxWidth: '100%' }}>
+      <span style={{ overflowWrap: 'anywhere' }}>{label}</span>
       <InputNumber data-testid={`sparse-pca-${key}`} aria-label={label} value={settings[key]} min={min} max={max} step={step}
         onChange={value => setSettings(previous => ({ ...previous, [key]: value }))} />
     </label>
 
-  return <div data-testid="sparse-pca-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4 }}>
-    <Card size="small" title="SparsePCA 設定">
-      <Space direction="vertical" style={{ width: '100%' }} size={12}>
-        <Space wrap><Typography.Text strong>分析変数</Typography.Text>
-          <ColumnSelect mode="multiple" data-testid="sparse-pca-columns" value={selectedIds} style={{ minWidth: 300, maxWidth: 700 }}
+  return <div data-testid="sparse-pca-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4, minWidth: 0 }}>
+    <Card size="small" className="analysis-setup" title="SparsePCA 設定">
+      <div className="analysis-form-stack">
+        <AnalysisField label="分析変数" htmlFor={columnsId}
+          help="共通の有効変数とコードブックを確認してください。役割が質問・属性、尺度が順序・間隔・比例の非MA列が対象です。初期選択は間隔・比例尺度で、順序尺度を選ぶと数値得点として扱う確認が必要です。">
+          <ColumnSelect id={columnsId} aria-label="SparsePCAの分析変数" aria-describedby={`${columnsId}-help`} roleName="SparsePCAの分析変数"
+            mode="multiple" data-testid="sparse-pca-columns" value={selectedIds} style={{ width: '100%' }}
+            emptyHint={{ roleLabel: 'SparsePCAの分析', reason: 'SparsePCAの分析変数の候補がありません。',
+              guidance: '共通の有効変数とコードブックの役割・尺度・MAグループを確認してください。質問・属性の順序・間隔・比例尺度の非MA列が対象です。',
+              onOpenCodebook: () => dispatch(editorModalOpened()) }}
             options={candidates.map(column => ({ value: column.columnId, label: column.name, questionName: column.name, questionText: column.label }))}
             onChange={ids => setChosen({ datasetId: datasetId!, ids })} placeholder="2つ以上の数値変数" />
-        </Space>
+        </AnalysisField>
         {selectedOrdinals.map(column => <Checkbox key={column!.columnId} checked={!!ordinalAcknowledged[column!.columnId]}
           onChange={event => setOrdinalAcknowledged(previous => ({ ...previous, [column!.columnId]: event.target.checked }))}>
           {column!.label || column!.name}: 固定したカテゴリ順の1..mを数値得点として扱うことを確認（逆転を適用、polychoricではありません）
         </Checkbox>)}
         <Space wrap><Typography.Text strong>前処理</Typography.Text>
-          <Radio.Group data-testid="sparse-pca-preprocessing" value={preprocessing} onChange={event => setPreprocessing(event.target.value)}>
-            <Radio.Button value="correlation">標準化（相関）</Radio.Button>
-            <Radio.Button value="covariance">中心化のみ（共分散）</Radio.Button>
-          </Radio.Group>
+          <div role="radiogroup" aria-label="SparsePCAの前処理" className="analysis-method-switch">
+            <Radio.Group name={`${controlId}-preprocessing`} data-testid="sparse-pca-preprocessing" value={preprocessing} onChange={event => setPreprocessing(event.target.value)}>
+              <Radio.Button value="correlation">標準化（相関）</Radio.Button>
+              <Radio.Button value="covariance">中心化のみ（共分散）</Radio.Button>
+            </Radio.Group>
+          </div>
           {field('nComponents', '成分数 k', 1, 20)} {field('alpha', 'alpha（Bの疎性）', 0, undefined, .1)}
           {field('ridgeAlpha', 'ridgeAlpha（得点の安定化）', 0, undefined, .01)}
         </Space>
         <Typography.Text type="secondary">alphaは変数の単位・標本数・前処理に依存します。成分数を変えると全成分を同時に再学習します。</Typography.Text>
         {settings.alpha === 0 && <Alert type="info" message="alpha=0でも通常PCAへの切替ではありません。ridgeAlphaによる得点の縮小や収束条件の影響が残ります。" />}
-        <details><summary>詳細設定・計算上限</summary><Space wrap style={{ marginTop: 8 }}>
+        <details style={{ minWidth: 0, overflowWrap: 'anywhere' }}><summary>詳細設定・計算上限</summary><Space wrap style={{ marginTop: 8 }}>
           {field('seed', 'seed', 0, 4294967295)} {field('tolerance', '許容誤差', 0, .1)}
           {field('maxIterations', '最大反復', 1, 5000)}
         </Space><p>solver: lars。上限: complete-case行数 n≤10,000、定数除外後の変数数 p≤100、k≤20、max(n,500)×p×k×最大反復≤150,000,000。超過時はエラーとなります。対象行・変数・成分・最大反復を減らしてください。</p></details>
         <Space wrap><Typography.Text strong>ウェイト</Typography.Text>
-          <Radio.Group data-testid="sparse-pca-weight" value={weightChoice} onChange={event => setWeightChoice(event.target.value)}>
-            <Radio.Button value="dataset">データセット設定に従う</Radio.Button>
-            <Radio.Button value="none">明示的に非加重</Radio.Button>
-          </Radio.Group>
+          <div role="radiogroup" aria-label="SparsePCAのウェイト" className="analysis-method-switch">
+            <Radio.Group name={`${controlId}-weight`} data-testid="sparse-pca-weight" value={weightChoice} onChange={event => setWeightChoice(event.target.value)}>
+              <Radio.Button value="dataset">データセット設定に従う</Radio.Button>
+              <Radio.Button value="none">明示的に非加重</Radio.Button>
+            </Radio.Group>
+          </div>
         </Space>
         <Typography.Text type="secondary">欠損は選択変数のcomplete-caseで除外します。現在の補完値・欠損コード・逆転を使用します。frequency / surveyの加重SparsePCAは未対応です。</Typography.Text>
         {unsupportedWeight && <Alert type="error" message="設定されたウェイトはSparsePCAで未対応です。無視・頻度展開は行いません。実行するには「明示的に非加重」を選択してください。" />}
         {settingsError && <Alert type="error" message={settingsError} />}
         {unavailableIds.length > 0 && <Alert type="error" message="使用できなくなった変数があります。分析変数を選び直してください。" />}
-        <Space wrap>
+        <AnalysisRunRow>
           <Button type="primary" data-testid="sparse-pca-run" disabled={!canRun || fitPending} loading={waitingForRun}
             onClick={() => void run()}>SparsePCA実行</Button>
           {waitingForRun && <Button data-testid="sparse-pca-cancel" onClick={cancel}>受け取りを取消</Button>}
           {fitPending && !waitingForRun && <Typography.Text role="status">前の計算の終了を待っています。Python計算の強制停止は行いません。</Typography.Text>}
-        </Space>
-      </Space>
+        </AnalysisRunRow>
+      </div>
     </Card>
     <AnalysisScopeSummary snapshot={result ? completed?.scope : null} />
     {dirty && <Alert data-testid="sparse-pca-dirty" type="info" message="実行時の対象・設定・ラベルを保持しています。現在の入力を反映するには再実行してください。" />}

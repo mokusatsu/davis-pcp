@@ -3,7 +3,9 @@ import MatrixHeatmap from '../charts/MatrixHeatmap'
 import { selectOrdinaryVariables } from '../../app/store'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnalysisField } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { Button, Radio, Space, Spin, Tag, Typography } from 'antd'
@@ -36,6 +38,8 @@ interface CovarianceResponse {
 
 export default function CovariancePage() {
   const dispatch = useDispatch()
+  const controlId = useId()
+  const columnsId = `${controlId}-columns`
   const navigate = useNavigate()
   const viewActive = useAnalysisViewActive()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -151,11 +155,11 @@ export default function CovariancePage() {
   return (
     <div
       data-testid="covariance-page"
-      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}
+      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, minWidth: 0 }}
     >
       {error && <AnalysisErrorPanel title="共分散行列" error={error} onRetry={() => void fetchCov()} loading={loading} />}
       {/* Controls Card */}
-        <div
+        <div className="analysis-setup"
           style={{
             border: '1px solid #e5e7eb',
             borderRadius: 6,
@@ -168,36 +172,46 @@ export default function CovariancePage() {
             gap: 12,
           }}
         >
-          <Space wrap size={16}>
+          <div className="analysis-form-stack" style={{ width: '100%' }}>
             <Typography.Text strong style={{ fontSize: 15 }}>
               <AppstoreOutlined style={{ marginRight: 6, color: '#2a78d6' }} />
               分散共分散行列 (Covariance Matrix Suite)
             </Typography.Text>
 
-            <Radio.Group
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-              optionType="button"
-              buttonStyle="solid"
-              size="small"
-            >
-              <Radio.Button value="cov" data-testid="covariance-mode-cov">共分散行列 (Covariance Σ)</Radio.Button>
-              <Radio.Button value="corr" data-testid="covariance-mode-corr">相関行列 (Correlation R)</Radio.Button>
-              <Radio.Button value="prec" data-testid="covariance-mode-prec">精度行列 (偏相関 Partial Corr)</Radio.Button>
-            </Radio.Group>
+            <div role="radiogroup" aria-label="共分散の表示行列" className="analysis-method-switch">
+              <Radio.Group
+                name={`${controlId}-mode`}
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+                size="small"
+              >
+                <Radio.Button value="cov" data-testid="covariance-mode-cov">共分散行列 (Covariance Σ)</Radio.Button>
+                <Radio.Button value="corr" data-testid="covariance-mode-corr">相関行列 (Correlation R)</Radio.Button>
+                <Radio.Button value="prec" data-testid="covariance-mode-prec">精度行列 (偏相関 Partial Corr)</Radio.Button>
+              </Radio.Group>
+            </div>
 
-            <Select
-              data-testid="covariance-columns-select"
-              mode="multiple"
-              style={{ minWidth: 260 }}
-              placeholder="対象列を選択"
-              value={selectedColumns}
-              onChange={setSelectedColumns}
-              options={activeNumericColumns.map((c) => ({ label: c, value: c }))}
-              maxTagCount={4}
-              size="small"
-            />
-          </Space>
+            <AnalysisField label="対象列" htmlFor={columnsId}
+              help="共通の有効変数のうち、役割が質問・属性、尺度が順序・間隔・比例の非MA列が対象です。初期選択は先頭8列までで、対象列を変えると自動で再計算します。表示行列の切替では再計算しません。">
+              <Select
+                id={columnsId} aria-label="共分散の対象列" aria-describedby={`${columnsId}-help`} roleName="共分散の対象列"
+                data-testid="covariance-columns-select"
+                mode="multiple"
+                style={{ width: '100%' }}
+                placeholder="対象列を選択"
+                value={selectedColumns}
+                onChange={setSelectedColumns}
+                options={activeNumericColumns.map((c) => ({ label: c, value: c }))}
+                emptyHint={{ roleLabel: '共分散の対象', reason: '共分散の対象列の候補がありません。',
+                  guidance: '共通の有効変数とコードブックの役割・尺度・MAグループを確認してください。質問・属性の順序・間隔・比例尺度の非MA列が対象です。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                maxTagCount={4}
+                size="small"
+              />
+            </AnalysisField>
+          </div>
         </div>
 
       {/* Diagnostics Card */}

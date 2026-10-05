@@ -1,9 +1,11 @@
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import Select from '../common/ColumnSelect'
-import { useCallback, useEffect, useState } from 'react'
+import { AnalysisField, AnalysisRunRow } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
+import { useCallback, useEffect, useId, useState } from 'react'
 
-import { useSelector } from 'react-redux'
-import { Alert, Button, Radio, Segmented, Space, Typography, message } from 'antd'
+import { useDispatch, useSelector } from 'react-redux'
+import { Alert, Button, Radio, Typography, message } from 'antd'
 import { PlayCircleOutlined } from '@ant-design/icons'
 import type { RootState } from '../../app/store'
 import { selectEffectiveRowIds, selectOrdinaryVariables } from '../../app/store'
@@ -17,6 +19,9 @@ import type { PcaResponse } from './types'
 
 
 export default function OrdinaryPcaPanel() {
+  const dispatch = useDispatch()
+  const controlId = useId()
+  const columnsId = `${controlId}-columns`
   const selection = useSelector((s: RootState) => s.selection)
   const rowIds = useSelector(selectEffectiveRowIds)
   const globalVariables = useSelector(selectOrdinaryVariables)
@@ -90,50 +95,48 @@ export default function OrdinaryPcaPanel() {
   return (
     <div
       data-testid="pca-page"
-      style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4, height: 'auto', minHeight: '100%', flex: 'none', flexShrink: 0 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4, minWidth: 0, height: 'auto', minHeight: '100%', flex: 'none', flexShrink: 0 }}
     >
-      {/* Top Toolbar */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, background: '#fff', padding: '10px 14px', borderRadius: 6, border: '1px solid #f0f0f0' }}>
-          <Typography.Text strong>分析変数: </Typography.Text>
-          <Select
-            mode="multiple"
-            style={{ minWidth: 260, maxWidth: 460 }}
-            placeholder="2つ以上の数値変数を選択"
-            value={selectedColumns}
-            onChange={setSelectedColumns}
-            options={numericColumns.map((c) => ({ label: c, value: c }))}
-            data-testid="pca-columns-select"
-          />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-            <Typography.Text strong>手法: </Typography.Text>
-            <Radio.Group
-              value={useCorrelation}
-              onChange={(e) => setUseCorrelation(e.target.value)}
-              optionType="button"
-              buttonStyle="solid"
-              size="small"
-              data-testid="pca-method-radio"
-            >
-              <Radio.Button value={true}>相関行列 (標準化)</Radio.Button>
-              <Radio.Button value={false}>分散共分散行列</Radio.Button>
-            </Radio.Group>
-          </div>
-
-          <Space style={{ marginLeft: 'auto' }}>
-            <Button
-              type="primary"
-              icon={<PlayCircleOutlined />}
-              loading={loading}
-              disabled={selectedColumns.length < 2}
-              onClick={() => void runPca()}
-              data-testid="pca-run-button"
-            >
-              PCA実行
-            </Button>
-
-          </Space>
+      <div className="analysis-setup analysis-form-stack" data-testid="pca-setup"
+        style={{ background: '#fff', padding: '10px 14px', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+        <div className="analysis-variable-grid">
+          <AnalysisField label="分析変数" htmlFor={columnsId}
+            help="共通の有効変数のうち、役割が質問・属性、尺度が順序・間隔・比例の非MA列を選べます。初期選択は間隔・比例尺度の列です。">
+            <Select
+              id={columnsId} aria-label="通常PCAの分析変数" aria-describedby={`${columnsId}-help`} roleName="通常PCAの分析変数"
+              mode="multiple" style={{ width: '100%' }}
+              placeholder="2つ以上の数値変数を選択"
+              value={selectedColumns}
+              onChange={setSelectedColumns}
+              options={numericColumns.map((c) => ({ label: c, value: c }))}
+              emptyHint={{ roleLabel: '通常PCAの分析', reason: '通常PCAの分析変数の候補がありません。',
+                guidance: '共通の有効変数とコードブックの役割・尺度・MAグループを確認してください。質問・属性の順序・間隔・比例尺度の非MA列が対象です。',
+                onOpenCodebook: () => dispatch(editorModalOpened()) }}
+              data-testid="pca-columns-select"
+            />
+          </AnalysisField>
+          <AnalysisField label="手法">
+            <div role="radiogroup" aria-label="通常PCAの手法" className="analysis-method-switch">
+              <Radio.Group
+                name={`${controlId}-method`}
+                value={useCorrelation}
+                onChange={(e) => setUseCorrelation(e.target.value)}
+                optionType="button" buttonStyle="solid" size="small"
+                data-testid="pca-method-radio"
+              >
+                <Radio.Button value={true}>相関行列 (標準化)</Radio.Button>
+                <Radio.Button value={false}>分散共分散行列</Radio.Button>
+              </Radio.Group>
+            </div>
+          </AnalysisField>
         </div>
+        <AnalysisRunRow>
+          <Button type="primary" icon={<PlayCircleOutlined />} loading={loading}
+            disabled={selectedColumns.length < 2} onClick={() => void runPca()} data-testid="pca-run-button">
+            PCA実行
+          </Button>
+        </AnalysisRunRow>
+      </div>
 
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Alert type="info" message="実行時の対象・設定を保持しています。現在の入力で計算するには再実行してください。" />}
@@ -168,22 +171,23 @@ export default function OrdinaryPcaPanel() {
         <div
           style={{
             background: '#fff', padding: 14, borderRadius: 6, border: '1px solid #f0f0f0',
-            flex: 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 560,
+            flex: 'none', flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 560, minWidth: 0,
           }}
         >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
+            <div className="analysis-setup" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
+              <Typography.Title level={5} style={{ margin: 0, minWidth: 0 }}>
                 3. 主成分射影ビュー (Projection & Biplot)
               </Typography.Title>
-              <Segmented
-                value={viewMode}
-                onChange={(val) => setViewMode(val as 'biplot' | 'matrix')}
-                options={[
-                  { label: '2D バイプロット (Biplot)', value: 'biplot' },
-                  { label: '主成分散布図行列 (PC Matrix)', value: 'matrix' },
-                ]}
-                data-testid="pca-view-mode"
-              />
+              <div role="radiogroup" aria-label="通常PCAの射影ビュー" className="analysis-method-switch" style={{ maxWidth: '100%' }}>
+                <Radio.Group
+                  name={`${controlId}-view`}
+                  value={viewMode} onChange={event => setViewMode(event.target.value)}
+                  data-testid="pca-view-mode"
+                >
+                  <Radio.Button value="biplot">2D バイプロット (Biplot)</Radio.Button>
+                  <Radio.Button value="matrix">主成分散布図行列 (PC Matrix)</Radio.Button>
+                </Radio.Group>
+              </div>
             </div>
 
           {viewMode === 'biplot' ? (
