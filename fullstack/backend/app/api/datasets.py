@@ -2488,8 +2488,19 @@ def _delete_dataset(dataset_id: str) -> dict:
     return {"deleted": dataset_id}
 
 
+def dataframe_to_arrow_table(df: pl.DataFrame) -> pa.Table:
+    # The shipped WASM Polars exporter can panic on filtered string views.
+    # Own those variable-width buffers at the IPC boundary; leave numeric
+    # and temporal columns untouched so their widths/precision are retained.
+    df = df.with_columns([
+        pl.Series(name, df[name].to_list(), dtype=dtype)
+        for name, dtype in df.schema.items() if dtype in (pl.String, pl.Binary)
+    ])
+    return df.to_arrow()
+
+
 def _serialize_dataframe_to_arrow_bytes(df: pl.DataFrame) -> bytes:
-    table = df.to_arrow()
+    table = dataframe_to_arrow_table(df)
     sink = pa.BufferOutputStream()
     with ipc.new_stream(sink, table.schema) as writer:
         writer.write_table(table)

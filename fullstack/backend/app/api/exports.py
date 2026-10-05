@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..domain.codebook_adapter import CodebookAdapter, normalize_code
-from ..api.datasets import dataframe_to_arrow_response
+from ..api.datasets import dataframe_to_arrow_response, dataframe_to_arrow_table
 from ..storage.dataset_store import DatasetStore
 from ..storage.session_store import SessionStore
 
@@ -317,7 +317,7 @@ def export(req: ExportRequest) -> Response:
             df.write_parquet(buffer)
         except Exception:
             import pyarrow.parquet as pq
-            pq.write_table(df.to_arrow(), buffer)
+            pq.write_table(dataframe_to_arrow_table(df), buffer)
         media = "application/vnd.apache.parquet"
         ext = "parquet"
     else:

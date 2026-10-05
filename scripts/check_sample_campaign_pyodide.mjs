@@ -53,6 +53,26 @@ try {
   console.error(String(error)); process.exit(1)
 }
 writeFileSync(resolve(output, 'runtime-pyodide.json'), py.FS.readFile('/acceptance/runtime-pyodide.json'))
+// Decode actual API response bytes with the same Arrow JS package as the UI.
+const { tableFromIPC } = await import(pathToFileURL(resolve(root,
+  'fullstack/frontend/node_modules/apache-arrow/Arrow.node.mjs')).href)
+const arrowExpectations = JSON.parse(py.FS.readFile('/acceptance/arrow-views/expected.json', { encoding: 'utf8' }))
+for (const expected of arrowExpectations) {
+  const bytes = py.FS.readFile(`/acceptance/arrow-views/${expected.sampleId}.arrow`)
+  const table = tableFromIPC(bytes)
+  if (JSON.stringify(table.schema.fields.map(field => field.name)) !== JSON.stringify(expected.columns)) throw Error(`Arrow JS columns: ${expected.sampleId}`)
+  for (const name of expected.columns) {
+    const actual = table.getChild(name)
+    if (table.numRows !== expected.values[name].length) throw Error(`Arrow JS rows: ${expected.sampleId}`)
+    expected.values[name].forEach((value, index) => {
+      const decoded = actual.get(index)
+      if (typeof decoded === 'bigint' && !Number.isSafeInteger(value)) throw Error(`Arrow JS unsafe integer oracle: ${expected.sampleId}/${name}/${index}`)
+      if ((typeof decoded === 'bigint' ? Number(decoded) : decoded) !== value) throw Error(`Arrow JS value: ${expected.sampleId}/${name}/${index}`)
+    })
+  }
+}
+writeFileSync(resolve(output, 'runtime-arrow-js.json'), JSON.stringify({ samplesPassed: arrowExpectations.length, decoder: 'frontend apache-arrow', source: 'actual WASM /datasets/view response bytes' }, null, 2))
+console.log('ARROW_JS_SAMPLES_PASSED', arrowExpectations.length)
 writeFileSync(resolve(output, 'runtime-pyodide-memory.json'), JSON.stringify({ baseline,
   final: { wasmHeapBytes: py._module.HEAPU8.length, rssBytes: process.memoryUsage().rss },
   peakNodeRssKiB: process.resourceUsage().maxRSS }, null, 2))

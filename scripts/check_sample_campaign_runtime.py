@@ -51,22 +51,102 @@ async def run_acceptance(output_path: str) -> dict:
     store = DatasetStore()
     checks = []
     timings = {}
+    arrow_views = Path(output_path).parent / "arrow-views"
+    arrow_views.mkdir(parents=True, exist_ok=True)
+    arrow_expectations = []
     # A small typed boundary fixture checks the actual WASM Arrow bridge;
     # Python-list inference must not erase all-null types or integer widths.
     import pyarrow as pa
     import pyarrow.parquet as pq
+    import polars as pl
+    from decimal import Decimal
+
+    def unavailable_native_reader(*_args, **_kwargs):
+        raise AttributeError("test the Arrow fallback")
+
+    def read_arrow_fallback(path, columns=None):
+        # Exercise the same bridge on native and WASM. Native Polars and
+        # Arrow differ for a few Parquet logical types (e.g. date64/time32).
+        native_reader = pl.read_parquet
+        try:
+            pl.read_parquet = unavailable_native_reader
+            return store._read_parquet(path, columns)
+        finally:
+            pl.read_parquet = native_reader
+
     typed_path = settings.workspace_dir / "typed-reader-check.parquet"
     typed_table = pa.table({"i32": pa.array([1, None], type=pa.int32()),
                            "f32": pa.array([None, None], type=pa.float32()),
                            "text": pa.array([None, None], type=pa.string()),
-                           "flag": pa.array([True, None], type=pa.bool_())})
+                           "flag": pa.array([True, None], type=pa.bool_()),
+                           "bytes": pa.array([b"\xff\x00", None], type=pa.binary()),
+                           "decimal": pa.array([Decimal("1.23"), None], type=pa.decimal128(10, 2)),
+                           "stamp": pa.array([1728086400000000001, None], type=pa.timestamp("ns", tz="Asia/Tokyo")),
+                           "duration": pa.array([1, None], type=pa.duration("ns")),
+                           "time": pa.array([1, None], type=pa.time64("ns"))})
     pq.write_table(typed_table, typed_path)
-    typed = store._read_parquet(typed_path)
-    assert {key: str(value) for key, value in typed.schema.items()} == {
+    typed = read_arrow_fallback(typed_path)
+    assert {key: str(value) for key, value in typed.select("i32", "f32", "text", "flag").schema.items()} == {
         "i32": "Int32", "f32": "Float32", "text": "String", "flag": "Boolean"}
-    assert typed.shape == (2, 4) and typed["i32"].to_list() == [1, None]
-    assert store._read_parquet(typed_path, columns=[]).shape == (0, 0)
+    assert typed.shape == (2, 9) and typed["i32"].to_list() == [1, None]
+    assert typed.schema["decimal"] == pl.Decimal(10, 2)
+    assert typed.schema["stamp"] == pl.Datetime("ns", "Asia/Tokyo")
+    assert typed.schema["duration"] == pl.Duration("ns") and typed.schema["time"] == pl.Time
+    assert read_arrow_fallback(typed_path, columns=[]).shape == (0, 0)
+    decoded_typed = typed.to_arrow()
+    for name in ("i32", "f32", "text", "flag", "bytes", "decimal"):
+        assert decoded_typed[name].to_pylist() == typed_table[name].to_pylist()
+    for name in ("stamp", "duration", "time"):
+        assert decoded_typed[name].cast(pa.int64()).to_pylist() == typed_table[name].cast(pa.int64()).to_pylist()
     checks.append("parquet:typed_all_null_and_empty_projection_native_wasm_parity")
+    from app.api.datasets import _serialize_dataframe_to_arrow_bytes
+    nested_temporal = [
+        ("list_timestamp", pa.list_(pa.timestamp("ns")), [[1, None, -123], None, []]),
+        ("nested_time", pa.list_(pa.list_(pa.time64("ns"))), [[[1, None], None, []], None, []]),
+        ("fixed_duration", pa.list_(pa.duration("ns"), 2), [[1, None], [None, None], [-123, 123]]),
+        ("struct_timezone", pa.struct([("stamp", pa.timestamp("ns", tz="Asia/Tokyo")), ("text", pa.string())]),
+         [{"stamp": -1, "text": "長い文字列の確認"}, None, {"stamp": 123, "text": None}]),
+        ("list_struct", pa.list_(pa.struct([("stamp", pa.timestamp("s")), ("text", pa.string())])),
+         [[{"stamp": -1, "text": "Łódź"}, None], None, [{"stamp": 123, "text": None}]]),
+        ("struct_list", pa.struct([("stamp", pa.list_(pa.timestamp("ns"))), ("text", pa.string())]),
+         [{"stamp": [-1, None], "text": "value"}, None, {"stamp": [], "text": None}]),
+        ("large_list", pa.large_list(pa.timestamp("ns")), [[1, None, -123], None, []]),
+        ("nested_date64", pa.list_(pa.date64()), [[0, None, -86400000], None, []]),
+        ("date32_range", pa.date32(), [4000000, None, -4000000]),
+        ("nested_date32_range", pa.list_(pa.date32()), [[4000000, None], None, [-4000000]]),
+        ("nested_decimal_precision", pa.list_(pa.decimal128(38, 18)),
+         [[Decimal("12345678901234567890.123456789012345678"), None], None,
+          [Decimal("0.000000000000000001"), Decimal("-0.000000000000000001")]]),
+    ]
+    for name, arrow_type, values in nested_temporal:
+        path = settings.workspace_dir / f"typed-{name}.parquet"
+        pq.write_table(pa.table({"value": pa.array(values, type=arrow_type), "label": ["row1", None, "row3"]}), path)
+        source = pq.read_table(path)
+        frame = read_arrow_fallback(path)
+        assert frame.schema == pl.from_arrow(source.slice(0, 0)).schema
+        for actual, expected in ((frame, source),
+                (frame.filter(pl.Series([True, False, True])), source.take(pa.array([0, 2])))):
+            decoded = pa.ipc.open_stream(_serialize_dataframe_to_arrow_bytes(actual)).read_all()
+            assert decoded.column_names == expected.column_names
+            # Compare Arrow buffers/logical values, never lossy Python dates.
+            for column in expected.column_names:
+                assert decoded[column].cast(expected[column].type).equals(expected[column]), (name, column)
+        checks.append("parquet:typed_container_exact_" + name)
+    # Some PyArrow Parquet versions cannot read a null fixed-size-list
+    # parent they wrote themselves. Test that Arrow bridge input directly,
+    # separately from the non-null-parent real-file control above.
+    fixed_null = pa.table({"value": pa.array([[1, None], None, [-123, 123]],
+                                           type=pa.list_(pa.duration("ns"), 2))})
+    native_read, arrow_read = pl.read_parquet, pq.read_table
+    try:
+        pl.read_parquet = unavailable_native_reader
+        pq.read_table = lambda *_args, **_kwargs: fixed_null
+        frame = store._read_parquet(settings.workspace_dir / "fixed-null-bridge.parquet")
+    finally:
+        pl.read_parquet, pq.read_table = native_read, arrow_read
+    decoded = pa.ipc.open_stream(_serialize_dataframe_to_arrow_bytes(frame)).read_all()
+    assert decoded["value"].cast(fixed_null["value"].type).equals(fixed_null["value"])
+    checks.append("arrow_bridge:fixed_temporal_null_parent_exact")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver/api/v1/") as client:
         samples = (await client.get("datasets/samples")).json()["samples"]
         assert len(samples) == 12
@@ -88,6 +168,41 @@ async def run_acceptance(output_path: str) -> dict:
             assert len(rows) == 4 and all(len(row) == sample["columnCount"] for row in rows)
             checks.append(f"{sample['id']}:import_summary_selected_csv")
 
+            # A Parquet read followed by Arrow export is a distinct ABI
+            # boundary: values/schema checks alone cannot detect bad buffers.
+            view = await client.post(f"datasets/{did}/view", json={})
+            assert view.status_code == 200, view.text
+            decoded = pa.ipc.open_stream(view.content).read_all()
+            assert decoded.to_pydict() == frame.to_dict(as_series=False)
+            (arrow_views / f"{sample['id']}.arrow").write_bytes(view.content)
+            arrow_expectations.append({"sampleId": sample["id"], "columns": frame.columns,
+                                       "values": frame.to_dict(as_series=False)})
+            chosen = frame.columns[-2:][::-1]
+            projected = await client.post(f"datasets/{did}/view", json={
+                "columns": chosen, "rowIds": ids[:3][::-1]})
+            assert projected.status_code == 200, projected.text
+            decoded = pa.ipc.open_stream(projected.content).read_all()
+            expected_columns = list(dict.fromkeys(["__rowId__", *chosen]))
+            assert decoded.column_names == expected_columns
+            assert decoded.to_pydict() == frame.head(3).select(expected_columns).to_dict(as_series=False)
+            exported = await client.post("exports", json={"datasetId": did,
+                "scope": "selected", "rowIds": ids[:3], "format": "arrow"})
+            assert exported.status_code == 200, exported.text
+            assert pa.ipc.open_stream(exported.content).read_all().to_pydict() == frame.head(3).drop("__rowId__").to_dict(as_series=False)
+            checks.append(f"{sample['id']}:fresh_parquet_arrow_view_projection_export")
+            if sample["id"] == "iris":
+                native_writer = pl.DataFrame.write_parquet
+                try:
+                    pl.DataFrame.write_parquet = unavailable_native_reader
+                    exported = await client.post("exports", json={"datasetId": did,
+                        "scope": "selected", "rowIds": ids[:3], "format": "parquet"})
+                finally:
+                    pl.DataFrame.write_parquet = native_writer
+                assert exported.status_code == 200, exported.text
+                decoded = pq.read_table(io.BytesIO(exported.content))
+                assert decoded.to_pydict() == frame.head(3).drop("__rowId__").to_dict(as_series=False)
+                checks.append("iris:forced_parquet_writer_fallback_selected_export")
+
         # Exercise the actual static history reader, not a native-only stand-in.
         did = "ds-builtin-iris"
         original = store.get_dataframe(did)
@@ -105,7 +220,11 @@ async def run_acceptance(output_path: str) -> dict:
             assert store.get_dataframe(did).equals(expected)
             assert store.get_meta(did)["dataRevision"] == revision
             assert store.load_codebook(did)["licenseText"] == original_license
+            view = await client.post(f"datasets/{did}/view", json={})
+            assert view.status_code == 200, view.text
+            assert pa.ipc.open_stream(view.content).read_all().to_pydict() == expected.to_dict(as_series=False)
         assert store.read_raw(did).equals(original)
+        assert store.read_raw(did).to_arrow().to_pydict() == original.to_dict(as_series=False)
         checks.append("iris:bin_undo_redo_revert_exact_values_ids_license")
 
         did = "ds-builtin-kakegawa-citizen2022-adult600"
@@ -252,6 +371,7 @@ async def run_acceptance(output_path: str) -> dict:
         assert abs(tail / expected_tail - 1) < 1e-12 and error <= 1e-10
         checks.append("polychoric:extreme_positive_tail_survival_probability")
     result = {"runtime": sys.platform, "passed": len(checks), "checks": checks, "timingsSeconds": timings}
+    (arrow_views / "expected.json").write_text(json.dumps(arrow_expectations, ensure_ascii=False, allow_nan=False))
     Path(output_path).write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(json.dumps(result))
     return result

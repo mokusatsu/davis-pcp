@@ -25,6 +25,42 @@ _dataset_locks: dict[tuple[str, str], RLock] = {}
 _locks_guard = RLock()
 
 
+def _arrow_temporal_copy_types(arrow_type: Any, dtype: Any) -> tuple[Any, Any]:
+    """Normalize temporal units, then expose exact integers inside containers."""
+    import pyarrow as pa
+
+    if pa.types.is_timestamp(arrow_type):
+        return pa.timestamp(dtype.time_unit, tz=arrow_type.tz), pa.int64()
+    if pa.types.is_duration(arrow_type):
+        return pa.duration(dtype.time_unit), pa.int64()
+    if pa.types.is_time(arrow_type):
+        return pa.time64("ns"), pa.int64()
+    if pa.types.is_date32(arrow_type):
+        return arrow_type, pa.int32()
+    if pa.types.is_date64(arrow_type):
+        return arrow_type, pa.int64()
+    if (pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type)
+            or pa.types.is_fixed_size_list(arrow_type)):
+        normalized, physical = _arrow_temporal_copy_types(arrow_type.value_type, dtype.inner)
+        field = arrow_type.value_field
+
+        def container(value_type):
+            value_field = pa.field(field.name, value_type, nullable=field.nullable, metadata=field.metadata)
+            if pa.types.is_fixed_size_list(arrow_type):
+                return pa.list_(value_field, arrow_type.list_size)
+            return pa.large_list(value_field) if pa.types.is_large_list(arrow_type) else pa.list_(value_field)
+
+        return container(normalized), container(physical)
+    if pa.types.is_struct(arrow_type):
+        fields = {field.name: field.dtype for field in dtype.fields}
+        children = [_arrow_temporal_copy_types(field.type, fields[field.name]) for field in arrow_type]
+        return tuple(pa.struct([
+            pa.field(field.name, types[index], nullable=field.nullable, metadata=field.metadata)
+            for field, types in zip(arrow_type, children)
+        ]) for index in (0, 1))
+    return arrow_type, arrow_type
+
+
 def canonical_fingerprint(schema_json: str, row_ids: list[str], values_hash: str, options_json: str) -> str:
     digest = hashlib.sha256()
     digest.update(schema_json.encode("utf-8"))
@@ -243,15 +279,32 @@ class DatasetStore:
         try:
             return pl.read_parquet(path, columns=columns)
         except Exception:
+            import pyarrow as pa
             import pyarrow.parquet as pq
             table = pq.read_table(path, columns=columns)
             if columns == []:
                 # Polars' native empty projection is (0, 0), independent of
                 # Arrow's ability to retain a row count without columns.
                 return pl.DataFrame()
-            # Preserve widths and all-null column types when restoring an
-            # older generation; inference through Python lists loses them.
-            return pl.from_arrow(table)
+            # Keep dtype metadata, but let Polars own the returned values.
+            # Imported Arrow string buffers can panic when re-exported by
+            # the shipped WASM Polars build. A zero-row import obtains only
+            # the schema; explicit construction also preserves null dtypes.
+            schema = pl.from_arrow(table.slice(0, 0)).schema
+            owned = []
+            for field, column in zip(table.schema, table.columns):
+                dtype = schema[field.name]
+                normalized, physical = _arrow_temporal_copy_types(field.type, dtype)
+                # Python datetime/timedelta lose nanoseconds and cannot
+                # represent all Arrow dates, including inside lists/structs.
+                if normalized != physical:
+                    copied = column.cast(normalized).cast(physical)
+                    physical_dtype = pl.from_arrow(pa.table({field.name: copied.slice(0, 0)})).schema[field.name]
+                    series = pl.Series(field.name, copied.to_pylist(), dtype=physical_dtype, strict=True).cast(dtype, strict=True)
+                else:
+                    series = pl.Series(field.name, column.to_pylist(), dtype=dtype, strict=True)
+                owned.append(series)
+            return pl.DataFrame(owned)
 
     def list_datasets(self) -> list[dict[str, Any]]:
         result = []
