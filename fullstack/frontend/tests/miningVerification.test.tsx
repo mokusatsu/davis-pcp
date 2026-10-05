@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -7,6 +7,8 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import SubgroupMiningPage from '../src/features/mining/SubgroupMiningPage'
 import ModernSubgroupMiningView from '../src/features/mining/ModernSubgroupMiningView'
+import { VerificationFindings, VerificationSummary } from '../src/features/mining/VerificationResults'
+import type { VerificationInfo, VerificationResultItem } from '../src/features/mining/verification'
 
 vi.mock('../src/features/mining/useMiningTargets', () => {
   const React = require('react')
@@ -40,6 +42,12 @@ vi.mock('../src/app/store', async (importOriginal) => {
     selectOrdinaryVariables: () => ({ activeVariableIds: ['seg', 'score'], allVariables: ['seg', 'score'], targetVariableId: 'score' }),
     selectEffectiveRowIds: () => stableRowIds,
   }
+})
+beforeEach(() => {
+  vi.spyOn(api, 'get').mockResolvedValue({ datasets: [
+    { datasetId: 'd', name: '探索用', rowCount: 200 },
+    { datasetId: 'd2', name: '独立評価用', rowCount: 60 },
+  ] } as never)
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -83,7 +91,7 @@ const explorationPayload = {
 }
 
 /** The real response nests the estimate under `effect` and the p-values under `test`. */
-const replicatedItem = {
+const replicatedItem: VerificationResultItem = {
   candidateId: 'ins_001',
   estimand: { type: 'mean_difference', numerator: 'b', denominator: 'a', unit: 'question_value' },
   testable: true,
@@ -106,7 +114,7 @@ const replicatedItem = {
   warnings: [],
 }
 
-const untestableItem = {
+const untestableItem: VerificationResultItem = {
   candidateId: 'ins_001',
   estimand: { type: 'mean_difference', numerator: 'b', denominator: 'a' },
   testable: false,
@@ -123,21 +131,22 @@ const untestableItem = {
   }],
 }
 
-function verificationPayload(item: typeof replicatedItem | typeof untestableItem) {
+function verificationPayload(item: VerificationResultItem, info: Partial<VerificationInfo> = {}) {
   return {
     ...explorationPayload,
     analysisMode: 'verification',
     isExploratory: false,
     verification: {
-      method: 'holdout', testUsed: ['welch_two_sample'], estimand: 'per_candidate',
+      method: 'independent', testUsed: ['welch_two_sample'], estimand: 'per_candidate',
       alpha: 0.05, correction: 'bh-fdr', mHypotheses: 1, mExcluded: 0,
       excludedCandidateIds: [], seed: 42, nSelection: 140, nEvaluation: 60,
       selectionScopeHash: 'sha256:sel', evaluationScopeHash: 'sha256:eval',
-      analysisDatasetId: 'd', evaluationDatasetId: 'd', rowIdNamespace: 'dataset-scoped',
+      analysisDatasetId: 'd', evaluationDatasetId: 'd2', rowIdNamespace: 'dataset-scoped',
       candidateSetHash: 'sha256:abc123', pinnedCandidateIds: ['ins_001'],
       pinnedCandidateCount: 1, explorationScopeHash: 'sha256:scope',
       explorationDataRevision: 3, minGroupSize: 10,
-      note: '候補は探索時のスコープで固定し、評価は分割した評価側のみで行いました。',
+      note: '候補は探索時のスコープで固定し、評価は独立データセットで行いました。',
+      ...info,
     },
     results: [item],
   }
@@ -190,11 +199,11 @@ it('verifies the pinned candidate set by hash alone and reads the new result sha
   expect(view.getByTestId('verification-p-value').textContent).toContain('0.0004')
   expect(view.getByTestId('verification-p-adjusted').textContent).toContain('0.0004')
   expect(view.getByTestId('verification-ci').textContent).toContain('9.5000')
-  expect(view.getByTestId('verification-replication').textContent).toContain('再現')
+  expect(view.getByTestId('verification-replication').textContent).toContain('探索と方向一致')
   expect(view.getByTestId('verification-replication').textContent).toContain('補正後も有意')
   // The exploration badge is replaced by the verified one.
   expect(view.queryByTestId('exploration-badge')).toBeNull()
-  expect(view.getByTestId('verification-badge').textContent).toContain('ホールドアウト分割')
+  expect(view.getByTestId('verification-badge').textContent).toContain('独立データ')
 })
 
 it('explains an untestable candidate instead of leaving the p-value blank', async () => {
@@ -295,8 +304,176 @@ it('runs modern verification through the pinned candidate set and shows the find
 
   await waitFor(() => expect(view.getByTestId('modern-verification-badge')).toBeTruthy())
   expect(view.getByTestId('modern-verification-p-value').textContent).toContain('0.0004')
-  expect(view.getByTestId('modern-verification-replication').textContent).toContain('再現')
+  expect(view.getByTestId('modern-verification-replication').textContent).toContain('探索と方向一致')
   // The insight list itself is still an exploration; only the pinned candidates
   // have verified numbers, so both banners are correct at once.
   expect(view.getByTestId('modern-exploration-badge')).toBeTruthy()
+})
+
+async function completeResult(kind: 'classic' | 'modern', item: VerificationResultItem, info: Partial<VerificationInfo> = {}) {
+  const prefix = kind === 'classic' ? 'verification' : 'modern-verification'
+  let current: Awaited<ReturnType<typeof renderClassicAndExplore>>
+  if (kind === 'classic') {
+    current = await renderClassicAndExplore()
+  } else {
+    const local = localStore()
+    const post = vi.spyOn(api, 'post').mockResolvedValue(modernExplorationPayload as never)
+    const view = render(<Provider store={local}><MemoryRouter><ModernSubgroupMiningView /></MemoryRouter></Provider>)
+    fireEvent.click(await view.findByRole('button', { name: /指定対象で実行/ }))
+    await view.findByTestId('modern-to-verification-btn')
+    current = { view, post, local }
+  }
+  const { view, post } = current
+  const candidateId = kind === 'classic' ? 'ins_001' : 'msd_001'
+  const response = verificationPayload({ ...item, candidateId }, info)
+  post.mockResolvedValue(response as never)
+  fireEvent.click(view.getByTestId(kind === 'classic' ? 'mining-to-verification-btn' : 'modern-to-verification-btn'))
+  // Deliberately leave settings at holdout: presentation must use the completed
+  // response, not the current draft settings (CV and independent differ here).
+  await clickModalRun()
+  await view.findByTestId(`${prefix}-badge`)
+  const actions = kind === 'classic'
+    ? ['select-subgroup-pcp', 'focus-pcp-pair', 'send-to-robustness-btn']
+    : ['modern-to-verification-btn', 'modern-send-to-robustness-btn']
+  for (const id of actions) expect(view.getByTestId(id)).toHaveStyle({ whiteSpace: 'normal', height: 'auto', maxWidth: '100%' })
+  return { view, prefix }
+}
+
+for (const kind of ['classic', 'modern'] as const) {
+  it.each([
+    ['holdout', 'posthoc_stability', null],
+    ['holdout', undefined, undefined],
+    ['cross_validation', 'posthoc_stability', null],
+    ['cross_validation', undefined, undefined],
+  ] as const)(`${kind} renders %s stability (%s/%s) without null-driven inference`, async (method, stabilityMode, missing) => {
+    const candidateId = kind === 'classic' ? 'ins_001' : 'msd_001'
+    const stabilityItem = { ...replicatedItem,
+      test: { ...replicatedItem.test!, pValue: missing, pAdjusted: missing, significant: missing },
+      replicationStatus: missing,
+    }
+    const { view, prefix } = await completeResult(kind, stabilityItem, {
+      method, stabilityMode, alpha: 0.1, mHypotheses: 0, testUsed: [], evaluationDatasetId: 'd',
+      nSelection: method === 'holdout' ? 390 : 600, nEvaluation: method === 'holdout' ? 210 : 600,
+      note: undefined,
+      folds: method === 'cross_validation' ? [
+        { fold: 0, nEvaluation: 150, testableCount: 1, effects: [
+          { candidateId: 'other', effect: 77, testable: true },
+          { candidateId, effect: 8.5, testable: true, n: { evaluation: 150, used: 120 } },
+        ] },
+        { fold: 1, nEvaluation: 150, testableCount: 0, effects: [
+          { candidateId, effect: null, testable: false, n: { evaluation: 150, used: 0 }, reason: 'INSUFFICIENT_GROUP_SIZE' },
+        ] },
+      ] : undefined,
+    })
+    const badge = view.getByTestId(`${prefix}-badge`).textContent ?? ''
+    expect(badge).toContain('探索後の安定性確認（参考）')
+    expect(badge).toContain(method === 'holdout' ? 'ホールドアウト分割' : '交差検証')
+    expect(badge).toContain(method === 'holdout' ? 'nSelection=390／nEvaluation=210' : 'nSelection=600／nEvaluation=600')
+    expect(badge).not.toMatch(/検証済み|補正:|family=|α=/)
+    expect(view.queryByTestId(`${prefix}-p-value`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-p-adjusted`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-replication`)).toBeNull()
+    expect(view.getByTestId(`${prefix}-ci`).textContent).toContain('差の90% CI（参考）')
+    expect(view.getByTestId(`${prefix}-ci`).textContent).toContain('9.500')
+    expect(view.getByTestId(`${prefix}-estimate`).textContent).toContain('10.0000（60行）')
+    expect(view.getByTestId(`${prefix}-group-stats`).textContent).toContain('1.410')
+    expect(view.container.textContent).not.toMatch(/補正後は非有意|補正後も有意|FDR有意発見数|Bonferroni有意|p=null|adj=null|undefined/)
+    if (kind === 'classic') {
+      expect(view.getByTestId('verification-list-summary').textContent).toContain('安定性確認: 点推定 10.0000／評価 60行')
+    }
+    if (method === 'cross_validation') {
+      const folds = view.getByTestId(`${prefix}-folds`)
+      expect(folds.textContent).toContain('8.5000')
+      expect(folds.textContent).toContain('120')
+      expect(folds.textContent).toContain('算出不可')
+      expect(folds.textContent).toContain('INSUFFICIENT_GROUP_SIZE')
+      expect(folds.textContent).not.toContain('77.0000')
+      expect(folds.querySelectorAll('tbody tr.ant-table-row')).toHaveLength(2)
+      expect(folds.querySelector('.ant-table-content')).toHaveStyle({ overflowX: 'auto' })
+    } else expect(view.queryByTestId(`${prefix}-folds`)).toBeNull()
+  })
+
+  it.each([null, undefined])(`${kind} keeps an independent estimate without inventing a non-significant result (%s)`, async (missing) => {
+    const item = { ...replicatedItem, test: { ...replicatedItem.test!, pValue: missing, pAdjusted: missing, significant: false } }
+    const { view, prefix } = await completeResult(kind, item, { method: 'independent', mHypotheses: 0, testUsed: [] })
+    expect(view.getByTestId(`${prefix}-inference-unavailable`).textContent).toContain('推測統計を算出できません')
+    expect(view.getByTestId(`${prefix}-estimate`).textContent).toContain('10.0000（60行）')
+    expect(view.queryByTestId(`${prefix}-p-value`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-p-adjusted`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-replication`)).toBeNull()
+    expect(view.container.textContent).not.toContain('補正後は非有意')
+    expect(view.getByTestId(`${prefix}-badge`).textContent).toContain('推測統計を算出できた候補: 0')
+    if (kind === 'classic') expect(view.getByTestId('verification-list-summary').textContent).not.toMatch(/null|undefined|p=/)
+  })
+
+  it(`${kind} preserves the independent missing-column reason without showing a successful verification`, async () => {
+    const item = { ...untestableItem, reason: 'COLUMN_NOT_FOUND', warnings: [{ code: 'COLUMN_NOT_FOUND', message: '評価データに必要な列がありません。' }] }
+    const { view, prefix } = await completeResult(kind, item, { mHypotheses: 0, mExcluded: 1, testUsed: [] })
+    expect(view.getByTestId(`${prefix}-untestable`).textContent).toContain('評価データに必要な列がありません。')
+    expect(view.getByTestId(`${prefix}-untestable`).textContent).toContain('COLUMN_NOT_FOUND')
+    expect(view.queryByTestId(`${prefix}-estimate`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-p-value`)).toBeNull()
+    expect(view.queryByTestId(`${prefix}-replication`)).toBeNull()
+    expect(view.getByTestId(`${prefix}-badge`).textContent).not.toContain('検証済み')
+  })
+
+  it(`${kind} shows valid independent inference, its actual confidence level and result-based significant count`, async () => {
+    const { view, prefix } = await completeResult(kind, replicatedItem, { method: 'independent', alpha: 0.01 })
+    expect(view.getByTestId(`${prefix}-badge`).textContent).toContain('独立データでの評価結果')
+    expect(view.getByTestId(`${prefix}-badge`).textContent).toContain('補正後有意=1')
+    expect(view.getByTestId(`${prefix}-badge`).textContent).toContain('補正: bh-fdr（α=0.01）')
+    expect(view.getByTestId(`${prefix}-p-value`).textContent).toContain('0.0004')
+    expect(view.getByTestId(`${prefix}-p-adjusted`).textContent).toContain('0.0004')
+    expect(view.getByTestId(`${prefix}-replication`).textContent).toContain('探索と方向一致')
+    expect(view.getByTestId(`${prefix}-replication`).textContent).toContain('補正後も有意')
+    expect(view.getByTestId(`${prefix}-ci`).textContent).toContain('差の99% CI')
+    expect(view.getByTestId(`${prefix}-ci`).textContent).not.toContain('参考')
+    expect(view.container.textContent).not.toMatch(/FDR有意発見数|Bonferroni有意/)
+  })
+}
+
+
+it.each([false, null, undefined])('only explicit independent significance decisions become significance labels (%s)', (significant) => {
+  const item = { ...replicatedItem, test: { ...replicatedItem.test!, pValue: 0.4, pAdjusted: 0.4, significant }, replicationStatus: undefined }
+  const info = verificationPayload(item).verification
+  const view = render(<><VerificationSummary info={info} results={[item]} prefix="result" />
+    <VerificationFindings info={info} item={item} candidateId={item.candidateId} prefix="result" /></>)
+  expect(view.getByTestId('result-replication').textContent).toBe(significant === false ? '補正後は非有意' : '有意性判定なし')
+  expect(view.getByTestId('result-estimate').textContent).toContain('10.0000（60行）')
+  expect(view.container.textContent).not.toContain('undefined')
+  if (significant == null) expect(view.getByTestId('result-badge').textContent).not.toContain('補正後有意=')
+})
+
+it.each([
+  { method: 'holdout' }, { method: 'cross_validation' },
+  { method: 'independent', stabilityMode: 'posthoc_stability' as const },
+  { method: 'unknown' },
+])('suppresses inference when completed response metadata disallows it: %j', (overrides) => {
+  const info = verificationPayload(replicatedItem, overrides).verification
+  const view = render(<><VerificationSummary info={info} results={[replicatedItem]} prefix="result" />
+    <VerificationFindings info={info} item={replicatedItem} candidateId={replicatedItem.candidateId} prefix="result" /></>)
+  expect(view.queryByTestId('result-p-value')).toBeNull()
+  expect(view.queryByTestId('result-p-adjusted')).toBeNull()
+  expect(view.queryByTestId('result-replication')).toBeNull()
+  expect(view.getByTestId('result-estimate').textContent).toContain('10.0000（60行）')
+  expect(view.getByTestId('result-badge').textContent).not.toMatch(/補正:|補正後有意|family=/)
+})
+
+it.each([null, undefined, NaN, Infinity])('does not infer significance when an independent adjusted p is invalid (%s)', (pAdjusted) => {
+  const item = { ...replicatedItem, test: { ...replicatedItem.test!, pAdjusted } }
+  const info = verificationPayload(item).verification
+  const view = render(<VerificationFindings info={info} item={item} candidateId={item.candidateId} prefix="result" />)
+  expect(view.getByTestId('result-p-value').textContent).toContain('0.0004')
+  expect(view.queryByTestId('result-p-adjusted')).toBeNull()
+  expect(view.queryByTestId('result-replication')).toBeNull()
+  expect(view.getByTestId('result-inference-unavailable')).toBeTruthy()
+})
+
+it('retains descriptive effects with a missing test and handles an empty interval safely', () => {
+  const item = { ...replicatedItem, test: null, effect: { ...replicatedItem.effect!, ci95: [] as unknown as [number, number] } }
+  const view = render(<VerificationFindings info={null} item={item} candidateId={item.candidateId} prefix="result" />)
+  expect(view.getByTestId('result-estimate').textContent).toContain('10.0000（60行）')
+  expect(view.getByTestId('result-ci').textContent).toContain('差の区間推定（参考）')
+  expect(view.queryByTestId('result-untestable')).toBeNull()
+  expect(view.queryByTestId('result-replication')).toBeNull()
 })

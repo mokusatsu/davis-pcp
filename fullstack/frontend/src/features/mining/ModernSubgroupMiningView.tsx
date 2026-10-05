@@ -22,9 +22,10 @@ import { api } from '../../api/client'
 import VerificationConfigModal, { type VerificationConfig } from './VerificationConfigModal'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import {
-  METHOD_LABEL, REPLICATION_COLOR, REPLICATION_LABEL, untestableReason, verificationFor,
+  verificationFor,
   type PinnedCandidateSummary, type VerificationInfo, type VerificationResultItem,
 } from './verification'
+import { VerificationFindings, VerificationSummary } from './VerificationResults'
 
 /** Modern exploration exposes no FDR control, so verification runs at the default. */
 const VERIFICATION_ALPHA = 0.05
@@ -544,13 +545,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
         />
       )}
       {verificationInfo && !loading && (
-        <Alert
-          type="success"
-          showIcon
-          message="検証済み候補"
-          description={`手法: ${METHOD_LABEL[verificationInfo.method] ?? verificationInfo.method}／検定: ${verificationInfo.testUsed.join(', ') || 'なし'}／補正: ${verificationInfo.correction}（α=${verificationInfo.alpha}）／family=${verificationInfo.mHypotheses}／対象外=${verificationInfo.mExcluded}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}${verificationInfo.note ? `／${verificationInfo.note}` : ''}`}
-          data-testid="modern-verification-badge"
-        />
+        <VerificationSummary info={verificationInfo} results={verificationResult} prefix="modern-verification" />
       )}
       {emmDiagnosticIssue && !loading && (
         <Alert
@@ -768,64 +763,8 @@ export const ModernSubgroupMiningView: React.FC = () => {
                 {verificationResult && (
                   <>
                     <Divider style={{ margin: '12px 0' }} />
-                    <div data-testid="modern-verification-findings">
-                      <Typography.Text strong>検証結果（固定候補・評価側のみ）:</Typography.Text>
-                      {!selectedVerification ? (
-                        <Typography.Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0, fontSize: 12 }}>
-                          この候補は探索時の固定候補に含まれていないため、検証の対象外です。
-                        </Typography.Paragraph>
-                      ) : !selectedVerification.testable || !selectedVerification.test ? (
-                        // No estimate exists for an untestable candidate, so a
-                        // blank row would read as "no difference found".
-                        <Alert
-                          type="warning"
-                          showIcon
-                          style={{ marginTop: 8 }}
-                          message={`検定できません（${selectedVerification.reason ?? 'UNKNOWN'}）`}
-                          description={untestableReason(selectedVerification)}
-                        />
-                      ) : (
-                        <>
-                          <Row gutter={[8, 8]} style={{ marginTop: 8 }}>
-                            <Col span={8}>
-                              <Statistic
-                                title={`p値 (${selectedVerification.test.name ?? '—'})`}
-                                value={selectedVerification.test.pValue ?? '-'}
-                                data-testid="modern-verification-p-value"
-                              />
-                            </Col>
-                            <Col span={8}>
-                              <Statistic
-                                title={`補正後p値 (${verificationInfo?.correction ?? 'bh-fdr'})`}
-                                value={selectedVerification.test.pAdjusted ?? '-'}
-                                valueStyle={{ color: '#1677ff' }}
-                                data-testid="modern-verification-p-adjusted"
-                              />
-                            </Col>
-                            <Col span={8}>
-                              <Statistic
-                                title="差の95% CI"
-                                value={selectedVerification.effect?.ci95
-                                  ? `[${selectedVerification.effect.ci95[0].toFixed(3)}, ${selectedVerification.effect.ci95[1].toFixed(3)}]`
-                                  : '-'}
-                                valueStyle={{ fontSize: 13 }}
-                                data-testid="modern-verification-ci"
-                              />
-                            </Col>
-                          </Row>
-                          <Space size={4} style={{ marginTop: 8 }} data-testid="modern-verification-replication">
-                            <Tag color={REPLICATION_COLOR[selectedVerification.replicationStatus]}>
-                              {REPLICATION_LABEL[selectedVerification.replicationStatus]}
-                            </Tag>
-                            {selectedVerification.test.significant
-                              ? <Tag color="green">補正後も有意</Tag>
-                              : <Tag>補正後は非有意</Tag>}
-                            <Tag>点推定 {selectedVerification.effect?.estimate?.toFixed(4) ?? '-'}</Tag>
-                            <Tag>評価 {selectedVerification.n.used} 行</Tag>
-                          </Space>
-                        </>
-                      )}
-                    </div>
+                    <VerificationFindings info={verificationInfo} item={selectedVerification}
+                      candidateId={selectedInsight.id} prefix="modern-verification" precision={3} />
                   </>
                 )}
 
@@ -835,6 +774,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   <Button
                     type="primary"
                     block
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     icon={<SwapOutlined />}
                     onClick={() => handleApplyToPcp(selectedInsight)}
                   >
@@ -842,6 +782,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   </Button>
                   <Button
                     block
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     onClick={openVerificationModal}
                     loading={verifying}
                     // Verification re-tests the pinned set, so without a hash
@@ -853,6 +794,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
                   </Button>
                   <Button
                     block
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     icon={<ThunderboltOutlined />}
                     onClick={() => {
                       const targetCol = selectedInsight.target_question || (selectedInsight.target_pair ? selectedInsight.target_pair[0] : undefined)

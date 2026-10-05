@@ -24,9 +24,10 @@ import { getBrushOp } from '../selection/SelectionMenu'
 import { api } from '../../api/client'
 import ModernSubgroupMiningView from './ModernSubgroupMiningView'
 import {
-  METHOD_LABEL, REPLICATION_COLOR, REPLICATION_LABEL, untestableReason, verificationFor,
+  verificationFor, verificationListSummary,
   type PinnedCandidateSummary, type VerificationInfo, type VerificationResultItem,
 } from './verification'
+import { VerificationFindings, VerificationSummary } from './VerificationResults'
 
 export interface InsightItem {
   id: string
@@ -88,7 +89,7 @@ export interface MiningResult {
     n_insights_after_filters: number
   }
   insights: InsightItem[]
-  analysisMode?: 'exploration' | 'verification'
+  analysisMode?: 'exploration' | 'verification' | 'posthoc_stability'
   isExploratory?: boolean
   candidateSetHash?: string
   explorationNote?: string
@@ -435,50 +436,24 @@ export default function SubgroupMiningPage() {
                   />
                 )}
                 {inferenceMode === 'verification' && verificationInfo && (
-                  <Alert
-                    type="success"
-                    showIcon
-                    message="検証済み候補"
-                    description={`手法: ${METHOD_LABEL[verificationInfo.method] ?? verificationInfo.method}／検定: ${verificationInfo.testUsed.join(', ') || 'なし'}／補正: ${verificationInfo.correction}（α=${verificationInfo.alpha}）／family=${verificationInfo.mHypotheses}／対象外=${verificationInfo.mExcluded}／nSelection=${verificationInfo.nSelection}／nEvaluation=${verificationInfo.nEvaluation}／seed=${verificationInfo.seed}${verificationInfo.note ? `／${verificationInfo.note}` : ''}`}
-                    style={{ marginBottom: 12, flexShrink: 0 }}
-                    data-testid="verification-badge"
-                  />
+                  <VerificationSummary info={verificationInfo} results={verificationResult} prefix="verification"
+                    style={{ marginBottom: 12, flexShrink: 0 }} />
                 )}
 
                 {/* Summary KPI Cards */}
                 {miningResult && (
                   <Row gutter={[12, 12]} style={{ marginBottom: 12, flexShrink: 0 }}>
-                    <Col span={4}>
+                    <Col span={8}>
                       <Card size="small">
-                        <Statistic title="検定実行数" value={miningResult.summary.n_tests_run} prefix={<LineChartOutlined />} />
+                        <Statistic title="探索した比較数" value={miningResult.summary.n_tests_run} prefix={<LineChartOutlined />} />
                       </Card>
                     </Col>
-                    <Col span={5}>
+                    <Col span={8}>
                       <Card size="small">
-                        <Statistic
-                          title="FDR有意発見数"
-                          value={miningResult.summary.n_significant_fdr}
-                          valueStyle={{ color: '#1677ff' }}
-                          prefix={<CheckCircleOutlined />}
-                        />
+                        <Statistic title="探索候補数" value={miningResult.summary.n_insights_after_filters} prefix={<ThunderboltOutlined />} />
                       </Card>
                     </Col>
-                    <Col span={5}>
-                      <Card size="small">
-                        <Statistic title="Bonferroni有意" value={miningResult.summary.n_significant_bonferroni} />
-                      </Card>
-                    </Col>
-                    <Col span={5}>
-                      <Card size="small">
-                        <Statistic
-                          title="実質重要発見"
-                          value={miningResult.summary.n_insights_after_filters}
-                          valueStyle={{ color: '#52c41a' }}
-                          prefix={<ThunderboltOutlined />}
-                        />
-                      </Card>
-                    </Col>
-                    <Col span={5}>
+                    <Col span={8}>
                       <Card size="small">
                         <Statistic title="属性 × 質問" value={`${miningResult.summary.n_subgroup_vars} × ${miningResult.summary.n_questions}`} />
                       </Card>
@@ -535,11 +510,7 @@ export default function SubgroupMiningPage() {
                                 <div style={{ margin: '6px 0', fontSize: 12, color: '#555' }}>
                                   {ins.test.method} | {ins.effect.measure}: {ins.effect.value.toFixed(2)}
                                   {inferenceMode === 'verification' && verificationResult && (
-                                    <span> | {(() => {
-                                      const v = verificationFor(verificationResult, ins.id)
-                                      if (!v || !v.testable || !v.test) return '評価対象外'
-                                      return `p=${v.test.pValue} adj=${v.test.pAdjusted}（${REPLICATION_LABEL[v.replicationStatus]}）`
-                                    })()}</span>
+                                    <span data-testid="verification-list-summary"> | {verificationListSummary(verificationInfo, verificationFor(verificationResult, ins.id))}</span>
                                   )}
                                 </div>
                                 <Typography.Paragraph
@@ -573,7 +544,7 @@ export default function SubgroupMiningPage() {
                             )
                           })}
                           {miningResult.insights.length === 0 && (
-                            <Empty description="条件に合致する有意なサブグループ差は見つかりませんでした。" />
+                            <Empty description="条件に合致する探索候補は見つかりませんでした。" />
                           )}
                         </Space>
                       </Col>
@@ -613,6 +584,7 @@ export default function SubgroupMiningPage() {
                     type="primary"
                     icon={<AimOutlined />}
                     onClick={() => handleSelectRowsInPcp(currentInsight)}
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     data-testid="select-subgroup-pcp"
                   >
                     Select Subgroup in PCP
@@ -620,6 +592,7 @@ export default function SubgroupMiningPage() {
                   <Button
                     icon={<ArrowRightOutlined />}
                     onClick={() => handleFocusPcpPair(currentInsight)}
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     data-testid="focus-pcp-pair"
                   >
                     Focus PCP on this Pair
@@ -642,6 +615,7 @@ export default function SubgroupMiningPage() {
                       }
                       navigate('/robustness', { state: { conclusion, analysisInput: runInput, scopeSnapshot: runScope.snapshot } })
                     }}
+                    style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%', overflowWrap: 'anywhere' }}
                     data-testid="send-to-robustness-btn"
                   >
                     Send to Robustness
@@ -780,112 +754,10 @@ export default function SubgroupMiningPage() {
                       precision={3}
                     />
                   </Col>
-                  {inferenceMode === 'verification' && currentVerification && currentVerification.testable && (
-                    <Col span={8}>
-                      <div data-testid="verification-replication">
-                        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                          探索結果との一致
-                        </Typography.Text>
-                        <Space size={4} style={{ marginTop: 4 }}>
-                          <Tag color={REPLICATION_COLOR[currentVerification.replicationStatus]}>
-                            {REPLICATION_LABEL[currentVerification.replicationStatus]}
-                          </Tag>
-                          {currentVerification.test?.significant
-                            ? <Tag color="green">補正後も有意</Tag>
-                            : <Tag>補正後は非有意</Tag>}
-                          {currentVerification.effect?.weighted ? <Tag color="blue">加重</Tag> : null}
-                        </Space>
-                      </div>
-                    </Col>
-                  )}
                 </Row>
                 {inferenceMode === 'verification' && (
-                  <Row gutter={[12, 12]} style={{ marginTop: 12 }} data-testid="verification-findings">
-                    {!currentVerification ? (
-                      <Col span={24}>
-                        <Typography.Text type="secondary" data-testid="verification-not-pinned">
-                          この候補は探索時の固定候補に含まれていないため、検証の対象外です。
-                        </Typography.Text>
-                      </Col>
-                    ) : !currentVerification.testable || !currentVerification.test ? (
-                      // An untestable candidate has no estimate at all; showing
-                      // a blank statistic would read as "no difference found".
-                      <Col span={24} data-testid="verification-untestable">
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message={`検定できません（${currentVerification.reason ?? 'UNKNOWN'}）`}
-                          description={untestableReason(currentVerification)}
-                        />
-                      </Col>
-                    ) : (
-                      <>
-                        <Col span={6}>
-                          <Statistic
-                            title={`p値 (${currentVerification.test.name ?? '—'})`}
-                            value={currentVerification.test.pValue ?? '-'}
-                            data-testid="verification-p-value"
-                          />
-                        </Col>
-                        <Col span={6}>
-                          <Statistic
-                            title={`補正後p値 (${verificationInfo?.correction ?? 'bh-fdr'})`}
-                            value={currentVerification.test.pAdjusted ?? '-'}
-                            valueStyle={{ color: '#1677ff' }}
-                            data-testid="verification-p-adjusted"
-                          />
-                        </Col>
-                        <Col span={6}>
-                          <Statistic
-                            title="差の95% CI"
-                            value={currentVerification.effect?.ci95
-                              ? `[${currentVerification.effect.ci95[0].toFixed(4)}, ${currentVerification.effect.ci95[1].toFixed(4)}]`
-                              : '-'}
-                            valueStyle={{ fontSize: 14 }}
-                            data-testid="verification-ci"
-                          />
-                        </Col>
-                        <Col span={6}>
-                          <Statistic
-                            title="点推定（評価に使った行数）"
-                            value={currentVerification.effect?.estimate !== null && currentVerification.effect?.estimate !== undefined
-                              ? `${currentVerification.effect.estimate.toFixed(4)}（${currentVerification.n.used}行）`
-                              : '-'}
-                            valueStyle={{ fontSize: 14 }}
-                            data-testid="verification-estimate"
-                          />
-                        </Col>
-                        {currentVerification.effect?.groupStats && currentVerification.effect.groupStats.length > 0 && (
-                          <Col span={24}>
-                            <Table
-                              size="small"
-                              pagination={false}
-                              dataSource={currentVerification.effect.groupStats.map((g, i) => ({ ...g, key: i }))}
-                              data-testid="verification-group-stats"
-                              columns={[
-                                { title: '群', dataIndex: 'label', key: 'label' },
-                                { title: 'n', dataIndex: 'n', key: 'n' },
-                                {
-                                  title: '平均 / 比率',
-                                  key: 'location',
-                                  render: (_: unknown, record: { mean?: number | null; pct?: number | null }) =>
-                                    record.mean !== undefined && record.mean !== null ? record.mean.toFixed(3)
-                                      : (record.pct !== undefined && record.pct !== null ? record.pct.toFixed(3) : '-'),
-                                },
-                                {
-                                  title: 'SD',
-                                  dataIndex: 'sd',
-                                  key: 'sd',
-                                  render: (value: number | null | undefined) =>
-                                    value !== undefined && value !== null ? value.toFixed(3) : '-',
-                                },
-                              ]}
-                            />
-                          </Col>
-                        )}
-                      </>
-                    )}
-                  </Row>
+                  <VerificationFindings info={verificationInfo} item={currentVerification}
+                    candidateId={currentInsight.id} prefix="verification" />
                 )}
               </Card>
             ) : (

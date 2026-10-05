@@ -44,12 +44,12 @@ export interface VerificationEffect {
 export interface VerificationTest {
   name: string | null
   statistic: number | null
-  pValue: number | null
+  pValue?: number | null
   df?: number | null
   permutations?: number | null
-  /** Benjamini–Hochberg adjusted p; null when the candidate was not testable. */
-  pAdjusted: number | null
-  significant: boolean
+  /** Suppressed for posthoc stability and unavailable independent inference. */
+  pAdjusted?: number | null
+  significant?: boolean | null
 }
 
 export type VerificationReplication = 'replicated' | 'reversed' | 'not_comparable' | 'not_testable'
@@ -66,7 +66,7 @@ export interface VerificationResultItem {
   n: { evaluation: number; used: number }
   /** Whether the evaluation split reproduced the exploration's direction. */
   directionConsistent: boolean | null
-  replicationStatus: VerificationReplication
+  replicationStatus?: VerificationReplication | null
   warnings: { code: string; message: string }[]
 }
 
@@ -74,11 +74,19 @@ export interface VerificationFold {
   fold: number
   nEvaluation: number
   testableCount: number
-  effects: { candidateId: string; effect: number | null }[]
+  effects: {
+    candidateId: string
+    effect: number | null
+    testable?: boolean
+    n?: { evaluation: number; used: number }
+    reason?: string | null
+  }[]
 }
 
 export interface VerificationInfo {
   method: string
+  /** Holdout/CV reuse exploration data; they do not provide independent inference. */
+  stabilityMode?: 'posthoc_stability' | null
   /** One entry per test actually used across the family, not a single name. */
   testUsed: string[]
   estimand: string
@@ -112,8 +120,8 @@ export interface PinnedCandidateSummary {
 }
 
 export const REPLICATION_LABEL: Record<VerificationReplication, string> = {
-  replicated: '再現',
-  reversed: '方向反転',
+  replicated: '探索と方向一致',
+  reversed: '探索と方向反転',
   not_comparable: '比較不可',
   not_testable: '検定不可',
 }
@@ -144,4 +152,45 @@ export function verificationFor(
   candidateId: string,
 ): VerificationResultItem | null {
   return results?.find((item) => item.candidateId === candidateId) ?? null
+}
+
+/** Use the completed response, never the current settings or truthiness of null. */
+export function isPosthocStability(info: VerificationInfo | null | undefined): boolean {
+  return info?.stabilityMode === 'posthoc_stability'
+    || info?.method === 'holdout' || info?.method === 'cross_validation'
+}
+
+export function isIndependentInference(info: VerificationInfo | null | undefined): boolean {
+  return info?.method === 'independent' && !isPosthocStability(info)
+}
+
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+export function isPValue(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0 && value <= 1
+}
+
+/** An estimate can exist even when inference cannot be calculated. */
+export function hasAdjustedInference(info: VerificationInfo | null | undefined, item: VerificationResultItem): boolean {
+  return isIndependentInference(info) && item.testable
+    && isPValue(item.test?.pValue) && isPValue(item.test?.pAdjusted)
+}
+
+export function verificationIntervalLabel(info: VerificationInfo | null | undefined): string {
+  const level = isFiniteNumber(info?.alpha) && info.alpha > 0 && info.alpha < 1
+    ? `${Number(((1 - info.alpha) * 100).toFixed(6))}% CI` : '区間推定'
+  return `差の${level}${isIndependentInference(info) ? '' : '（参考）'}`
+}
+
+export function verificationListSummary(info: VerificationInfo | null, item: VerificationResultItem | null): string {
+  if (!item) return '評価対象外'
+  if (!item.testable) return `評価できません（${item.reason ?? '理由不明'}）`
+  if (hasAdjustedInference(info, item)) {
+    const direction = item.replicationStatus ? REPLICATION_LABEL[item.replicationStatus] : null
+    return `p=${item.test!.pValue} adj=${item.test!.pAdjusted}${direction ? `（${direction}）` : ''}`
+  }
+  const estimate = isFiniteNumber(item.effect?.estimate) ? item.effect.estimate.toFixed(4) : '算出不可'
+  return `${isPosthocStability(info) ? '安定性確認' : '参考評価'}: 点推定 ${estimate}／評価 ${item.n.used}行`
 }
