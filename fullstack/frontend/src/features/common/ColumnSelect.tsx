@@ -1,4 +1,4 @@
-import { forwardRef, useMemo, useRef, useState } from 'react'
+import { forwardRef, useId, useMemo, useRef, useState } from 'react'
 import { Button, Checkbox, Input, Radio, Select, Tag } from 'antd'
 import Modal from './ActiveModal'
 import { SearchOutlined } from '@ant-design/icons'
@@ -14,6 +14,8 @@ export interface ColumnSelectEmptyHint {
 
 /** A variable picker with the same value/option contract as Select. */
 const ColumnSelect = forwardRef<any, any>((props, ref) => {
+  // Closed dialogs stay mounted, so each picker needs its own native radio group.
+  const radioGroupName = `column-select-dialog-${useId()}`
   const [active, setActive] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -186,7 +188,7 @@ const ColumnSelect = forwardRef<any, any>((props, ref) => {
           const checked = dialogValue.includes(o.value)
           return isMultiple
             ? <Checkbox key={String(o.value)} checked={checked} disabled={props.disabled || o.disabled || (!checked && dialogValue.length >= maxCount)} onChange={e => setOption(o, e.target.checked)} style={{ marginInlineStart: 0 }}>{label}</Checkbox>
-            : <Radio key={String(o.value)} name="column-select-dialog" checked={checked} disabled={props.disabled || o.disabled} onChange={() => setOption(o, true)} style={{ marginInlineStart: 0 }}>{label}</Radio>
+            : <Radio key={String(o.value)} name={radioGroupName} checked={checked} disabled={props.disabled || o.disabled} onChange={() => setOption(o, true)} style={{ marginInlineStart: 0 }}>{label}</Radio>
         })}
         {dialogOptions.length === 0 && (emptyGuide ?? <div style={{ color: '#999', padding: 8 }}>該当する変数がありません{options.length > 0 && <><br />検索条件を変更または解除してください</>}</div>)}
       </div>

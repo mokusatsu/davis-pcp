@@ -24,6 +24,68 @@ function openPicker(title = '変数を選択') {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('ColumnSelect accessible purpose and empty guidance', () => {
+  it('keeps native radio selection independent across retained picker dialogs', () => {
+    const rowChange = vi.fn()
+    const columnChange = vi.fn()
+    const variables = [{ value: 'SEX', label: 'SEX' }, { value: 'AGEID', label: 'AGEID' }]
+    mount(<>
+      <ColumnSelect roleName="行変数" aria-label="行変数" options={variables} onChange={rowChange} />
+      <ColumnSelect roleName="列変数" aria-label="列変数" options={variables} onChange={columnChange} />
+    </>)
+    const rowDialog = openPicker('行変数を選択')
+    const rowRadio = within(rowDialog).getByRole('radio', { name: 'SEX' })
+    const rowGroupName = rowRadio.getAttribute('name')
+    expect(within(rowDialog).getByRole('radio', { name: 'AGEID' })).toHaveAttribute('name', rowGroupName)
+    fireEvent.click(rowRadio)
+    expect(rowRadio).toBeChecked()
+    fireEvent.click(within(rowDialog).getByRole('button', { name: /決\s*定/ }))
+    expect(rowChange).toHaveBeenCalledWith('SEX', variables[0])
+    expect(rowDialog).not.toBeVisible()
+    expect(rowRadio).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '列変数を選択' }))
+    // rc-dialog uses the same title ID for every modal in its test environment.
+    const columnDialog = screen.getByRole('dialog')
+    expect(columnDialog).toHaveTextContent('列変数を選択')
+    fireEvent.change(within(columnDialog).getByRole('textbox'), { target: { value: 'AGEID' } })
+    const columnRadio = within(columnDialog).getByRole('radio', { name: 'AGEID' })
+    fireEvent.click(columnRadio)
+    expect(within(columnDialog).getByRole('status')).toHaveTextContent('1件選択中')
+    expect(columnRadio).toBeChecked()
+    expect(rowRadio).toBeChecked()
+    expect(columnRadio).not.toHaveAttribute('name', rowGroupName)
+    fireEvent.click(within(columnDialog).getByRole('button', { name: /決\s*定/ }))
+    expect(columnChange).toHaveBeenCalledWith('AGEID', variables[1])
+    expect(rowChange).toHaveBeenCalledOnce()
+
+    const reopenedRow = openPicker('行変数を選択')
+    expect(within(reopenedRow).getByRole('radio', { name: 'SEX' })).toBeChecked()
+    expect(within(reopenedRow).getByRole('radio', { name: 'AGEID' })).not.toBeChecked()
+    expect(within(reopenedRow).getByRole('radio', { name: 'SEX' })).toHaveAttribute('name', rowGroupName)
+    expect(columnRadio).toBeChecked()
+  })
+
+  it.each([undefined, 'multiple'])('discards cancelled dialog edits without changing the committed selection (mode=%s)', mode => {
+    const change = vi.fn()
+    mount(<ColumnSelect mode={mode} defaultValue={mode ? ['Q1'] : 'Q1'} options={options} onChange={change} />)
+    const role = mode ? 'checkbox' : 'radio'
+    const dialog = openPicker()
+    fireEvent.click(within(dialog).getByRole(role, { name: /Q2/ }))
+    expect(within(dialog).getByRole(role, { name: /Q2/ })).toBeChecked()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }))
+    expect(dialog).not.toBeVisible()
+    expect(change).not.toHaveBeenCalled()
+
+    const reopened = openPicker()
+    expect(within(reopened).getByRole(role, { name: /Q1/ })).toBeChecked()
+    expect(within(reopened).getByRole(role, { name: /Q2/ })).not.toBeChecked()
+    expect(within(reopened).getByRole('status')).toHaveTextContent('1件選択中')
+    fireEvent.click(within(reopened).getByRole(role, { name: /Q2/ }))
+    fireEvent.click(within(reopened).getByRole('button', { name: /決\s*定/ }))
+    expect(change).toHaveBeenCalledOnce()
+    expect(change).toHaveBeenCalledWith(mode ? ['Q1', 'Q2'] : 'Q2', mode ? [options[0], options[1]] : options[1])
+  })
+
   it.each([undefined, 'multiple'])('uses the explicit role throughout the picker (mode=%s)', mode => {
     const { container } = mount(<ColumnSelect roleName="目的変数" aria-label="分析の目的変数" mode={mode} options={options} />)
     const opener = screen.getByRole('button', { name: '目的変数を選択' })
