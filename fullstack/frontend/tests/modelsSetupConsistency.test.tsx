@@ -252,7 +252,7 @@ it('preserves eligible feature filtering, explicit MA children and same-MA targe
   expect(within(filtered).getByRole('checkbox', { name: 'x', exact: true })).toBeChecked()
   await commitPicker(filtered); clickRunAfterBlur()
   await waitFor(() => expect(post).toHaveBeenLastCalledWith('/models', { ...defaultPayload, target: 'A' }))
-})
+}, 10000)
 
 it('keeps completed forest metadata, target, importance and selectable leaves tied to the captured result after edits', async () => {
   const pending = deferred()

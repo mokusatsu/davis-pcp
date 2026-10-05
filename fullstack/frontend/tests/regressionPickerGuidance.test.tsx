@@ -222,11 +222,10 @@ it.each(regressionCases.filter(testCase => testCase.id.endsWith('target') || tes
   await finish(current.dialog, false)
 })
 
-it('keeps optional Conjoint clear actions and ratings-mode opt-out disabling', async () => {
-  mount('conjoint')
-  await choosePredictors('conjoint')
-  for (const id of ['cj-available', 'cj-optout', 'cj-price']) {
-    const testCase = cases.find(item => item.id === id)!
+it.each(cases.filter(testCase => ['cj-available', 'cj-optout', 'cj-price'].includes(testCase.id)))(
+  'keeps optional $purpose clear actions through commit and reopen', async testCase => {
+    mount('conjoint')
+    if (testCase.dependent) await choosePredictors('conjoint')
     openDetails(testCase.details)
     let current = await picker(testCase.purpose)
     choose(current.results, testCase.eligible[0])
@@ -238,7 +237,12 @@ it('keeps optional Conjoint clear actions and ratings-mode opt-out disabling', a
     current = await picker(testCase.purpose)
     expect(within(current.dialog).getByRole('status')).toHaveTextContent('0件選択中')
     await finish(current.dialog, false)
-  }
+  },
+)
+
+it('disables Conjoint opt-out in ratings mode and keeps it cleared on returning to choice mode', async () => {
+  mount('conjoint')
+  openDetails('モデルの詳細設定')
   const purpose = 'コンジョイントの選択しない案の列'
   let current = await picker(purpose)
   choose(current.results, 'Identifier')
@@ -250,4 +254,4 @@ it('keeps optional Conjoint clear actions and ratings-mode opt-out disabling', a
   current = await picker(purpose)
   expect(within(current.dialog).getByRole('status')).toHaveTextContent('0件選択中')
   await finish(current.dialog, false)
-}, 15000)
+})
