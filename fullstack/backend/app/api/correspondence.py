@@ -113,14 +113,19 @@ def _finish_respondents(req, ctx, started, t, t_phys, row_order, col_order, row_
     col_sums = t.sum(axis=0)
     keep_r = [i for i in range(len(row_order)) if row_sums[i] > 0]
     keep_c = [j for j in range(len(col_order)) if col_sums[j] > 0]
+    active_rows = {row_order[i] for i in keep_r}
+    active_columns = {col_order[j] for j in keep_c}
     omitted = []
-    for i, code in enumerate(row_order):
-        if i not in keep_r:
+    # The numerical table is observed-only, but the omission audit belongs to
+    # the full declared catalog. Keep its indices without allocating a dense
+    # matrix for potentially many unobserved levels.
+    for i, code in enumerate(row_cat.order):
+        if code not in active_rows:
             kind = row_cat.kind_by_code.get(code, "value")
             cval = code if kind == "value" else None
             omitted.append({"categoryId": _category_id(row_cat.variable_id, kind, cval), "variableId": row_cat.variable_id, "code": cval, "kind": kind, "label": row_cat.labels[code], "side": "row", "reason": "zero_mass", "originalIndex": i})
-    for j, code in enumerate(col_order):
-        if j not in keep_c:
+    for j, code in enumerate(col_cat.order):
+        if code not in active_columns:
             kind = col_cat.kind_by_code.get(code, "value")
             cval = code if kind == "value" else None
             omitted.append({"categoryId": _category_id(col_cat.variable_id, kind, cval), "variableId": col_cat.variable_id, "code": cval, "kind": kind, "label": col_cat.labels[code], "side": "column", "reason": "zero_mass", "originalIndex": j})

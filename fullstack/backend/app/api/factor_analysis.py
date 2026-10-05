@@ -314,7 +314,7 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
         _remember_comparison(base_entry)
-    if pearson_corr.get("correlation") is None:
+    if pearson_corr.get("correlation") is None or pearson_corr.get("status") in ("failed", "boundary"):
         entry = {"status": "failed",
                  "reasonCode": pearson_corr.get("reasonCode"),
                  "assessment": "indeterminate",
@@ -351,7 +351,7 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
     else:
         poly_corr = fa_svc.estimate_correlation(
             ordinal_fit, {**rd, "correlation": "polychoric"})
-        if poly_corr.get("correlation") is None:
+        if poly_corr.get("correlation") is None or poly_corr.get("status") in ("failed", "boundary"):
             entry = {"status": "failed",
                      "reasonCode": poly_corr.get("reasonCode"),
                      "assessment": "indeterminate",
@@ -360,6 +360,14 @@ def _run_sensitivity(dataset_id: str, payload: dict, rd: dict, prep: dict,
                          "polychoricPairCount": len(poly_corr.get("pairs") or [])}}
             return _finish_comparison(comparison_id, entry)
         r_o = _np.asarray(poly_corr["correlation"], dtype=float)
+        mcheck = fa_svc.validate_correlation_matrix(r_o)
+        if not mcheck.get("positiveDefinite"):
+            entry = {"status": "failed",
+                     "reasonCode": mcheck.get("reasonCode") or "FA_NON_POSITIVE_DEFINITE",
+                     "assessment": "indeterminate",
+                     "diagnostics": {"failedSide": "polychoric",
+                                     "minEigenvalue": mcheck.get("minEigenvalue")}}
+            return _finish_comparison(comparison_id, entry)
         res_o = fa_svc.fit_single_q(
             r_o, {**rd, "correlation": "polychoric", "extraction": "minres",
                   "scoreMethod": "none"}, q, fit_n=len(prep["fitIds"]))
@@ -482,11 +490,15 @@ def run_factor_analysis(payload: dict = Body(...)):
         exc.details = {**(exc.details or {}), "attemptId": aid}
         raise
     corr_rec = fa_svc.estimate_correlation(fit, rd)
-    if corr_rec["correlation"] is None:
+    if corr_rec["correlation"] is None or corr_rec.get("status") in ("failed", "boundary"):
         aid = _save_attempt(
             dataset_id, payload, "correlation",
             corr_rec.get("reasonCode") or "FA_CORRELATION_NONCONVERGENCE",
-            "相関推定に失敗しました。抽出へは進みません。")
+            "相関推定に失敗しました。抽出へは進みません。",
+            [{"code": corr_rec.get("reasonCode") or "FA_CORRELATION_NONCONVERGENCE",
+              "severity": "error", "stage": "correlation",
+              "status": corr_rec.get("status"),
+              "pairs": corr_rec.get("pairs") or []}])
         _err(corr_rec.get("reasonCode") or "FA_CORRELATION_NONCONVERGENCE",
              "相関推定に失敗しました。抽出へは進みません。", 422,
              {"attemptId": aid})

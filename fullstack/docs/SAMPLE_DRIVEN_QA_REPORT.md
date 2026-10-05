@@ -1,5 +1,7 @@
 # 実サンプル検証・修正記録（2026-10-05）
 
+第1群の公開後検証と次の修正は [第2修正群の記録](SAMPLE_DRIVEN_QA_CYCLE2.md) を参照。以下は第1群の凍結時点の記録。
+
 ## 対象と現在地
 
 開始版は `1c4cc88`、対象は12種類の組込みサンプル。検証計画は [SAMPLE_DRIVEN_QA_PLAN.md](SAMPLE_DRIVEN_QA_PLAN.md) を参照。

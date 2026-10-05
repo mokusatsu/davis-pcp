@@ -1642,7 +1642,7 @@ def preview_dataset_imputation(dataset_id: str, request: ImputePreviewRequest) -
         meta = store.get_meta(dataset_id)
         df = store.get_dataframe(dataset_id)
         plan = _build_impute_plan(dataset_id, meta, df, request)
-        return preview_imputation_plan(df, plan)
+        return preview_imputation_plan(_masked_impute_frame(dataset_id, df), plan)
 
 
 @router.post("/datasets/{dataset_id}/impute")
@@ -1730,7 +1730,7 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
                                 f"impute-{plan.strategy}-1",
                                 parent_operation_id=(provenance_before or {}).get("currentOperationId"))
         mask_entries = _mask_entries_for_impute(
-            df, imputed_df, plan.targetColumns,
+            masked, imputed_df, plan.targetColumns,
             plan.strategy, step["operationId"], input_revision,
             int(mask_before.get("maskRevision", 0)) + 1)
         commit = store.commit_data_change(dataset_id, meta, imputed_df, codebook=cb, step=step,
@@ -1771,7 +1771,7 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
                     # frame; the source dataset is the way back to the original.
                     "rawSemantics": "derived_creation",
                 },
-                "imputedCells": _imputed_cells(df, imputed_df, plan.targetColumns),
+                "imputedCells": _imputed_cells(masked, imputed_df, plan.targetColumns),
                 "inheritedMaskEntries": list(source_mask.get("entries", [])),
             },
         )

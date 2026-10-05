@@ -24,6 +24,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from .ordinal_correlations import validate_correlation_matrix
+
 
 def full_correlation_eigenvalues(r: np.ndarray) -> np.ndarray:
     r = np.asarray(r, dtype=float)
@@ -71,13 +73,18 @@ def _run_replicate(fit_codes: np.ndarray, perm_slice: np.ndarray,
         return {"ok": False, "replicate": replicate,
                 "reasonCode": "PA_REPLICATE_FAILED", "detail": str(exc)[:200]}
     r = rec.get("correlation", None) if isinstance(rec, dict) else None
-    if r is None:
+    if r is None or rec.get("status") in ("failed", "boundary"):
         return {"ok": False, "replicate": replicate,
                 "reasonCode": (rec.get("reasonCode")
                                if isinstance(rec, dict) else None)
                 or "PA_REPLICATE_FAILED"}
     try:
-        eig = full_correlation_eigenvalues(np.asarray(r, dtype=float))
+        r = np.asarray(r, dtype=float)
+        validation = validate_correlation_matrix(r)
+        if not validation.get("positiveDefinite"):
+            return {"ok": False, "replicate": replicate,
+                    "reasonCode": validation.get("reasonCode") or "PA_REPLICATE_FAILED"}
+        eig = full_correlation_eigenvalues(r)
     except Exception as exc:
         return {"ok": False, "replicate": replicate,
                 "reasonCode": "PA_REPLICATE_FAILED", "detail": str(exc)[:200]}

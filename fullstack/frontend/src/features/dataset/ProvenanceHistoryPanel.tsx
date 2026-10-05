@@ -21,6 +21,14 @@ const RESTORE_WARNING_LABELS: Record<string, string> = {
   REVISION_FINGERPRINT_DIVERGED: '復元後の指紋が記録と一致しません。内容を確認してください。',
 }
 
+function operationErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message || fallback
+  const detail = error as { message?: unknown; code?: unknown } | null
+  if (typeof detail?.message !== 'string' || !detail.message) return fallback
+  return typeof detail.code === 'string' && detail.code
+    ? `${detail.message}（${detail.code}）` : detail.message
+}
+
 export default function ProvenanceHistoryPanel() {
   const dispatch = useDispatch<AppDispatch>()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
@@ -53,7 +61,7 @@ export default function ProvenanceHistoryPanel() {
       setRestoreWarnings(res?.restoreWarnings ?? [])
       await refreshAfterChange(frozenDatasetId)
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '操作に失敗しました。')
+      message.error(operationErrorMessage(err, '操作に失敗しました。'))
     } finally {
       setBusy(null)
     }
@@ -73,7 +81,7 @@ export default function ProvenanceHistoryPanel() {
       URL.revokeObjectURL(url)
       message.success('再現パッケージを出力しました。')
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '出力に失敗しました。')
+      message.error(operationErrorMessage(err, '出力に失敗しました。'))
     } finally {
       setBusy(null)
     }
@@ -85,7 +93,7 @@ export default function ProvenanceHistoryPanel() {
       const res = await api.upload<{ datasetId: string }>('/datasets/import_package', file)
       message.success(`新規データセット ${res.datasetId} として取り込みました。`)
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '取り込みに失敗しました。')
+      message.error(operationErrorMessage(err, '取り込みに失敗しました。'))
     } finally {
       setBusy(null)
     }

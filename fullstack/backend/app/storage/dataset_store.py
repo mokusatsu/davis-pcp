@@ -235,12 +235,23 @@ class DatasetStore:
         if not path.exists():
             raise BizError("DATASET_NOT_FOUND", f"データセット {dataset_id} の本体が見つかりません。",
                            status_code=404)
+        return self._read_parquet(path, columns)
+
+    @staticmethod
+    def _read_parquet(path: Path, columns: list[str] | None = None) -> pl.DataFrame:
+        """Read every data generation through the same native/WASM bridge."""
         try:
             return pl.read_parquet(path, columns=columns)
         except Exception:
             import pyarrow.parquet as pq
             table = pq.read_table(path, columns=columns)
-            return pl.DataFrame(table.to_pydict())
+            if columns == []:
+                # Polars' native empty projection is (0, 0), independent of
+                # Arrow's ability to retain a row count without columns.
+                return pl.DataFrame()
+            # Preserve widths and all-null column types when restoring an
+            # older generation; inference through Python lists loses them.
+            return pl.from_arrow(table)
 
     def list_datasets(self) -> list[dict[str, Any]]:
         result = []
@@ -384,7 +395,7 @@ class DatasetStore:
                                f"revision {int(data_revision)} のスナップショットが存在しません。",
                                status_code=422)
             try:
-                return pl.read_parquet(path)
+                return self._read_parquet(path)
             except Exception as exc:
                 raise BizError("PROVENANCE_SNAPSHOT_MISSING",
                                f"revision {int(data_revision)} のスナップショットを読み込めません: {exc}",
@@ -398,7 +409,7 @@ class DatasetStore:
                                "原データのスナップショットが存在しません。",
                                status_code=422)
             try:
-                return pl.read_parquet(path)
+                return self._read_parquet(path)
             except Exception as exc:
                 raise BizError("PROVENANCE_RAW_MISSING",
                                f"原データのスナップショットを読み込めません: {exc}",

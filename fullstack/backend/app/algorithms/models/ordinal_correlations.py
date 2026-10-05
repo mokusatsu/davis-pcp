@@ -99,21 +99,16 @@ def thresholds_from_cumulative(cum: np.ndarray) -> np.ndarray:
 
 
 def _norm_cdf(x: float) -> float:
-    if x >= 8.0:
-        return 1.0
-    if x <= -8.0:
-        return 0.0
-    return float(stats.norm.cdf(x))
+    return 0.5 * math.erfc(-x / math.sqrt(2.0))
 
 
 def rectangle_probability(a: float, b: float, c: float, d: float,
                           rho: float) -> tuple[float, float]:
     """Latent bivariate-normal rectangle probability via conditional integral.
 
-    Same formula as the spec; vectorized fixed Gauss-Legendre quadrature
-    (n=96 over a truncated z-range) instead of adaptive quad, with an
-    explicit error estimate from a coarser (n=48) rule so integration
-    error is still diagnosed, never clipped.
+    Use fast fixed Gauss-Legendre quadrature when its 48/96 comparison meets
+    the declared tolerance. Refine otherwise with adaptive integration over
+    the full interval; a quadrature limit must not become a false rho bound.
     """
     s2 = 1.0 - rho * rho
     if s2 <= 0:
@@ -139,15 +134,44 @@ def rectangle_probability(a: float, b: float, c: float, d: float,
         hi = (d - rho * z) / s if np.isfinite(d) else np.full_like(z, np.inf)
         lo = (c - rho * z) / s if np.isfinite(c) else np.full_like(z, -np.inf)
         if have_ndtr:
-            diff = _ndtr(np.asarray(hi)) - _ndtr(np.asarray(lo))
+            # Subtract survival probabilities in the positive tail, where
+            # subtracting two CDFs near one erases small positive cells.
+            diff = np.where(lo > 0, _ndtr(-lo) - _ndtr(-hi), _ndtr(hi) - _ndtr(lo))
         else:
-            diff = np.asarray([_norm_cdf(float(v)) for v in np.asarray(hi)]) - np.asarray(
-                [float(_norm_cdf(float(v))) for v in np.asarray(lo)])
+            diff = np.asarray([_norm_cdf(float(-l)) - _norm_cdf(float(-h)) if l > 0
+                               else _norm_cdf(float(h)) - _norm_cdf(float(l))
+                               for l, h in zip(lo, hi)])
         return float(half * np.sum(w * phi * diff))
 
-    val = _rule(xs96, w96)
-    coarse = _rule(xs48, w48)
+    val = _rule(xs96, w96) if hi_z > lo_z else 0.0
+    coarse = _rule(xs48, w48) if hi_z > lo_z else 0.0
     err = abs(val - coarse)
+    tolerance = max(QUAD_EPSABS, QUAD_EPSREL * abs(val))
+    if not np.isfinite(val) or val <= 0 or err > tolerance:
+        cdf = _ndtr if have_ndtr else _norm_cdf
+
+        def integrand(z: float) -> float:
+            upper = (d - rho * z) / s
+            lower = (c - rho * z) / s
+            probability = (cdf(-lower) - cdf(-upper) if lower > 0
+                           else cdf(upper) - cdf(lower))
+            return float(math.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi) * probability)
+
+        # Near unit rho the conditional CDF changes sharply at these points.
+        # Segmenting also supports infinite outer endpoints without clipping.
+        splits = sorted({float(edge / rho) for edge in (c, d)
+                         if rho != 0 and np.isfinite(edge) and a < edge / rho < b})
+        edges = [float(a), *splits, float(b)]
+        values, errors = [], []
+        for left, right in zip(edges[:-1], edges[1:]):
+            integral = integrate.quad(integrand, left, right,
+                epsabs=QUAD_EPSABS / (len(edges) - 1), epsrel=QUAD_EPSREL,
+                limit=200, full_output=1)
+            if len(integral) > 3:
+                raise ArithmeticError("FA_CORRELATION_INTEGRATION_FAILED: " + str(integral[3])[:200])
+            values.append(float(integral[0]))
+            errors.append(float(integral[1]))
+        val, err = math.fsum(values), math.fsum(errors)
     return float(val), float(err)
 
 
@@ -168,17 +192,45 @@ def polychoric_pair(counts: np.ndarray, tau_row: np.ndarray,
     n = float(counts.sum())
     zero_cells = int(np.sum(counts == 0))
     small_cells = int(np.sum((counts > 0) & (counts < 5)))
+    integration_failures: list[dict[str, Any]] = []
+    integration_failure_count = 0
+    max_integration_error = 0.0
+
+    def failed(evaluations: int) -> dict[str, Any]:
+        return {"rho": None, "status": "failed", "reasonCode": "FA_CORRELATION_NONCONVERGENCE",
+                "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
+                "evaluations": evaluations, "integrationError": max_integration_error,
+                "integrationFailureCount": integration_failure_count,
+                "integrationFailures": integration_failures, "boundary": False}
 
     def negloglik(rho: float) -> float:
+        nonlocal integration_failure_count, max_integration_error
         total = 0.0
         for i in range(kr):
             for j in range(kc):
                 nij = counts[i, j]
                 if nij == 0:
                     continue
-                p, err = rectangle_probability(edges_r[i], edges_r[i + 1],
-                                               edges_c[j], edges_c[j + 1], float(rho))
-                if err > 1e-8 or not np.isfinite(p) or p <= 0.0:
+                err = None
+                try:
+                    p, err = rectangle_probability(edges_r[i], edges_r[i + 1],
+                                                   edges_c[j], edges_c[j + 1], float(rho))
+                    if np.isfinite(err) and err >= 0:
+                        max_integration_error = max(max_integration_error, float(err))
+                    if (not np.isfinite(err) or err < 0 or not np.isfinite(p) or p < 0
+                            or err > max(QUAD_EPSABS, QUAD_EPSREL * abs(p))):
+                        raise ArithmeticError("rectangle probability did not meet integration tolerance")
+                except (ArithmeticError, ValueError, RuntimeError) as exc:
+                    integration_failure_count += 1
+                    if len(integration_failures) < 3:
+                        integration_failures.append({"rowCategory": i, "columnCategory": j,
+                                                     "rho": float(rho), "detail": str(exc)[:200],
+                                                     "estimatedError": float(err) if err is not None and np.isfinite(err) else None})
+                    return np.inf
+                # Incompatible extreme rhos can legitimately underflow an
+                # occupied cell's probability. This is infinite likelihood,
+                # distinct from a failed integration/refinement certificate.
+                if p == 0.0:
                     return np.inf
                 total += float(nij) * math.log(p)
         if not np.isfinite(total):
@@ -188,11 +240,11 @@ def polychoric_pair(counts: np.ndarray, tau_row: np.ndarray,
     # Coarse grid to bracket the optimum, then bounded scalar minimization.
     grid = np.linspace(-RHO_BOUND, RHO_BOUND, 21)
     vals = [negloglik(float(g)) for g in grid]
+    if integration_failure_count:
+        return failed(len(grid))
     finite = [(v, float(g)) for v, g in zip(vals, grid) if np.isfinite(v)]
     if not finite:
-        return {"rho": None, "status": "failed", "reasonCode": "FA_CORRELATION_NONCONVERGENCE",
-                "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
-                "evaluations": len(grid), "integrationError": None, "boundary": False}
+        return failed(len(grid))
     best_rho = min(finite)[1]
     span = 2 * RHO_BOUND / 20
     lo = max(-RHO_BOUND, best_rho - span)
@@ -201,14 +253,9 @@ def polychoric_pair(counts: np.ndarray, tau_row: np.ndarray,
         res = optimize.minimize_scalar(negloglik, bounds=(lo, hi), method="bounded",
                                        options={"xatol": RHO_ATOL, "maxiter": 1000})
     except Exception:
-        return {"rho": None, "status": "failed", "reasonCode": "FA_CORRELATION_NONCONVERGENCE",
-                "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
-                "evaluations": len(grid), "integrationError": None, "boundary": False}
-    if (not res.success) or (not np.isfinite(res.fun)) or (not np.isfinite(res.x)):
-        return {"rho": None, "status": "failed", "reasonCode": "FA_CORRELATION_NONCONVERGENCE",
-                "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
-                "evaluations": len(grid) + int(getattr(res, "nfev", 0)),
-                "integrationError": None, "boundary": False}
+        return failed(len(grid))
+    if integration_failure_count or (not res.success) or (not np.isfinite(res.fun)) or (not np.isfinite(res.x)):
+        return failed(len(grid) + int(getattr(res, "nfev", 0)))
     rho = float(np.clip(res.x, -RHO_BOUND, RHO_BOUND))
     boundary = bool(abs(abs(rho) - RHO_BOUND) < BOUNDARY_MARGIN or
                     abs(rho) >= RHO_BOUND - BOUNDARY_MARGIN)
@@ -216,11 +263,11 @@ def polychoric_pair(counts: np.ndarray, tau_row: np.ndarray,
         return {"rho": rho, "status": "boundary", "reasonCode": "FA_CORRELATION_BOUNDARY",
                 "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
                 "evaluations": len(grid) + int(getattr(res, "nfev", 0)),
-                "integrationError": None, "boundary": True}
+                "integrationError": max_integration_error, "boundary": True}
     return {"rho": rho, "status": "success", "reasonCode": None,
             "n": n, "zeroCells": zero_cells, "smallCells": small_cells,
             "evaluations": len(grid) + int(getattr(res, "nfev", 0)),
-            "integrationError": None, "boundary": False,
+            "integrationError": max_integration_error, "boundary": False,
             "negLogLik": float(res.fun)}
 
 
