@@ -8,7 +8,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -381,10 +381,18 @@ export default function FamdPage(): JSX.Element {
             <AnalysisScopeSummary snapshot={completed?.snapshot} />
             <div className="analysis-variable-grid">
               <AnalysisField label="数値列" htmlFor="famd-numeric" help="間隔・比例尺度の列を1つ以上">
-                <SelectColumn id="famd-numeric" aria-describedby="famd-numeric-help" mode="multiple" style={{ width: '100%' }} placeholder="interval/ratioを選択" value={numericVars} onChange={v => setNumericVars(v as string[])} options={numericOptions} />
+                <SelectColumn id="famd-numeric" aria-describedby="famd-numeric-help" roleName="FAMDの数値列" mode="multiple"
+                  style={{ width: '100%' }} placeholder="interval/ratioを選択" value={numericVars} onChange={v => setNumericVars(v as string[])} options={numericOptions}
+                  emptyHint={{ roleLabel: '数値列', reason: '現在の共通選択内に使える間隔・比例尺度の列がありません。',
+                    guidance: '共通選択で対象列を含め、コードブックで尺度を確認してください。MA列は使用できません。順序尺度の列はカテゴリ列から選択します。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
               </AnalysisField>
               <AnalysisField label="カテゴリ列" htmlFor="famd-categorical" help="名義・順序尺度の列を1つ以上">
-                <SelectColumn id="famd-categorical" aria-describedby="famd-categorical-help" mode="multiple" style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={categoricalVars} onChange={v => setCategoricalVars(v as string[])} options={categoricalOptions} />
+                <SelectColumn id="famd-categorical" aria-describedby="famd-categorical-help" roleName="FAMDのカテゴリ列" mode="multiple"
+                  style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={categoricalVars} onChange={v => setCategoricalVars(v as string[])} options={categoricalOptions}
+                  emptyHint={{ roleLabel: 'カテゴリ列', reason: '現在の共通選択内に使える名義・順序尺度の列がありません。',
+                    guidance: '共通選択で対象列を含め、コードブックで尺度を確認してください。MA列は使用できません。順序尺度はカテゴリとして扱います。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
               </AnalysisField>
             </div>
             <AnalysisSettings title="詳細設定" summary={`欠損: ${missingPolicy === 'exclude' ? '除外' : missingPolicy === 'include_missing' ? '含める' : '非該当を分離'} ／ 重み: ${weightChoice === 'dataset' ? 'データ設定' : 'なし'}`}>

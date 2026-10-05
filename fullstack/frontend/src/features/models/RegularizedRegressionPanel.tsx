@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select, Space, Table, Tag, Typography } from 'antd'
-import { selectOrdinaryVariables, type RootState } from '../../app/store'
+import { selectOrdinaryVariables, type AppDispatch, type RootState } from '../../app/store'
 import ColumnSelect from '../common/ColumnSelect'
 import AsyncExportButton from '../common/AsyncExportButton'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
 import { useRequestIdentity } from '../common/useRequestIdentity'
 import { useCodebook } from '../dataset/useCodebookColumn'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { AnalysisScopeSummary, captureAnalysisRunContext, useAnalysisScope, useAnalysisViewActive, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { downloadRegularizedArtifact, exportRegularizedPredict, fetchRegularizedPredictions, fetchRegularizedRows, predictRegularizedRegression, runRegularizedRegression } from './rrApi'
 import type { RRAlgorithm, RRArtifact, RRCategory, RRCoefficient, RRContext, RRFitRow, RRLanguage, RRPage, RRPredictResponse, RRPredictRow, RRRequest, RRResponse } from './rrTypes'
@@ -93,6 +94,7 @@ export function referenceDisplay(result: Pick<RRResponse, 'details'>, choices: R
 }
 
 export default function RegularizedRegressionPanel(): JSX.Element {
+  const dispatch = useDispatch<AppDispatch>()
   const viewActive = useAnalysisViewActive()
   const activeRef = useRef(viewActive)
   activeRef.current = viewActive
@@ -421,13 +423,22 @@ export default function RegularizedRegressionPanel(): JSX.Element {
         <AnalysisScopeSummary snapshot={result ? completed?.scope : null} />
         <div className="analysis-variable-grid">
           <AnalysisField label="目的変数" htmlFor="rr-target" help="予測したい連続の数値を1列選びます。">
-            <ColumnSelect id="rr-target" aria-describedby="rr-target-help" aria-label="正則化の目的変数" placeholder="正則化の目的変数" value={target} onChange={setTarget} options={targetOptions} style={{ width: '100%' }} />
+            <ColumnSelect id="rr-target" aria-describedby="rr-target-help" aria-label="正則化の目的変数" roleName="正則化の目的変数" placeholder="正則化の目的変数" value={target} onChange={setTarget} options={targetOptions} style={{ width: '100%' }}
+              emptyHint={{ roleLabel: '目的', reason: '目的変数の候補がありません。',
+                guidance: '共通の有効変数に含まれる、間隔・比率尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                onOpenCodebook: () => dispatch(editorModalOpened()) }} />
           </AnalysisField>
           <AnalysisField label="数値説明変数" htmlFor="rr-numeric" help="数値・カテゴリのいずれかから、説明変数を1つ以上選びます。">
-            <ColumnSelect id="rr-numeric" aria-describedby="rr-numeric-help" aria-label="正則化の数値説明変数" placeholder="正則化の数値説明変数" mode="multiple" value={numeric} onChange={setNumeric} options={numericOptions} style={{ width: '100%' }} />
+            <ColumnSelect id="rr-numeric" aria-describedby="rr-numeric-help" aria-label="正則化の数値説明変数" roleName="正則化の数値説明変数" placeholder="正則化の数値説明変数" mode="multiple" value={numeric} onChange={setNumeric} options={numericOptions} style={{ width: '100%' }}
+              emptyHint={{ roleLabel: '数値説明', reason: '数値説明変数の候補がありません。',
+                guidance: '共通の有効変数に含まれる、間隔・比率・順序尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                onOpenCodebook: () => dispatch(editorModalOpened()) }} />
           </AnalysisField>
           <AnalysisField label="カテゴリ説明変数" htmlFor="rr-categorical" help="グループなどのカテゴリを選びます。使わない場合は空欄で構いません。">
-            <ColumnSelect id="rr-categorical" aria-describedby="rr-categorical-help" aria-label="正則化のカテゴリ説明変数" placeholder="正則化のカテゴリ説明変数" mode="multiple" value={categorical} onChange={setCategorical} options={categoricalOptions} style={{ width: '100%' }} />
+            <ColumnSelect id="rr-categorical" aria-describedby="rr-categorical-help" aria-label="正則化のカテゴリ説明変数" roleName="正則化のカテゴリ説明変数" placeholder="正則化のカテゴリ説明変数" mode="multiple" value={categorical} onChange={setCategorical} options={categoricalOptions} style={{ width: '100%' }}
+              emptyHint={{ roleLabel: 'カテゴリ説明', reason: 'カテゴリ説明変数の候補がありません。',
+                guidance: '共通の有効変数に含まれる、名義・順序尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                onOpenCodebook: () => dispatch(editorModalOpened()) }} />
           </AnalysisField>
         </div>
         {numeric.filter(id => columnById.get(id)?.scaleType === 'ordinal').map(id => <Checkbox key={id} checked={Boolean(ordinalAcknowledged[id])}

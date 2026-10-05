@@ -6,7 +6,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied } from '../../app/store'
-import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
 import { fetchProvenanceThunk } from '../dataset/provenanceSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -483,7 +483,11 @@ export default function FactorAnalysisPage(): JSX.Element {
           </Space>
           <AnalysisField label="項目（必須・3つ以上）" htmlFor="efa-items"
             help="順序尺度または連続尺度の項目を選びます。まずは既定の設定で実行し、必要な場合だけ下の設定を変更してください。">
-            <SelectColumn id="efa-items" aria-describedby="efa-items-help" mode="multiple" value={items} onChange={setItems} style={{ width: '100%', minWidth: 0 }} options={itemOptions} placeholder="項目を選択" />
+            <SelectColumn id="efa-items" aria-describedby="efa-items-help" roleName="EFAの分析項目" mode="multiple"
+              value={items} onChange={setItems} style={{ width: '100%', minWidth: 0 }} options={itemOptions} placeholder="項目を選択"
+              emptyHint={{ roleLabel: '分析項目', reason: '分析項目に使える順序・間隔・比例尺度の列がありません。',
+                guidance: 'コードブックで列の尺度を確認してください。MA選択肢列は対象外です。順序尺度ではカテゴリ順序も確認してください。',
+                onOpenCodebook: () => dispatch(editorModalOpened()) }} />
           </AnalysisField>
           <AnalysisSettings title="項目の扱い・逆転"
             summary={treatmentSummary}

@@ -7,7 +7,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
@@ -304,8 +304,12 @@ export default function MultipleCorrespondencePage(): JSX.Element {
         <Card size="small" title="多重対応分析（MCA）" className="analysis-setup">
           <div className="analysis-form-stack">
             <AnalysisScopeSummary snapshot={completed?.snapshot} />
-            <AnalysisField label="分析変数（2つ以上）" htmlFor="mca-variables">
-              <SelectColumn id="mca-variables" mode="multiple" style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={variables} onChange={v => setVariables(v as string[])} options={ordinaryOptions} />
+            <AnalysisField label="分析変数（2つ以上）" htmlFor="mca-variables" help="共通選択内の名義・順序尺度の列を選びます。MA子を使用する場合は詳細設定で明示選択してください。">
+              <SelectColumn id="mca-variables" aria-describedby="mca-variables-help" roleName="MCAの分析変数" mode="multiple"
+                style={{ width: '100%' }} placeholder="nominal/ordinalを選択" value={variables} onChange={v => setVariables(v as string[])} options={ordinaryOptions}
+                emptyHint={{ roleLabel: '分析変数', reason: '現在の共通選択内に使える名義・順序尺度の列がありません。',
+                  guidance: '共通選択で対象列を含め、コードブックで尺度を確認してください。MA子を使用する場合は詳細設定で明示選択してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
             </AnalysisField>
             <AnalysisSettings title="詳細設定" summary={`欠損: ${missingPolicy === 'exclude' ? '除外' : missingPolicy === 'include_missing' ? '含める' : '非該当を分離'} ／ 重み: ${weightChoice === 'dataset' ? 'データ設定' : 'なし'} ／ 慣性: ${inertiaAdjustment === 'raw' ? 'raw' : 'Benzécri'} ／ MA: ${maMode === 'ordinary_only' ? '通常のみ' : '子を含める'}`}>
               <div className="analysis-variable-grid">
@@ -328,17 +332,25 @@ export default function MultipleCorrespondencePage(): JSX.Element {
               <Radio.Button value="explicit_binary_options">MA子を含める</Radio.Button>
             </Radio.Group>
             {maMode === 'explicit_binary_options' && (
-              <SelectColumn
-                mode="multiple"
-                style={{ width: '100%' }}
-                placeholder="MA子を選択（明示採用のみ）"
-                value={variables.filter((v) => maOptions.some((o) => o.value === v))}
-                onChange={(ids) => {
-                  const idSet = new Set(ids as string[])
-                  setVariables((prev) => [...prev.filter((v) => !maOptions.some((o) => o.value === v)), ...(ids as string[])].filter((v, i, a) => a.indexOf(v) === i && (ordinaryOptions.some((o) => o.value === v) || idSet.has(v))))
-                }}
-                options={maOptions}
-              />
+              <AnalysisField label="MA子変数（任意・明示採用）" htmlFor="mca-ma-variables" help="MAグループに属する名義尺度の子列を選びます。選択した子列のみ採用し、非選択もカテゴリとして扱います。">
+                <SelectColumn
+                  id="mca-ma-variables"
+                  aria-describedby="mca-ma-variables-help"
+                  roleName="MCAのMA子変数"
+                  mode="multiple"
+                  style={{ width: '100%' }}
+                  placeholder="MA子を選択（明示採用のみ）"
+                  value={variables.filter((v) => maOptions.some((o) => o.value === v))}
+                  onChange={(ids) => {
+                    const idSet = new Set(ids as string[])
+                    setVariables((prev) => [...prev.filter((v) => !maOptions.some((o) => o.value === v)), ...(ids as string[])].filter((v, i, a) => a.indexOf(v) === i && (ordinaryOptions.some((o) => o.value === v) || idSet.has(v))))
+                  }}
+                  options={maOptions}
+                  emptyHint={{ roleLabel: 'MA子変数', reason: '選択できる名義尺度のMA子列がありません。',
+                    guidance: 'コードブックでMAグループと子列の尺度を確認してください。MAを使わない場合は「通常のみ」に戻せます。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                />
+              </AnalysisField>
             )}
           </Space>
 

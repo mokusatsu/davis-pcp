@@ -120,7 +120,7 @@ describe('FAMD selector labels', () => {
     { label: 'categorical', index: 1, same: 'Category', name: 'Q_CAT', question: 'いつも利用する店舗' },
   ])('keeps $label names and questions distinct in search and tags', async ({ index, same, name, question }) => {
     const { container } = mount(<FamdPage />)
-    await expectLabels(container, index, true, same, name, question)
+    await expectLabels(container, index, true, same, name, question, index === 0 ? 'FAMDの数値列' : 'FAMDのカテゴリ列')
   })
 })
 

@@ -6,7 +6,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import { store, type AppDispatch, type RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied } from '../../app/store'
-import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
@@ -881,38 +881,62 @@ export default function ConjointPage(): JSX.Element {
           <Typography.Text strong>2. 回答データの列</Typography.Text>
           <div className="analysis-variable-grid">
             <AnalysisField label="回答者ID列" htmlFor="cj-respondent" help="同じ人の回答をまとめるID">
-              <span data-testid="cj-respondent-col"><SelectColumn id="cj-respondent" aria-describedby="cj-respondent-help" value={respondentCol} onChange={setRespondentCol} options={idOptions} placeholder="回答者ID列" style={{ width: '100%' }} /></span>
+              <span data-testid="cj-respondent-col"><SelectColumn id="cj-respondent" aria-describedby="cj-respondent-help" roleName="コンジョイントの回答者ID列" value={respondentCol} onChange={setRespondentCol} options={idOptions} placeholder="回答者ID列" style={{ width: '100%' }}
+                emptyHint={{ roleLabel: '回答者ID列', reason: '回答者ID列の候補がありません。',
+                  guidance: '複数回答（MA）に属さない列が対象です。データセットとコードブックの複数回答設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
             <AnalysisField label="タスク列" htmlFor="cj-task" help="同じ人に提示した質問・選択セットのID">
-              <span data-testid="cj-task-col"><SelectColumn id="cj-task" aria-describedby="cj-task-help" value={taskCol} onChange={setTaskCol} options={idOptions} placeholder="タスク列" style={{ width: '100%' }} /></span>
+              <span data-testid="cj-task-col"><SelectColumn id="cj-task" aria-describedby="cj-task-help" roleName="コンジョイントのタスク列" value={taskCol} onChange={setTaskCol} options={idOptions} placeholder="タスク列" style={{ width: '100%' }}
+                emptyHint={{ roleLabel: 'タスク列', reason: 'タスク列の候補がありません。',
+                  guidance: '複数回答（MA）に属さない列が対象です。データセットとコードブックの複数回答設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
             <AnalysisField label="代替案列" htmlFor="cj-alternative" help="タスク内の商品案を区別するID">
-              <span data-testid="cj-alt-col"><SelectColumn id="cj-alternative" aria-describedby="cj-alternative-help" value={altCol} onChange={setAltCol} options={idOptions} placeholder="代替案列" style={{ width: '100%' }} /></span>
+              <span data-testid="cj-alt-col"><SelectColumn id="cj-alternative" aria-describedby="cj-alternative-help" roleName="コンジョイントの代替案列" value={altCol} onChange={setAltCol} options={idOptions} placeholder="代替案列" style={{ width: '100%' }}
+                emptyHint={{ roleLabel: '代替案列', reason: '代替案列の候補がありません。',
+                  guidance: '複数回答（MA）に属さない列が対象です。データセットとコードブックの複数回答設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
             <AnalysisField label="応答列" htmlFor="cj-response" help={mode === 'ratings' ? '各商品案への数値評点' : mode === 'choice' ? 'タスクごとに選んだ1案だけが1、残りは0' : '1が最良。タスク内で重複・欠番のない順位'}>
-              <span data-testid="cj-response-col"><SelectColumn id="cj-response" aria-describedby="cj-response-help" value={responseCol} onChange={setResponseCol} options={idOptions} placeholder={mode === 'ratings' ? '評点（数値）' : mode === 'choice' ? '選択（0/1・タスク内1件）' : '順位（1が最良・1..J完全順位）'} style={{ width: '100%' }} /></span>
+              <span data-testid="cj-response-col"><SelectColumn id="cj-response" aria-describedby="cj-response-help" roleName="コンジョイントの応答列" value={responseCol} onChange={setResponseCol} options={idOptions} placeholder={mode === 'ratings' ? '評点（数値）' : mode === 'choice' ? '選択（0/1・タスク内1件）' : '順位（1が最良・1..J完全順位）'} style={{ width: '100%' }}
+                emptyHint={{ roleLabel: '応答列', reason: '応答列の候補がありません。',
+                  guidance: '複数回答（MA）に属さない列が対象です。データセットとコードブックの複数回答設定を確認し、回答形式に合う値を持つ列を用意してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
           </div>
           <Typography.Text strong>3. 商品案の属性（合計1つ以上）</Typography.Text>
           <div className="analysis-variable-grid">
             <AnalysisField label="カテゴリ属性" htmlFor="cj-categorical" help="ブランド・色など、水準ごとの差を調べる列">
-              <span data-testid="cj-cat-attrs"><SelectColumn id="cj-categorical" aria-describedby="cj-categorical-help" mode="multiple" value={catAttrs} onChange={setCatAttrs} style={{ width: '100%' }} options={categoricalOptions} placeholder="カテゴリを選択" /></span>
+              <span data-testid="cj-cat-attrs"><SelectColumn id="cj-categorical" aria-describedby="cj-categorical-help" roleName="コンジョイントのカテゴリ属性" mode="multiple" value={catAttrs} onChange={setCatAttrs} style={{ width: '100%' }} options={categoricalOptions} placeholder="カテゴリを選択"
+                emptyHint={{ roleLabel: 'カテゴリ属性', reason: 'カテゴリ属性の候補がありません。',
+                  guidance: '名義・順序尺度で、複数回答（MA）に属さない列が対象です。コードブックの尺度・複数回答設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
             <AnalysisField label="線形属性" htmlFor="cj-linear" help="価格・容量など、1単位の増加による効果を調べる数値列">
-              <span data-testid="cj-lin-attrs"><SelectColumn id="cj-linear" aria-describedby="cj-linear-help" mode="multiple" value={linAttrs} onChange={(v) => {
+              <span data-testid="cj-lin-attrs"><SelectColumn id="cj-linear" aria-describedby="cj-linear-help" roleName="コンジョイントの線形属性" mode="multiple" value={linAttrs} onChange={(v) => {
                 setLinAttrs(v)
                 if (priceAttr && !v.includes(priceAttr)) setPriceAttr(null)
-              }} style={{ width: '100%' }} options={linearOptions} placeholder="線形を選択" /></span>
+              }} style={{ width: '100%' }} options={linearOptions} placeholder="線形を選択"
+                emptyHint={{ roleLabel: '線形属性', reason: '線形属性の候補がありません。',
+                  guidance: '間隔・比率尺度で、複数回答（MA）に属さない列が対象です。コードブックの尺度・複数回答設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
             </AnalysisField>
           </div>
           <AnalysisSettings title="モデルの詳細設定" attention={!rangeValid || optionalMappingConflict}
             summary={`基準水準: ${catAttrs.some(id => refLevels[id]) ? '指定あり' : '自動'} ／ 効用範囲: ${linAttrs.some(id => utilLo[id] !== undefined || utilHi[id] !== undefined) ? '指定あり' : '未指定'} ／ 利用可能性・選択しない案: ${availCol || optOutCol ? '指定あり' : '未指定'}${mode === 'ratings' ? ` ／ 評点効果: ${ratingEffects === 'pooled' ? '全回答者で共通' : '回答者固定効果'}` : ''}`}>
             <div className="analysis-variable-grid">
               <AnalysisField label="利用可能性（availability）列" htmlFor="cj-available" help="提示・選択できる案=1、できない案=0。未指定なら全案を利用可能とします">
-                <SelectColumn id="cj-available" aria-describedby="cj-available-help" value={availCol} onChange={setAvailCol} options={idOptions} placeholder="未指定" style={{ width: '100%' }} allowClear />
+                <SelectColumn id="cj-available" aria-describedby="cj-available-help" roleName="コンジョイントの利用可能性列" value={availCol} onChange={setAvailCol} options={idOptions} placeholder="未指定" style={{ width: '100%' }} allowClear
+                  emptyHint={{ roleLabel: '利用可能性列', reason: '利用可能性列の候補がありません。',
+                    guidance: '未指定なら全案を利用可能とします。指定する場合は、複数回答（MA）に属さない0/1の列を用意し、データセットとコードブックの複数回答設定を確認してください。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} />
               </AnalysisField>
               <AnalysisField label="選択しない案（opt-out）列" htmlFor="cj-optout" help="「どれも選ばない」案の行=1、通常の案=0。選択・順位のみで使用します">
-                <span data-testid="cj-optout-col"><SelectColumn id="cj-optout" aria-describedby="cj-optout-help" value={mode === 'ratings' ? null : optOutCol} onChange={setOptOutCol} options={idOptions} placeholder="未指定（choice/rankingのみ）" style={{ width: '100%' }} allowClear disabled={mode === 'ratings'} /></span>
+                <span data-testid="cj-optout-col"><SelectColumn id="cj-optout" aria-describedby="cj-optout-help" roleName="コンジョイントの選択しない案の列" value={mode === 'ratings' ? null : optOutCol} onChange={setOptOutCol} options={idOptions} placeholder="未指定（choice/rankingのみ）" style={{ width: '100%' }} allowClear disabled={mode === 'ratings'}
+                  emptyHint={{ roleLabel: '選択しない案の列', reason: '選択しない案の列の候補がありません。',
+                    guidance: '「どれも選ばない」案がなければ未指定で構いません。指定する場合は、複数回答（MA）に属さない0/1の列を用意し、データセットとコードブックの複数回答設定を確認してください。',
+                    onOpenCodebook: () => dispatch(editorModalOpened()) }} /></span>
               </AnalysisField>
               {mode === 'ratings' && <AnalysisField label="評点効果" htmlFor="cj-rating-effects" help="回答者固定効果は人ごとの評点の水準差を除きます。個人別効用の推定ではありません">
                 <SelectSetting id="cj-rating-effects" aria-describedby="cj-rating-effects-help" value={ratingEffects} onChange={setRatingEffects} style={{ width: '100%' }} options={[
@@ -937,7 +961,10 @@ export default function ConjointPage(): JSX.Element {
           </AnalysisSettings>
           <AnalysisSettings title="価格・支払意思額（WTP）" summary={priceAttr ? `価格属性: ${colLabel(priceAttr)}${includeWtp ? ' ／ シミュレーションにWTPを含める' : ''}` : '未指定（通常の分析には不要）'}>
             <AnalysisField label="価格属性" htmlFor="cj-price" help="支払意思額を調べるときだけ、選択済みの線形属性から価格列を指定します">
-              <SelectColumn id="cj-price" aria-describedby="cj-price-help" value={priceAttr} onChange={setPriceAttr} style={{ width: '100%' }} allowClear placeholder="未指定" options={linAttrs.map(id => ({ value: id, label: colLabel(id) }))} />
+              <SelectColumn id="cj-price" aria-describedby="cj-price-help" roleName="コンジョイントの価格属性" value={priceAttr} onChange={setPriceAttr} style={{ width: '100%' }} allowClear placeholder="未指定" options={linAttrs.map(id => ({ value: id, label: colLabel(id) }))}
+                emptyHint={{ roleLabel: '価格属性', reason: '価格属性の候補がありません。',
+                  guidance: '先に「線形属性」で価格列を選択してください。線形属性の候補がない場合は、コードブックの尺度（間隔・比率）と複数回答（MA）設定を確認してください。支払意思額を調べない場合は未指定で構いません。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
             </AnalysisField>
             <Checkbox checked={includeWtp} onChange={e => setIncludeWtp(e.target.checked)}>シミュレーションにWTPを含める</Checkbox>
           </AnalysisSettings>

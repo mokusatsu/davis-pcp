@@ -6,7 +6,7 @@ import EChart from '../charts/EChart'
 import { imputationHistogramOption } from './preprocessingCharts'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import GraphPanel from '../common/GraphPanel'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   Alert,
   Button,
@@ -16,7 +16,6 @@ import {
   Input,
   InputNumber,
   Radio,
-  Segmented,
   Space,
   Spin,
   Tag,
@@ -99,6 +98,14 @@ const EXCLUDED_REASON_LABELS: Record<string, string> = {
   PREDICTOR_IS_TARGET: '補完対象のため除外',
 }
 
+const wrappingRadioGroupStyle: CSSProperties = {
+  display: 'flex', flexWrap: 'wrap', gap: '4px 12px', minWidth: 0, maxWidth: '100%',
+}
+const wrappingRadioStyle: CSSProperties = {
+  marginInlineEnd: 0, minWidth: 0, maxWidth: '100%', minHeight: 32,
+  whiteSpace: 'normal', overflowWrap: 'anywhere',
+}
+
 function inRange(value: number | null, min: number, max = Infinity): value is number {
   return value !== null && Number.isFinite(value) && value >= min && value <= max
 }
@@ -142,6 +149,7 @@ export default function ImputationModal({
   const [constantVal, setConstantVal] = useState<string>('0')
   const [seed, setSeed] = useState<number | null>(42)
   const validationId = useId()
+  const controlGroupId = useId()
   const validSteps = inRange(tabdiffSteps, 5, 100) && Number.isInteger(tabdiffSteps)
   const validTemperature = inRange(temperature, 0.1, 2)
   const validNeighbors = inRange(knnNeighbors, 1, 50) && Number.isInteger(knnNeighbors)
@@ -307,12 +315,12 @@ export default function ImputationModal({
     <Modal
       open={open}
       title={
-        <Space>
-          <Typography.Title level={5} style={{ margin: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 12px', paddingInlineEnd: 24 }}>
+          <Typography.Title level={5} style={{ margin: 0, flex: '1 1 320px', minWidth: 0, overflowWrap: 'anywhere' }}>
             欠損値補完フィルター (Replace Missing Values)
           </Typography.Title>
-          <Tag color="purple">実験的条件付き補完 / Statistical</Tag>
-        </Space>
+          <Tag color="purple" style={{ margin: 0, maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>実験的条件付き補完 / Statistical</Tag>
+        </div>
       }
       width={840}
       onCancel={() => { if (!busy.current) onClose() }}
@@ -370,7 +378,7 @@ export default function ImputationModal({
                   const isChecked = selectedCols.includes(col.name)
                   const pct = ((col.missing / Math.max(1, col.total)) * 100).toFixed(1)
                   return <Checkbox key={col.name} checked={isChecked} disabled={executing}
-                    style={{ marginInlineStart: 0, padding: '6px 10px', borderRadius: 6, border: `1px solid ${isChecked ? '#2563eb' : '#e5e7eb'}`, background: isChecked ? '#eff6ff' : '#fff' }}
+                    style={{ marginInlineStart: 0, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', padding: '6px 10px', borderRadius: 6, border: `1px solid ${isChecked ? '#2563eb' : '#e5e7eb'}`, background: isChecked ? '#eff6ff' : '#fff' }}
                     onChange={event => {
                       setSelectedCols(previous => event.target.checked ? [...previous, col.name] : previous.filter(name => name !== col.name))
                       if (event.target.checked) setPreviewCol(col.name)
@@ -390,19 +398,25 @@ export default function ImputationModal({
         {/* Section 2: Strategy */}
         <Card size="small" title="2. 補完アルゴリズム" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Segmented
-              data-testid="impute-strategy"
-              options={[
-                { label: '実験的条件付き補完', value: 'tabdiff' },
-                { label: 'KNN (k近傍)', value: 'knn' },
-                { label: 'Mean (平均値)', value: 'mean' },
-                { label: 'Median (中央値)', value: 'median' },
-                { label: 'Mode (最頻値)', value: 'mode' },
-                { label: 'Constant (定数)', value: 'constant' },
-              ]}
-              value={strategy}
-              onChange={(v) => setStrategy(String(v))}
-            />
+            <div role="radiogroup" aria-label="補完アルゴリズム">
+              <Radio.Group
+                data-testid="impute-strategy"
+                name={`${controlGroupId}-strategy`}
+                disabled={executing}
+                style={wrappingRadioGroupStyle}
+                value={strategy}
+                onChange={(event) => setStrategy(event.target.value)}
+              >
+                {[
+                  { label: '実験的条件付き補完', value: 'tabdiff' },
+                  { label: 'KNN (k近傍)', value: 'knn' },
+                  { label: 'Mean (平均値)', value: 'mean' },
+                  { label: 'Median (中央値)', value: 'median' },
+                  { label: 'Mode (最頻値)', value: 'mode' },
+                  { label: 'Constant (定数)', value: 'constant' },
+                ].map(option => <Radio key={option.value} value={option.value} style={wrappingRadioStyle}>{option.label}</Radio>)}
+              </Radio.Group>
+            </div>
 
             {strategy === 'tabdiff' && (
               <div style={{ background: '#f8fafc', padding: 12, borderRadius: 6, border: '1px solid #e2e8f0' }}>
@@ -458,15 +472,19 @@ export default function ImputationModal({
         {/* Section 3: Predictors */}
         <Card size="small" title="3. 説明変数（条件付け）" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Segmented
-              data-testid="impute-predictor-mode"
-              options={[
-                { label: '自動（目的列以外の全列）', value: 'auto' },
-                { label: '個別に指定', value: 'manual' },
-              ]}
-              value={predictorMode}
-              onChange={(v) => setPredictorMode(String(v) as 'auto' | 'manual')}
-            />
+            <div role="radiogroup" aria-label="説明変数の指定方法">
+              <Radio.Group
+                data-testid="impute-predictor-mode"
+                name={`${controlGroupId}-predictor-mode`}
+                disabled={executing}
+                style={wrappingRadioGroupStyle}
+                value={predictorMode}
+                onChange={(event) => setPredictorMode(event.target.value)}
+              >
+                <Radio value="auto" style={wrappingRadioStyle}>自動（目的列以外の全列）</Radio>
+                <Radio value="manual" style={wrappingRadioStyle}>個別に指定</Radio>
+              </Radio.Group>
+            </div>
             {predictorMode === 'manual' && (
               <SelectColumn
                 data-testid="impute-predictors"
@@ -503,27 +521,32 @@ export default function ImputationModal({
         <Card
           size="small"
           title={
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>4. 補完プレビュー &amp; 分布比較</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: '1 1 220px', minWidth: 0 }}>4. 補完プレビュー &amp; 分布比較</span>
               {currentPreview && currentPreview.perColumn.length > 1 && (
-                <Space>
-                  <Typography.Text style={{ fontSize: 12 }}>対象列:</Typography.Text>
+                <div role="radiogroup" aria-labelledby={`${controlGroupId}-preview-label`}
+                  style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8, flex: '1 1 260px', minWidth: 0 }}>
+                  <Typography.Text id={`${controlGroupId}-preview-label`} style={{ fontSize: 12 }}>対象列:</Typography.Text>
                   <Radio.Group
                     size="small"
+                    name={`${controlGroupId}-preview-target`}
+                    disabled={executing}
+                    style={{ ...wrappingRadioGroupStyle, flex: '1 1 180px' }}
                     value={activePreview?.column}
                     onChange={(e) => setPreviewCol(e.target.value)}
                   >
                     {currentPreview.perColumn.map((c) => (
-                      <Radio.Button key={c.column} value={c.column}>
+                      <Radio key={c.column} value={c.column} style={wrappingRadioStyle}>
                         <ColumnQuestionTooltip nameOrId={c.column}>{c.column}</ColumnQuestionTooltip>
-                      </Radio.Button>
+                      </Radio>
                     ))}
                   </Radio.Group>
-                </Space>
+                </div>
               )}
             </div>
           }
           style={{ borderRadius: 6, borderColor: '#e5e7eb' }}
+          styles={{ title: { whiteSpace: 'normal', minWidth: 0 }, header: { paddingBlock: 8 } }}
         >
           {previewLoading ? (
             <div style={{ textAlign: 'center', padding: 24 }}>
@@ -532,7 +555,7 @@ export default function ImputationModal({
           ) : currentPreview && activePreview ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Comparison Stat Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 10, overflowWrap: 'anywhere' }}>
                 <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>欠損数 変化</Typography.Text>
                   <div>

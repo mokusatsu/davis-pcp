@@ -29,11 +29,11 @@ function mount(page: ReactElement, columns: CodebookColumn[]) {
   return render(<Provider store={local}>{page}</Provider>)
 }
 
-async function openPicker(index = 0) {
-  fireEvent.click(screen.getAllByRole('button', { name: '変数を選択' })[index])
-  const dialog = await screen.findByRole('dialog', { name: '変数を選択' })
-  const results = within(dialog).getByLabelText('検索結果')
-  return { dialog, results, search: within(dialog).getByRole('textbox', { name: '変数名・質問文で絞り込み' }) }
+async function openPicker(roleName: string) {
+  fireEvent.click(screen.getByRole('button', { name: `${roleName}を選択` }))
+  const dialog = await screen.findByRole('dialog', { name: `${roleName}を選択` })
+  const results = within(dialog).getByLabelText(`${roleName}の検索結果`)
+  return { dialog, results, search: within(dialog).getByRole('textbox', { name: `${roleName}を変数名・質問文で絞り込み` }) }
 }
 
 function expectOption(results: HTMLElement, name: string, question?: string) {
@@ -73,7 +73,7 @@ describe('MCA variable selector labels', () => {
 
   it('shows identical names once in search results and selected tags', async () => {
     const { container } = mount(<MultipleCorrespondencePage />, columns)
-    const { dialog, results } = await openPicker()
+    const { dialog, results } = await openPicker('MCAの分析変数')
     fireEvent.click(expectOption(results, 'species'))
     fireEvent.click(expectOption(results, 'sepal_length_cm_bin4'))
     await commit(dialog)
@@ -84,7 +84,7 @@ describe('MCA variable selector labels', () => {
 
   it('keeps distinct variable codes and questions searchable and visible without precomposing labels', async () => {
     const { container } = mount(<MultipleCorrespondencePage />, columns)
-    const { dialog, results, search } = await openPicker()
+    const { dialog, results, search } = await openPicker('MCAの分析変数')
     const question = '普段の交通手段を教えてください'
     expectOption(results, 'Q1', question)
     for (const query of ['Q1', '交通手段', 'question-id']) {
@@ -101,7 +101,7 @@ describe('MCA variable selector labels', () => {
   it('preserves MA annotations while showing the variable name first and a distinct question separately', async () => {
     const { container } = mount(<MultipleCorrespondencePage />, columns)
     fireEvent.click(screen.getByRole('radio', { name: 'MA子を含める' }))
-    const { dialog, results, search } = await openPicker(1)
+    const { dialog, results, search } = await openPicker('MCAのMA子変数')
     expectOption(results, 'MA1 [MA]')
     expectOption(results, 'MA2 [MA]', '利用しているサービス')
     for (const query of ['MA2', 'サービス', 'ma-question-id']) {
@@ -128,12 +128,12 @@ describe('regularized regression variable selector labels', () => {
   ]
 
   it.each([
-    { index: 0, role: 'radio', same: 'Outcome', name: 'Q_NUM', question: '週間の利用時間', id: 'numeric-question-id' },
-    { index: 1, role: 'checkbox', same: 'Outcome', name: 'Q_NUM', question: '週間の利用時間', id: 'numeric-question-id' },
-    { index: 2, role: 'checkbox', same: 'Group', name: 'Q_CAT', question: 'よく利用する店舗', id: 'category-question-id' },
-  ])('keeps names and questions distinct in picker $index search and committed values', async ({ index, role, same, name, question, id }) => {
+    { index: 0, roleName: '正則化の目的変数', role: 'radio', same: 'Outcome', name: 'Q_NUM', question: '週間の利用時間', id: 'numeric-question-id' },
+    { index: 1, roleName: '正則化の数値説明変数', role: 'checkbox', same: 'Outcome', name: 'Q_NUM', question: '週間の利用時間', id: 'numeric-question-id' },
+    { index: 2, roleName: '正則化のカテゴリ説明変数', role: 'checkbox', same: 'Group', name: 'Q_CAT', question: 'よく利用する店舗', id: 'category-question-id' },
+  ])('keeps names and questions distinct in picker $index search and committed values', async ({ index, roleName, role, same, name, question, id }) => {
     const { container } = mount(<RegularizedRegressionPanel />, columns)
-    const { dialog, results, search } = await openPicker(index)
+    const { dialog, results, search } = await openPicker(roleName)
     fireEvent.click(expectOption(results, same))
     await commit(dialog)
     const picker = container.querySelectorAll('.column-select-multi-wrap')[index]
@@ -141,7 +141,7 @@ describe('regularized regression variable selector labels', () => {
       : Array.from(picker.querySelectorAll('.ant-select-selection-item'), selectedText)
     expect(selection()).toEqual([same])
 
-    fireEvent.click(within(picker as HTMLElement).getByRole('button', { name: '変数を選択' }))
+    fireEvent.click(within(picker as HTMLElement).getByRole('button', { name: `${roleName}を選択` }))
     await waitFor(() => expect(dialog).toBeVisible())
     expectOption(results, name, question)
     for (const query of [name, question, id]) {

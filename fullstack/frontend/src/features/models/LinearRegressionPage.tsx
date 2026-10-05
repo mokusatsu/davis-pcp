@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { fetchCodebookThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
@@ -566,13 +566,22 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
           <AnalysisScopeSummary snapshot={completed?.snapshot} />
           <div className="analysis-variable-grid">
             <AnalysisField label="目的変数" htmlFor="lr-target" help="予測・説明したい連続の数値を1列選びます。">
-              <SelectColumn id="lr-target" aria-describedby="lr-target-help" value={target} onChange={setTarget} options={targetOptions} placeholder="目的変数を選択" style={{ width: '100%' }} />
+              <SelectColumn id="lr-target" aria-describedby="lr-target-help" roleName="重回帰の目的変数" value={target} onChange={setTarget} options={targetOptions} placeholder="目的変数を選択" style={{ width: '100%' }}
+                emptyHint={{ roleLabel: '目的', reason: '目的変数の候補がありません。',
+                  guidance: '共通の有効変数に含まれる、間隔・比率尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
             </AnalysisField>
             <AnalysisField label="数値説明変数" htmlFor="lr-numeric" help="数値・カテゴリのいずれかから、説明変数を1つ以上選びます。">
-              <SelectColumn id="lr-numeric" aria-describedby="lr-numeric-help" mode="multiple" value={numSel} onChange={setNumSel} style={{ width: '100%' }} options={numericOptions} placeholder="数値を選択" />
+              <SelectColumn id="lr-numeric" aria-describedby="lr-numeric-help" roleName="重回帰の数値説明変数" mode="multiple" value={numSel} onChange={setNumSel} style={{ width: '100%' }} options={numericOptions} placeholder="数値を選択"
+                emptyHint={{ roleLabel: '数値説明', reason: '数値説明変数の候補がありません。',
+                  guidance: '共通の有効変数に含まれる、間隔・比率・順序尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
             </AnalysisField>
             <AnalysisField label="カテゴリ説明変数" htmlFor="lr-categorical" help="グループなどのカテゴリを選びます。使わない場合は空欄で構いません。">
-              <SelectColumn id="lr-categorical" aria-describedby="lr-categorical-help" mode="multiple" value={catSel} onChange={setCatSel} style={{ width: '100%' }} options={categoricalOptions} placeholder="カテゴリを選択" />
+              <SelectColumn id="lr-categorical" aria-describedby="lr-categorical-help" roleName="重回帰のカテゴリ説明変数" mode="multiple" value={catSel} onChange={setCatSel} style={{ width: '100%' }} options={categoricalOptions} placeholder="カテゴリを選択"
+                emptyHint={{ roleLabel: 'カテゴリ説明', reason: 'カテゴリ説明変数の候補がありません。',
+                  guidance: '共通の有効変数に含まれる、名義・順序尺度の単一列が対象です。共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }} />
             </AnalysisField>
           </div>
           {numSel.filter((id) => colById.get(id)?.scaleType === 'ordinal').map((id) => (
@@ -620,10 +629,16 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
             <AnalysisField label="交互作用" help="ある説明変数の効果が別の変数によって変わる場合に追加します。通常は空欄のまま実行できます。">
               <div className="analysis-inline-fields">
                 <AnalysisField label="変数1" htmlFor="lr-interaction-first">
-                  <SelectColumn id="lr-interaction-first" value={interDraft[0]} onChange={(v) => setInterDraft([v ?? null, interDraft[1]])} style={{ width: '100%' }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+                  <SelectColumn id="lr-interaction-first" roleName="重回帰の交互作用の変数1" value={interDraft[0]} onChange={(v) => setInterDraft([v ?? null, interDraft[1]])} style={{ width: '100%' }} allowClear placeholder="変数1" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))}
+                    emptyHint={{ roleLabel: '交互作用の変数1', reason: '交互作用の変数1の候補がありません。',
+                      guidance: '先に数値説明変数またはカテゴリ説明変数を選択してください。説明変数の候補がない場合は、共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                      onOpenCodebook: () => dispatch(editorModalOpened()) }} />
                 </AnalysisField>
                 <AnalysisField label="変数2" htmlFor="lr-interaction-second">
-                  <SelectColumn id="lr-interaction-second" value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: '100%' }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))} />
+                  <SelectColumn id="lr-interaction-second" roleName="重回帰の交互作用の変数2" value={interDraft[1]} onChange={(v) => setInterDraft([interDraft[0], v ?? null])} style={{ width: '100%' }} allowClear placeholder="変数2" options={predictorIds.map((id) => ({ value: id, label: colById.get(id)?.label ?? id }))}
+                    emptyHint={{ roleLabel: '交互作用の変数2', reason: '交互作用の変数2の候補がありません。',
+                      guidance: '先に数値説明変数またはカテゴリ説明変数を選択してください。説明変数の候補がない場合は、共通の変数選択とコードブックの尺度・複数回答（MA）設定を確認してください。',
+                      onOpenCodebook: () => dispatch(editorModalOpened()) }} />
                 </AnalysisField>
                 <Button disabled={!interDraft[0] || !interDraft[1] || interDraft[0] === interDraft[1]} onClick={() => {
                   if (interDraft[0] && interDraft[1] && interDraft[0] !== interDraft[1]) {
