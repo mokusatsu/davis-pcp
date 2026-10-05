@@ -26,6 +26,15 @@ function localStore(initialDataset:string|null='a') {
 }
 function mount(local=localStore()){const view=render(<Provider store={local}><MemoryRouter initialEntries={['/pcp']}><AppShell /></MemoryRouter></Provider>);return{...view,local}}
 async function save(name='saved-a') {fireEvent.click(screen.getByTestId('save-button')); const dialog=(await screen.findByTestId('session-name')).closest('[role=dialog]') as HTMLElement; fireEvent.change(within(dialog).getByTestId('session-name'),{target:{value:name}}); fireEvent.click(within(dialog).getByRole('button',{name:/保\s*存/}));return dialog}
+// An error render does not guarantee AntD's internal loading effect has settled.
+// Keep the exact accessible name and require an actionable button before one click.
+async function readyButton(container:HTMLElement,name:string|RegExp) {
+ return waitFor(()=>{
+  const button=within(container).getByRole('button',{name});
+  expect(button).toBeEnabled();expect(button).not.toHaveClass('ant-btn-loading');
+  return button;
+ });
+}
 async function chooseDataset(id:string){fireEvent.mouseDown(screen.getByTestId('dataset-selector').querySelector('.ant-select-selector')!);fireEvent.click(await screen.findByText(`Data ${id.toUpperCase()} (2行)`))}
 beforeEach(()=>{vi.clearAllMocks();apiMock.get.mockImplementation(async(path:string)=>path==='/datasets'?{datasets:list}:meta(path.split('/').at(-1)!));apiMock.view.mockImplementation(async(id:string)=>({__rowId__:[`${id}1`,`${id}2`]}));apiMock.getCodebook.mockImplementation(async(id:string)=>codebook(id));apiMock.post.mockResolvedValue({sessionId:'sess-a',revision:1,versionToken:'token-r1'});apiMock.put.mockResolvedValue({sessionId:'sess-a',revision:2,versionToken:'token-r2'})})
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
@@ -48,7 +57,9 @@ it.each(['post','put'] as const)('WF04: %s failure keeps draft and persistent er
  apiMock[method].mockRejectedValueOnce({code:'STORAGE_ERROR',message:'DISK_FULL_TEST'});
  const dialog=await save('recoverable-draft'); await within(dialog).findByText(/DISK_FULL_TEST/);
  expect(within(dialog).getByTestId('session-name')).toHaveValue('recoverable-draft');
- fireEvent.click(within(dialog).getByRole('button',{name:/保\s*存/}));
+ const failedAttempts=apiMock[method].mock.calls.length;
+ fireEvent.click(await readyButton(dialog,/保\s*存/));
+ await waitFor(()=>expect(apiMock[method]).toHaveBeenCalledTimes(failedAttempts+1));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'セッション保存'})).not.toBeInTheDocument());
 })
 
@@ -126,9 +137,13 @@ it('WF04/WF06: conflict is explicit; reload obtains current token and snapshot f
 it('WF06: a failed session listing has a persistent error and retry; cancelled reads do not reopen it', async () => {
  const listRequest=deferred<any>(); const {local}=mount(); await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
  apiMock.get.mockRejectedValueOnce(new Error('LIST_FAILED'));fireEvent.click(screen.getByTestId('open-session-button'));
- await screen.findByText(/LIST_FAILED/);apiMock.get.mockResolvedValueOnce({sessions:[]});fireEvent.click(screen.getByRole('button',{name:'一覧を再読込'}));
+ await screen.findByText(/LIST_FAILED/);apiMock.get.mockResolvedValueOnce({sessions:[]});
+ fireEvent.click(await readyButton(document.body,'一覧を再読込'));
  await screen.findByText('保存済みセッションがありません。');expect(screen.queryByText(/LIST_FAILED/)).not.toBeInTheDocument();
- apiMock.get.mockImplementationOnce(()=>listRequest.promise);fireEvent.click(screen.getByRole('button',{name:'一覧を再読込'}));
+ const completedReads=apiMock.get.mock.calls.length;
+ apiMock.get.mockImplementationOnce(()=>listRequest.promise);fireEvent.click(await readyButton(document.body,'一覧を再読込'));
+ await waitFor(()=>expect(apiMock.get).toHaveBeenCalledTimes(completedReads+1));
+ expect(apiMock.get).toHaveBeenLastCalledWith('/sessions');
  fireEvent.click(screen.getByRole('button',{name:'Close',exact:true}));
  await act(async()=>{listRequest.resolve({sessions:[{sessionId:'old',name:'late record',datasetId:'a',revision:1}]});await listRequest.promise});
  expect(screen.queryByRole('dialog',{name:'保存済みセッションを開く'})).not.toBeInTheDocument();
@@ -155,7 +170,9 @@ it('WF04: Save As opens a named draft and recovers from failure without overwrit
  const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));await save('original');await waitFor(()=>expect(apiMock.notification.success).toHaveBeenCalledTimes(1));
  fireEvent.click(screen.getByRole('button',{name:/Save As$/}));const input=await screen.findByTestId('session-name');expect(input).toHaveValue('original (copy)');
  const dialog=input.closest('[role=dialog]') as HTMLElement;apiMock.post.mockRejectedValueOnce(new Error('COPY_FAILED'));fireEvent.click(within(dialog).getByRole('button',{name:/保\s*存/}));
- await within(dialog).findByText(/COPY_FAILED/);fireEvent.click(within(dialog).getByRole('button',{name:/保\s*存/}));await waitFor(()=>expect(apiMock.post).toHaveBeenCalledTimes(3));expect(apiMock.put).not.toHaveBeenCalled();
+ await within(dialog).findByText(/COPY_FAILED/);fireEvent.click(await readyButton(dialog,/保\s*存/));
+ await waitFor(()=>expect(apiMock.post).toHaveBeenCalledTimes(3));expect(apiMock.put).not.toHaveBeenCalled();
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'セッション保存'})).not.toBeInTheDocument());
 })
 
 it('WF05: a stale background codebook fetch cannot prune variables after a newer prepared install', async () => {

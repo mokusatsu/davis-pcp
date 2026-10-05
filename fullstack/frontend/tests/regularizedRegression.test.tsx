@@ -158,11 +158,21 @@ it('drops old-dataset results and late exports after switching datasets', async 
 it('rejects wrong export identity and allows retry through shared export control', async () => {
   mount(); await run()
   vi.mocked(rrApi.exportRegularizedPredict).mockResolvedValueOnce({ ...exported, contentHash: 'wrong' })
-  fireEvent.click(screen.getByRole('button', { name: 'model.json' }))
+  const exportButton = screen.getByRole('button', { name: 'model.json' })
+  fireEvent.click(exportButton)
   await screen.findByText(/保存モデルの識別子・版・ハッシュが一致しません/)
   expect(rrApi.downloadRegularizedArtifact).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'model.json' }))
+  // AntD clears its internal loading state in a passive effect in the test runtime.
+  // The app's error can appear first; retry only once the real button is actionable.
+  await waitFor(() => {
+    expect(exportButton).toBeEnabled()
+    expect(exportButton).not.toHaveClass('ant-btn-loading')
+    expect(exportButton).toHaveAttribute('aria-busy', 'false')
+    expect(exportButton).toHaveAccessibleName('model.json')
+  })
+  fireEvent.click(exportButton)
   await waitFor(() => expect(rrApi.downloadRegularizedArtifact).toHaveBeenCalledOnce())
+  expect(rrApi.exportRegularizedPredict).toHaveBeenCalledTimes(2)
 })
 it.each(['survey', 'unexpected'])('blocks %s dataset weights without silently switching modes', async weightType => {
   const initial = state(); initial.codebook.weightConfig = { weightColumnId: 'weight', weightType }
