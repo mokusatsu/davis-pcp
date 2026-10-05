@@ -32,10 +32,12 @@ export default function OneHotModal({
   const request = useRequestIdentity(JSON.stringify([datasetId, columnName, open]))
   useEffect(() => { if (open) { setPrefix(columnName); setDropFirst(false) } }, [open, datasetId, columnName])
 
-  const activeCategories = dropFirst ? categories.slice(1) : categories
+  const effectiveDropFirst = dropFirst && categories.length > 1
+  const effectivePrefix = prefix.trim() || columnName
+  const activeCategories = effectiveDropFirst ? categories.slice(1) : categories
   const previewColNames = activeCategories.map((cat) => {
-    const clean = String(cat).replace(/\s+/g, '_').replace(/\//g, '_')
-    return `${prefix || columnName}_${clean}`
+    const clean = String(cat).replace(/ /g, '_').replace(/\//g, '_')
+    return `${effectivePrefix}_${clean}`
   })
 
   const handleApply = async () => {
@@ -44,17 +46,17 @@ export default function OneHotModal({
     const current = request.begin()
     setApplying(true)
     try {
-      await api.post(`/datasets/${datasetId}/transform`, {
+      const result = await api.post<{ createdColumns: string[] }>(`/datasets/${datasetId}/transform`, {
         type: 'nominal_to_binary',
         source_column: columnName,
         options: {
           drop_first: dropFirst,
-          prefix: prefix.trim() || columnName,
+          prefix: effectivePrefix,
         },
       })
       notification.success({
         message: '二値化完了',
-        description: `${previewColNames.length}個の0/1列を生成しました。`,
+        description: `${result.createdColumns.length}個の0/1列を生成しました。`,
       })
       onSuccess(datasetId)
       if (current()) onClose()
@@ -104,15 +106,23 @@ export default function OneHotModal({
           >
             最初の水準を除外する (Drop First Category — 回帰・多重共線性対策)
           </Checkbox>
+          {categories.length === 1 && (
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              水準が1つの場合は除外せず、0/1列を生成します。
+            </Typography.Paragraph>
+          )}
         </div>
 
         <div>
-          <Typography.Text strong>生成される二値列 (プレビュー):</Typography.Text>
+          <Typography.Text strong>二値列名の候補 (プレビュー):</Typography.Text>
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {previewColNames.map((name) => (
-              <Tag color="blue" key={name}>{name}</Tag>
+            {previewColNames.map((name, index) => (
+              <Tag color="blue" key={index}>{name}</Tag>
             ))}
           </div>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+            既存の列名や候補同士で重複する場合は、末尾に _1、_2 などを付けて生成します。実際の列名と列数は実行時に確定します。
+          </Typography.Paragraph>
         </div>
 
         <div>
@@ -120,7 +130,7 @@ export default function OneHotModal({
           <Table
             size="small"
             pagination={{ pageSize: 5 }}
-            dataSource={categories.map((c, i) => ({ key: c, index: i + 1, value: c }))}
+            dataSource={categories.map((c, i) => ({ key: i, index: i + 1, value: c }))}
             columns={[
               { title: '#', dataIndex: 'index', key: 'index', width: 50 },
               { title: '水準値', dataIndex: 'value', key: 'value' },
@@ -128,7 +138,7 @@ export default function OneHotModal({
                 title: '生成ステータス',
                 key: 'status',
                 render: (_, record) => {
-                  const isDropped = dropFirst && record.index === 1
+                  const isDropped = effectiveDropFirst && record.index === 1
                   return isDropped ? (
                     <Tag color="default">除外 (Base)</Tag>
                   ) : (

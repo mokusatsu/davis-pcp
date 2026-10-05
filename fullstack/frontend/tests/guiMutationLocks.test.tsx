@@ -52,7 +52,7 @@ describe('I22 shared in-flight mutation contract',()=>{
   const view=render(wrap(ui('old')))
   fireEvent.click(screen.getByRole('button',{name:'0/1二値列を生成'}))
   view.rerender(wrap(ui('new')))
-  await act(async()=>{pending.resolve({});await pending.promise})
+  await act(async()=>{pending.resolve({createdColumns:['x_a','x_b']});await pending.promise})
   expect(success).toHaveBeenCalledWith('old');expect(close).not.toHaveBeenCalled()
  })
  it('codebook import disables upload and every modal dismissal while committing',async()=>{

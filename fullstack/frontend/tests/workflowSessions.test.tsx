@@ -219,13 +219,21 @@ it('WF05: delayed bootstrap listing cannot overtake an explicit newer dataset se
 it('LICENSE: only explicit dropdown switching shows the saved selected dataset notice, each time', async () => {
  apiMock.getCodebook.mockImplementation(async(id:string)=>({...codebook(id),licenseText:id==='a'?'License A\n©':'License B\n©'}));
  const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ // AntD retains closed modal content, so node existence alone can find the previous license.
+ const selectedLicense=(datasetId:string,text:string)=>waitFor(()=>{
+  expect(local.getState().selection.datasetId).toBe(datasetId);
+  expect(local.getState().codebook.datasetId).toBe(datasetId);
+  const dialog=screen.getByRole('dialog',{name:'ライセンス情報'});
+  expect(dialog).toBeVisible();
+  expect(within(dialog).getByTestId('dataset-license-text').textContent).toBe(text);
+  return dialog;
+ });
  expect(screen.queryByRole('dialog',{name:'ライセンス情報'})).not.toBeInTheDocument();
- await chooseDataset('b');const dialog=await screen.findByRole('dialog',{name:'ライセンス情報'});
- expect(within(dialog).getByTestId('dataset-license-text').textContent).toBe('License B\n©');
- fireEvent.click(within(dialog).getByRole('button',{name:'OK'}));
- await chooseDataset('a');expect((await screen.findByTestId('dataset-license-text')).textContent).toBe('License A\n©');
- fireEvent.click(screen.getByRole('button',{name:'OK'}));await chooseDataset('b');
- expect((await screen.findByTestId('dataset-license-text')).textContent).toBe('License B\n©');
+ await chooseDataset('b');const first=await selectedLicense('b','License B\n©');
+ fireEvent.click(within(first).getByRole('button',{name:'OK'}));
+ await chooseDataset('a');const second=await selectedLicense('a','License A\n©');
+ fireEvent.click(within(second).getByRole('button',{name:'OK'}));await chooseDataset('b');
+ await selectedLicense('b','License B\n©');
 })
 it('LICENSE: a stale licensed load cannot show a popup over the later unlicensed selection', async () => {
  const old=deferred<any>();apiMock.getCodebook.mockImplementation(async(id:string)=>id==='b'?old.promise:codebook(id));
