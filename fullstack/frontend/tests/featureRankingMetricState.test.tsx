@@ -47,6 +47,9 @@ async function run() {
   await waitFor(() => expect(screen.getByTestId('compute-ranking-btn')).not.toHaveClass('ant-btn-loading'))
   await screen.findByTestId('top-k-action-bar')
 }
+function openSettings() {
+  act(() => { screen.getByText('ランキングの詳細設定').closest('details')!.open = true })
+}
 function metricSelect() { return screen.getByTestId('ranking-metric-select') }
 function openMetrics() {
   fireEvent.mouseDown(within(metricSelect()).getByRole('combobox'))
@@ -78,6 +81,7 @@ describe('completed feature-ranking metric state', () => {
     chooseMetric('Random Forest順')
     expect(topK()).toEqual(['beta'])
 
+    openSettings()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Random Forest (MDI)' }))
     expect(metricSelect()).toHaveTextContent('Random Forest順')
     expect(topK()).toEqual(['beta'])
@@ -99,6 +103,7 @@ describe('completed feature-ranking metric state', () => {
     expectApplied(dispatch, ['alpha'])
 
     // A discarded invalid choice must not silently reappear when that method returns.
+    openSettings()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Random Forest (MDI)' }))
     await run()
     expect(metricSelect()).toHaveTextContent('統合Borda順')
@@ -117,6 +122,7 @@ describe('completed feature-ranking metric state', () => {
     const { dispatch } = mount()
     await run()
     chooseMetric('Random Forest順')
+    openSettings()
     fireEvent.click(screen.getByRole('checkbox', { name: /相互情報量 \/ 平均絶対相関/ }))
     await run()
     expect(metricSelect()).toHaveTextContent('Random Forest順')

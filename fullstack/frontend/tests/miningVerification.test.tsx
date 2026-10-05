@@ -278,6 +278,41 @@ const modernExplorationPayload = {
   }],
 }
 
+it('wraps modern insight footer tags and preserves long ranking reasons in a narrow container', async () => {
+  const descriptions = [
+    '他群平均より-0.09差があり、標準偏差0.61（補集合0.67）',
+    'LongRankingReasonWithoutSpaces'.repeat(8),
+  ]
+  vi.spyOn(api, 'post').mockResolvedValue({
+    ...modernExplorationPayload,
+    summary: { ...modernExplorationPayload.summary, non_redundant_insights_count: descriptions.length },
+    insights: descriptions.map((description, index) => ({
+      ...modernExplorationPayload.insights[0],
+      id: `msd_long_${index}`,
+      ranking_reason: { primary_driver: 'delta_mean', description },
+    })),
+  } as never)
+  const view = render(<div style={{ width: 303 }}><Provider store={localStore()}><MemoryRouter>
+    <ModernSubgroupMiningView />
+  </MemoryRouter></Provider></div>)
+  fireEvent.click(await view.findByRole('button', { name: /指定対象で実行/ }))
+
+  for (const description of descriptions) {
+    const reason = await view.findByText(description, { exact: true })
+    expect(reason).toBeVisible()
+    expect(reason.textContent).toBe(description)
+    const footer = reason.parentElement!
+    expect(footer).toHaveStyle({ display: 'flex', flexWrap: 'wrap', minWidth: 0 })
+    expect(footer.children).toHaveLength(3)
+    expect(footer.textContent).toContain('人数: 80名 (40.0%)')
+    expect(footer.textContent).toContain('探索スコア: 0.90')
+    for (const tag of Array.from(footer.children)) {
+      expect(tag).toHaveStyle({ maxWidth: '100%', marginInlineEnd: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' })
+      expect(tag).not.toHaveStyle({ overflow: 'hidden' })
+    }
+  }
+})
+
 it('runs modern verification through the pinned candidate set and shows the findings', async () => {
   const local = localStore()
   const post = vi.spyOn(api, 'post').mockResolvedValue(modernExplorationPayload as never)

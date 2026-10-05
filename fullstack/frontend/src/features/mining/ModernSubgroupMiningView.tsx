@@ -704,14 +704,12 @@ export const ModernSubgroupMiningView: React.FC = () => {
                       </Row>
 
                       {/* Footer tags and coverage */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                        <Space size={4}>
-                          <Tag color="default">人数: {ins.coverage.n}名 ({(ins.coverage.ratio * 100).toFixed(1)}%)</Tag>
-                          <Tag color="geekblue">探索スコア: {ins.score.toFixed(2)}</Tag>
-                          {ins.ranking_reason && (
-                            <Tag color="orange">{ins.ranking_reason.description}</Tag>
-                          )}
-                        </Space>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 0, alignItems: 'center', marginTop: 4 }}>
+                        <Tag color="default" style={{ maxWidth: '100%', marginInlineEnd: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>人数: {ins.coverage.n}名 ({(ins.coverage.ratio * 100).toFixed(1)}%)</Tag>
+                        <Tag color="geekblue" style={{ maxWidth: '100%', marginInlineEnd: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>探索スコア: {ins.score.toFixed(2)}</Tag>
+                        {ins.ranking_reason && (
+                          <Tag color="orange" style={{ maxWidth: '100%', marginInlineEnd: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{ins.ranking_reason.description}</Tag>
+                        )}
                       </div>
                     </Card>
                   )

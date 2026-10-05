@@ -70,7 +70,7 @@ it('renders MDI and permutation as separate columns with warnings and tooltips',
   expect(split.indexOf('0.700')).toBeLessThan(split.indexOf('0.300'))
 })
 
-it('shows teacher-only notice instead of zero bars when permutation is unavailable', async () => {
+it('shows not-computed notice for supervised unavailable permutation despite the backend teacher-only default', async () => {
   const base = store.getState()
   const local = configureStore({ reducer: () => ({ ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
@@ -85,5 +85,7 @@ it('shows teacher-only notice instead of zero bars when permutation is unavailab
   const { fireEvent, waitFor } = await import('@testing-library/react')
   fireEvent.click(view.getByTestId('compute-ranking-btn'))
   await waitFor(() => expect(view.getByTestId('importance-split')).toBeTruthy())
-  expect(view.getByTestId('importance-split').textContent).toContain('教師ありのみ')
+  expect(view.getByTestId('ranking-permutation-unavailable')).toHaveTextContent('この実行では未算出です。')
+  expect(view.getByTestId('importance-split')).not.toHaveTextContent('教師ありのみ')
+  expect(view.queryByTestId('ranking-permutation-chart')).toBeNull()
 })

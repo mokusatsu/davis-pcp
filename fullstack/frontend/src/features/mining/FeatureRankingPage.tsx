@@ -7,6 +7,8 @@ import { Select as AntSelect } from 'antd'
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import {
@@ -91,6 +93,29 @@ export interface FeatureRankingResponse {
 function metricRank(row: VariableRankItem, metric: keyof VariableRankItem['scores']) {
   const score = row.scores[metric]
   return score && Number.isFinite(score.normalizedScore) && Number.isFinite(score.rank) ? score.rank : undefined
+}
+
+const METHOD_OPTIONS = [
+  { label: 'ReliefF / 分散（教師なし代理指標）', value: 'relieff', summary: 'ReliefF' },
+  { label: '相互情報量 / 平均絶対相関（教師なし代理指標）', value: 'mutual_info', summary: '相互情報量' },
+  { label: 'Random Forest (MDI)', value: 'random_forest', summary: 'RF (MDI)' },
+  { label: 'ANOVA F / F-値', value: 'f_statistic', summary: 'F値' },
+  { label: 'PCA分散 (Dispersion)', value: 'pca_dispersion', summary: 'PCA分散' },
+]
+
+function importanceUnavailableReason(result: FeatureRankingResponse, kind: 'mdi' | 'permutation_train'): string | null {
+  // Describe the completed response, never the current target/method switches.
+  // The backend's default 教師ありのみ reason is also returned for supervised
+  // runs that did not request RF/permutation, so it is not reliable by itself.
+  if (result.taskType === 'unsupervised') return '教師ありのみ（この実行は教師なし分析です）。'
+  const metadata = result.importanceMetadata?.[kind]
+  const hasScores = result.importance?.[kind]?.some(item => Number.isFinite(
+    kind === 'mdi' ? item.importance : item.importanceMean,
+  ))
+  if (metadata?.available !== false && hasScores) return null
+  if (metadata?.available === true) return '表示できる重要度の結果がありません。'
+  if (metadata?.reason === 'insufficient_rows') return '有効行数が不足したため、重要度を算出できませんでした。'
+  return 'この実行では未算出です。'
 }
 
 function MethodInfoTip({ methodKey, display, taskType }: {
@@ -316,6 +341,9 @@ export default function FeatureRankingPage() {
     )
   }
 
+  const mdiUnavailableReason = result ? importanceUnavailableReason(result, 'mdi') : null
+  const permutationUnavailableReason = result ? importanceUnavailableReason(result, 'permutation_train') : null
+
   const columns = [
     {
       title: '順位',
@@ -397,80 +425,75 @@ export default function FeatureRankingPage() {
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
 
-      {/* Top Configuration Card */}
-      <Card size="small" title="特徴量ランキング・選択設定 (Feature Ranking Configuration)" data-testid="ranking-config-card">
-        <Row gutter={[16, 12]} align="middle">
-          <Col xs={24} sm={8} md={6}>
-            <Typography.Text strong style={{ fontSize: 12 }}>目的変数 Y (Target):</Typography.Text>
-            <Select
-              style={{ width: '100%', marginTop: 4 }}
-              allowClear
-              placeholder="教師なし (Unsupervised)"
-              value={targetColumn}
-              onChange={(v) => setTargetColumn(v)}
-              options={candidates.map(c => ({ label: `${c.name}: ${c.label || c.name}`, value: c.name }))}
-              data-testid="ranking-target-select"
-            />
-          </Col>
-          <Col xs={24} sm={16} md={12}>
-            <Typography.Text strong style={{ fontSize: 12 }}>評価対象 X (Features):</Typography.Text>
-            <Select
-              mode="multiple"
-              maxTagCount={4}
-              style={{ width: '100%', marginTop: 4 }}
-              value={selectedFeatures}
-              onChange={setSelectedFeatures}
-              options={featureCandidates
-                .map((c) => ({ label: c.name, value: c.name }))}
-              data-testid="ranking-features-select"
-            />
-          </Col>
-          <Col xs={24} sm={24} md={6} style={{ display: 'flex', alignItems: 'flex-end', height: '100%' }}>
-            <Button
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              loading={loading}
-              disabled={selectedFeatures.length === 0 || selectedMethods.length === 0}
-              onClick={runRanking}
-              style={{ width: '100%', marginTop: 20 }}
-              data-testid="compute-ranking-btn"
-            >
-              ランキング計算実行 (Compute)
-            </Button>
-          </Col>
-        </Row>
+      <Card size="small" className="analysis-setup" title="特徴量ランキング・選択設定 (Feature Ranking Configuration)" data-testid="ranking-config-card">
+        <div className="analysis-form-stack">
+          <div className="analysis-variable-grid">
+            <AnalysisField label="目的変数 Y (Target・任意)" htmlFor="ranking-target" help="予測したい変数を1つ選びます。未選択にすると教師なし分析になります。">
+              <Select
+                id="ranking-target" aria-label="ランキングの目的変数" aria-describedby="ranking-target-help" roleName="ランキングの目的変数"
+                style={{ width: '100%' }} allowClear placeholder="教師なし (Unsupervised)"
+                value={targetColumn} onChange={(v) => setTargetColumn(v)}
+                options={candidates.map(c => ({ label: `${c.name}: ${c.label || c.name}`, value: c.name }))}
+                emptyHint={{ roleLabel: '目的', reason: '目的変数の候補がありません。',
+                  guidance: '未選択のまま教師なし分析ができます。教師あり分析を行う場合は共通の有効変数とコードブックの質問・属性の役割と尺度を確認してください。MA選択肢は下の追加ボタンから候補に追加します。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                data-testid="ranking-target-select"
+              />
+            </AnalysisField>
+            <AnalysisField label="評価対象 X (Features)" htmlFor="ranking-features" help="評価する特徴量を1つ以上選びます。目的変数と同じ列・同じMAの選択肢は除外されます。">
+              <Select
+                id="ranking-features" aria-label="ランキングの評価対象" aria-describedby="ranking-features-help" aria-required="true" roleName="ランキングの評価対象"
+                mode="multiple" maxTagCount={4} style={{ width: '100%' }} placeholder="評価する特徴量を選択"
+                value={selectedFeatures} onChange={setSelectedFeatures}
+                options={featureCandidates.map((c) => ({ label: c.name, value: c.name }))}
+                emptyHint={{ roleLabel: '評価対象', reason: '評価対象の特徴量の候補がありません。',
+                  guidance: '共通の有効変数・尺度と目的変数の選択を確認してください。目的変数と同じ列・同じMAの選択肢は候補になりません。コードブックで質問・属性の役割を確認できます。MA選択肢は下の追加ボタンから追加します。',
+                  onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                data-testid="ranking-features-select"
+              />
+            </AnalysisField>
+          </div>
 
-        <div style={{ marginTop: 10 }}>
-          <MaAxisPicker allowCount={false} groups={groups} columns={dictionary} onAdd={axes => {
-            const added = axes.map(axis => dictionary.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
-            setMaChoices({ datasetId: selection.datasetId!, names: [...new Set([...(maChoices?.datasetId === selection.datasetId ? maChoices.names : []), ...added])] })
-            setSelectedFeatures(previous => [...new Set([...previous, ...added])])
-          }} />
-          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>MAは指定した子だけを評価します。重要度は子別です。</Typography.Text>
-        </div>
+          <div className="analysis-inline-fields">
+            <MaAxisPicker allowCount={false} groups={groups} columns={dictionary} onAdd={axes => {
+              const added = axes.map(axis => dictionary.find(c => c.columnId === axis.columnId)?.name).filter((name): name is string => Boolean(name))
+              setMaChoices({ datasetId: selection.datasetId!, names: [...new Set([...(maChoices?.datasetId === selection.datasetId ? maChoices.names : []), ...added])] })
+              setSelectedFeatures(previous => [...new Set([...previous, ...added])])
+            }} />
+            <Typography.Text type="secondary">MAは指定した子だけを評価します。重要度は子別です。</Typography.Text>
+          </div>
 
-        <div style={{ marginTop: 10 }}>
-          <Typography.Text strong style={{ fontSize: 12, marginRight: 8 }}>評価手法:</Typography.Text>
-          <Checkbox.Group
-            value={selectedMethods}
-            onChange={(v) => setSelectedMethods(v as string[])}
-            options={[
-              { label: 'ReliefF / 分散（教師なし代理指標）', value: 'relieff' },
-              { label: '相互情報量 / 平均絶対相関（教師なし代理指標）', value: 'mutual_info' },
-              { label: 'Random Forest (MDI)', value: 'random_forest' },
-              { label: 'ANOVA F / F-値', value: 'f_statistic' },
-              { label: 'PCA分散 (Dispersion)', value: 'pca_dispersion' },
-            ]}
-          />
-          <div style={{ marginTop: 8 }}>
-            <Checkbox
-              checked={usePermutation}
-              onChange={(e) => setUsePermutation(e.target.checked)}
-              data-testid="ranking-permutation-toggle"
-            >
+          <AnalysisSettings title="ランキングの詳細設定"
+            summary={`評価手法: ${METHOD_OPTIONS.filter(method => selectedMethods.includes(method.value)).map(method => method.summary).join('・') || '未選択'} / Permutation: ${usePermutation ? '計算する（RF・教師あり時）' : '計算しない'}`}
+            attention={selectedMethods.length === 0}>
+            <Typography.Text type="secondary">次回の計算に使います。標準はReliefF・相互情報量・Random Forest・F値とPermutation Importanceです。</Typography.Text>
+            <AnalysisField label="評価手法 (Methods)">
+              <div role="group" aria-label="ランキングの評価手法">
+                <Checkbox.Group
+                  value={selectedMethods} onChange={(v) => setSelectedMethods(v as string[])}
+                  options={METHOD_OPTIONS.map(({ label, value }) => ({ label, value }))}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}
+                />
+              </div>
+            </AnalysisField>
+            <Checkbox checked={usePermutation} onChange={(e) => setUsePermutation(e.target.checked)} data-testid="ranking-permutation-toggle">
               Permutation Importance（訓練データ、教師ありのみ）も計算する
             </Checkbox>
-          </div>
+            <Typography.Text type="secondary">Permutation ImportanceにはRandom Forestの選択が必要です。設定は閉じても保持されます。</Typography.Text>
+          </AnalysisSettings>
+          <AnalysisSettings title="手法と結果の見方" summary="教師あり・教師なしの評価と、実行済み結果について">
+            <Typography.Text>教師なし分析ではReliefFを分散、相互情報量を平均絶対相関の代理指標として評価します。Random Forest・F値・Permutation Importanceは教師あり分析で使います。</Typography.Text>
+            <Typography.Text>表示中のグラフとTop-Kは実行済みの結果に基づきます。変数・設定を変更した場合は再実行してください。Top-Kの適用は上部共通Variable Selectorの有効変数と並び順を更新します。</Typography.Text>
+          </AnalysisSettings>
+          {selectedFeatures.length === 0 && <Typography.Text type="secondary" role="status">評価対象の特徴量を1つ以上選択してください。</Typography.Text>}
+          {selectedMethods.length === 0 && <Typography.Text type="warning" role="status">詳細設定で評価手法を1つ以上選択してください。</Typography.Text>}
+          <AnalysisRunRow>
+            <Button type="primary" icon={<ThunderboltOutlined />} loading={loading}
+              disabled={selectedFeatures.length === 0 || selectedMethods.length === 0} onClick={runRanking}
+              style={{ whiteSpace: 'normal', height: 'auto', minHeight: 32, maxWidth: '100%' }} data-testid="compute-ranking-btn">
+              ランキング計算実行 (Compute)
+            </Button>
+          </AnalysisRunRow>
         </div>
       </Card>
 
@@ -495,6 +518,7 @@ export default function FeatureRankingPage() {
                 </Typography.Text>
                 <div style={{ display: 'inline-flex', alignItems: 'center', width: 180, gap: 8 }}>
                   <Slider
+                    ariaLabelForHandle="選択する上位Kの変数数"
                     min={1}
                     max={result.rankings.length}
                     value={topK}
@@ -503,6 +527,7 @@ export default function FeatureRankingPage() {
                     data-testid="top-k-slider"
                   />
                   <InputNumber
+                    aria-label="上位Kの変数数を入力"
                     min={1}
                     max={result.rankings.length}
                     value={topK}
@@ -572,7 +597,7 @@ export default function FeatureRankingPage() {
       )}
 
       {/* Importance split: MDI (left) vs Permutation train (right) */}
-      {result && !loading && result.importance && (
+      {result && !loading && (result.importance || result.importanceMetadata) && (
         <Row gutter={[16, 16]} data-testid="importance-split">
           <Col xs={24} lg={12}>
             <Card
@@ -580,8 +605,12 @@ export default function FeatureRankingPage() {
               title={<span>MDI (Mean Decrease Impurity) <MethodInfoTip methodKey="mdi" display={{ displayName: 'MDI', formula: 'feature_importances_', scope: 'train', deprecatedAlias: '' }} taskType={result.taskType} /></span>}
               extra={<Tag>高カーディナリティ特徴にバイアス</Tag>}
             >
-              <EChart testId="ranking-mdi-chart" height={Math.max(180, (result.importance.mdi?.length ?? 0) * 34 + 70)}
-                ariaLabel="MDI importance" option={importanceBarsOption(result.importance.mdi ?? [], 'mdi')} />
+              {mdiUnavailableReason ? (
+                <Typography.Text type="secondary" data-testid="ranking-mdi-unavailable">{mdiUnavailableReason}</Typography.Text>
+              ) : (
+                <EChart testId="ranking-mdi-chart" height={Math.max(180, (result.importance?.mdi?.length ?? 0) * 34 + 70)}
+                  ariaLabel="MDI importance" option={importanceBarsOption(result.importance?.mdi ?? [], 'mdi')} />
+              )}
             </Card>
           </Col>
           <Col xs={24} lg={12}>
@@ -590,11 +619,11 @@ export default function FeatureRankingPage() {
               title={<span>Permutation Importance（訓練データ） <MethodInfoTip methodKey="permutation" display={{ displayName: 'Permutation', formula: 'permutation_importance（5 repeats）', scope: 'train', deprecatedAlias: '' }} taskType={result.taskType} /></span>}
               extra={<Tag>過学習の影響を受ける</Tag>}
             >
-              {result.importanceMetadata?.permutation_train?.available === false ? (
-                <Typography.Text type="secondary">教師ありのみ</Typography.Text>
+              {permutationUnavailableReason ? (
+                <Typography.Text type="secondary" data-testid="ranking-permutation-unavailable">{permutationUnavailableReason}</Typography.Text>
               ) : (
-                <EChart testId="ranking-permutation-chart" height={Math.max(180, (result.importance.permutation_train?.length ?? 0) * 34 + 70)}
-                  ariaLabel="訓練データの符号付き permutation importance" option={importanceBarsOption(result.importance.permutation_train ?? [], 'permutation')} />
+                <EChart testId="ranking-permutation-chart" height={Math.max(180, (result.importance?.permutation_train?.length ?? 0) * 34 + 70)}
+                  ariaLabel="訓練データの符号付き permutation importance" option={importanceBarsOption(result.importance?.permutation_train ?? [], 'permutation')} />
               )}
             </Card>
           </Col>
