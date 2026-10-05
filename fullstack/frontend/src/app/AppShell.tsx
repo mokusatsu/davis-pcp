@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Alert, Badge, Button, ConfigProvider, Dropdown, Grid, Input, Layout, List, Menu, Modal,
+  Alert, Badge, Button, ConfigProvider, Drawer, Dropdown, Grid, Input, Layout, List, Menu, Modal,
   Select, Space, Tooltip, Typography, Upload, notification,
 } from 'antd'
 import type { MenuProps } from 'antd'
@@ -242,7 +242,24 @@ export default function AppShell() {
   const builtinSamplesRef = useRef<BuiltinSampleItem[]>([])
   const [datasetListError, setDatasetListError] = useState<string | null>(null)
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const screens = Grid.useBreakpoint()
+  const isMobileSidebar = screens.md !== true
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null)
+  const desktopSidebarHasFocus = useRef(false)
+  // Mobile overlays are transient; resizing must not overwrite the user's
+  // desktop sidebar preference (or squeeze a narrow analysis into 240px less).
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const sidebarOpen = isMobileSidebar ? mobileSidebarOpen : desktopSidebarOpen
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [isMobileSidebar, location.key, selection.datasetId, Boolean(graphSession)])
+  useLayoutEffect(() => {
+    if (isMobileSidebar && desktopSidebarHasFocus.current) {
+      sidebarToggleRef.current?.focus()
+      desktopSidebarHasFocus.current = false
+    }
+  }, [isMobileSidebar])
   const notifySaved = useCallback((message: string) => notificationApi.success({ message }), [notificationApi])
   const persistence = useWorkspacePersistence(notifySaved)
   const { loadDataset } = persistence
@@ -551,23 +568,51 @@ export default function AppShell() {
         <div ref={mainContentRef} role="main" aria-label="分析画面" tabIndex={-1} style={{ flex: 1, minWidth: 0, overflowX: 'hidden', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <KeepAliveOutlet />
         </div>
-        <>
         {/* Collapse button rides on the sidebar's left edge, on every page. */}
         <Button
+          ref={sidebarToggleRef}
           data-testid="toggle-sidebar"
           size="small"
           icon={sidebarOpen ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
-          onClick={() => setSidebarOpen((open) => !open)}
+          onClick={(event) => {
+            if (isMobileSidebar) {
+              // Drawer restores focus to its opener after Escape/mask/close.
+              event.currentTarget.focus()
+              setMobileSidebarOpen((open) => !open)
+            } else setDesktopSidebarOpen((open) => !open)
+          }}
           aria-label="選択行サイドバーの切替"
+          aria-expanded={sidebarOpen}
+          aria-controls={isMobileSidebar ? 'selected-rows-drawer' : 'selected-rows-sidebar'}
+          aria-haspopup={isMobileSidebar ? 'dialog' : undefined}
           style={{ alignSelf: 'flex-start', flexShrink: 0, marginTop: 2 }}
         />
-        {sidebarOpen ? (
-          <aside data-testid="selected-sidebar" style={{ width: 240, border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, overflow: 'auto', flexShrink: 0 }}>
+        {!isMobileSidebar && desktopSidebarOpen ? (
+          <aside
+            id="selected-rows-sidebar"
+            aria-label="選択行"
+            data-testid="selected-sidebar"
+            onFocusCapture={() => { desktopSidebarHasFocus.current = true }}
+            onBlurCapture={(event) => { desktopSidebarHasFocus.current = event.currentTarget.contains(event.relatedTarget) }}
+            style={{ width: 240, border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, overflow: 'auto', flexShrink: 0 }}
+          >
             {sidebarContent}
           </aside>
         ) : null}
-        </>
       </Layout.Content>
+      <Drawer
+        id="selected-rows-drawer"
+        title="選択行"
+        placement="right"
+        width="min(320px, calc(100vw - 24px))"
+        open={isMobileSidebar && mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+        closable={{ 'aria-label': '選択行サイドバーを閉じる' }}
+        destroyOnHidden
+        styles={{ body: { padding: 12 } }}
+      >
+        {sidebarContent}
+      </Drawer>
       <Modal
         title="セッション保存"
         destroyOnClose
