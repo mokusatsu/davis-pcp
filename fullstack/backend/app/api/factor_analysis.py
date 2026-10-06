@@ -1201,6 +1201,7 @@ def efa_materialize(result_id, manifest, req):
         if clash:
             _err("COLUMN_ALREADY_EXISTS", "列が既に存在します。", 409,
                  details={"columns": clash})
+        scope_ids = set(_efa_scope_ids(manifest, req))
         if source == "fit":
             src_frame = rows_df
             src_col = lambda idx: f"score{idx+1}"
@@ -1215,7 +1216,7 @@ def efa_materialize(result_id, manifest, req):
             idx = int(src.split(":")[1]) - 1
             vals = []
             for rid in [str(v) for v in df["__rowId__"].to_list()]:
-                rec = by_id.get(rid)
+                rec = by_id.get(rid) if rid in scope_ids else None
                 vals.append(None if rec is None else rec.get(src_col(idx)))
             if all(v is None for v in vals):
                 _err("LR_FIELD_UNAVAILABLE", "保存できる値がありません。", 422)
@@ -1249,7 +1250,7 @@ def efa_materialize(result_id, manifest, req):
                            "efaPayloadHash": payload_hash,
                            "efaColumns": [{"source": k, "name": v}
                                           for k, v in mappings]},
-                "targetRowIds": sorted([str(v) for v in df["__rowId__"].to_list()]),
+                "targetRowIds": sorted(scope_ids),
                 "targetCells": [],
                 "inputSchemaRevision": int(codebook.get("schemaRevision", 1)) - 1,
                 "outputSchemaRevision": int(codebook.get("schemaRevision", 1)),
