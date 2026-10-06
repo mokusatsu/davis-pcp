@@ -362,6 +362,9 @@ describe('Crosstab design pickers project the saved design', () => {
     },
   )
 
+  // Keep selection, saved receipt, clear, and both reopened dialog checks in one
+  // flow. Up to seven real picker dialogs need more than 5s on shared CI runners;
+  // only the outer scenario budget changes, not any individual wait/assertion.
   it.each(designPickerCases)('shows $testId accepted $surface selection and clear only after saved receipts',
     async ({ testId, key, name, columnId, surface }) => {
       const server = harness({ declared: true })
@@ -391,6 +394,7 @@ describe('Crosstab design pickers project the saved design', () => {
       expect(server.put).toHaveBeenCalledTimes(2)
       expect(message.error).not.toHaveBeenCalled()
     },
+    10000,
   )
 })
 
@@ -468,6 +472,9 @@ describe('Crosstab weight completion ownership with real controls and store', ()
     expect(message.error).not.toHaveBeenCalled()
   })
 
+  // Preserve the original failed write across a real remount, two canonical
+  // reads, and retry. Six/seven real picker dialogs can exceed 5s in shared CI;
+  // individual recovery waits still use their normal assertion deadlines.
   it.each([true, false])('keeps unknown-commit recovery across remount, requires GET-only recovery, and permits retry (committed=%s)', async firstWriteCommits => {
     const server = harness({ firstWriteCommits })
     await install('a')
@@ -520,7 +527,7 @@ describe('Crosstab weight completion ownership with real controls and store', ()
     expect(store.getState().codebook.schemaRevision).toBe(firstWriteCommits ? 12 : 11)
     expect(message.error).toHaveBeenCalledTimes(2)
     view.unmount()
-  })
+  }, 10000)
 
   it.each(['b', 'a'] as const)('does not toast an old failure after a real dataset-keyed unmount and arrival at %s', async destination => {
     const server = harness()
