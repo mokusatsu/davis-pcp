@@ -5,7 +5,7 @@ import { Alert, Button, Card, List, Popconfirm, Space, Tag, Tooltip, Typography,
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated } from '../../app/store'
 import { api, getCodebook } from '../../api/client'
-import { fetchCodebookThunk } from './codebookSlice'
+import { fetchCodebookThunk, codebookReadAccepted } from './codebookSlice'
 import { fetchProvenanceThunk, isProvenanceReady, provenanceReset, selectRestoreRefresh,
   restoreRefreshStarted, restoreRefreshRevisionReceived, restoreRefreshFailed, restoreRefreshFinished } from './provenanceSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
@@ -144,7 +144,7 @@ export default function ProvenanceHistoryPanel() {
         // Check and dispatch synchronously: RTK's automatic async-thunk
         // completion adds a microtask gap after its payload creator returns.
         // Never emit an obsolete fulfilled action to ANY consuming slice.
-        dispatch(fetchCodebookThunk.fulfilled(response, codebookRequestId, targetDatasetId))
+        dispatch(codebookReadAccepted(response, codebookRequestId))
       } catch (error) {
         const report = currentRead()
         dispatch(fetchCodebookThunk.rejected(error as Error, codebookRequestId, targetDatasetId))

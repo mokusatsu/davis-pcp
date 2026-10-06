@@ -5,7 +5,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { message } from 'antd'
 import { api, type CodebookColumn } from '../src/api/client'
 import { datasetLoaded, datasetValuesUpdated, focusSelected, selectionApplied, selectionReducer, globalVariablesSlice, variablesInitialized, activeEntitiesSet, weightColumnSet } from '../src/app/store'
-import { codebookSlice, codebookReceived, draftColumnUpdated, fetchCodebookThunk, saveCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookSlice, codebookReceived, draftColumnUpdated, fetchCodebookThunk, saveCodebookThunk, codebookSaveAccepted } from '../src/features/dataset/codebookSlice'
 import { fetchProvenanceThunk, provenanceReducer, provenanceReset } from '../src/features/dataset/provenanceSlice'
 import ProvenanceHistoryPanel from '../src/features/dataset/ProvenanceHistoryPanel'
 
@@ -399,10 +399,11 @@ it.each([0, 1, 2, 3, 4, 5, 6])('keeps a newer same-A save at codebook completion
   await act(async () => {
     codebook.resolve({ datasetId: 'a', schemaRevision: 2, columns: columns('a', 'obsolete refresh') })
     for (let index = 0; index < microtasks; index++) await Promise.resolve()
-    local.dispatch(saveCodebookThunk.fulfilled({ datasetId: 'a', schemaRevision: 3, columns: saved,
+    local.dispatch(saveCodebookThunk.pending('new-save', undefined))
+    local.dispatch(codebookSaveAccepted({ datasetId: 'a', schemaRevision: 3, columns: saved,
       multiResponseGroups: [], weightConfig: null, surveyDesign: null, submittedColumns: local.getState().codebook.draftColumns,
       submittedGroups: [], status: 'ok', updatedColumns: 1,
-      codebook: { datasetId: 'a', schemaRevision: 3, columns: saved } }, 'new-save', undefined))
+      codebook: { datasetId: 'a', schemaRevision: 3, columns: saved } }, 'new-save'))
   })
   expect(local.getState().codebook.schemaRevision).toBe(3)
   expect(local.getState().codebook.columns[0].label).toBe('new saved label')
@@ -487,10 +488,11 @@ it.each([3, 4])('preserves newer active variables and weight at completion bound
   await act(async () => {
     codebook.resolve({ datasetId: 'a', schemaRevision: 2, columns: columns('a', 'obsolete refresh') })
     for (let index = 0; index < microtasks; index++) await Promise.resolve()
-    local.dispatch(saveCodebookThunk.fulfilled({ datasetId: 'a', schemaRevision: 3, columns: saved,
+    local.dispatch(saveCodebookThunk.pending('new-save', undefined))
+    local.dispatch(codebookSaveAccepted({ datasetId: 'a', schemaRevision: 3, columns: saved,
       multiResponseGroups: [], weightConfig: null, surveyDesign: null, submittedColumns: local.getState().codebook.draftColumns,
       submittedGroups: [], status: 'ok', updatedColumns: 1,
-      codebook: { datasetId: 'a', schemaRevision: 3, columns: saved } }, 'new-save', undefined))
+      codebook: { datasetId: 'a', schemaRevision: 3, columns: saved } }, 'new-save'))
     local.dispatch(activeEntitiesSet([{ kind: 'column', columnId: 'a-new' }]))
     local.dispatch(weightColumnSet({ datasetId: 'a', columnId: 'a-new' }))
   })

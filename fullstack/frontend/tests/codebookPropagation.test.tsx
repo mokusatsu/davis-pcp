@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
-import { codebookSlice, fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookSlice, fetchCodebookThunk, codebookReadAccepted } from '../src/features/dataset/codebookSlice'
 import { buildAxes, buildValues } from '../src/features/pcp/usePcpPipeline'
 import { normalizeCode, useCodebookColumn } from '../src/features/dataset/useCodebookColumn'
 import TablePage from '../src/features/table/TablePage'
@@ -57,7 +57,7 @@ describe('codebook propagation', () => {
   it('ignores a late response from the previous dataset', () => {
     let state = codebookSlice.reducer(undefined, fetchCodebookThunk.pending('old', 'old-ds'))
     state = codebookSlice.reducer(state, fetchCodebookThunk.pending('new', 'new-ds'))
-    state = codebookSlice.reducer(state, fetchCodebookThunk.fulfilled({ datasetId: 'old-ds', schemaRevision: 8, columns: [spec] }, 'old', 'old-ds'))
+    state = codebookSlice.reducer(state, codebookReadAccepted({ datasetId: 'old-ds', schemaRevision: 8, columns: [spec] }, 'old'))
     expect(state.datasetId).toBe('new-ds')
     expect(state.columns).toEqual([])
   })

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import type { CodebookColumn } from '../src/api/client'
 import { activeEntitiesSet, globalVariablesSlice, selectOrdinaryVariables, selectVariableManagerState, selectVariableEntities, store } from '../src/app/store'
-import { fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookReadAccepted } from '../src/features/dataset/codebookSlice'
 import { reconcileEntities, variableCatalog } from '../src/features/selection/variableEntities'
 
 const columns: CodebookColumn[] = ['a', 'b', 'x'].map(name => ({
@@ -30,7 +30,7 @@ it('keeps an MA-only selection out of ordinary analysis candidates', () => {
 
 it('ignores codebook completion for another dataset', () => {
   const initial = { ...globalVariablesSlice.getInitialState(), datasetId: 'new', activeEntities: [{ kind: 'column' as const, columnId: 'x' }] }
-  const result = globalVariablesSlice.reducer(initial, fetchCodebookThunk.fulfilled({ datasetId: 'old', schemaRevision: 2, columns: [] }, 'request', 'old'))
+  const result = globalVariablesSlice.reducer(initial, codebookReadAccepted({ datasetId: 'old', schemaRevision: 2, columns: [] }, 'request'))
   expect(result.activeEntities).toEqual(initial.activeEntities)
 })
 

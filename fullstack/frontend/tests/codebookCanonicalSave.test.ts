@@ -2,7 +2,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { afterEach, expect, it, vi } from 'vitest'
 import { datasetLoaded, selectionReducer } from '../src/app/store'
 import { api, type CodebookColumn } from '../src/api/client'
-import { codebookSlice, fetchCodebookThunk, saveCodebookThunk, draftColumnUpdated } from '../src/features/dataset/codebookSlice'
+import { codebookSlice, fetchCodebookThunk, codebookReadAccepted, saveCodebookThunk, draftColumnUpdated } from '../src/features/dataset/codebookSlice'
 
 const draft: CodebookColumn = { columnId: 'q', name: 'Q', label: 'Q', role: 'question', scaleType: 'ordinal',
   categoryOrder: [], valueLabels: {}, missingCodes: [], missingReasons: {}, isReversed: false, multiResponseGroup: null }
@@ -14,7 +14,7 @@ function setup() {
     middleware: get => get({ serializableCheck: false }) })
   local.dispatch(datasetLoaded({ datasetId: 'd', name: 'D', rowIds: ['r1'], dataRevision: 1 }))
   local.dispatch(fetchCodebookThunk.pending('load', 'd'))
-  local.dispatch(fetchCodebookThunk.fulfilled({ datasetId: 'd', schemaRevision: 1, columns: [draft] }, 'load', 'd'))
+  local.dispatch(codebookReadAccepted({ datasetId: 'd', schemaRevision: 1, columns: [draft] }, 'load'))
   return local
 }
 

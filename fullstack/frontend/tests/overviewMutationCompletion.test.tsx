@@ -5,7 +5,7 @@ import { Provider, useSelector } from 'react-redux'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../src/api/client'
 import { datasetValuesUpdated, store } from '../src/app/store'
-import { fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookReadAccepted } from '../src/features/dataset/codebookSlice'
 import OverviewPage from '../src/features/dataset/OverviewPage'
 import { AnalysisViewActivityContext } from '../src/features/selection/analysisScope'
 
@@ -43,7 +43,7 @@ function localStore() {
     if (datasetValuesUpdated.match(action) && action.payload.datasetId === state.selection.datasetId && action.payload.dataRevision > state.selection.dataRevision) {
       return { ...state, selection: { ...state.selection, dataRevision: action.payload.dataRevision } }
     }
-    if (fetchCodebookThunk.fulfilled.match(action) && action.payload.datasetId === state.selection.datasetId) {
+    if (codebookReadAccepted.match(action) && action.payload.datasetId === state.selection.datasetId) {
       return { ...state, codebook: { ...state.codebook, schemaRevision: action.payload.schemaRevision, columns: action.payload.columns } }
     }
     return state

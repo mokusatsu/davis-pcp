@@ -6,14 +6,15 @@ import { store } from '../src/app/store'
 import ColumnQuestionTooltip from '../src/features/common/ColumnQuestionTooltip'
 import GraphPanel from '../src/features/common/GraphPanel'
 import { GraphExpansionProvider } from '../src/features/common/GraphExpansion'
-import { codebookSlice, fetchCodebookThunk, draftColumnUpdated, saveCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookSlice, fetchCodebookThunk, draftColumnUpdated, saveCodebookThunk, codebookSaveAccepted, codebookReadAccepted } from '../src/features/dataset/codebookSlice'
 import type { CodebookColumn } from '../src/api/client'
 
 const column: CodebookColumn = { columnId: 'q-id', name: 'Q', label: '質問です\n<script>文字列</script>', scaleType: 'ratio', role: 'question',
   valueLabels: {}, categoryOrder: [], missingCodes: [], missingReasons: {}, isReversed: false, multiResponseGroup: null }
 function setup(label = column.label, datasetId = 'ds') {
   const state = store.getState()
-  const loaded = codebookSlice.reducer(state.codebook, fetchCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 1, columns: [] }, 'load', 'ds'))
+  const loading = codebookSlice.reducer(state.codebook, fetchCodebookThunk.pending('load', 'ds'))
+  const loaded = codebookSlice.reducer(loading, codebookReadAccepted({ datasetId: 'ds', schemaRevision: 1, columns: [] }, 'load'))
   const cb = { ...loaded, datasetId: 'ds', columns: [{ ...column, label }], draftColumns: [{ ...column, label }] }
   return configureStore({ reducer: {
     codebook: codebookSlice.reducer,
@@ -42,7 +43,7 @@ describe('column question popup', () => {
     await waitFor(() => expect(screen.getByText('保存済み')).toBeVisible())
     act(() => { testStore.dispatch(draftColumnUpdated({ columnId: 'q-id', patch: { label: '下書き' } })) })
     expect(screen.queryByText('下書き')).toBeNull()
-    act(() => { testStore.dispatch(saveCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 2, columns: [{ ...column, label: '保存後' }], submittedColumns: [{ ...column, label: '下書き' }], multiResponseGroups: [], submittedGroups: [] } as any, 'save')) })
+    act(() => { testStore.dispatch(saveCodebookThunk.pending('save', undefined)); testStore.dispatch(codebookSaveAccepted({ datasetId: 'ds', schemaRevision: 2, columns: [{ ...column, label: '保存後' }], submittedColumns: [{ ...column, label: '下書き' }], multiResponseGroups: [], submittedGroups: [] } as any, 'save')) })
     await waitFor(() => expect(screen.getByText('保存後')).toBeVisible())
   })
   it.each([['   ', 'ds'], ['別の設問', 'other']])('omits unavailable questions (%s/%s)', (label, dataset) => {

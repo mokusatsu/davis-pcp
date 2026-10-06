@@ -4,7 +4,7 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
 import MultiResponseCard from '../src/features/distribution/MultiResponseCard'
-import { codebookSlice, draftMultiResponseGroupUpdated, draftMultiResponseGroupRemoved, draftReverted, fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
+import { codebookSlice, draftMultiResponseGroupUpdated, draftMultiResponseGroupRemoved, draftReverted, fetchCodebookThunk, codebookReadAccepted } from '../src/features/dataset/codebookSlice'
 import type { CodebookColumn, MultiResponseGroup, MultiResponseSummary } from '../src/api/client'
 
 afterEach(cleanup)
@@ -14,7 +14,7 @@ const column: CodebookColumn = { columnId: 'a', name: 'A', label: 'サービスA
 describe('MA editor and card', () => {
   it('keeps membership and parent draft together and reverts both without changing saved columns', () => {
     let state = codebookSlice.reducer(undefined, fetchCodebookThunk.pending('r', 'ds'))
-    state = codebookSlice.reducer(state, fetchCodebookThunk.fulfilled({ datasetId: 'ds', schemaRevision: 1, columns: [column] }, 'r', 'ds'))
+    state = codebookSlice.reducer(state, codebookReadAccepted({ datasetId: 'ds', schemaRevision: 1, columns: [column] }, 'r'))
     state = codebookSlice.reducer(state, draftMultiResponseGroupUpdated({ group, columnIds: ['a'] }))
     expect(state.draftColumns[0].multiResponseGroup).toBe('q')
     expect(state.columns[0].multiResponseGroup).toBeNull()

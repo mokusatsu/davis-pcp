@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import {
   Button,
   Dropdown,
@@ -36,6 +36,7 @@ import {
   presetAppliedToColumns,
   quickValueLabelsApplied,
   saveCodebookThunk,
+  sameSavedSnapshot,
   selectedColumnsChanged,
   viewModeChanged,
 } from './codebookSlice'
@@ -52,6 +53,20 @@ import CodebookLicenseEditor from './CodebookLicenseEditor'
 export default function CodebookEditorModal() {
   const [notificationApi, notificationHolder] = notification.useNotification()
   const dispatch = useDispatch<AppDispatch>()
+  const store = useStore<RootState>()
+  const editorSession = useRef(0)
+  useEffect(() => {
+    let previous = store.getState()
+    // Observe every close/install, even close → reopen within one React batch.
+    const unsubscribe = store.subscribe(() => {
+      const current = store.getState()
+      if (current.codebook.isEditorOpen !== previous.codebook.isEditorOpen
+        || current.selection.revision !== previous.selection.revision
+        || current.selection.datasetId !== previous.selection.datasetId) editorSession.current++
+      previous = current
+    })
+    return () => { editorSession.current++; unsubscribe() }
+  }, [store])
   const selection = useSelector((s: RootState) => s.selection)
   const codebook = useSelector((s: RootState) => s.codebook)
   const [maOpen, setMaOpen] = useState(false)
@@ -90,20 +105,33 @@ export default function CodebookEditorModal() {
   }, [codebook.columns, codebook.draftColumns])
 
   const handleSave = async () => {
-    try {
-      const resultAction = await dispatch(saveCodebookThunk())
-      if (saveCodebookThunk.fulfilled.match(resultAction)) {
-        notificationApi.success({
-          message: 'コードブック保存完了',
-          description: `コードブックの変更を保存しました（リビジョン: ${resultAction.payload.schemaRevision}）。`,
-        })
-      } else {
-        throw new Error(resultAction.error.message || '保存に失敗しました')
-      }
-    } catch (err: any) {
+    const started = store.getState()
+    if (!started.codebook.isEditorOpen || started.codebook.isSaving) return
+    const session = editorSession.current
+    const request = dispatch(saveCodebookThunk())
+    const ownsNotice = () => {
+      const current = store.getState()
+      return session === editorSession.current && current.codebook.isEditorOpen
+        && current.selection.datasetId === started.selection.datasetId
+        && current.selection.revision === started.selection.revision
+        && current.selection.dataRevision === started.selection.dataRevision
+        && current.codebook.datasetId === started.codebook.datasetId
+        && current.codebook.saveRequestId === request.requestId
+    }
+    const resultAction = await request
+    if (!ownsNotice()) return
+    if (saveCodebookThunk.fulfilled.match(resultAction)) {
+      if (!sameSavedSnapshot(store.getState().codebook, resultAction.payload)) return
+      notificationApi.success({
+        message: 'コードブック保存完了',
+        description: `コードブックの変更を保存しました（リビジョン: ${resultAction.payload.schemaRevision}）。`,
+      })
+    } else if (!resultAction.meta.condition && !resultAction.meta.aborted
+      && (resultAction.payload as { code?: string } | undefined)?.code !== 'CODEBOOK_SAVE_SUPERSEDED') {
+      if (!sameSavedSnapshot(store.getState().codebook, started.codebook)) return
       notificationApi.error({
         message: '保存失敗',
-        description: err.message || 'コードブックの保存に失敗しました。',
+        description: resultAction.error.message || 'コードブックの保存に失敗しました。',
       })
     }
   }
@@ -231,7 +259,7 @@ export default function CodebookEditorModal() {
               <Button
                 type="primary"
                 loading={codebook.isSaving}
-                disabled={!codebook.hasChanges}
+                disabled={!codebook.hasChanges || codebook.isSaving}
                 onClick={handleSave}
               >
                 保存

@@ -339,8 +339,8 @@ export const globalVariablesSlice = createSlice({
   },
   extraReducers: builder => {
     builder.addCase(analysisWorkspaceRestored, (_state, { payload }) => payload.globalVariables)
-    for (const thunk of [fetchCodebookThunk, saveCodebookThunk]) {
-      builder.addCase(thunk.fulfilled, (state, action) => {
+    for (const actionCreator of [codebookReadAccepted, codebookSaveAccepted]) {
+      builder.addCase(actionCreator, (state, action) => {
         if (state.datasetId && state.datasetId !== action.payload.datasetId) return
         state.activeEntities = reconcileEntities(state.activeEntities, action.payload.columns, action.payload.multiResponseGroups ?? [])
         const ids = new Set((action.payload.columns ?? []).map((c: { columnId: string }) => c.columnId))
@@ -528,7 +528,7 @@ export function selectEffectiveRowIds(state: RootState): string[] {
 }
 
 import {
-  codebookSlice, fetchCodebookThunk, saveCodebookThunk, saveWeightConfigThunk,
+  codebookSlice, codebookReadAccepted, codebookSaveAccepted, saveWeightConfigThunk,
 } from '../features/dataset/codebookSlice'
 import { provenanceReducer } from '../features/dataset/provenanceSlice'
 

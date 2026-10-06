@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, createAction, PayloadAction } from '@reduxjs/toolkit'
 import {
   CodebookResponse, CodebookColumn, MultiResponseGroup, SurveyDesignSpec, WeightConfig,
   getCodebook, updateCodebook,
@@ -10,6 +10,10 @@ import { ParsedOption } from './codebookParsers'
 export interface CodebookState {
   datasetId: string | null
   fetchRequestId: string | null
+  /** Pending owner, retained after settlement as the editor completion receipt. */
+  saveRequestId: string | null
+  /** One canonical read may precede the save response; a second change supersedes it. */
+  saveSnapshotAdvanced: boolean
   schemaRevision: number
   licenseText: string
   licenseRevision: number
@@ -39,6 +43,8 @@ export interface CodebookState {
 const initialState: CodebookState = {
   datasetId: null,
   fetchRequestId: null,
+  saveRequestId: null,
+  saveSnapshotAdvanced: false,
   schemaRevision: 1,
   licenseText: '',
   licenseRevision: 1,
@@ -64,15 +70,33 @@ const initialState: CodebookState = {
   isSaving: false,
 }
 
+/** Shared by ordinary reads and the already-guarded restore refresh. */
+export const codebookReadAccepted = createAction('codebook/readAccepted',
+  (payload: CodebookResponse, requestId: string) => ({ payload, meta: { requestId } }))
+
 export const fetchCodebookThunk = createAsyncThunk(
   'codebook/fetch',
-  async (datasetId: string, { getState, requestId, rejectWithValue }) => {
-    const res = await getCodebook(datasetId)
-    // Do not emit a fulfilled action to other slices after a prepared dataset
-    // or newer fetch superseded this request. Reducer-only guards are too late.
-    const current = (getState() as RootState).codebook
-    if (current.fetchRequestId !== requestId || current.datasetId !== datasetId)
-      return rejectWithValue('CODEBOOK_FETCH_SUPERSEDED')
+  async (datasetId: string, { getState, dispatch, requestId, rejectWithValue, signal }) => {
+    const started = getState() as RootState
+    const ownsRead = () => {
+      const current = getState() as RootState
+      return !signal.aborted && current.codebook.fetchRequestId === requestId
+        && current.codebook.datasetId === datasetId && current.selection.datasetId === datasetId
+        && current.selection.revision === started.selection.revision
+        && current.selection.dataRevision === started.selection.dataRevision
+        && sameSavedSnapshot(current.codebook, started.codebook)
+    }
+    let res: CodebookResponse
+    try { res = await getCodebook(datasetId) }
+    catch (error) {
+      if (!ownsRead()) return rejectWithValue('CODEBOOK_FETCH_SUPERSEDED')
+      throw error
+    }
+    if (!ownsRead()) return rejectWithValue('CODEBOOK_FETCH_SUPERSEDED')
+    if (res.datasetId !== datasetId) throw new Error('コードブックのデータセットが一致しません。')
+    // State fanout is synchronous with the live ownership check. The delayed
+    // RTK fulfilled action only acknowledges this accepted read.
+    dispatch(codebookReadAccepted(res, requestId))
     return res
   },
   // Dataset installation uses codebookReceived; fetches only refresh the
@@ -80,11 +104,51 @@ export const fetchCodebookThunk = createAsyncThunk(
   { condition: (datasetId, { getState }) => (getState() as RootState).selection.datasetId === datasetId },
 )
 
+type SavedSnapshot = Pick<CodebookResponse, 'schemaRevision' | 'columns' | 'multiResponseGroups' | 'weightConfig' | 'surveyDesign'>
+function savedSnapshotKey(snapshot: SavedSnapshot): string {
+  // Object insertion order is not codebook content; array/column/group order is.
+  return JSON.stringify([snapshot.schemaRevision, snapshot.columns, snapshot.multiResponseGroups ?? [],
+    snapshot.weightConfig ?? null, snapshot.surveyDesign ?? null], (_key, value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>
+      return Object.fromEntries(Object.keys(record).sort().map(key => [key, record[key]]))
+    }
+    return value
+  })
+}
+export function sameSavedSnapshot(left: SavedSnapshot, right: SavedSnapshot): boolean {
+  return savedSnapshotKey(left) === savedSnapshotKey(right)
+}
+
+type CodebookSaveResult = Awaited<ReturnType<typeof updateCodebook>> & {
+  columns: CodebookColumn[]
+  multiResponseGroups: MultiResponseGroup[]
+  weightConfig: WeightConfig | null
+  surveyDesign: SurveyDesignSpec | null
+  submittedColumns: CodebookColumn[]
+  submittedGroups: MultiResponseGroup[]
+}
+
+/** Only the live save producer may publish this synchronous installation. */
+export const codebookSaveAccepted = createAction('codebook/saveAccepted',
+  (payload: CodebookSaveResult, requestId: string) => ({ payload, meta: { requestId } }))
+
 export const saveCodebookThunk = createAsyncThunk(
   'codebook/save',
-  async (_, { getState }) => {
-    const state = (getState() as RootState).codebook
+  async (_, { getState, dispatch, requestId, rejectWithValue, signal }) => {
+    const started = getState() as RootState
+    const state = started.codebook
     if (!state.datasetId) throw new Error('No dataset loaded')
+    const ownsSave = (response?: CodebookSaveResult) => {
+      const current = getState() as RootState
+      return !signal.aborted && current.codebook.saveRequestId === requestId
+        && current.selection.datasetId === state.datasetId
+        && current.selection.revision === started.selection.revision
+        && current.selection.dataRevision === started.selection.dataRevision
+        && current.codebook.datasetId === state.datasetId
+        && (sameSavedSnapshot(current.codebook, state)
+          || (!!response && sameSavedSnapshot(current.codebook, response)))
+    }
 
     const snapshotColumns = JSON.parse(JSON.stringify(state.draftColumns)) as CodebookColumn[]
     const snapshotGroups = structuredClone(state.draftMultiResponseGroups)
@@ -102,11 +166,17 @@ export const saveCodebookThunk = createAsyncThunk(
       multiResponseGroup: col.multiResponseGroup,
       multiResponseOptionLabel: col.multiResponseOptionLabel,
     }))
-    const res = await updateCodebook(state.datasetId, patches, {
-      multiResponseGroups: snapshotGroups,
-      expectedSchemaRevision: state.schemaRevision,
-    })
-    return {
+    let res: Awaited<ReturnType<typeof updateCodebook>>
+    try {
+      res = await updateCodebook(state.datasetId, patches, {
+        multiResponseGroups: snapshotGroups,
+        expectedSchemaRevision: state.schemaRevision,
+      })
+    } catch (error) {
+      if (!ownsSave()) return rejectWithValue({ code: 'CODEBOOK_SAVE_SUPERSEDED', committed: 'unknown' })
+      throw error
+    }
+    const result: CodebookSaveResult = {
       ...res,
       datasetId: state.datasetId,
       columns: res.codebook.columns,
@@ -116,7 +186,18 @@ export const saveCodebookThunk = createAsyncThunk(
       submittedColumns: snapshotColumns,
       submittedGroups: snapshotGroups,
     }
-  }
+    // No await between the last live check and the sole state-application action.
+    // RTK's later fulfilled acknowledgment has a microtask gap and must not
+    // install this snapshot in any slice. Supersession does not undo the PUT.
+    if (!ownsSave(result)) return rejectWithValue({ code: 'CODEBOOK_SAVE_SUPERSEDED', committed: 'confirmed' })
+    dispatch(codebookSaveAccepted(result, requestId))
+    return result
+  },
+  { condition: (_, { getState }) => {
+    const { codebook, selection } = getState() as RootState
+    return !!codebook.datasetId && codebook.datasetId === selection.datasetId
+      && !codebook.isSaving
+  } },
 )
 
 /** Save attribution independently, leaving numerical revisions and open column drafts intact. */
@@ -317,6 +398,13 @@ export const codebookSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase('selection/datasetLoaded', state => {
+        state.fetchRequestId = null
+        state.isLoading = false
+        state.saveRequestId = null
+        state.saveSnapshotAdvanced = false
+        state.isSaving = false
+      })
       .addCase(fetchCodebookThunk.pending, (state, action) => {
         const nextDatasetId = action.meta.arg
         const isDifferentDataset = state.datasetId !== nextDatasetId
@@ -326,6 +414,9 @@ export const codebookSlice = createSlice({
         state.datasetId = nextDatasetId
 
         if (isDifferentDataset) {
+          state.saveRequestId = null
+          state.saveSnapshotAdvanced = false
+          state.isSaving = false
           state.schemaRevision = 1
           state.licenseText = ''
           state.licenseRevision = 1
@@ -340,10 +431,19 @@ export const codebookSlice = createSlice({
           state.hasChanges = false
         }
       })
-      .addCase(fetchCodebookThunk.fulfilled, (state, action) => {
+      .addCase(codebookReadAccepted, (state, action) => {
         if (state.fetchRequestId !== action.meta.requestId) return
         if (action.payload.datasetId !== state.datasetId) return
 
+        // A read can acknowledge this save's already-committed canonical
+        // snapshot before its PUT response arrives. Retain the request receipt;
+        // the producer accepts it only if the full saved snapshot still agrees.
+        // Changed reads release busy ownership so a newer save can replace it.
+        if (!sameSavedSnapshot(state, action.payload)) {
+          if (state.saveSnapshotAdvanced) state.saveRequestId = null
+          state.saveSnapshotAdvanced = true
+          state.isSaving = false
+        }
         state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
         if ((action.payload.licenseRevision ?? 1) >= (state.licenseRevision ?? 1)) {
@@ -368,13 +468,18 @@ export const codebookSlice = createSlice({
         if (state.fetchRequestId !== action.meta.requestId) return
         state.isLoading = false
       })
-      .addCase(saveCodebookThunk.pending, (state) => {
+      .addCase(saveCodebookThunk.pending, (state, action) => {
+        state.saveRequestId = action.meta.requestId
+        state.saveSnapshotAdvanced = false
         state.isSaving = true
       })
-      .addCase(saveCodebookThunk.fulfilled, (state, action) => {
-        if (action.payload.datasetId !== state.datasetId) return
+      .addCase(codebookSaveAccepted, (state, action) => {
+        if (state.saveRequestId !== action.meta.requestId || action.payload.datasetId !== state.datasetId) return
 
         state.isSaving = false
+        state.saveSnapshotAdvanced = true
+        state.fetchRequestId = null
+        state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
         state.columns = JSON.parse(JSON.stringify(action.payload.columns))
         state.multiResponseGroups = action.payload.multiResponseGroups
@@ -391,8 +496,8 @@ export const codebookSlice = createSlice({
         state.hasChanges = !isColumnEqual(state.draftColumns, action.payload.columns)
           || JSON.stringify(state.draftMultiResponseGroups) !== JSON.stringify(action.payload.multiResponseGroups)
       })
-      .addCase(saveCodebookThunk.rejected, (state) => {
-        state.isSaving = false
+      .addCase(saveCodebookThunk.rejected, (state, action) => {
+        if (state.saveRequestId === action.meta.requestId) state.isSaving = false
       })
       .addCase(saveLicenseTextThunk.fulfilled, (state, action) => {
         if (action.payload.datasetId !== state.datasetId) return
@@ -402,6 +507,9 @@ export const codebookSlice = createSlice({
       })
       .addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
         if (action.payload.datasetId !== state.datasetId) return
+        state.saveRequestId = null
+        state.saveSnapshotAdvanced = false
+        state.isSaving = false
         state.schemaRevision = action.payload.schemaRevision
         state.weightConfig = action.payload.weightConfig
         state.surveyDesign = action.payload.surveyDesign
