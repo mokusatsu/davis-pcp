@@ -5,10 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { datasetValuesUpdated, selectionApplied } from '../../app/store'
-import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
+import { selectionApplied } from '../../app/store'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { fetchProvenanceThunk } from '../dataset/provenanceSlice'
-import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import SelectColumn from '../common/ColumnSelect'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
@@ -17,6 +16,7 @@ import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import type { EFAContext, EFAResponse } from './efaApi'
 import { cancelEFAComparison, exportEFATable, fetchAllEFARows, fetchEFAComparison, materializeEFA, predictEFA, runEFA, selectEFA } from './efaApi'
 import EfaScoreFigure from './EfaScoreFigure'
+import { useScoreSaveRefresh } from './useScoreSaveRefresh'
 import type { EChartsOption } from 'echarts'
 import EChart from '../charts/EChart'
 import L1Legend from '../common/L1Legend'
@@ -111,7 +111,7 @@ export default function FactorAnalysisPage(): JSX.Element {
   const rowsReady = result !== null && rowsResultId === result.resultId
   const [selecting, setSelecting] = useState<boolean>(false)
   const [selectInfo, setSelectInfo] = useState<string | null>(null)
-  const [saving, setSaving] = useState<boolean>(false)
+  const scoreSave = useScoreSaveRefresh(result)
   const [matFactor, setMatFactor] = useState<number>(1)
   const [matName, setMatName] = useState<string>('efa_f1')
   const [figX, setFigX] = useState<number>(1)
@@ -417,23 +417,19 @@ export default function FactorAnalysisPage(): JSX.Element {
   }
 
   const handleSave = async (): Promise<void> => {
-    if (!result || !resultInput || !datasetId || !matchesContext(resultInput.context)) return
-    setSaving(true)
-    try {
-      // E010: the saved factor and the output column name are chosen
-      // separately; renaming the column never changes which scores persist.
-      const field = 'score:' + matFactor
-      const res = await materializeEFA(result.resultId, resultInput!.context, 'fit', [{ source: field, name: matName }], 'efa-' + result.resultId + '-' + field)
-      message.success('保存しました: ' + matName)
-      invalidateColumnarCache()
-      const r = res as { dataRevision?: number }
-      dispatch(datasetValuesUpdated({ datasetId, dataRevision: typeof r.dataRevision === 'number' ? r.dataRevision : (selection.dataRevision ?? 1) + 1 }))
-      await dispatch(fetchCodebookThunk(datasetId))
-    } catch (err) {
-      message.error(apiErrorMessage(err, '保存に失敗しました。'))
-    } finally {
-      setSaving(false)
-    }
+    if (!result || !resultInput || !datasetId || scoreSave.saving || !matchesContext(resultInput.context)) return
+    // The saved factor and destination name are independent, captured choices.
+    const submittedResultId = result.resultId
+    const context = resultInput.context
+    const field = 'score:' + matFactor
+    const submittedName = matName
+    await scoreSave.save(submittedName, async () => {
+      const receipt = await materializeEFA(submittedResultId, context, 'fit',
+        [{ source: field, name: submittedName }], 'efa-' + submittedResultId + '-' + field)
+      // EFA reports saved mappings and revisions, but no written-row count.
+      return { createdColumns: receipt.columns.map(({ name }) => ({ name })),
+        dataRevision: receipt.dataRevision, schemaRevision: receipt.schemaRevision }
+    }, err => apiErrorMessage(err, '保存に失敗しました。'))
   }
 
   const s = result?.summary
@@ -823,7 +819,7 @@ export default function FactorAnalysisPage(): JSX.Element {
                     <span>保存する因子:</span>
                     <SelectSetting value={matFactor} onChange={setMatFactor} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
                     <Input value={matName} onChange={(e) => setMatName(e.target.value)} style={{ width: 160 }} placeholder="保存列名" />
-                    <Button disabled={stale || loading || !result.capabilities.rows} loading={saving} onClick={() => void handleSave()}>派生列保存</Button>
+                    <Button disabled={stale || loading || scoreSave.saving || !result.capabilities.rows} loading={scoreSave.saving} onClick={() => void handleSave()}>派生列保存</Button>
                   </Space>
                   <Table
                     columns={[{ title: 'rowId', dataIndex: 'rowId', key: 'rowId' }, { title: '得点', dataIndex: 'scores', key: 'scores' }]}
@@ -841,6 +837,7 @@ export default function FactorAnalysisPage(): JSX.Element {
           </Space>
         </Card>
       )}
+      {scoreSave.notice}
     </div>
   )
 }

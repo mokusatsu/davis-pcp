@@ -133,13 +133,23 @@ export async function predictEFA(resultId: string, context: EFAContext): Promise
   return api.post(`/analysis-results/${resultId}/predict`, { context, options: { interval: 'none', evaluate: false } })
 }
 
+export interface EFAMaterializeResponse {
+  status: 'success'
+  resultId: string
+  idempotentReplay: boolean
+  columns: { source: string; name: string }[]
+  datasetId: string
+  dataRevision: number
+  schemaRevision: number
+}
+
 export async function materializeEFA(
   resultId: string,
   context: EFAContext,
   source: string,
   columns: { source: string; name: string }[],
   idempotencyKey: string,
-): Promise<Record<string, unknown> & { dataRevision?: number; schemaRevision?: number }> {
+): Promise<EFAMaterializeResponse> {
   return api.post(`/analysis-results/${resultId}/materialize`, { context, source, columns, idempotencyKey })
 }
 

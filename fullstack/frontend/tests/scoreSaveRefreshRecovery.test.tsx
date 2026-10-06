@@ -36,7 +36,7 @@ const scoreValues = [.25, -.5, .75]
 const staleNotice = 'データ版が更新されました。表示は旧版のままです。選択・保存・予測はできません。'
 const readFailure = 'Only the post-commit codebook GET failed'
 const postFailure = 'Materialization rejected before commit'
-const savedNotice = (test: Case) => `${test.name}1を保存しました（3行）。新列がTableに表示されます。`
+const savedNotice = (test: Case) => `${test.name}1を保存しました（3行）。新列は利用可能です。Tableに表示するには、Variablesで新列を選択してください。`
 const saveButton = (test: Case) => screen.getByRole('button', { name: `${test.name}1を派生列へ保存`, exact: true })
 
 function column(name: string, scaleType: CodebookColumn['scaleType']): CodebookColumn {
@@ -230,7 +230,7 @@ it.each(cases)('$name retains its committed name/receipt through failed GET retr
   await waitFor(() => expect(reads()).toHaveLength(3))
   await act(async () => { pendingReads[2].resolve(codebook()) })
   await waitFor(() => expect(screen.queryByRole('button', { name: 'コードブックを再取得' })).toBeNull())
-  expect(screen.getByText(`${submittedName}を保存しました（3行）。新列がTableに表示されます。`)).toBeVisible()
+  expect(screen.getByText(`${submittedName}を保存しました（3行）。新列は利用可能です。Tableに表示するには、Variablesで新列を選択してください。`)).toBeVisible()
   expect(screen.queryByText(committedNotice('Next_score'))).toBeNull()
   expect(local.getState().selection.dataRevision).toBe(2)
   expect(local.getState().codebook).toMatchObject({ schemaRevision: 2, isLoading: false })
@@ -291,7 +291,7 @@ it.each(cases)('$name retains neutral committed recovery when a newer read super
   await act(async () => { pendingReads[1].reject(new Error('Displaced transport failure')) })
   await waitFor(() => expect(retryButton()).toBeEnabled())
   expect(actions.filter(fetchCodebookThunk.rejected.match).at(-1)).toMatchObject({ payload: 'CODEBOOK_FETCH_SUPERSEDED' })
-  expect(screen.getByText('表示の更新を確認できませんでした。コードブックを再取得してください。')).toBeVisible()
+  expect(screen.getByText('列情報の更新を確認できませんでした。コードブックを再取得してください。')).toBeVisible()
   expect(screen.queryByText(/Displaced transport failure/)).toBeNull()
   expect(screen.getByText(committedNotice(`${test.name}1`))).toBeVisible()
   expect(document.querySelector('.ant-message-success')).toBeNull()

@@ -54,7 +54,9 @@ beforeEach(() => {
   vi.spyOn(efa, 'fetchAllEFARows').mockResolvedValue([{ rowId: 'r1', scores: [1, 2] }] as any)
   vi.spyOn(efa, 'selectEFA').mockResolvedValue({ rowIds: ['r1'], matchedCount: 1 } as any)
   vi.spyOn(efa, 'predictEFA').mockResolvedValue({ predictionId: 'efa-prediction' } as any)
-  vi.spyOn(efa, 'materializeEFA').mockResolvedValue({ dataRevision: 2 })
+  vi.spyOn(efa, 'materializeEFA').mockResolvedValue({ status: 'success', resultId: 'efa-1',
+    idempotentReplay: false, columns: [{ source: 'score:1', name: 'efa_f1' }],
+    datasetId: 'd', dataRevision: 3, schemaRevision: 2 })
   vi.spyOn(conjoint, 'runConjoint').mockResolvedValue(conjointResult())
   vi.spyOn(conjoint, 'fetchConjointRows').mockResolvedValue({ total: 1, nextOffset: null, rows: [{ rowId: 'r1', respondentId: 'person', probability: .8, residual: .2 }] } as any)
   vi.spyOn(conjoint, 'selectConjoint').mockResolvedValue({ rowIds: ['r1'], matchedCount: 1, contextIntersectionCount: 1 } as any)

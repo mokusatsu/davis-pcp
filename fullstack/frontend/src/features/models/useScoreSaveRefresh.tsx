@@ -7,10 +7,13 @@ import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
 
 export interface ScoreSaveReceipt {
   createdColumns: { name: string }[]
-  writtenRowCount: number
+  writtenRowCount?: number
   dataRevision: number
   schemaRevision: number
 }
+
+const savedRows = (receipt: ScoreSaveReceipt): string => receipt.writtenRowCount === undefined
+  ? '' : `（${receipt.writtenRowCount}行）`
 
 type SaveOperation = {
   owner: object
@@ -27,7 +30,7 @@ type Progress = {
   error?: string
 }
 
-/** A materialization receipt proves the write; only an accepted read proves display readiness. */
+/** A materialization receipt proves the write; only an accepted read proves canonical column availability. */
 export function useScoreSaveRefresh(owner: object | null) {
   const store = useStore<RootState>()
   const dispatch = store.dispatch as AppDispatch
@@ -74,7 +77,7 @@ export function useScoreSaveRefresh(owner: object | null) {
     if (!isCurrent(operation) || !isRefreshed(operation)) return
     const reportSuccess = currentOwner.current === operation.owner
     retire(operation)
-    if (reportSuccess) message.success(`${operation.name}を保存しました（${operation.receipt!.writtenRowCount}行）。新列がTableに表示されます。`)
+    if (reportSuccess) message.success(`${operation.name}を保存しました${savedRows(operation.receipt!)}。新列は利用可能です。Tableに表示するには、Variablesで新列を選択してください。`)
   }
 
   // The receipt belongs to the installed workspace even after a new fit.
@@ -160,13 +163,13 @@ export function useScoreSaveRefresh(owner: object | null) {
   const notice = receipt && current ? <Alert
     type={current.phase === 'failed' ? 'warning' : 'info'} showIcon
     style={{ marginTop: 8, minWidth: 0, overflowWrap: 'anywhere' }}
-    message={`${current.operation.name}は保存済みです（${receipt.writtenRowCount}行）。`}
+    message={`${current.operation.name}は保存済みです${savedRows(receipt)}。`}
     description={<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
       <div>{current.phase === 'failed'
-        ? `表示の更新に失敗しました。保存済みの列を表示するには、コードブックを再取得してください。${current.error ? `（${current.error}）` : ''}`
+        ? `列情報の更新に失敗しました。保存済みの列を利用するには、コードブックを再取得してください。${current.error ? `（${current.error}）` : ''}`
         : current.phase === 'refreshing'
-          ? '保存済みの列を表示するため、コードブックを取得しています。'
-          : '表示の更新を確認できませんでした。コードブックを再取得してください。'}</div>
+          ? '保存済みの列情報を取得しています。'
+          : '列情報の更新を確認できませんでした。コードブックを再取得してください。'}</div>
       <Button aria-label="コードブックを再取得" loading={current.phase === 'refreshing'} disabled={current.phase === 'refreshing'}
         style={{ maxWidth: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal' }}
         onClick={() => { void refresh(current.operation) }}>コードブックを再取得</Button>

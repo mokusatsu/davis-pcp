@@ -2,11 +2,10 @@ import AsyncExportButton from '../common/AsyncExportButton'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, AnalysisViewActivityContext, useAnalysisViewActive, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Input, InputNumber, Radio, Select as SelectSetting, Space, Spin, Table, Tabs, Tag, Typography } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
-import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
+import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
 import { useGraphExpansion } from '../common/GraphExpansion'
@@ -21,6 +20,7 @@ import {
   selectLinearRegression, type LRContext, type LRPredictRow,
 } from './lrApi'
 import LinearRegressionFigure from './LinearRegressionFigure'
+import { useScoreSaveRefresh } from './useScoreSaveRefresh'
 import RegularizedRegressionPanel from './RegularizedRegressionPanel'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
 
@@ -151,7 +151,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
     setMatField((f) => (fields.includes(f) ? f : (fields[0] ?? '')))
   }
   const [matName, setMatName] = useState('LR_FITTED')
-  const [saving, setSaving] = useState(false)
+  const scoreSave = useScoreSaveRefresh(completed)
   const runSequence = useRef(0)
   const selectionSequence = useRef(0)
   const predictionSequence = useRef(0)
@@ -521,26 +521,19 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
   }
 
   const handleSave = async (): Promise<void> => {
-    if (!datasetId || !result || stale || loading) return
+    if (!datasetId || !result || stale || loading || scoreSave.saving) return
     const context = matSource === 'fit' ? resultContext
       : matSource === predictId && predictResultId === result.resultId ? predictionContext : null
     if (!context) return
-    const startedDataset = datasetId
-    const startedResultId = result.resultId
-    setSaving(true)
-    try {
-      const res = await materializeLinearRegression(startedResultId, context, matSource, [{ sourceField: matField, name: matName }], `lr-${result.resultId}-${matSource}-${matField}-${matName}`)
-      if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-      message.success(`保存しました: ${res.createdColumns.map((c) => c.name).join(', ')}`)
-      invalidateColumnarCache()
-      dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
-      await dispatch(fetchCodebookThunk(datasetId))
-    } catch (err) {
-      if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-      message.error(apiErrorMessage(err, '保存に失敗しました。'))
-    } finally {
-      if (mounted.current) setSaving(false)
-    }
+    const submittedResultId = result.resultId
+    const submittedSource = matSource
+    const submittedField = matField
+    const submittedName = matName
+    await scoreSave.save(submittedName, () => materializeLinearRegression(
+      submittedResultId, context, submittedSource,
+      [{ sourceField: submittedField, name: submittedName }],
+      `lr-${submittedResultId}-${submittedSource}-${submittedField}-${submittedName}`,
+    ), err => apiErrorMessage(err, '保存に失敗しました。'))
   }
 
   const coefColumns = [
@@ -818,7 +811,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                         style={{ width: 200 }}
                         placeholder="LR_FITTED"
                       />
-                      <Button onClick={() => void handleSave()} disabled={stale || loading || (matSource !== 'fit' && (!predictionContext || predictResultId !== result.resultId))} loading={saving}>表示結果の列へ保存</Button>
+                      <Button onClick={() => void handleSave()} disabled={stale || loading || scoreSave.saving || (matSource !== 'fit' && (!predictionContext || predictResultId !== result.resultId))} loading={scoreSave.saving}>表示結果の列へ保存</Button>
                       <Button
                         onClick={() => { setTab('figure'); openWhenAvailable('linear-regression/diagnostics') }}
                       >
@@ -842,6 +835,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
           </Space>
         </Card>
       )}
+      {scoreSave.notice}
     </div>
   )
 }
