@@ -103,6 +103,8 @@ export default function CovariancePage() {
     void fetchCov()
   }, [fetchCov])
 
+  const matrixTitle = mode === 'cov' ? '分散共分散行列' : mode === 'corr' ? '相関行列' : '偏相関行列'
+
   // Active matrix depending on mode
   const activeMatrix = useMemo(() => {
     if (!covData) return []
@@ -189,7 +191,7 @@ export default function CovariancePage() {
               >
                 <Radio.Button value="cov" data-testid="covariance-mode-cov">共分散行列 (Covariance Σ)</Radio.Button>
                 <Radio.Button value="corr" data-testid="covariance-mode-corr">相関行列 (Correlation R)</Radio.Button>
-                <Radio.Button value="prec" data-testid="covariance-mode-prec">精度行列 (偏相関 Partial Corr)</Radio.Button>
+                <Radio.Button value="prec" data-testid="covariance-mode-prec">偏相関行列 (Partial Correlation)</Radio.Button>
               </Radio.Group>
             </div>
 
@@ -241,7 +243,7 @@ export default function CovariancePage() {
       {/* Main Heatmap Matrix */}
       <GraphPanel
         graphId="covariance/matrix"
-        title="分散共分散行列"
+        title={matrixTitle}
         available={Boolean(!loading && covData && covData.columns.length >= 2)}
         controls={<>{/* Cell Inspector Toolbar */}
               {selectedCell && covData && (
@@ -305,7 +307,7 @@ export default function CovariancePage() {
           {!loading && covData && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
               <MatrixHeatmap labels={covData.columns} matrix={activeMatrix} bound={mode === 'cov' ? Math.max(Math.abs(colorScale.min), Math.abs(colorScale.max), 1e-12) : 1}
-                title={mode === 'cov' ? '分散共分散行列' : mode === 'corr' ? '相関行列' : '偏相関行列'} testId="covariance-matrix"
+                title={matrixTitle} testId="covariance-matrix"
                 selected={selectedCell ? [selectedCell.r, selectedCell.c] : null} onSelect={handleCellClick} decimals={mode === 'cov' ? 3 : 2}
                 height={matrixHeight} />
 
@@ -323,7 +325,7 @@ export default function CovariancePage() {
 
       {/* Guide Note */}
         <div style={{ color: '#6b7280', fontSize: 12, padding: '0 4px' }}>
-          ※ 共分散行列 Σ（スケール付き変動）、相関行列 R、および精度行列 Σ⁻¹（他の全変数を統制した偏相関）を包括表示します。セルクリックで2変数の詳細値を確認し、ワンクリックでPCPの隣接軸への射影やLoess散布図の起動が行えます。
+          ※ 共分散行列 Σ（スケール付き変動）、相関行列 R、および選択列の逆共分散行列から算出した偏相関行列（選択した他の変数を統制した相関）を包括表示します。セルクリックで2変数の詳細値を確認し、ワンクリックでPCPの隣接軸への射影やLoess散布図の起動が行えます。
         </div>
     </div>
   )

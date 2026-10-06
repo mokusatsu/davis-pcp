@@ -107,12 +107,16 @@ export default function BinningModal({ open, datasetId, columnName, dataRevision
     const current = saveRequest.begin()
     setApplying(true)
     try {
-      await api.post(`/datasets/${datasetId}/transform`, {
+      const result = await api.post<{ createdColumns?: string[] }>(`/datasets/${datasetId}/transform`, {
         type: 'binning', source_column: columnName,
         options: { method, num_bins: numBins, custom_cuts: parseCuts(),
           output_column_name: outputName.trim() || undefined, labels_format: 'range' },
       })
-      notification.success({ message: 'ビン分割完了', description: `新列 '${outputName || `${columnName}_bin${numBins}`}' を生成しました。` })
+      const createdColumns = Array.isArray(result?.createdColumns)
+        && result.createdColumns.every(name => typeof name === 'string' && name.trim()) ? result.createdColumns : []
+      notification.success({ message: 'ビン分割完了', description: createdColumns.length
+        ? `新列 ${createdColumns.length} 列 (${createdColumns.map(name => `'${name}'`).join(', ')}) を生成しました。`
+        : 'ビン分割を完了しました。生成列名を応答から確認できませんでした。' })
       onSuccess(datasetId)
       if (current()) onClose()
     } catch (err) {
