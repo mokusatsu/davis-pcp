@@ -74,7 +74,7 @@ function harness({ declared = false, firstWriteCommits = true } = {}) {
     snapshots.a.surveyDesign = design()
   }
   const pending: Array<{
-    body: PutBody; committed: boolean; finish(): void; fail(): void;
+    body: PutBody; committed: boolean; finish(): void; fail(reason?: unknown): void;
   }> = []
   let failNextRead = false
   const get = vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
@@ -116,7 +116,7 @@ function harness({ declared = false, firstWriteCommits = true } = {}) {
         wire.resolve({ status: 'success', datasetId: id, schemaRevision: next.schemaRevision,
           updatedColumns: 0, codebook: clone(next) })
       },
-      fail() { wire.reject(new Error('weight response was lost')) },
+      fail(reason = new Error('weight response was lost')) { wire.reject(reason) },
     })
     return wire.promise as any
   })
@@ -165,6 +165,48 @@ async function choose(testId: string, name: string | null) {
   await waitFor(() => expect(dialog).not.toBeVisible())
 }
 
+async function chooseDesign(testId: string, name: string | null, surface: 'inline' | 'dialog') {
+  if (surface === 'dialog') return choose(testId, name)
+  const picker = screen.getByTestId(testId)
+  if (name === null) {
+    const clear = picker.querySelector('.ant-select-clear')
+    expect(clear).not.toBeNull()
+    fireEvent.mouseDown(clear!)
+  } else {
+    fireEvent.mouseDown(within(picker).getByRole('combobox'))
+    const option = await waitFor(() => {
+      const match = Array.from(document.querySelectorAll(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content',
+      )).find(item => within(item as HTMLElement).queryByText(name, { exact: true }))
+      if (!match) throw new Error(`Missing inline design option ${name}`)
+      return match
+    })
+    fireEvent.click(option)
+  }
+}
+
+function expectDesignValue(testId: string, name: string | null) {
+  const picker = screen.getByTestId(testId)
+  if (name === null) {
+    expect(picker.querySelector('.ant-select-selection-item')).toBeNull()
+    expect(within(picker).getByText('未指定')).toBeVisible()
+  } else {
+    expect(picker.querySelector('.ant-select-selection-item')).toHaveTextContent(name)
+    expect(within(picker).queryByText('未指定')).toBeNull()
+  }
+}
+
+async function expectDesignDialogValue(testId: string, name: string | null) {
+  const wrapper = screen.getByTestId(testId).closest('.column-select-multi-wrap') as HTMLElement
+  fireEvent.click(within(wrapper).getByRole('button', { name: '変数を選択' }))
+  const dialog = await screen.findByRole('dialog', { name: '変数を選択' })
+  expect(within(dialog).getByRole('status')).toHaveTextContent(`${name === null ? 0 : 1}件選択中`)
+  expect(within(dialog).queryAllByRole('radio', { checked: true })).toHaveLength(name === null ? 0 : 1)
+  if (name !== null) expect(within(dialog).getByRole('radio', { name, exact: true })).toBeChecked()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }))
+  await waitFor(() => expect(dialog).not.toBeVisible())
+}
+
 async function inputs(weightName = 'W1') {
   await choose('crosstab-row-variable', 'Row')
   await choose('crosstab-col-variable', 'Col')
@@ -182,10 +224,10 @@ function expectPickerDisabled(testId: string) {
   expect(within(wrapper).getByRole('combobox')).toBeDisabled()
 }
 
-async function deliver(server: Harness, index: number, outcome: 'success' | 'failure' = 'success') {
+async function deliver(server: Harness, index: number, outcome: 'success' | 'failure' = 'success', reason?: unknown) {
   await act(async () => {
     if (outcome === 'success') server.pending[index].finish()
-    else server.pending[index].fail()
+    else server.pending[index].fail(reason)
     // Let the API wrapper, producer, RTK acknowledgment and component's await
     // all settle before asserting that no obsolete toast/reset occurred.
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -241,6 +283,95 @@ beforeEach(() => {
   store.dispatch(weightColumnCleared())
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+const designPickerCases = [
+  { testId: 'crosstab-strata', key: 'strataColumnId', name: 'Strata', columnId: 'a-strata' },
+  { testId: 'crosstab-psu', key: 'psuColumnId', name: 'PSU', columnId: 'a-psu' },
+].flatMap(picker => (['inline', 'dialog'] as const).map(surface => ({ ...picker, surface })))
+
+describe('Crosstab design pickers project the saved design', () => {
+  it.each(designPickerCases.flatMap(picker => [null, 'a-unresolved'].map(savedId => ({ ...picker, savedId }))))(
+    'restores $testId after a rejected $surface choice and canonical GET (savedId=$savedId)',
+    async ({ testId, key, surface, savedId }) => {
+      const server = harness({ declared: true, firstWriteCommits: false })
+      server.snapshots.a.surveyDesign = { ...design(), [key]: savedId }
+      await install('a')
+      const post = mockAnalysis(server)
+      mount()
+      await inputs()
+      const page = screen.getByTestId('crosstab-page')
+      expectDesignValue(testId, null)
+      await chooseDesign(testId, 'W1', surface)
+      expect(server.pending).toHaveLength(1)
+      expect(server.pending[0].committed).toBe(false)
+      expect(server.pending[0].body).toEqual({ columns: [], expectedSchemaRevision: 10,
+        weightConfig: weight(), surveyDesign: { ...design(), [key]: 'a-w1' } })
+      expect(store.getState().codebook.surveyDesign).toEqual({ ...design(), [key]: savedId })
+      expectPickerDisabled(testId)
+      expect(screen.getByTestId('crosstab-run')).toBeDisabled()
+      // Keep going through recovery even when the old uncontrolled inline
+      // select exposes an unsaved value while the PUT is still pending.
+      expect.soft(screen.getByTestId(testId).querySelector('.ant-select-selection-item')).toBeNull()
+      await deliver(server, 0, 'failure', { code: 'CODEBOOK_INVALID',
+        message: 'ウェイト列を strata / PSU / fpc に同時指定できません。',
+        details: {}, recoverable: true, suggestedActions: [] })
+      expect(screen.getByTestId('crosstab-weight-recovery')).toBeVisible()
+      expectPickerDisabled(testId)
+      expect(screen.getByTestId('crosstab-run')).toBeDisabled()
+      expect.soft(screen.getByTestId(testId).querySelector('.ant-select-selection-item')).toBeNull()
+      const readsBefore = server.get.mock.calls.length
+      fireEvent.click(screen.getByTestId('crosstab-weight-refresh'))
+      await waitFor(() => expect(screen.queryByTestId('crosstab-weight-recovery')).toBeNull())
+      expect(screen.getByTestId('crosstab-page')).toBe(page)
+      expect(server.get).toHaveBeenCalledTimes(readsBefore + 1)
+      expect(server.put).toHaveBeenCalledTimes(1)
+      expect(store.getState().codebook).toMatchObject({ schemaRevision: 10,
+        isWeightSaving: false, weightNeedsRefresh: false, surveyDesign: { ...design(), [key]: savedId } })
+      expect(screen.getByTestId('crosstab-run')).toBeEnabled()
+      await expectDesignDialogValue(testId, null)
+      expectDesignValue(testId, null)
+      fireEvent.click(screen.getByTestId('crosstab-run'))
+      await screen.findByTestId('crosstab-rao-scott')
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(post.mock.calls[0][1]).toEqual({ context: {
+        datasetId: 'a', expectedDataRevision: 7, expectedSchemaRevision: 10,
+        scope: 'active', activeRowIds: ['a-r1', 'a-r2'], weightMode: 'column', weightColumn: 'W1', missingPolicy: 'exclude',
+      }, rowVariableId: 'Row', colVariableId: 'Col', includeRowIds: true, maxRowIdsPerCell: 10000, inference: 'auto' })
+      expect(screen.getByTestId('crosstab-weight-diagnostics')).toHaveTextContent('回答者数 2')
+    },
+  )
+
+  it.each(designPickerCases)('shows $testId accepted $surface selection and clear only after saved receipts',
+    async ({ testId, key, name, columnId, surface }) => {
+      const server = harness({ declared: true })
+      await install('a')
+      mount()
+      await inputs()
+      await chooseDesign(testId, name, surface)
+      expectDesignValue(testId, null)
+      expectPickerDisabled(testId)
+      expect(store.getState().codebook.surveyDesign).toEqual(design())
+      expect(server.pending[0].body).toEqual({ columns: [], expectedSchemaRevision: 10,
+        weightConfig: weight(), surveyDesign: { ...design(), [key]: columnId } })
+      await deliver(server, 0)
+      expectDesignValue(testId, name)
+      await expectDesignDialogValue(testId, name)
+      await chooseDesign(testId, null, surface)
+      expectDesignValue(testId, name)
+      expectPickerDisabled(testId)
+      expect(store.getState().codebook.surveyDesign).toEqual({ ...design(), [key]: columnId })
+      expect(server.pending[1].body).toEqual({ columns: [], expectedSchemaRevision: 11,
+        weightConfig: weight(), surveyDesign: design() })
+      await deliver(server, 1)
+      expect(store.getState().codebook).toMatchObject({ schemaRevision: 12, surveyDesign: design() })
+      expectDesignValue(testId, null)
+      await expectDesignDialogValue(testId, null)
+      expect(screen.getByTestId('crosstab-run')).toBeEnabled()
+      expect(server.put).toHaveBeenCalledTimes(2)
+      expect(message.error).not.toHaveBeenCalled()
+    },
+  )
+})
 
 describe('Crosstab weight completion ownership with real controls and store', () => {
   it('accepts current declaration/design saves, blocks duplicate UI writes, and preserves open drafts', async () => {

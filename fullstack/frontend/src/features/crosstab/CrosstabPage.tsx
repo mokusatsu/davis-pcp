@@ -562,8 +562,8 @@ export default function CrosstabPage() {
                 placeholder="未指定"
                 allowClear
                 value={designForWeight?.strataColumnId
-                  ? columns.find((c) => c.columnId === designForWeight.strataColumnId)?.name
-                  : undefined}
+                  ? columns.find((c) => c.columnId === designForWeight.strataColumnId)?.name ?? null
+                  : null}
                 onChange={(v) => void setDesignColumn('strataColumnId', v ?? null)}
                 options={designOptions}
               />
@@ -575,8 +575,8 @@ export default function CrosstabPage() {
                 placeholder="未指定"
                 allowClear
                 value={designForWeight?.psuColumnId
-                  ? columns.find((c) => c.columnId === designForWeight.psuColumnId)?.name
-                  : undefined}
+                  ? columns.find((c) => c.columnId === designForWeight.psuColumnId)?.name ?? null
+                  : null}
                 onChange={(v) => void setDesignColumn('psuColumnId', v ?? null)}
                 options={designOptions}
               />
