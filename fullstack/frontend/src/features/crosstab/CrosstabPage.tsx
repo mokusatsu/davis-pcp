@@ -1,5 +1,5 @@
 import { useAnalysisScope, useAnalysisViewActive, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector, useStore } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -10,10 +10,12 @@ import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { api } from '../../api/client'
 import type { WeightType } from '../../api/client'
 import SelectColumn from '../common/ColumnSelect'
+import { AnalysisField, AnalysisRunRow } from '../common/AnalysisSetup'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { fetchCodebookThunk, sameSavedSnapshot, saveWeightConfigThunk } from '../dataset/codebookSlice'
+import { editorModalOpened, fetchCodebookThunk, sameSavedSnapshot, saveWeightConfigThunk } from '../dataset/codebookSlice'
 import { useGraphExpansion } from '../common/GraphExpansion'
 import CrosstabTable, { type CrosstabCell, type DisplayMode } from './CrosstabTable'
+import './crosstabSetup.css'
 
 interface CrosstabMeta {
   datasetId: string
@@ -159,6 +161,13 @@ function inferenceTitle(inference: CrosstabResponse['inference']): string {
 export default function CrosstabPage() {
   const { session } = useGraphExpansion()
   const focused = session !== null
+  const controlId = useId()
+  const rowId = `${controlId}-row`
+  const colId = `${controlId}-column`
+  const weightId = `${controlId}-weight`
+  const missingId = `${controlId}-missing`
+  const strataId = `${controlId}-strata`
+  const psuId = `${controlId}-psu`
   const dispatch = useDispatch<AppDispatch>()
   const store = useStore<RootState>()
   const navigate = useNavigate()
@@ -452,139 +461,199 @@ export default function CrosstabPage() {
   if (!datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 
   return (
-    <div data-testid="crosstab-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div data-testid="crosstab-page" className="crosstab-page" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {!focused && (
         <Card
           size="small"
+          className="analysis-setup"
           title="クロス集計 (Crosstab)"
         >
-          <Space wrap align="center">
-            <span>表側</span>
-            <SelectColumn
-              data-testid="crosstab-row-variable"
-              style={{ minWidth: 220 }}
-              placeholder="行変数を選択"
-              value={rowVariable}
-              onChange={(v) => { inputIntent.current++; setRowVariable(v as string) }}
-              options={categoricalOptions}
-            />
-            <span>表頭</span>
-            <SelectColumn
-              data-testid="crosstab-col-variable"
-              style={{ minWidth: 220 }}
-              placeholder="列変数を選択"
-              value={colVariable}
-              onChange={(v) => { inputIntent.current++; setColVariable(v as string) }}
-              options={categoricalOptions}
-            />
-            <SelectColumn
-              data-testid="crosstab-weight"
-              style={{ minWidth: 200 }}
-              placeholder="ウェイトなし"
-              allowClear
-              value={weightColumn}
-              onChange={(v) => { inputIntent.current++; setWeightColumn(v ?? null); setResult(null); setResultInput(null); if (!v) setInference('auto') }}
-              options={weightOptions}
-            />
-            <AnalysisScopeSummary label="次回の集計対象" />
-            <Select
-              data-testid="crosstab-missing-policy"
-              style={{ minWidth: 180 }}
-              value={missingPolicy}
-              onChange={(v) => { inputIntent.current++; setMissingPolicy(v) }}
-              options={[
-                { value: 'exclude', label: '欠損を除外' },
-                { value: 'include_missing', label: '欠損を含める' },
-                { value: 'separate_not_applicable', label: '非該当を分離' },
-              ]}
-            />
-            <Button
-              type="primary"
-              data-testid="crosstab-run"
-              loading={loading}
-              // An undeclared weight cannot be used at all, so asking the server
-              // only to be told so would waste the round trip.
-              disabled={weightPending || !rowVariable || !colVariable || analysisScope.count === 0 || Boolean(selectedWeight && !declaredType)}
-              onClick={() => { inputIntent.current++; void runCrosstab() }}
-            >
-              集計実行
-            </Button>
-            <Button data-testid="crosstab-export" disabled={!result} onClick={handleExport}>CSV出力</Button>
-            <Button disabled={!result} onClick={() => navigate('/pcp')}>PCPへ移動</Button>
-          </Space>
-          {weightState.isWeightSaving && <Typography.Text role="status">ウェイト設定を保存中…</Typography.Text>}
-          {weightState.weightNeedsRefresh && <Alert
-            type="warning"
-            data-testid="crosstab-weight-recovery"
-            message="ウェイト設定の保存結果を確認してください"
-            description="応答を確認できなくても、保存が完了している場合があります。最新の設定を読み込んでから、必要な変更を指定してください。"
-            action={<Button data-testid="crosstab-weight-refresh" loading={weightState.isLoading}
-              onClick={() => void refreshWeight()}>最新の設定を読み込む</Button>}
-            style={{ marginTop: 8 }}
-          />}
-          {!rowVariable || !colVariable ? (
-            <Alert type="info" message="行変数と列変数を選択してください。" style={{ marginTop: 8 }} />
-          ) : null}
-          {selectedWeight && !declaredType ? (
-            <Alert
-              type="warning"
-              style={{ marginTop: 8 }}
-              message="このウェイトの種類が未設定です"
-              description={
-                <Space direction="vertical">
-                  <Typography.Text type="secondary">
-                    調査ウェイトを通常の χ² 検定に使うと、ウェイトの倍率だけで p 値が変わります。先に種類を指定してください。
-                  </Typography.Text>
-                  <Radio.Group
-                    data-testid="crosstab-weight-type"
-                    value={declaredType}
-                    disabled={weightPending}
-                    onChange={(e) => void declareWeightType(e.target.value as WeightType)}
-                  >
-                    <Radio value="survey">調査ウェイト（母集団代表性の補正）</Radio>
-                    <Radio value="frequency">頻度ウェイト（1行が複数件を代表する件数）</Radio>
-                  </Radio.Group>
-                </Space>
-              }
-            />
-          ) : null}
-          {declaredType === 'survey' ? (
-            <Space wrap align="center" style={{ marginTop: 8 }}>
-              <Tag color="blue">調査ウェイト</Tag>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                検定は Rao–Scott 第2次補正のみ利用可（Pearson χ² は不可）
+          <div className="analysis-form-stack">
+            <section className="analysis-form-stack" aria-labelledby={`${controlId}-local-title`}>
+              <Typography.Text strong id={`${controlId}-local-title`}>次回の集計入力</Typography.Text>
+              <div className="analysis-variable-grid">
+                <AnalysisField label="行変数（表側）" htmlFor={rowId}
+                  help="共通の有効変数から、名義・順序尺度の非MA列を選べます。既存データの二値尺度も含みます。">
+                  <SelectColumn
+                    id={rowId} aria-label="クロス集計の行変数（表側）" aria-describedby={`${rowId}-help`}
+                    roleName="クロス集計の行変数（表側）"
+                    data-testid="crosstab-row-variable"
+                    style={{ width: '100%' }}
+                    placeholder="行変数を選択"
+                    value={rowVariable}
+                    onChange={(v) => { inputIntent.current++; setRowVariable(v as string) }}
+                    options={categoricalOptions}
+                    emptyHint={{ roleLabel: '行変数（表側）', reason: '行変数（表側）の候補がありません。',
+                      guidance: '共通の有効変数と、コードブックの尺度・MAグループを確認してください。',
+                      onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                  />
+                </AnalysisField>
+                <AnalysisField label="列変数（表頭）" htmlFor={colId}
+                  help="共通の有効変数から、名義・順序尺度の非MA列を選べます。既存データの二値尺度も含みます。">
+                  <SelectColumn
+                    id={colId} aria-label="クロス集計の列変数（表頭）" aria-describedby={`${colId}-help`}
+                    roleName="クロス集計の列変数（表頭）"
+                    data-testid="crosstab-col-variable"
+                    style={{ width: '100%' }}
+                    placeholder="列変数を選択"
+                    value={colVariable}
+                    onChange={(v) => { inputIntent.current++; setColVariable(v as string) }}
+                    options={categoricalOptions}
+                    emptyHint={{ roleLabel: '列変数（表頭）', reason: '列変数（表頭）の候補がありません。',
+                      guidance: '共通の有効変数と、コードブックの尺度・MAグループを確認してください。',
+                      onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                  />
+                </AnalysisField>
+                <AnalysisField label="この集計のウェイト" htmlFor={weightId}
+                  help="役割がウェイト、尺度が間隔・比率の列が候補です。共通の有効変数の選択には連動しません。未指定なら加重しません。">
+                  <SelectColumn
+                    id={weightId} aria-label="クロス集計のウェイト" aria-describedby={`${weightId}-help`}
+                    roleName="クロス集計のウェイト"
+                    data-testid="crosstab-weight"
+                    style={{ width: '100%' }}
+                    placeholder="ウェイトなし"
+                    allowClear
+                    value={weightColumn}
+                    onChange={(v) => { inputIntent.current++; setWeightColumn(v ?? null); setResult(null); setResultInput(null); if (!v) setInference('auto') }}
+                    options={weightOptions}
+                    emptyHint={{ roleLabel: 'ウェイト', reason: 'ウェイトの候補がありません。ウェイトなしでも集計できます。',
+                      guidance: 'コードブックの役割（ウェイト）と尺度（間隔・比率）を確認してください。',
+                      onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                  />
+                </AnalysisField>
+                <AnalysisField label="欠損の扱い" htmlFor={missingId}
+                  help="次の集計で欠損値をどのように扱うかを指定します。">
+                  <Select
+                    id={missingId} aria-label="クロス集計の欠損の扱い" aria-describedby={`${missingId}-help`}
+                    data-testid="crosstab-missing-policy"
+                    style={{ width: '100%' }}
+                    value={missingPolicy}
+                    onChange={(v) => { inputIntent.current++; setMissingPolicy(v) }}
+                    options={[
+                      { value: 'exclude', label: '欠損を除外' },
+                      { value: 'include_missing', label: '欠損を含める' },
+                      { value: 'separate_not_applicable', label: '非該当を分離' },
+                    ]}
+                  />
+                </AnalysisField>
+              </div>
+              {!rowVariable || !colVariable ? (
+                <Alert type="info" message="行変数と列変数を選択してください。" />
+              ) : null}
+            </section>
+            <section className="analysis-form-stack crosstab-saved-settings" aria-labelledby={`${controlId}-saved-title`}>
+              <Typography.Text strong id={`${controlId}-saved-title`}>データセットに保存するウェイト設定</Typography.Text>
+              <Typography.Text type="secondary" id={`${controlId}-saved-help`}>
+                ウェイトの種類・層・PSUの変更は、その場でこのデータセットに保存されます。
               </Typography.Text>
-              <span>層（strata）</span>
-              <SelectColumn
-                data-testid="crosstab-strata"
-                disabled={weightPending}
-                style={{ minWidth: 180 }}
-                placeholder="未指定"
-                allowClear
-                value={designForWeight?.strataColumnId
-                  ? columns.find((c) => c.columnId === designForWeight.strataColumnId)?.name ?? null
-                  : null}
-                onChange={(v) => void setDesignColumn('strataColumnId', v ?? null)}
-                options={designOptions}
-              />
-              <span>PSU</span>
-              <SelectColumn
-                data-testid="crosstab-psu"
-                disabled={weightPending}
-                style={{ minWidth: 180 }}
-                placeholder="未指定"
-                allowClear
-                value={designForWeight?.psuColumnId
-                  ? columns.find((c) => c.columnId === designForWeight.psuColumnId)?.name ?? null
-                  : null}
-                onChange={(v) => void setDesignColumn('psuColumnId', v ?? null)}
-                options={designOptions}
-              />
-              <Typography.Text type="secondary">
-                未指定の場合は各回答者を独立した一次抽出単位として近似します。
-              </Typography.Text>
-            </Space>
-          ) : null}
+              {weightState.isWeightSaving && <Typography.Text role="status">ウェイト設定を保存中…</Typography.Text>}
+              {weightState.weightNeedsRefresh && <Alert
+                type="warning"
+                data-testid="crosstab-weight-recovery"
+                message="ウェイト設定の保存結果を確認してください"
+                description={<div className="analysis-form-stack">
+                  <span>応答を確認できなくても、保存が完了している場合があります。最新の設定を読み込んでから、必要な変更を指定してください。</span>
+                  <Button className="crosstab-wrap-action" data-testid="crosstab-weight-refresh" loading={weightState.isLoading}
+                    onClick={() => void refreshWeight()}>最新の設定を読み込む</Button>
+                </div>}
+              />}
+              {selectedWeight && !declaredType ? (
+                <Alert
+                  type="warning"
+                  message="このウェイトの種類が未設定です"
+                  description={
+                    <div className="analysis-form-stack">
+                      <Typography.Text type="secondary" id={`${controlId}-weight-type-help`}>
+                        調査ウェイトを通常の χ² 検定に使うと、ウェイトの倍率だけで p 値が変わります。先に種類を指定してください。
+                      </Typography.Text>
+                      <div role="radiogroup" aria-labelledby={`${controlId}-weight-type-label`}
+                        aria-describedby={`${controlId}-weight-type-help ${controlId}-saved-help`}>
+                        <div className="analysis-field-label" id={`${controlId}-weight-type-label`}>ウェイトの種類</div>
+                        <Radio.Group
+                          name={`${controlId}-weight-type`}
+                          data-testid="crosstab-weight-type"
+                          value={declaredType}
+                          disabled={weightPending}
+                          onChange={(e) => void declareWeightType(e.target.value as WeightType)}
+                        >
+                          <Radio value="survey">調査ウェイト（母集団代表性の補正）</Radio>
+                          <Radio value="frequency">頻度ウェイト（1行が複数件を代表する件数）</Radio>
+                        </Radio.Group>
+                      </div>
+                    </div>
+                  }
+                />
+              ) : null}
+              {declaredType === 'survey' ? (
+                <div className="analysis-form-stack">
+                  <div className="analysis-inline-fields">
+                    <Tag color="blue">調査ウェイト</Tag>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      検定は Rao–Scott 第2次補正のみ利用可（Pearson χ² は不可）
+                    </Typography.Text>
+                  </div>
+                  <div className="analysis-variable-grid">
+                    <AnalysisField label="層（strata）" htmlFor={strataId}
+                      help="MAグループに属さない列が候補です。ウェイト列自身は層に指定できません。">
+                      <SelectColumn
+                        id={strataId} aria-label="クロス集計の層（strata）" aria-describedby={`${strataId}-help ${controlId}-saved-help`}
+                        roleName="クロス集計の層（strata）"
+                        data-testid="crosstab-strata"
+                        disabled={weightPending}
+                        style={{ width: '100%' }}
+                        placeholder="未指定"
+                        allowClear
+                        value={designForWeight?.strataColumnId
+                          ? columns.find((c) => c.columnId === designForWeight.strataColumnId)?.name ?? null
+                          : null}
+                        onChange={(v) => void setDesignColumn('strataColumnId', v ?? null)}
+                        options={designOptions}
+                        emptyHint={{ roleLabel: '層（strata）', reason: '層（strata）の候補がありません。',
+                          guidance: 'コードブックのMAグループを確認してください。MAグループに属さない列が候補です。',
+                          onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                      />
+                    </AnalysisField>
+                    <AnalysisField label="PSU（一次抽出単位）" htmlFor={psuId}
+                      help="MAグループに属さない列が候補です。ウェイト列自身はPSUに指定できません。PSUを未指定にすると、各回答者を独立した一次抽出単位として近似します。">
+                      <SelectColumn
+                        id={psuId} aria-label="クロス集計のPSU" aria-describedby={`${psuId}-help ${controlId}-saved-help`}
+                        roleName="クロス集計のPSU"
+                        data-testid="crosstab-psu"
+                        disabled={weightPending}
+                        style={{ width: '100%' }}
+                        placeholder="未指定"
+                        allowClear
+                        value={designForWeight?.psuColumnId
+                          ? columns.find((c) => c.columnId === designForWeight.psuColumnId)?.name ?? null
+                          : null}
+                        onChange={(v) => void setDesignColumn('psuColumnId', v ?? null)}
+                        options={designOptions}
+                        emptyHint={{ roleLabel: 'PSU', reason: 'PSUの候補がありません。',
+                          guidance: 'コードブックのMAグループを確認してください。MAグループに属さない列が候補です。',
+                          onOpenCodebook: () => dispatch(editorModalOpened()) }}
+                      />
+                    </AnalysisField>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+            <AnalysisRunRow>
+              <AnalysisScopeSummary label="次回の集計対象" />
+              <Button data-testid="crosstab-export" disabled={!result} onClick={handleExport}>CSV出力</Button>
+              <Button disabled={!result} onClick={() => navigate('/pcp')}>PCPへ移動</Button>
+              <Button
+                type="primary"
+                data-testid="crosstab-run"
+                loading={loading}
+                // An undeclared weight cannot be used at all, so asking the server
+                // only to be told so would waste the round trip.
+                disabled={weightPending || !rowVariable || !colVariable || analysisScope.count === 0 || Boolean(selectedWeight && !declaredType)}
+                onClick={() => { inputIntent.current++; void runCrosstab() }}
+              >
+                集計実行
+              </Button>
+            </AnalysisRunRow>
+          </div>
         </Card>
       )}
       {error && <Alert type="error" message={error} />}
@@ -592,32 +661,43 @@ export default function CrosstabPage() {
         <>
           <Card
             size="small"
+            className="crosstab-result-card"
             title={
-              <Space>
-                <Segmented
-                  data-testid="crosstab-display-mode"
-                  value={mode}
-                  onChange={(v) => setMode(v as DisplayMode)}
-                  options={[
-                    { value: 'count', label: 'Count' },
-                    { value: 'rowPct', label: 'Row %' },
-                    { value: 'colPct', label: 'Col %' },
-                    { value: 'totalPct', label: 'Total %' },
-                  ]}
-                />
-                {resultInput && <Tag data-testid="crosstab-result-scope">この結果の対象: {resultInput.label} {resultInput.count}行（実行時）</Tag>}
-                {dirty && <Tag color="orange">対象・設定が変更されています。結果は前回実行分です</Tag>}
-                {stale && <Tag color="red">古い版の結果です。再集計してください</Tag>}
-                <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
-                {result.meta.weightApplied
-                  ? (
-                    <Tag color="blue">
-                      {isSurveyWeight ? '調査ウェイト' : '頻度ウェイト'}
-                      {' '}(非加重n={result.grandTotal.unweightedCount})
-                    </Tag>
-                  )
-                  : <Tag>非加重</Tag>}
-              </Space>
+              <div className="analysis-form-stack crosstab-result-header">
+                <div className="crosstab-display-row">
+                  <span id={`${controlId}-display-label`}>表の表示</span>
+                  <Segmented
+                    aria-labelledby={`${controlId}-display-label`} aria-describedby={`${controlId}-display-help`}
+                    name={`${controlId}-display`}
+                    data-testid="crosstab-display-mode"
+                    value={mode}
+                    onChange={(v) => setMode(v as DisplayMode)}
+                    options={[
+                      { value: 'count', label: 'Count' },
+                      { value: 'rowPct', label: 'Row %' },
+                      { value: 'colPct', label: 'Col %' },
+                      { value: 'totalPct', label: 'Total %' },
+                    ]}
+                  />
+                  <Typography.Text type="secondary" id={`${controlId}-display-help`} style={{ fontSize: 12 }}>
+                    表示の切り替えでは再集計しません。
+                  </Typography.Text>
+                </div>
+                <div className="crosstab-result-provenance">
+                  {resultInput && <Tag data-testid="crosstab-result-scope">この結果の対象: {resultInput.label} {resultInput.count}行（実行時）</Tag>}
+                  {dirty && <Tag color="orange">対象・設定が変更されています。結果は前回実行分です</Tag>}
+                  {stale && <Tag color="red">古い版の結果です。再集計してください</Tag>}
+                  <Tag>rev {result.meta.dataRevision} / scope {result.meta.scope} (n={result.meta.scopeCount})</Tag>
+                  {result.meta.weightApplied
+                    ? (
+                      <Tag color="blue">
+                        {isSurveyWeight ? '調査ウェイト' : '頻度ウェイト'}
+                        {' '}(非加重n={result.grandTotal.unweightedCount})
+                      </Tag>
+                    )
+                    : <Tag>非加重</Tag>}
+                </div>
+              </div>
             }
           >
             <CrosstabTable
@@ -639,15 +719,15 @@ export default function CrosstabPage() {
                 <Tag>Weight CV {formatNumber(diagnostics?.weightCv ?? null)}</Tag>
               </Space>
             ) : null}
-            <Row gutter={[16, 8]}>
-              <Col span={6}>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} xl={6}>
                 <Statistic
                   title={isSurveyWeight ? '加重 χ²（記述）' : 'χ²（記述）'}
                   value={result.descriptiveAssociation.pearsonChi2Status === 'out_of_range' ? '範囲外' : formatNumber(result.descriptiveAssociation.pearsonChi2)}
                   suffix={`df=${result.descriptiveAssociation.df}`}
                 />
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} xl={6}>
                 <Statistic
                   title={isSurveyWeight ? "加重 Cramér's V" : "Cramér's V"}
                   value={formatNumber(isSurveyWeight
@@ -655,7 +735,7 @@ export default function CrosstabPage() {
                     : result.descriptiveAssociation.cramersV, 4)}
                 />
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} xl={6}>
                 <Statistic
                   title={inferenceTitle(result.inference)}
                   value={result.inference.statistic === null
@@ -666,7 +746,7 @@ export default function CrosstabPage() {
                     : undefined}
                 />
               </Col>
-              <Col span={6}>
+              <Col xs={24} sm={12} xl={6}>
                 <Statistic
                   title="p値"
                   value={formatPValue(result.inference.pValue)}
@@ -679,13 +759,18 @@ export default function CrosstabPage() {
                   type="info"
                   message="調査ウェイトを使用しているため、推測統計は既定では表示していません。"
                   description={
-                    <Space direction="vertical">
+                    <div className="analysis-form-stack">
                       <Typography.Text type="secondary">
                         EDA では記述量を優先します。母集団についての検定が必要なときだけ実行してください。
                         通常の Pearson χ² 検定は調査ウェイトでは使用できません（ウェイトの倍率だけでp値が変わるため）。
                         検定を行う場合は下のボタンで Rao–Scott 第2次補正を指定してください。
                       </Typography.Text>
+                      <Typography.Text type="secondary" id={`${controlId}-rao-scott-help`}>
+                        現在の変数・集計対象・欠損設定で再集計します。
+                      </Typography.Text>
                       <Button
+                        className="crosstab-wrap-action"
+                        aria-describedby={`${controlId}-rao-scott-help`}
                         data-testid="crosstab-rao-scott"
                         size="small"
                         disabled={weightPending}
@@ -693,7 +778,7 @@ export default function CrosstabPage() {
                       >
                         調査設計を考慮した検定を表示（Rao–Scott）
                       </Button>
-                    </Space>
+                    </div>
                   }
                 />
               ) : null}

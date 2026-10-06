@@ -1,0 +1,10 @@
+.crosstab-page { min-width: 0; }
+.crosstab-page .crosstab-saved-settings { padding-top: 12px; border-top: 1px solid #f0f0f0; }
+.crosstab-page .crosstab-wrap-action { align-self: flex-start; max-width: 100%; height: auto; min-height: 24px; white-space: normal; overflow-wrap: anywhere; }
+.crosstab-page .crosstab-wrap-action > span { min-width: 0; }
+.crosstab-page .crosstab-result-card .ant-card-head-title { white-space: normal; min-width: 0; }
+.crosstab-page .crosstab-result-header { padding-block: 8px; }
+.crosstab-page .crosstab-display-row,
+.crosstab-page .crosstab-result-provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.crosstab-page .crosstab-display-row > * { max-width: 100%; }
+.crosstab-page .crosstab-result-provenance .ant-tag { margin: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }

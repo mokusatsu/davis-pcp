@@ -45,9 +45,20 @@ function mount(page: ReactElement) {
 async function openPicker(index: number, roleName?: string) {
   const name = roleName ? `${roleName}を選択` : '変数を選択'
   fireEvent.click(roleName ? screen.getByRole('button', { name }) : screen.getAllByRole('button', { name })[index])
-  const dialog = await screen.findByRole('dialog', { name })
-  return { dialog, results: within(dialog).getByLabelText(roleName ? `${roleName}の検索結果` : '検索結果'),
-    search: within(dialog).getByRole('textbox', { name: roleName ? `${roleName}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み' }) }
+  if (!roleName || !crosstabRoles.includes(roleName)) {
+    const dialog = await screen.findByRole('dialog', { name })
+    return { dialog, results: within(dialog).getByLabelText(roleName ? `${roleName}の検索結果` : '検索結果'),
+      search: within(dialog).getByRole('textbox', { name: roleName ? `${roleName}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み' }) }
+  }
+  // rc-util reuses title IDs for retained modals in test mode. Resolve the
+  // real dialog through its purpose-named search and verify its visible title.
+  const search = await screen.findByRole('textbox', {
+    name: roleName ? `${roleName}を変数名・質問文で絞り込み` : '変数名・質問文で絞り込み', exact: true,
+  })
+  const dialog = search.closest<HTMLElement>('[role="dialog"]')!
+  await waitFor(() => expect(dialog).toBeVisible())
+  expect(within(dialog).getByText(name, { exact: true })).toBeVisible()
+  return { dialog, results: within(dialog).getByLabelText(roleName ? `${roleName}の検索結果` : '検索結果'), search }
 }
 
 function expectOption(results: HTMLElement, name: string, question?: string) {
@@ -124,6 +135,11 @@ describe('FAMD selector labels', () => {
   })
 })
 
+const crosstabRoles = [
+  'クロス集計の行変数（表側）', 'クロス集計の列変数（表頭）', 'クロス集計のウェイト',
+  'クロス集計の層（strata）', 'クロス集計のPSU',
+]
+
 describe('crosstab selector labels', () => {
   it.each([
     { label: 'row', index: 0, same: 'Category', name: 'Q_CAT', question: 'いつも利用する店舗' },
@@ -134,10 +150,10 @@ describe('crosstab selector labels', () => {
   ])('keeps $label names and questions distinct in search and selection', async ({ index, same, name, question }) => {
     const { container } = mount(<CrosstabPage />)
     if (index >= 3) {
-      const { dialog, results } = await openPicker(2)
+      const { dialog, results } = await openPicker(2, crosstabRoles[2])
       fireEvent.click(expectOption(results, 'Weight'))
       await commit(dialog)
     }
-    await expectLabels(container, index, false, same, name, question)
+    await expectLabels(container, index, false, same, name, question, crosstabRoles[index])
   })
 })

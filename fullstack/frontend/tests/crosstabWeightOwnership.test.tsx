@@ -155,10 +155,31 @@ function mount({ header = false, keyed = false } = {}) {
   </Provider>)
 }
 
+const pickerNames: Record<string, string> = {
+  'global-weight-select': '変数を選択',
+  'crosstab-row-variable': 'クロス集計の行変数（表側）を選択',
+  'crosstab-col-variable': 'クロス集計の列変数（表頭）を選択',
+  'crosstab-weight': 'クロス集計のウェイトを選択',
+  'crosstab-strata': 'クロス集計の層（strata）を選択',
+  'crosstab-psu': 'クロス集計のPSUを選択',
+}
+
+async function findPickerDialog(testId: string) {
+  // rc-util uses duplicate title IDs for retained modals only in test mode.
+  // The purpose-named search and exact visible title identify the real dialog.
+  const searchName = testId === 'global-weight-select' ? '変数名・質問文で絞り込み'
+    : pickerNames[testId].replace(/を選択$/, 'を変数名・質問文で絞り込み')
+  const search = await screen.findByRole('textbox', { name: searchName, exact: true })
+  const dialog = search.closest<HTMLElement>('[role="dialog"]')!
+  await waitFor(() => expect(dialog).toBeVisible())
+  expect(within(dialog).getByText(pickerNames[testId], { exact: true })).toBeVisible()
+  return dialog
+}
+
 async function choose(testId: string, name: string | null) {
   const wrapper = screen.getByTestId(testId).closest('.column-select-multi-wrap') as HTMLElement
-  fireEvent.click(within(wrapper).getByRole('button', { name: '変数を選択' }))
-  const dialog = await screen.findByRole('dialog', { name: '変数を選択' })
+  fireEvent.click(within(wrapper).getByRole('button', { name: pickerNames[testId] }))
+  const dialog = await findPickerDialog(testId)
   if (name === null) fireEvent.click(within(dialog).getByRole('button', { name: '選択解除' }))
   else fireEvent.click(within(dialog).getByRole('radio', { name, exact: true }))
   fireEvent.click(within(dialog).getByRole('button', { name: /決\s*定/ }))
@@ -198,8 +219,8 @@ function expectDesignValue(testId: string, name: string | null) {
 
 async function expectDesignDialogValue(testId: string, name: string | null) {
   const wrapper = screen.getByTestId(testId).closest('.column-select-multi-wrap') as HTMLElement
-  fireEvent.click(within(wrapper).getByRole('button', { name: '変数を選択' }))
-  const dialog = await screen.findByRole('dialog', { name: '変数を選択' })
+  fireEvent.click(within(wrapper).getByRole('button', { name: pickerNames[testId] }))
+  const dialog = await findPickerDialog(testId)
   expect(within(dialog).getByRole('status')).toHaveTextContent(`${name === null ? 0 : 1}件選択中`)
   expect(within(dialog).queryAllByRole('radio', { checked: true })).toHaveLength(name === null ? 0 : 1)
   if (name !== null) expect(within(dialog).getByRole('radio', { name, exact: true })).toBeChecked()
@@ -220,7 +241,7 @@ function declareSurvey() {
 
 function expectPickerDisabled(testId: string) {
   const wrapper = screen.getByTestId(testId).closest('.column-select-multi-wrap') as HTMLElement
-  expect(within(wrapper).getByRole('button', { name: '変数を選択' })).toBeDisabled()
+  expect(within(wrapper).getByRole('button', { name: pickerNames[testId] })).toBeDisabled()
   expect(within(wrapper).getByRole('combobox')).toBeDisabled()
 }
 
@@ -438,8 +459,8 @@ describe('Crosstab weight completion ownership with real controls and store', ()
     expect(screen.getByTestId('crosstab-rao-scott')).toBeDisabled()
     fireEvent.click(screen.getByTestId('crosstab-rao-scott'))
     fireEvent.click(within(screen.getByTestId('crosstab-psu').closest('.column-select-multi-wrap') as HTMLElement)
-      .getByRole('button', { name: '変数を選択' }))
-    expect(screen.queryByRole('dialog', { name: '変数を選択' })).toBeNull()
+      .getByRole('button', { name: pickerNames['crosstab-psu'] }))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(server.put).toHaveBeenCalledTimes(1)
     expect(post).toHaveBeenCalledTimes(1)
     await deliver(server, 0)
