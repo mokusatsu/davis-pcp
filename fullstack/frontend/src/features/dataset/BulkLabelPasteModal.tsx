@@ -37,21 +37,24 @@ export default function BulkLabelPasteModal({
 
   // Map parsed rows to candidate columns
   const mapping = useMemo(() => {
-    if (parsedRows.length === 0 || candidateColumns.length === 0) return []
+    if (parsedRows.length === 0) return []
 
     // Check if TSV with variable names
     const hasVarNames = parsedRows.some((r) => r.variableName)
     if (hasVarNames) {
-      const colByName = new Map(columns.map((c) => [c.name.toLowerCase(), c]))
+      const colByName = new Map(candidateColumns.map((c) => [c.name.toLowerCase(), c]))
+      // The full lookup is only for explaining excluded rows in the preview.
+      const allColByName = new Map(columns.map((c) => [c.name.toLowerCase(), c]))
       return parsedRows.map((row) => {
         const matchedCol = row.variableName ? colByName.get(row.variableName.toLowerCase()) : undefined
+        const knownCol = matchedCol ?? (row.variableName ? allColByName.get(row.variableName.toLowerCase()) : undefined)
         return {
           rowNumber: row.lineIndex,
-          columnId: matchedCol?.columnId,
-          columnName: matchedCol?.name || row.variableName || '(未マッチ)',
-          currentLabel: matchedCol?.label || '-',
+          columnName: knownCol?.name || row.variableName || '(未マッチ)',
+          currentLabel: knownCol?.label || '-',
           newLabel: row.label,
-          matched: !!matchedCol,
+          update: matchedCol && row.label ? { columnId: matchedCol.columnId, label: row.label } : undefined,
+          skipReason: matchedCol ? '空欄（変更なし）' : knownCol ? '対象フィルタ外' : '変数名不明',
         }
       })
     }
@@ -66,27 +69,25 @@ export default function BulkLabelPasteModal({
       const col = candidateColumns[colIndex]
       results.push({
         rowNumber: parsedRows[i].lineIndex,
-        columnId: col?.columnId,
         columnName: col ? col.name : '(範囲超過)',
         currentLabel: col ? col.label : '-',
         newLabel: parsedRows[i].label,
-        matched: !!col,
+        // A blank row still consumes this position, but never clears a label.
+        update: col && parsedRows[i].label ? { columnId: col.columnId, label: parsedRows[i].label } : undefined,
+        skipReason: col ? '空欄（変更なし）' : '範囲超過',
       })
     }
     return results
   }, [parsedRows, candidateColumns, columns, startColId])
 
-  const handleApply = () => {
-    const updates = mapping
-      .filter((m) => m.matched && m.columnId && m.newLabel)
-      .map((m) => ({ columnId: m.columnId!, label: m.newLabel }))
+  const updates = useMemo(() => mapping.flatMap((m) => m.update ? [m.update] : []), [mapping])
 
+  const handleApply = () => {
+    if (updates.length === 0) return
     onApply(updates)
     setPasteText('')
     onClose()
   }
-
-  const validUpdateCount = mapping.filter((m) => m.matched).length
 
   return (
     <Modal
@@ -101,18 +102,20 @@ export default function BulkLabelPasteModal({
         <Button
           key="apply"
           type="primary"
-          disabled={validUpdateCount === 0}
+          disabled={updates.length === 0}
           onClick={handleApply}
         >
-          反映する ({validUpdateCount}件)
+          反映する ({updates.length}件)
         </Button>,
       ]}
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
         Excelの質問文列やテキストをコピーし、下のテキストエリアに貼り付けてください（1行＝1設問、または <code>変数名 [タブ] 質問文</code> 形式）。
+        空欄のラベルは変更しません。空行をスキップしない場合、空行も1列分として数えます。
       </Typography.Paragraph>
 
       <Input.TextArea
+        aria-label="貼り付ける質問文"
         rows={6}
         value={pasteText}
         onChange={(e) => setPasteText(e.target.value)}
@@ -124,6 +127,7 @@ export default function BulkLabelPasteModal({
         <Space size="small">
           <Typography.Text style={{ fontSize: 12 }}>開始変数:</Typography.Text>
           <ColumnSelect
+            aria-label="開始変数"
             size="small"
             style={{ width: 180 }}
             popupMatchSelectWidth={false}
@@ -139,6 +143,7 @@ export default function BulkLabelPasteModal({
         <Space size="small">
           <Typography.Text style={{ fontSize: 12 }}>対象フィルタ:</Typography.Text>
           <Select
+            aria-label="対象フィルタ"
             size="small"
             style={{ width: 140 }}
             popupMatchSelectWidth={false}
@@ -160,10 +165,11 @@ export default function BulkLabelPasteModal({
       {mapping.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <Typography.Text strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-            マッピング・差分プレビュー ({validUpdateCount} / {parsedRows.length}件一致)
+            マッピング・差分プレビュー ({updates.length} / {parsedRows.length}件を反映)
           </Typography.Text>
           <Table
             size="small"
+            scroll={{ x: 700 }}
             pagination={{ pageSize: 5 }}
             dataSource={mapping.map((m, i) => ({ key: i, ...m }))}
             columns={[
@@ -172,25 +178,26 @@ export default function BulkLabelPasteModal({
                 title: '変数名',
                 dataIndex: 'columnName',
                 key: 'columnName',
-                width: 140,
+                width: 120,
                 render: (val, r) => (
-                  <Typography.Text style={{ color: r.matched ? undefined : '#ef4444' }}>
+                  <Typography.Text style={{ color: r.update ? undefined : '#94a3b8' }}>
                     {val}
                   </Typography.Text>
                 ),
               },
-              { title: '現在のラベル', dataIndex: 'currentLabel', key: 'currentLabel', width: 200, ellipsis: true },
+              { title: '現在のラベル', dataIndex: 'currentLabel', key: 'currentLabel', width: 160, ellipsis: true },
               {
                 title: '貼り付け後の新しい質問文',
                 dataIndex: 'newLabel',
                 key: 'newLabel',
                 ellipsis: true,
                 render: (val, r) => (
-                  <Typography.Text strong style={{ color: r.matched ? '#16a34a' : '#94a3b8' }}>
-                    {val}
+                  <Typography.Text strong={!!r.update} style={{ color: r.update ? '#16a34a' : '#94a3b8' }}>
+                    {val || '（空欄）'}
                   </Typography.Text>
                 ),
               },
+              { title: '状態', key: 'status', width: 140, render: (_, r) => r.update ? '反映対象' : r.skipReason },
             ]}
           />
         </div>
