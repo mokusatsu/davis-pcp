@@ -2,7 +2,7 @@ import { notifyDatasetMutationCommitted, onDatasetMutationCommitted } from './da
 import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { ColumnQuestionText } from '../common/ColumnQuestionTooltip'
 import { useEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import { Alert, Button, Descriptions, Popconfirm, Space, Tag, Typography, notification } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated } from '../../app/store'
@@ -63,17 +63,45 @@ interface DatasetMeta {
   schema?: ColumnSchemaItem[]
 }
 
+interface CodebookRefreshTarget {
+  datasetId: string
+  installationRevision: number
+  dataRevision: number
+  schemaRevision: number
+}
+
+interface CodebookRefresh {
+  target: CodebookRefreshTarget
+  columnsBeforeRead: RootState['codebook']['columns']
+  phase: 'pending' | 'failed' | 'superseded' | 'mismatched'
+  message?: string
+}
+
+function sameRefreshTarget(left: CodebookRefreshTarget, right: CodebookRefreshTarget) {
+  return left.datasetId === right.datasetId && left.installationRevision === right.installationRevision
+    && left.dataRevision === right.dataRevision && left.schemaRevision === right.schemaRevision
+}
+
 export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>()
+  const datasetStore = useStore<RootState>()
   const selection = useSelector((s: RootState) => s.selection)
   const { columns: definitions, schemaRevision } = useCodebook()
   const groups = useSelector((s: RootState) => s.codebook.datasetId === s.selection.datasetId ? s.codebook.multiResponseGroups : null)
   const [meta, setMeta] = useState<DatasetMeta | null>(null)
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [codebookRefresh, setCodebookRefresh] = useState<CodebookRefresh | null>(null)
+  const codebookRefreshRef = useRef<CodebookRefresh | null>(null)
+  const codebookTargetRef = useRef<CodebookRefreshTarget | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const datasetRef = useRef(selection.datasetId)
   datasetRef.current = selection.datasetId
-  const context = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision])
+  const context = JSON.stringify([selection.datasetId, selection.revision, selection.dataRevision, schemaRevision])
   const contextRef = useRef(context)
   contextRef.current = context
   const loadVersion = useRef(0)
@@ -85,11 +113,62 @@ export default function OverviewPage() {
   const [imputeTargetCol, setImputeTargetCol] = useState<string | null>(null)
   const [addVarModalOpen, setAddVarModalOpen] = useState<boolean>(false)
 
+  const updateCodebookRefresh = (next: CodebookRefresh | null) => {
+    codebookRefreshRef.current = next
+    setCodebookRefresh(next)
+  }
+  const currentCodebookTarget = (target: CodebookRefreshTarget) => {
+    const live = datasetStore.getState().selection
+    return mountedRef.current && live.datasetId === target.datasetId
+      && live.revision === target.installationRevision && live.dataRevision === target.dataRevision
+      && !!codebookTargetRef.current && sameRefreshTarget(codebookTargetRef.current, target)
+  }
+  const refreshCodebook = async (target: CodebookRefreshTarget) => {
+    if (!currentCodebookTarget(target)) return
+    const previous = codebookRefreshRef.current
+    if (previous?.phase === 'pending' && sameRefreshTarget(previous.target, target)) return
+    const request: CodebookRefresh = {
+      target, phase: 'pending', columnsBeforeRead: datasetStore.getState().codebook.columns,
+    }
+    updateCodebookRefresh(request)
+    const result = await dispatch(fetchCodebookThunk(target.datasetId))
+    if (codebookRefreshRef.current !== request || !currentCodebookTarget(target)) return
+    if (fetchCodebookThunk.fulfilled.match(result)) {
+      const saved = datasetStore.getState().codebook
+      updateCodebookRefresh(saved.datasetId === target.datasetId && saved.schemaRevision === target.schemaRevision
+        ? null : { ...request, phase: 'mismatched' })
+    } else if (result.payload === 'CODEBOOK_FETCH_SUPERSEDED' || result.meta.condition) {
+      // Supersession is not a transport failure. Another accepted read may have
+      // already supplied the target; otherwise keep a read-only recovery path.
+      const saved = datasetStore.getState().codebook
+      updateCodebookRefresh(saved.datasetId === target.datasetId && saved.schemaRevision === target.schemaRevision
+        && saved.columns !== request.columnsBeforeRead ? null : { ...request, phase: 'superseded' })
+    } else {
+      updateCodebookRefresh({ ...request, phase: 'failed', message: result.error.message || 'データの取得に失敗しました。' })
+    }
+  }
+
+  // An accepted read from another current consumer can satisfy this target.
+  // Do not clear a failure just because a metadata-only reload has completed.
+  useEffect(() => {
+    const pending = codebookRefreshRef.current
+    if (!pending) return
+    if (!currentCodebookTarget(pending.target)
+      || (schemaRevision === pending.target.schemaRevision && definitions !== pending.columnsBeforeRead)) {
+      updateCodebookRefresh(null)
+    }
+  }, [selection.datasetId, selection.revision, selection.dataRevision, schemaRevision, definitions])
+
   const reloadDataset = async () => {
     const datasetId = selection.datasetId
     if (!datasetId || datasetRef.current !== datasetId) return
     const version = ++loadVersion.current
-    const current = () => contextRef.current === context && datasetRef.current === datasetId && loadVersion.current === version
+    const current = () => {
+      const live = datasetStore.getState()
+      return mountedRef.current && contextRef.current === context && loadVersion.current === version
+        && live.selection.datasetId === datasetId && live.selection.revision === selection.revision
+        && live.selection.dataRevision === selection.dataRevision && live.codebook.schemaRevision === schemaRevision
+    }
     setLoadError(null)
     let updatedMeta: DatasetMeta
     let updatedSummary: SummaryResponse
@@ -112,13 +191,28 @@ export default function OverviewPage() {
     setSummary(updatedSummary)
 
     // Column transformations retain row identity and the current working set.
-    if (updatedMeta && updatedMeta.dataRevision !== selection.dataRevision) {
+    const dataChanged = updatedMeta.dataRevision !== selection.dataRevision
+    if (dataChanged) {
       invalidateColumnarCache()
       dispatch(datasetValuesUpdated({
         datasetId,
         dataRevision: updatedMeta.dataRevision,
       }))
-      void dispatch(fetchCodebookThunk(datasetId))
+    }
+    // This target belongs to the installed dataset after its data revision was
+    // advanced, not to the metadata request's obsolete pre-update context.
+    const target: CodebookRefreshTarget = {
+      datasetId, installationRevision: selection.revision,
+      dataRevision: updatedMeta.dataRevision, schemaRevision: updatedMeta.schemaRevision,
+    }
+    codebookTargetRef.current = target
+    const previous = codebookRefreshRef.current
+    if (previous && sameRefreshTarget(previous.target, target)) return
+    const saved = datasetStore.getState().codebook
+    if (dataChanged || saved.datasetId !== datasetId || saved.schemaRevision !== updatedMeta.schemaRevision) {
+      void refreshCodebook(target)
+    } else if (previous) {
+      updateCodebookRefresh(null)
     }
   }
 
@@ -135,7 +229,7 @@ export default function OverviewPage() {
     setSummary(null)
     void reloadDataset()
     return () => { loadVersion.current++ }
-  }, [selection.datasetId, selection.dataRevision, schemaRevision])
+  }, [selection.datasetId, selection.revision, selection.dataRevision, schemaRevision])
 
   const handleDeleteColumn = async (colName: string) => {
     if (!selection.datasetId) return
@@ -187,6 +281,19 @@ export default function OverviewPage() {
       data-testid="overview-page"
       style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}
     >
+      {codebookRefresh && currentCodebookTarget(codebookRefresh.target) && <Alert
+        type={codebookRefresh.phase === 'pending' ? 'info' : 'warning'} showIcon
+        message={codebookRefresh.phase === 'pending' ? 'コードブックを再読み込み中です'
+          : codebookRefresh.phase === 'failed' ? 'コードブックを再読み込みできませんでした' : 'コードブックの再読み込みが必要です'}
+        description={<Space direction="vertical" style={{ width: '100%' }}>
+          {codebookRefresh.phase === 'failed' && <span>{codebookRefresh.message}</span>}
+          {codebookRefresh.phase === 'superseded' && <span>別の更新により読み込みが中断されました。最新のコードブックを再読み込みしてください。</span>}
+          {codebookRefresh.phase === 'mismatched' && <span>読み込んだコードブックと概要の更新状態が一致しません。再読み込みしてください。</span>}
+          <Button aria-label="コードブックを再読み込み" loading={codebookRefresh.phase === 'pending'} disabled={codebookRefresh.phase === 'pending'}
+            style={{ maxWidth: '100%', height: 'auto', minHeight: 32, whiteSpace: 'normal' }}
+            onClick={() => void refreshCodebook(codebookRefresh.target)}>コードブックを再読み込み</Button>
+        </Space>}
+      />}
       <ProvenanceHistoryPanel />
 
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, background: '#ffffff', padding: 14 }}>

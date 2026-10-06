@@ -21,7 +21,7 @@ it('counts MA once as a question and folds physical options without changing row
     codebook: { ...base.codebook, datasetId: 'd', columns, multiResponseGroups: [{ groupId: 'services', label: '利用サービス' }] } } as any
   const local = configureStore({ reducer: () => state, middleware: g => g({ serializableCheck: false }) })
   const dispatch = vi.spyOn(local, 'dispatch')
-  vi.spyOn(api, 'get').mockResolvedValue({ datasetId: 'd', name: 'Survey', rowCount: 10, columnCount: 4, dataRevision: 1, fingerprint: 'abc',
+  vi.spyOn(api, 'get').mockResolvedValue({ datasetId: 'd', name: 'Survey', rowCount: 10, columnCount: 4, dataRevision: 1, schemaRevision: 1, fingerprint: 'abc',
     schema: columns.map(column => ({ ...column, semanticType: 'numeric' })) } as any)
   vi.spyOn(api, 'post').mockResolvedValue({ rowCount: 10, columns: Object.fromEntries(columns.map(column => [column.name, { count: 10, missing: 0, mean: 0.5 }])) })
   const view = render(<Provider store={local}><OverviewPage /></Provider>)
@@ -40,21 +40,23 @@ it('counts MA once as a question and folds physical options without changing row
 
 it('ignores a previous dataset response without resetting the new dataset selection', async () => {
   const base = store.getState()
-  const initial = { ...base, selection: { ...base.selection, datasetId: 'old', dataRevision: 1, selectedRowIds: ['old-row'] } }
+  const initial = { ...base, selection: { ...base.selection, datasetId: 'old', dataRevision: 1, selectedRowIds: ['old-row'] },
+    codebook: { ...base.codebook, datasetId: 'old', schemaRevision: 1 } }
   const local = configureStore({ reducer: (state = initial, action: any) => action.type === 'switch'
-    ? { ...state, selection: { ...state.selection, datasetId: 'new', selectedRowIds: ['new-row'] } } : state,
+    ? { ...state, selection: { ...state.selection, datasetId: 'new', selectedRowIds: ['new-row'] },
+      codebook: { ...state.codebook, datasetId: 'new', schemaRevision: 1 } } : state,
     middleware: g => g({ serializableCheck: false }) })
   let finishOld!: (value: any) => void
   vi.spyOn(api, 'get').mockImplementation(async (path) => path.endsWith('/old')
     ? await new Promise(resolve => { finishOld = resolve })
-    : { datasetId: 'new', name: 'New Survey', dataRevision: 1, fingerprint: 'new', schema: [] } as any)
+    : { datasetId: 'new', name: 'New Survey', dataRevision: 1, schemaRevision: 1, fingerprint: 'new', schema: [] } as any)
   vi.spyOn(api, 'post').mockResolvedValue({ rowCount: 1, columns: {} })
   const view = render(<Provider store={local}><OverviewPage /></Provider>)
   await waitFor(() => expect(finishOld).toBeDefined())
   act(() => { local.dispatch({ type: 'switch' }) })
   await waitFor(() => expect(view.getByText('New Survey')).toBeVisible())
   const dispatch = vi.spyOn(local, 'dispatch')
-  await act(async () => { finishOld({ datasetId: 'old', name: 'Old Survey', dataRevision: 2, fingerprint: 'old', schema: [] }) })
+  await act(async () => { finishOld({ datasetId: 'old', name: 'Old Survey', dataRevision: 2, schemaRevision: 2, fingerprint: 'old', schema: [] }) })
   expect(view.getByText('New Survey')).toBeVisible()
   expect(view.queryByText('Old Survey')).toBeNull()
   expect(dispatch).not.toHaveBeenCalled()
@@ -70,7 +72,7 @@ it('refreshes summaries on data or dictionary revisions but not on highlight cha
     if (action.type === 'dictionary') return { ...state, codebook: { ...state.codebook, schemaRevision: 2 } }
     return state
   }, middleware: g => g({ serializableCheck: false }) })
-  vi.spyOn(api, 'get').mockImplementation(async () => ({ datasetId: 'd', name: 'Survey', dataRevision: local.getState().selection.dataRevision, fingerprint: 'f', schema: [] }) as any)
+  vi.spyOn(api, 'get').mockImplementation(async () => ({ datasetId: 'd', name: 'Survey', dataRevision: local.getState().selection.dataRevision, schemaRevision: local.getState().codebook.schemaRevision, fingerprint: 'f', schema: [] }) as any)
   const summaries = vi.spyOn(api, 'post').mockResolvedValue({ rowCount: 1, columns: {} })
   render(<Provider store={local}><OverviewPage /></Provider>)
   await waitFor(() => expect(summaries).toHaveBeenCalledTimes(1))
@@ -85,7 +87,8 @@ it('refreshes summaries on data or dictionary revisions but not on highlight cha
 
 it('shows a failed summary request and retries without changing shared selection', async () => {
   const base = store.getState()
-  const state = { ...base, selection: { ...base.selection, datasetId: 'd', dataRevision: 1, selectedRowIds: ['keep'] } }
+  const state = { ...base, selection: { ...base.selection, datasetId: 'd', dataRevision: 1, selectedRowIds: ['keep'] },
+    codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 5 } }
   const local = configureStore({ reducer: () => state, middleware: g => g({ serializableCheck: false }) })
   const dispatch = vi.spyOn(local, 'dispatch')
   vi.spyOn(api, 'get').mockResolvedValue({ datasetId: 'd', name: 'Recovered Survey', dataRevision: 1, schemaRevision: 5, fingerprint: 'f', schema: [] } as any)
