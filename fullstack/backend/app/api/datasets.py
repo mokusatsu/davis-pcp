@@ -373,7 +373,7 @@ def _sync_weight_config(
 
     raw_design = existing_cb.get("surveyDesign")
     survey_design: dict[str, Any] | None = None
-    if isinstance(raw_design, dict):
+    if isinstance(raw_design, dict) and _survives(raw_design.get("weightColumnId")):
         cleaned = dict(raw_design)
         for key in ("weightColumnId", "strataColumnId", "psuColumnId", "fpcColumnId"):
             if key in cleaned and not _survives(cleaned.get(key)):
