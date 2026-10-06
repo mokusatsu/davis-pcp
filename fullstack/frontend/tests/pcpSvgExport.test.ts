@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
-import { createElement } from 'react'
+import { createElement, Profiler } from 'react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { store } from '../src/app/store'
@@ -195,7 +195,15 @@ describe('native PCP vector export', () => {
   })
 })
 
-function pageSetup() {
+async function waitForExportReady(button: HTMLElement) {
+  await waitFor(() => {
+    expect(button).toBeEnabled()
+    // Antd's separate loading state can still reject clicks after disabled clears.
+    expect(button).not.toHaveClass('ant-btn-loading')
+  })
+}
+
+function pageSetup(onRender?: () => void) {
   vi.stubGlobal('ResizeObserver', class {
     constructor(private callback: ResizeObserverCallback) {}
     observe(target: Element) {
@@ -222,8 +230,11 @@ function pageSetup() {
     ? { ...current, selection: { ...current.selection, datasetId: String(action.payload ?? 'second') } } : current,
     middleware: getDefault => getDefault({ serializableCheck: false }),
   })
-  const tree = () => createElement(Provider, { store: pageStore, children:
-    createElement(GraphExpansionProvider, { children: createElement(PcpPage) }) })
+  const tree = () => {
+    const children = createElement(GraphExpansionProvider, { children: createElement(PcpPage) })
+    return createElement(Provider, { store: pageStore, children: onRender
+      ? createElement(Profiler, { id: 'pcp-export', onRender, children }) : children })
+  }
   const geometry = { ...spec(), rowIds: ['r1'], points: new Float64Array([40, 140, 180, 60, 320, 100]), nRows: 1 }
   return { context, pageStore, tree, geometry }
 }
@@ -246,13 +257,13 @@ describe('PCP SVG control lifecycle', () => {
 
     fixture.geometry = geometry
     view.rerender(tree())
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     fireEvent.click(button)
     fireEvent.click(button)
     expect(click).toHaveBeenCalledTimes(1) // Pending reactivation is suppressed.
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     fireEvent.click(button)
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     expect(click).toHaveBeenCalledTimes(2)
     expect((create.mock.calls[0][0] as Blob).type).toBe('image/svg+xml;charset=utf-8')
     const downloaded = await new Promise<string>(resolve => {
@@ -275,15 +286,17 @@ describe('PCP SVG control lifecycle', () => {
     fireEvent.click(view.getByTestId('graph-expand-pcp/main'))
     const dialog = await view.findByRole('dialog')
     expect(within(dialog).getByRole('button', { name: 'PCP：SVGを保存' })).toBe(button)
+    await waitForExportReady(button)
     fireEvent.click(button)
     expect(click).toHaveBeenCalledTimes(3)
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     create.mockImplementationOnce(() => { throw new Error('download unavailable') })
     fireEvent.click(button)
     await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('download unavailable'))
+    await waitForExportReady(button)
     fireEvent.click(button)
     await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull())
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     expect(click).toHaveBeenCalledTimes(4)
     fireEvent.click(within(dialog).getByRole('button', { name: '拡大を戻す' }))
     expect(view.getByRole('button', { name: 'PCP：SVGを保存' })).toBe(button)
@@ -295,9 +308,59 @@ describe('PCP SVG control lifecycle', () => {
     expect(click).toHaveBeenCalledTimes(4)
     fixture.geometry = geometry
     view.rerender(tree())
-    await waitFor(() => expect(button).toBeEnabled())
+    await waitForExportReady(button)
     fireEvent.click(button)
     expect(click).toHaveBeenCalledTimes(5)
+    await waitForExportReady(button)
+  })
+
+  it('waits past an enabled-but-loading commit before attempting an expanded export error and retry', async () => {
+    let button: HTMLButtonElement | undefined
+    let observeCompletion = false
+    let prematureClickIgnored = false
+    const create = vi.fn(() => 'blob:pcp-svg')
+    const { tree, geometry } = pageSetup(() => {
+      if (!observeCompletion || !button || prematureClickIgnored
+        || button.disabled || !button.classList.contains('ant-btn-loading')) return
+      // In NODE_ENV=test, Antd's rc-util layout effect uses a passive effect.
+      // Observe the real committed DOM before that effect clears innerLoading:
+      // native enabled (even aria-busy=false) does not yet mean actionable.
+      expect(button).toBeEnabled()
+      expect(button).toHaveAttribute('aria-busy', 'false')
+      create.mockImplementationOnce(() => { throw new Error('download unavailable') })
+      expect(create).toHaveBeenCalledTimes(1)
+      button.click()
+      expect(create).toHaveBeenCalledTimes(1) // Antd rejected the premature click.
+      prematureClickIgnored = true
+    })
+    fixture.geometry = geometry
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = create; static revokeObjectURL = vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const view = render(tree())
+    button = view.getByRole('button', { name: 'PCP：SVGを保存' }) as HTMLButtonElement
+    await waitForExportReady(button)
+    fireEvent.click(view.getByTestId('graph-expand-pcp/main'))
+    const dialog = await view.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'PCP：SVGを保存' })).toBe(button)
+    await waitForExportReady(button)
+    observeCompletion = true
+    fireEvent.click(button)
+    expect(click).toHaveBeenCalledTimes(1)
+    await waitForExportReady(button)
+    expect(prematureClickIgnored).toBe(true)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(within(dialog).queryByRole('alert')).toBeNull()
+
+    fireEvent.click(button) // The formerly skipped exception is still queued.
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('download unavailable'))
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(click).toHaveBeenCalledTimes(1)
+    await waitForExportReady(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull())
+    await waitForExportReady(button)
+    expect(create).toHaveBeenCalledTimes(3)
+    expect(click).toHaveBeenCalledTimes(2)
   })
 
   it('discards both failed and successful late worker frames after dataset changes', async () => {
