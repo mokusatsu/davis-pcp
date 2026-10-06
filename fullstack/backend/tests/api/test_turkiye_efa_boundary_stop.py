@@ -108,6 +108,7 @@ def test_boundary_correlation_status_prevents_extraction_and_saves_attempt(turki
 def test_actual_turkiye_derived_duplicate_stops_at_correlation_boundary(turkiye, expression):
     client, store, did = turkiye
     calculated = client.post(f"/api/v1/datasets/{did}/calculate", json={
+        "mode": "create", "expectedDataRevision": store.get_meta(did)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(did) or {}).get("schemaRevision", 1),
         "expression": expression, "columnName": "Q1_copy"})
     assert calculated.status_code == 200, calculated.text
     book = store.load_codebook(did)

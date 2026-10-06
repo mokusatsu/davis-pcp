@@ -23,6 +23,7 @@ function deferred<T = any>() {
   const promise = new Promise<T>(done => { resolve = done })
   return { promise, resolve }
 }
+const idFor = (path: string) => path.split('/')[2]
 const servers: Record<string, { revision: number; names: string[] }> = {}
 let pending: ReturnType<typeof deferred>
 function definitions(id: string) {
@@ -70,11 +71,11 @@ async function startMutation() {
   fireEvent.click(screen.getByRole('button', { name: 'プレビュー検証' }))
   await waitFor(() => expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
   fireEvent.click(screen.getByTestId('btn-add-variable-submit'))
-  expect(api.post).toHaveBeenCalledWith('/datasets/a/calculate', { expression: 'x / (y + 1e-6)', columnName: 'new_feature' })
+  expect(api.post).toHaveBeenCalledWith('/datasets/a/calculate', { expression: 'x / (y + 1e-6)', columnName: 'new_feature', mode: 'create', expectedDataRevision: 1, expectedSchemaRevision: 1 })
 }
 async function commitA() {
   servers.a = { revision: 2, names: ['x', 'y', 'new_feature'] }
-  await act(async () => { pending.resolve({ dataRevision: 2 }); await pending.promise })
+  await act(async () => { pending.resolve({ dataRevision: 2, column: 'new_feature', operation: 'created' }); await pending.promise })
 }
 beforeEach(() => {
   servers.a = { revision: 1, names: ['x', 'y'] }
@@ -89,7 +90,7 @@ beforeEach(() => {
   })
   vi.spyOn(api, 'post').mockImplementation(async (path: string, body: any) => {
     if (path === '/summaries') return { rowCount: 2, columns: Object.fromEntries(servers[body.datasetId].names.map(name => [name, { count: 2, missing: 0, mean: 1 }])) } as any
-    if (path.endsWith('/calculate/preview')) return { valid: true, column: body.columnName, previewValues: [1], stats: { count: 2 }, histogram: [] } as any
+    if (path.endsWith('/calculate/preview')) return { mode: body.mode, targetExists: false, columnId: null, dataRevision: servers[idFor(path)].revision, schemaRevision: servers[idFor(path)].revision, rowCount: 2, previewScope: 'first_rows', previewRowCount: 2, previewRowLimit: 100, valid: true, column: body.columnName, previewValues: [1], stats: { count: 2 }, histogram: [] } as any
     if (path === '/datasets/a/calculate') return pending.promise
     throw new Error(`Unexpected request: ${path}`)
   })

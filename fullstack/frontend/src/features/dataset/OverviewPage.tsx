@@ -388,6 +388,8 @@ export default function OverviewPage() {
           open={addVarModalOpen}
           datasetId={selection.datasetId}
           dataRevision={selection.dataRevision}
+          schemaRevision={schemaRevision}
+          datasetName={meta?.name ?? selection.datasetId}
           columns={Object.keys(summary?.columns ?? {})}
           onClose={() => setAddVarModalOpen(false)}
           onSuccess={notifyDatasetMutationCommitted}

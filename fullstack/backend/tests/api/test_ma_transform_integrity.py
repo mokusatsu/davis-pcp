@@ -25,7 +25,9 @@ def setup_dataset(tmp_path, monkeypatch):
 
 def test_ma_survives_calculation_imputation_copy_and_member_deletion(tmp_path, monkeypatch):
     store, frame, original = setup_dataset(tmp_path, monkeypatch)
-    result = datasets.calculate_dataset_variable('d', datasets.CalculateRequest(expression='Score * 2', columnName='Double'))
+    result = datasets.calculate_dataset_variable('d', datasets.CalculateRequest(expression='Score * 2', columnName='Double', mode='create',
+        expectedDataRevision=store.get_meta('d')['dataRevision'],
+        expectedSchemaRevision=store.load_codebook('d')['schemaRevision']))
     assert result['dataRevision'] == 2
     snapshot = datasets.get_dataset('d')
     assert snapshot['schemaRevision'] == store.load_codebook('d')['schemaRevision'] == 2

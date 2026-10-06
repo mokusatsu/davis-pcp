@@ -148,7 +148,7 @@ def test_two_undos_walk_back_two_steps(undo_ds):
     client.post(f"/api/v1/datasets/{ds}/impute",
                 json={"columns": ["a"], "strategy": "mean", "inPlace": True})
     calc = client.post(f"/api/v1/datasets/{ds}/calculate",
-                       json={"expression": "a * 2", "columnName": "a2"})
+                       json={"mode": "create", "expectedDataRevision": store.get_meta(ds)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(ds) or {}).get("schemaRevision", 1), "expression": "a * 2", "columnName": "a2"})
     assert calc.status_code == 200, calc.text
     assert "a2" in {c["name"] for c in _meta(store, ds)["schema"]}
 
@@ -195,7 +195,7 @@ def test_every_revision_stays_queryable(undo_ds):
                 json={"columns": ["a"], "strategy": "mean", "inPlace": True})
     check_all("impute")
     client.post(f"/api/v1/datasets/{ds}/calculate",
-                json={"expression": "a * 2", "columnName": "a2"})
+                json={"mode": "create", "expectedDataRevision": store.get_meta(ds)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(ds) or {}).get("schemaRevision", 1), "expression": "a * 2", "columnName": "a2"})
     check_all("calculate")
     client.delete(f"/api/v1/datasets/{ds}/columns/a2")
     check_all("delete")

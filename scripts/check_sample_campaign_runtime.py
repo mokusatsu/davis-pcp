@@ -335,8 +335,12 @@ async def run_acceptance(output_path: str) -> dict:
         from app.api import factor_analysis
         for index, expression in enumerate(("Q1", "6 - Q1")):
             name = f"Q1_copy_{index}"
+            calculation = {"expression": expression, "columnName": name, "mode": "create"}
+            preview = await client.post(f"datasets/{did}/calculate/preview", json=calculation)
+            assert preview.status_code == 200 and preview.json()["valid"], preview.text
             calculated = await client.post(f"datasets/{did}/calculate", json={
-                "expression": expression, "columnName": name})
+                **calculation, "expectedDataRevision": preview.json()["dataRevision"],
+                "expectedSchemaRevision": preview.json()["schemaRevision"]})
             assert calculated.status_code == 200, calculated.text
             book = store.load_codebook(did)
             spec = next(c for c in book["columns"] if c["name"] == name)

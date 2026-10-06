@@ -69,7 +69,7 @@ def test_new_edit_after_undo_discards_redo_stack(revert_ds):
     anchor = next(o["parentOperationId"] for o in prov["operations"] if o["operation"] == "impute")
     assert store.load_provenance(ds)["redoStack"] == [undone_id]
     calc = client.post(f"/api/v1/datasets/{ds}/calculate",
-                       json={"expression": "a * 2", "columnName": "a2"})
+                       json={"mode": "create", "expectedDataRevision": store.get_meta(ds)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(ds) or {}).get("schemaRevision", 1), "expression": "a * 2", "columnName": "a2"})
     assert calc.status_code == 200, calc.text
     after = store.load_provenance(ds)
     assert [o["operation"] for o in after["operations"]] == ["import", "impute", "undo",

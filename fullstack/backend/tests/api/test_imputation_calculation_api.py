@@ -74,6 +74,7 @@ def test_calculate_preview_api():
     ds_id = _setup_test_dataset()
     res = client.post(f"/api/v1/datasets/{ds_id}/calculate/preview", json={
         "expression": "num1 * 10 + 5",
+        "mode": "create",
         "columnName": "num1_scaled",
     })
     assert res.status_code == 200, res.text
@@ -87,6 +88,7 @@ def test_calculate_execute_api():
     ds_id = _setup_test_dataset()
     res = client.post(f"/api/v1/datasets/{ds_id}/calculate", json={
         "expression": "log(num1 + 1)",
+        "mode": "create", "expectedDataRevision": store.get_meta(ds_id)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(ds_id) or {}).get("schemaRevision", 1),
         "columnName": "log_num1",
     })
     assert res.status_code == 200, res.text

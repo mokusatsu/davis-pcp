@@ -9,6 +9,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Input,
   ConfigProvider,
   Space,
@@ -22,12 +23,25 @@ interface AddVariableModalProps {
   open: boolean
   datasetId: string
   dataRevision?: number
+  schemaRevision?: number
+  datasetName?: string
   columns: string[]
   onClose: () => void
   onSuccess: (committedDatasetId: string) => void
 }
 
+type CalculationMode = 'create' | 'replace'
+
 interface CalculatePreviewResponse {
+  mode: CalculationMode
+  targetExists: boolean
+  columnId: string | null
+  dataRevision: number
+  schemaRevision: number
+  rowCount: number
+  previewScope: 'first_rows'
+  previewRowCount: number
+  previewRowLimit: number
   valid: boolean
   error: string | null
   column: string
@@ -57,45 +71,86 @@ export default function AddVariableModal({
   datasetId,
   columns,
   dataRevision = 0,
+  schemaRevision = 0,
+  datasetName = datasetId,
   onClose,
   onSuccess,
 }: AddVariableModalProps) {
   const [columnName, setColumnName] = useState<string>('')
   const [expression, setExpression] = useState<string>('')
+  const [mode, setMode] = useState<CalculationMode>('create')
+  const [targetHint, setTargetHint] = useState<{ key: string; exists: boolean } | null>(null)
   const [preview, setPreview] = useState<CalculatePreviewResponse | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [submitting, setSubmitting] = useState<boolean>(false)
+  const [confirmation, setConfirmation] = useState<{
+    preview: CalculatePreviewResponse; current: () => boolean
+  } | null>(null)
 
   const busy = useRef(false)
   const active = useAnalysisViewActive()
   const [previewKey, setPreviewKey] = useState<string | null>(null)
-  const inputKey = JSON.stringify([open, active, datasetId, dataRevision, columnName.trim(), expression])
+  const [previewGuard, setPreviewGuard] = useState<(() => boolean) | null>(null)
+  const canonicalName = columnName.trim()
+  const targetContextKey = JSON.stringify([open, active, datasetId, dataRevision,
+    schemaRevision, columns, canonicalName])
+  // Conflict metadata can be newer than Overview's columns. It only guides the
+  // mode control; a fresh successful preview still authorizes every mutation.
+  const targetExists = targetHint?.key === targetContextKey ? targetHint.exists : columns.includes(canonicalName)
+  const validTarget = Boolean(canonicalName && canonicalName !== '__rowId__' &&
+    (mode === 'create' ? !targetExists : targetExists))
+  // Compare contents, not array identity: equivalent parent renders keep the draft.
+  const inputKey = JSON.stringify([open, active, datasetId, datasetName, dataRevision,
+    schemaRevision, columns, canonicalName, expression, mode, targetExists])
   const previewRequest = useRequestIdentity(inputKey)
+  const confirmationRequest = useRequestIdentity(inputKey)
   const saveRequest = useRequestIdentity(JSON.stringify([datasetId, open, active]))
-  const canSave = Boolean(open && active && preview?.valid && previewKey === inputKey && !loading)
+  const canPreview = Boolean(open && active && validTarget && expression.trim())
+  const canSave = Boolean(canPreview && preview?.valid && previewKey === inputKey &&
+    previewGuard?.() && preview.column === canonicalName && preview.mode === mode &&
+    preview.targetExists === targetExists &&
+    Number.isInteger(preview.dataRevision) && preview.dataRevision > 0 &&
+    Number.isInteger(preview.schemaRevision) && preview.schemaRevision > 0 && !loading)
 
   // columns is intentionally excluded: a parent render must not erase this draft.
   useEffect(() => {
     if (open) {
-      setColumnName('new_feature')
+      let name = 'new_feature'
+      for (let suffix = 2; columns.includes(name); suffix++) name = `new_feature_${suffix}`
+      setColumnName(name)
       setExpression(columns.length >= 2 ? `${columns[0]} / (${columns[1]} + 1e-6)` : '')
-      setPreview(null)
-      setPreviewKey(null)
-      setLoading(false)
+      setMode('create')
     }
   }, [open, datasetId])
 
+  useEffect(() => { setTargetHint(null) }, [targetContextKey])
+
   useEffect(() => {
     setPreview(null)
+    setPreviewError(null)
     setPreviewKey(null)
+    setPreviewGuard(null)
+    setConfirmation(null)
     setLoading(false)
-  }, [dataRevision, active])
+  }, [inputKey])
 
   const invalidatePreview = () => {
     previewRequest.invalidate()
+    confirmationRequest.invalidate()
     setPreview(null)
+    setPreviewError(null)
     setPreviewKey(null)
+    setPreviewGuard(null)
+    setConfirmation(null)
     setLoading(false)
+  }
+  const observeTargetConflict = (error: any) => {
+    if (error?.code === 'CALCULATION_TARGET_CONFLICT' &&
+      error.details?.column === canonicalName && error.details?.mode === mode &&
+      typeof error.details?.targetExists === 'boolean') {
+      setTargetHint({ key: targetContextKey, exists: error.details.targetExists })
+    }
   }
   const editExpression = (next: string) => {
     if (busy.current) return
@@ -103,51 +158,74 @@ export default function AddVariableModal({
     setExpression(next)
   }
   const handlePreview = async () => {
-    if (busy.current || !open || !active || !expression.trim() || !columnName.trim()) return
+    if (busy.current || !canPreview) return
+    invalidatePreview()
     const current = previewRequest.begin()
     const requestedKey = inputKey
-    setPreview(null)
-    setPreviewKey(null)
     setLoading(true)
     try {
       const res = await api.post<CalculatePreviewResponse>(`/datasets/${datasetId}/calculate/preview`, {
-        expression,
-        columnName: columnName.trim(),
+        expression, columnName: canonicalName, mode,
       })
       if (!current()) return
       setPreview(res)
       setPreviewKey(requestedKey)
+      setPreviewGuard(() => current)
     } catch (err: any) {
       if (!current()) return
       setPreviewKey(requestedKey)
-      setPreview({ valid: false, error: err.message || String(err), column: columnName.trim(),
-        previewValues: [], stats: {}, histogram: [] })
+      setPreviewError(err.message || String(err))
+      observeTargetConflict(err)
     } finally {
       if (current()) setLoading(false)
     }
   }
 
-  const handleAdd = async () => {
-    if (busy.current || !canSave) return
+  const handleApply = async (confirmed?: typeof confirmation) => {
+    if (busy.current || !canSave || !preview || !previewGuard?.()) return
+    if (mode === 'replace' && (!confirmed?.current() || confirmed.preview !== preview)) return
     busy.current = true
+    setConfirmation(null)
     const current = saveRequest.begin()
     setSubmitting(true)
     try {
-      await api.post(`/datasets/${datasetId}/calculate`, { expression, columnName: columnName.trim() })
-      message.success(`変数 '${columnName.trim()}' を追加しました。`)
+      const result = await api.post<{ column: string; operation: 'created' | 'replaced' }>(
+        `/datasets/${datasetId}/calculate`, {
+          expression, columnName: preview.column, mode: preview.mode,
+          expectedDataRevision: preview.dataRevision,
+          expectedSchemaRevision: preview.schemaRevision,
+        })
+      message.success(`変数 '${result.column}' を${result.operation === 'replaced' ? '置換' : '追加'}しました。`)
       onSuccess(datasetId)
-      if (current()) onClose()
+      if (current()) { invalidatePreview(); onClose() }
     } catch (err: any) {
-      message.error(`計算変数追加エラー: ${err.message || err}`)
+      if (current()) {
+        invalidatePreview()
+        setPreviewKey(inputKey)
+        setPreviewError(`${err.message || err} 列名と計算式を確認し、再度プレビューしてください。`)
+        observeTargetConflict(err)
+      }
+      message.error(`計算変数の保存エラー: ${err.message || err}`)
     } finally {
       busy.current = false
       setSubmitting(false)
     }
   }
+  const cancelConfirmation = () => {
+    confirmationRequest.invalidate()
+    setConfirmation(null)
+  }
+  const handleAdd = () => {
+    if (busy.current || !canSave || !preview) return
+    if (mode === 'replace') {
+      setConfirmation({ preview, current: confirmationRequest.begin() })
+    } else void handleApply()
+  }
 
   const appendToExpr = (text: string) => editExpression(`${expression} ${text}`.trim())
 
   return (
+    <>
     <Modal
       open={open}
       title={
@@ -168,7 +246,7 @@ export default function AddVariableModal({
         <Button key="cancel" onClick={onClose} disabled={submitting}>
           キャンセル
         </Button>,
-        <Button key="preview" onClick={() => void handlePreview()} loading={loading} disabled={submitting}>
+        <Button key="preview" onClick={() => void handlePreview()} loading={loading} disabled={submitting || !canPreview}>
           プレビュー検証
         </Button>,
         <Button
@@ -179,7 +257,7 @@ export default function AddVariableModal({
           disabled={!canSave || submitting}
           data-testid="btn-add-variable-submit"
         >
-          変数をデータセットに追加
+          {mode === 'replace' ? '既存の変数を置換' : '変数をデータセットに追加'}
         </Button>,
       ]}
     >
@@ -191,15 +269,29 @@ export default function AddVariableModal({
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <div>
               <Typography.Text strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
-                新しい変数（列名）:
+                計算先の変数（列名）:
               </Typography.Text>
               <Input
                 data-testid="input-new-variable-name"
                 placeholder="例: petal_ratio, log_income, score_scaled"
                 value={columnName}
-                onChange={(e) => { if (!busy.current) { invalidatePreview(); setColumnName(e.target.value) } }}
+                onChange={(e) => { if (!busy.current) { invalidatePreview(); setColumnName(e.target.value); setMode('create') } }}
                 style={{ maxWidth: 320 }}
               />
+              {canonicalName === '__rowId__' && <Alert type="error" message="'__rowId__' はシステム列のため指定できません。" />}
+              {(targetExists || mode === 'replace') && canonicalName !== '__rowId__' && <>
+                <Alert type="warning" message={targetExists
+                  ? `'${canonicalName}' は既に存在します。別の列名を指定するか、置換を選択してください。`
+                  : `'${canonicalName}' は存在しなくなりました。置換を解除し、新しい列として再度プレビューしてください。`} />
+                <Checkbox checked={mode === 'replace'} data-testid="replace-calculated-column"
+                  onChange={event => {
+                    if (busy.current) return
+                    invalidatePreview()
+                    setMode(event.target.checked ? 'replace' : 'create')
+                  }}>
+                  既存の列 '{canonicalName}' の全行の値を置換する
+                </Checkbox>
+              </>}
             </div>
 
             <div>
@@ -299,7 +391,8 @@ export default function AddVariableModal({
 
         {/* Section 2: Validation & Preview */}
         <Card size="small" title="2. 計算プレビュー &amp; 診断" style={{ borderRadius: 6, borderColor: '#e5e7eb' }}>
-          {preview && previewKey === inputKey ? (
+          {previewError && previewKey === inputKey && <Alert type="error" showIcon message="プレビューが必要です" description={previewError} />}
+          {preview && previewKey === inputKey && previewGuard?.() ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {preview.valid ? (
                 <Alert
@@ -318,6 +411,11 @@ export default function AddVariableModal({
 
               {preview.valid && (
                 <>
+                  <Alert type={preview.mode === 'replace' ? 'warning' : 'info'} showIcon
+                    message={preview.mode === 'replace'
+                      ? `'${preview.column}' の全 ${preview.rowCount} 行の値を置換します。`
+                      : `'${preview.column}' を新しい列として追加します。`}
+                    description={`検証時のデータ世代: ${preview.dataRevision} / スキーマ世代: ${preview.schemaRevision}。プレビューは先頭 ${preview.previewRowCount} 行（最大 ${preview.previewRowLimit} 行）で計算しています。保存時は全 ${preview.rowCount} 行で計算するため、zscore・minmax などの値はプレビューと異なる場合があります。`} />
                   {/* Summary Stats */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                     <div style={{ background: '#f8fafc', padding: '6px 10px', borderRadius: 4, border: '1px solid #e2e8f0' }}>
@@ -385,5 +483,19 @@ export default function AddVariableModal({
       </div>
       </ConfigProvider>
     </Modal>
+    <Modal open={Boolean(confirmation && canSave && confirmation.current())}
+      title="既存の列を置換しますか？"
+      onCancel={cancelConfirmation}
+      onDeactivate={cancelConfirmation}
+      footer={[
+        <Button key="cancel" onClick={cancelConfirmation}>置換をキャンセル</Button>,
+        <Button key="replace" danger type="primary" data-testid="confirm-replace-calculated-column"
+          onClick={() => void handleApply(confirmation)}>全行の値を置換</Button>,
+      ]}>
+      <Typography.Paragraph>
+        データセット '{datasetName}' の既存の列 '{confirmation?.preview.column}' の全 {confirmation?.preview.rowCount} 行の値を、計算結果で置換します。
+      </Typography.Paragraph>
+    </Modal>
+    </>
   )
 }

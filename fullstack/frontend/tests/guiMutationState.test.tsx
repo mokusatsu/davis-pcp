@@ -15,13 +15,13 @@ vi.mock('../src/features/charts/EChartSurface', () => ({ default: () => <div>cha
 afterEach(() => {cleanup();vi.restoreAllMocks()})
 function wrap(ui: React.ReactNode) { return <Provider store={store}>{ui}</Provider> }
 function deferred<T>(){let resolve!: (v:T)=>void;let reject!: (e:any)=>void;const promise=new Promise<T>((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}
-const preview = (column='new_feature',mean=1) => ({valid:true,error:null,column,previewValues:[mean],stats:{count:1,mean},histogram:[]})
+const preview = (column='new_feature',mean=1) => ({mode:'create',targetExists:false,columnId:null,dataRevision:1,schemaRevision:1,rowCount:1,previewScope:'first_rows',previewRowCount:1,previewRowLimit:100,valid:true,error:null,column,previewValues:[mean],stats:{count:1,mean},histogram:[]})
 const columns = ['x','y']
 const binPreview=(label:string)=>({column:'x',method:'equal_width',edges:[0,1],bins:[{binIndex:0,label,min:0,max:1,count:1,ratio:1}],histogram:{counts:[1],edges:[0,1]},min:0,max:1,count:1})
 
 describe('GUI mutation audit repair acceptance',()=>{
  it('I01 calculation helper edits invalidate success and require fresh verification', async()=>{
-  const post=vi.spyOn(api,'post').mockResolvedValue(preview() as any)
+  const post=vi.spyOn(api,'post').mockImplementation(async path => (String(path).endsWith('/preview') ? preview() : {column:'new_feature',operation:'created'}) as any)
   render(wrap(<AddVariableModal open datasetId="d" columns={columns} onClose={()=>{}} onSuccess={()=>{}}/>))
   fireEvent.click(screen.getByText('プレビュー検証'))
   await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
@@ -32,7 +32,7 @@ describe('GUI mutation audit repair acceptance',()=>{
   fireEvent.click(screen.getByText('プレビュー検証'))
   await waitFor(()=>expect(screen.getByTestId('btn-add-variable-submit')).toBeEnabled())
   fireEvent.click(screen.getByTestId('btn-add-variable-submit'))
-  await waitFor(()=>expect(post).toHaveBeenLastCalledWith('/datasets/d/calculate',{expression:'x / (y + 1e-6) + x',columnName:'new_feature'}))
+  await waitFor(()=>expect(post).toHaveBeenLastCalledWith('/datasets/d/calculate',{expression:'x / (y + 1e-6) + x',columnName:'new_feature',mode:'create',expectedDataRevision:1,expectedSchemaRevision:1}))
   expect(post.mock.calls.filter(([url])=>String(url).endsWith('/preview'))).toHaveLength(2)
  })
  it('I02 older preview cannot validate edited input', async()=>{
@@ -160,7 +160,7 @@ describe('Preview and mutation interruption coverage',()=>{
   expect(close).not.toHaveBeenCalled()
   fireEvent.click(screen.getByText('+',{selector:'.ant-tag'}))
   expect(screen.getByTestId('input-variable-expression')).toHaveValue('x / (y + 1e-6)')
-  await act(async()=>{save.resolve({});await save.promise})
+  await act(async()=>{save.resolve({column:'new_feature',operation:'created'});await save.promise})
   expect(success).toHaveBeenCalledOnce();expect(close).toHaveBeenCalledOnce()
  })
  it('I07 invalid custom cuts produce an error without submitting and can retry',async()=>{

@@ -89,7 +89,7 @@ def test_stale_plan_hash_is_rejected(plan_ds):
 
     # Any data change moves the revision the plan was pinned to.
     calc = client.post(f"/api/v1/datasets/{ds}/calculate",
-                       json={"expression": "x * 2", "columnName": "x2"})
+                       json={"mode": "create", "expectedDataRevision": store.get_meta(ds)["dataRevision"], "expectedSchemaRevision": (store.load_codebook(ds) or {}).get("schemaRevision", 1), "expression": "x * 2", "columnName": "x2"})
     assert calc.status_code == 200, calc.text
 
     apply = client.post(f"/api/v1/datasets/{ds}/impute",

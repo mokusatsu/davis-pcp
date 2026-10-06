@@ -5,14 +5,14 @@ import csv
 import hashlib
 import io
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import polars as pl
 import pyarrow as pa
 import pyarrow.ipc as ipc
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..config import settings
 from ..domain.errors import BizError
@@ -1784,25 +1784,59 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
 
 
 class CalculatePreviewRequest(BaseModel):
-    expression: str
-    columnName: str = "new_var"
+    model_config = ConfigDict(extra="forbid", strict=True)
 
-
-class CalculateRequest(BaseModel):
     expression: str
     columnName: str
+    mode: Literal["create", "replace"]
+
+
+class CalculateRequest(CalculatePreviewRequest):
+    expectedDataRevision: int = Field(ge=1)
+    expectedSchemaRevision: int = Field(ge=1)
+
+
+def _calculation_target(df: pl.DataFrame, column_name: str, mode: str) -> str:
+    """Trim-only, case-sensitive destination authorization shared by both routes."""
+    column = column_name.strip()
+    if not column or column == "__rowId__":
+        raise BizError("EXPRESSION_INVALID_NAME", "空の列名や '__rowId__' は指定できません。")
+    exists = column in df.columns
+    if (mode == "create" and exists) or (mode == "replace" and not exists):
+        raise BizError(
+            "CALCULATION_TARGET_CONFLICT",
+            "追加先の列が既に存在します。" if exists else "置換先の列が存在しません。",
+            status_code=409,
+            details={"column": column, "mode": mode, "targetExists": exists},
+            suggested_actions=["列名と追加・置換の選択を確認し、再度プレビューしてください。"],
+        )
+    return column
 
 
 @router.post("/datasets/{dataset_id}/calculate/preview")
 def preview_dataset_calculation(dataset_id: str, request: CalculatePreviewRequest) -> dict:
     from ..algorithms.transformation.expression import preview_expression
+    from ..domain.context import collect_revisions
 
-    df = store.get_dataframe(dataset_id)
-    return preview_expression(
-        df,
-        expression=request.expression,
-        new_column_name=request.columnName,
-    )
+    # Evaluation and its observed revisions must describe the same snapshot.
+    with store.lock(dataset_id):
+        meta = store.get_meta(dataset_id)
+        codebook = store.load_codebook(dataset_id)
+        df = store.get_dataframe(dataset_id)
+        column = _calculation_target(df, request.columnName, request.mode)
+        return {
+            **preview_expression(df, expression=request.expression, new_column_name=column),
+            **collect_revisions(meta, codebook),
+            "column": column,
+            "mode": request.mode,
+            "targetExists": column in df.columns,
+            "columnId": next((c["columnId"] for c in meta.get("schema", [])
+                              if c["name"] == column), None),
+            "rowCount": df.height,
+            "previewScope": "first_rows",
+            "previewRowCount": min(100, df.height),
+            "previewRowLimit": 100,
+        }
 
 
 @router.post("/datasets/{dataset_id}/calculate")
@@ -1814,13 +1848,19 @@ def calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> di
 def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> dict:
     from ..algorithms.transformation.expression import evaluate_expression
 
+    from ..domain.context import check_revisions, collect_revisions
+
     meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id)
+    check_revisions(collect_revisions(meta, codebook),
+                    request.expectedSchemaRevision, request.expectedDataRevision)
     df = store.get_dataframe(dataset_id)
+    column = _calculation_target(df, request.columnName, request.mode)
 
     updated_df, new_series, col_meta = evaluate_expression(
         df,
         expression=request.expression,
-        new_column_name=request.columnName,
+        new_column_name=column,
     )
 
     schema_payload = _derive_dataset_schema(updated_df, meta.get("schema", []))
@@ -1838,7 +1878,7 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
 
     provenance_before = store.load_provenance(dataset_id)
     step = _provenance_step("calculate", {"expression": request.expression,
-                                          "columnName": request.columnName}, meta, cb,
+                                          "columnName": column, "mode": request.mode}, meta, cb,
                             "calculate-1",
                             parent_operation_id=(provenance_before or {}).get("currentOperationId"))
     commit = store.commit_data_change(dataset_id, meta, updated_df, codebook=cb, step=step)
@@ -1848,6 +1888,9 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
     return {
         **meta,
         "createdColumn": col_meta,
+        "column": column,
+        "mode": request.mode,
+        "operation": "created" if request.mode == "create" else "replaced",
         "provenance": {"currentOperationId": provenance["currentOperationId"],
                        "rawDataRevision": provenance.get("rawDataRevision"),
                        "operationCount": len(provenance.get("operations", []))},

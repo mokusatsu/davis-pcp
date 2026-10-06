@@ -236,7 +236,8 @@ class ImputationHistoryPackageTests(AuditCase):
 
     def test_H03_calculated_column_undo_restores_schema(self):
         d=fixture({'x':[1,2,3]},{'x':{'scaleType':'ratio'}})
-        ds.calculate_dataset_variable(d,ds.CalculateRequest(columnName='z',expression='x+1'))
+        ds.calculate_dataset_variable(d,ds.CalculateRequest(columnName='z',expression='x+1',mode='create',
+            expectedDataRevision=ds.store.get_meta(d)['dataRevision'], expectedSchemaRevision=cb(d)['schemaRevision']))
         ds.undo_dataset(d,ds.UndoRedoRequest())
         self.assertNotIn('z',frame(d).columns)
         self.assertNotIn('z',[c['name'] for c in cb(d)['columns']])
