@@ -1132,7 +1132,7 @@ def efa_materialize(result_id, manifest, req):
         allowed = set((caps.get("materializeFitFields", [])))
     else:
         allowed = set((caps.get("materializePredictionFields", [])))
-    colmap: dict = {}
+    mappings: list[tuple[str, str]] = []
     for col in (req.columns or []):
         src = str(col.get("source", ""))
         dest = str(col.get("name", ""))
@@ -1140,7 +1140,7 @@ def efa_materialize(result_id, manifest, req):
             _err("ANALYSIS_REQUEST_INVALID", "未対応の保存列です。", 422)
         if not dest or not _re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", dest):
             _err("ANALYSIS_REQUEST_INVALID", "列名が不正です。", 422)
-        colmap[src] = dest
+        mappings.append((src, dest))
 
     def _norm_ids(v) -> list | None:
         if v is None:
@@ -1192,7 +1192,12 @@ def efa_materialize(result_id, manifest, req):
         df = store.get_dataframe(manifest.get("ownerDatasetId"))
         existing = {c.get("name") for c in (codebook.get("columns", []) or [])}
         existing |= {c.get("name") for c in (meta_now.get("schema", []) or [])}
-        clash = [c for c in colmap.values() if c in existing or c in df.columns]
+        existing.update(df.columns)
+        clash = []
+        for _, dest in mappings:
+            if dest in existing:
+                clash.append(dest)
+            existing.add(dest)
         if clash:
             _err("COLUMN_ALREADY_EXISTS", "列が既に存在します。", 409,
                  details={"columns": clash})
@@ -1206,7 +1211,7 @@ def efa_materialize(result_id, manifest, req):
             src_col = lambda idx: f"score{idx+1}"
         by_id = {str(r["rowId"]): r for r in src_frame.rows(named=True)}
         fields = []
-        for src, dest in colmap.items():
+        for src, dest in mappings:
             idx = int(src.split(":")[1]) - 1
             vals = []
             for rid in [str(v) for v in df["__rowId__"].to_list()]:
@@ -1243,7 +1248,7 @@ def efa_materialize(result_id, manifest, req):
                            "efaIdempotencyKey": idem_key,
                            "efaPayloadHash": payload_hash,
                            "efaColumns": [{"source": k, "name": v}
-                                          for k, v in colmap.items()]},
+                                          for k, v in mappings]},
                 "targetRowIds": sorted([str(v) for v in df["__rowId__"].to_list()]),
                 "targetCells": [],
                 "inputSchemaRevision": int(codebook.get("schemaRevision", 1)) - 1,
@@ -1256,7 +1261,7 @@ def efa_materialize(result_id, manifest, req):
         fresh_cb = store.load_codebook(manifest.get("ownerDatasetId")) or {}
     out = {"status": "success", "resultId": result_id,
            "idempotentReplay": False,
-           "columns": [{"source": k, "name": v} for k, v in colmap.items()],
+           "columns": [{"source": k, "name": v} for k, v in mappings],
            "datasetId": manifest.get("ownerDatasetId"),
            "dataRevision": int(fresh_meta.get("dataRevision", 1)),
            "schemaRevision": int(fresh_cb.get(

@@ -1865,6 +1865,7 @@ def lr_materialize(result_id, manifest, req):
             if f["name"] in existing:
                 _err("COLUMN_ALREADY_EXISTS",
                      f"既存列への上書きは禁止です: {f['name']}", 409)
+            existing.add(f["name"])
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         legacy = _AC(datasetId=dataset_id,
                      expectedDataRevision=ctx.get("expectedDataRevision"),

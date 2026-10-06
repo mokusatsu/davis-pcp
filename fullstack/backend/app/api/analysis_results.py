@@ -796,6 +796,7 @@ def _mca_materialize(result_id: str, manifest, req):
         for f in fields:
             if f["name"] in existing_names:
                 _err("COLUMN_ALREADY_EXISTS", f"既存列への上書きは禁止です: {f['name']}", 409)
+            existing_names.add(f["name"])
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         # Context intersection: only requested scope members receive values.
         legacy = AnalysisContext(datasetId=dataset_id, expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
@@ -1119,6 +1120,7 @@ def _famd_materialize(result_id: str, manifest, req):
         for f in fields:
             if f["name"] in existing_names:
                 _err("COLUMN_ALREADY_EXISTS", f"既存列への上書きは禁止です: {f['name']}", 409)
+            existing_names.add(f["name"])
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         legacy = AnalysisContext(datasetId=dataset_id, expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
         scope_ids = set(resolve_scope(all_ids, legacy))
