@@ -23,6 +23,8 @@ vi.mock('../src/api/client', async original => ({
   importCodebook: vi.fn(),
 }))
 
+const restoreViewportProperties: Array<() => void> = []
+
 beforeEach(() => {
   vi.mocked(downloadCodebookExport).mockReset().mockResolvedValue(undefined)
   vi.mocked(importCodebook).mockReset().mockResolvedValue({
@@ -30,7 +32,11 @@ beforeEach(() => {
   })
   vi.spyOn(notification, 'success').mockImplementation(() => undefined)
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => {
+  cleanup()
+  restoreViewportProperties.splice(0).forEach(restore => restore())
+  vi.restoreAllMocks()
+})
 
 function createStore() {
   const local = configureStore({
@@ -49,7 +55,66 @@ function createStore() {
   return local
 }
 
+function mockExportGeometry(initialWidth: number) {
+  // jsdom has no layout. Supply viewport/element measurements while keeping
+  // the real AntD/rc-trigger positioning, resize listener and popup styles.
+  const viewport = { width: initialWidth }
+  const dimension = (property: string, get: () => number) => {
+    const original = Object.getOwnPropertyDescriptor(document.documentElement, property)
+    Object.defineProperty(document.documentElement, property, { configurable: true, get })
+    restoreViewportProperties.push(() => {
+      if (original) Object.defineProperty(document.documentElement, property, original)
+      else Reflect.deleteProperty(document.documentElement, property)
+    })
+  }
+  dimension('clientWidth', () => viewport.width - 15)
+  dimension('clientHeight', () => 800)
+  dimension('scrollWidth', () => viewport.width + 40)
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+  const rectangle = (x: number, y: number, width: number, height: number) => ({
+    x, y, width, height, left: x, right: x + width, top: y, bottom: y + height,
+    toJSON: () => ({}),
+  })
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.tagName === 'BUTTON' && this.textContent?.includes('エクスポート')) {
+      return rectangle(43, 100, 104, 24)
+    }
+    if (this.classList.contains('ant-dropdown')) {
+      const width = Math.min(360, viewport.width - 32)
+      const left = this.style.left === 'auto'
+        ? document.documentElement.clientWidth - width - (parseFloat(this.style.right) || 0)
+        : parseFloat(this.style.left) || 0
+      return rectangle(left, parseFloat(this.style.top) || 0, width, 200)
+    }
+    return originalRect.call(this)
+  })
+  return viewport
+}
+
 describe('Codebook interchange guidance at the action boundary', () => {
+  it.each([
+    ['fresh 375px', [375]],
+    ['fresh 320px', [320]],
+    ['fresh 768px', [768]],
+    ['resize while open', [768, 375, 320, 768]],
+  ] as const)('keeps the export popup inside the scrollbar-excluding viewport: %s', async (_name, widths) => {
+    const viewport = mockExportGeometry(widths[0])
+    render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
+    fireEvent.click(screen.getByRole('button', { name: /エクスポート/ }))
+    const menu = await screen.findByRole('menu')
+    const popup = menu.closest('.ant-dropdown') as HTMLElement
+    for (const width of widths) {
+      viewport.width = width
+      fireEvent.resize(window)
+      await waitFor(() => {
+        const bounds = popup.getBoundingClientRect()
+        expect(bounds.left).toBeGreaterThanOrEqual(0)
+        expect(bounds.right).toBeLessThanOrEqual(document.documentElement.clientWidth)
+        expect(popup.style.left).not.toContain('vw')
+      })
+    }
+  })
+
   it.each(['csv', 'json'] as const)('explains the saved format before exporting %s and preserves a dirty draft', async format => {
     const local = createStore()
     local.dispatch(draftColumnUpdated({ columnId: 'q', patch: { label: '未保存の編集' } }))

@@ -311,7 +311,11 @@ export default function CodebookEditorModal() {
               CSV辞書読込
             </Button>
 
-            <Dropdown menu={{ items: exportMenuItems, style: { width: 360, maxWidth: 'calc(100vw - 32px)' } }} trigger={['click']}>
+            <Dropdown
+              menu={{ items: exportMenuItems, style: { width: 360, maxWidth: 'calc(100vw - 32px)' } }}
+              align={{ overflow: { adjustX: true, adjustY: true, shiftX: true } }}
+              trigger={['click']}
+            >
               <Button size="small" icon={<DownloadOutlined />}>
                 エクスポート <DownOutlined style={{ fontSize: 10 }} />
               </Button>
