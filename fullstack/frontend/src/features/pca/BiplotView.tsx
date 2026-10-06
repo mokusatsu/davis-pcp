@@ -129,10 +129,10 @@ export const BiplotView: FC<BiplotViewProps> = ({
   const controls = (
     <Space wrap>
       <Typography.Text strong>X軸: </Typography.Text>
-      <AntSelect style={{ width: 140 }} value={selectedX} onChange={onSelectX}
+      <AntSelect aria-label="通常PCAのX軸" style={{ width: 140 }} value={selectedX} onChange={onSelectX}
         options={componentOptions} getPopupContainer={graphPopupContainer} data-testid="pca-axis-x" />
       <Typography.Text strong>Y軸: </Typography.Text>
-      <AntSelect style={{ width: 140 }} value={selectedY} onChange={onSelectY}
+      <AntSelect aria-label="通常PCAのY軸" style={{ width: 140 }} value={selectedY} onChange={onSelectY}
         options={componentOptions} getPopupContainer={graphPopupContainer} data-testid="pca-axis-y" />
       <Checkbox checked={showVectors} onChange={event => setShowVectors(event.target.checked)} data-testid="pca-biplot-vectors">
         {pcaData?.useCorrelation === false ? '単位付き負荷量ベクトル表示' : '相関負荷量ベクトル表示'}
