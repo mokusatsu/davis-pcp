@@ -76,7 +76,16 @@ export default function CodebookCsvImportDialog({
     >
       <MutationProgress busy={loading} />
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-        エクスポートされたCSVまたはJSON辞書ファイルをアップロードしてください。列名（<code>name</code>）または列IDをもとに各変数の質問文、尺度、役割、値ラベル等の設定が一括反映されます。
+        CSVまたはJSON辞書ファイルで、質問文、尺度、役割、値ラベル等を更新します。列名（<code>name</code>）で照合し、JSONで列名を省略した場合だけ列IDを使います。
+      </Typography.Paragraph>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        MA親設問・重み設定・調査設計も引き継ぐにはJSONを選んでください。CSVに含まれるのは列定義とライセンスです。省略した設定は原則として保持されます。
+      </Typography.Paragraph>
+      <Typography.Paragraph style={{ fontSize: 12 }}>
+        「インポート実行」で検証後すぐに保存されます。外側の「保存」は不要で、実行後の「キャンセル」やUndoでは取り消せません。ファイルを選ぶだけでは検証・保存されません。
+      </Typography.Paragraph>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        未保存の編集は別に保持されます。後から保存すると取込内容を上書きする場合があるため、インポート前に編集を整理してください。
       </Typography.Paragraph>
 
       <Upload.Dragger

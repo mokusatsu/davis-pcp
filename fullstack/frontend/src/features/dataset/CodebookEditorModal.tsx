@@ -138,18 +138,38 @@ export default function CodebookEditorModal() {
 
   const exportMenuItems: MenuProps['items'] = [
     {
-      key: 'csv',
-      label: 'CSV形式でエクスポート (.csv)',
-      onClick: () => {
-        if (datasetId) void downloadCodebookExport(datasetId, 'csv')
-      },
-    },
-    {
-      key: 'json',
-      label: 'JSON形式でエクスポート (.json)',
-      onClick: () => {
-        if (datasetId) void downloadCodebookExport(datasetId, 'json')
-      },
+      type: 'group',
+      label: <div style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>保存済みの設定を出力（未保存の編集は含みません）</div>,
+      children: [
+        {
+          key: 'csv',
+          label: (
+            <div style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+              <div>CSV形式でエクスポート (.csv)</div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                列定義・ライセンスのみ（MA親設問・重み設定・調査設計は含みません）
+              </Typography.Text>
+            </div>
+          ),
+          onClick: () => {
+            if (datasetId) void downloadCodebookExport(datasetId, 'csv')
+          },
+        },
+        {
+          key: 'json',
+          label: (
+            <div style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+              <div>JSON形式でエクスポート (.json)</div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                MA親設問・重み設定・調査設計を含む対応メタデータ
+              </Typography.Text>
+            </div>
+          ),
+          onClick: () => {
+            if (datasetId) void downloadCodebookExport(datasetId, 'json')
+          },
+        },
+      ],
     },
   ]
 
@@ -291,7 +311,7 @@ export default function CodebookEditorModal() {
               CSV辞書読込
             </Button>
 
-            <Dropdown menu={{ items: exportMenuItems }} trigger={['click']}>
+            <Dropdown menu={{ items: exportMenuItems, style: { width: 360, maxWidth: 'calc(100vw - 32px)' } }} trigger={['click']}>
               <Button size="small" icon={<DownloadOutlined />}>
                 エクスポート <DownOutlined style={{ fontSize: 10 }} />
               </Button>

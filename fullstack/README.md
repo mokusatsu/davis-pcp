@@ -71,7 +71,7 @@ CSV / TSV / Parquet / Arrow IPC(Feather) / ARFF / SQLite(.db/.sqlite のtable選
 
 ```bash
 # backend unit + property + API integration (100 tests)
-cd backend && python -m pytest tests/ -q
+cd backend && python -m pip install -r requirements-test.txt && python -m pytest tests/ -q
 
 # frontend unit (11 tests)
 cd frontend && npx vitest run

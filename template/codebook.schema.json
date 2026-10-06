@@ -1,16 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "DAVIS-PCP コードブック",
-  "description": "エクスポートされたコードブックと列名または列IDで照合する部分辞書の作成用スキーマ。読込時のdatasetIdとschemaRevisionは取込先が管理する。",
+  "description": "保存済みコードブックのエクスポートと部分辞書の作成用スキーマ。JSON読込は指定項目の更新であり、取込先のID・リビジョンは取込先が管理する。",
   "oneOf": [
     {
       "type": "object",
-      "required": ["columns"],
+      "anyOf": [
+        { "required": ["columns"] },
+        { "required": ["licenseText"] },
+        { "required": ["multiResponseGroups"], "properties": { "multiResponseGroups": { "minItems": 1 } } }
+      ],
       "properties": {
         "$schema": { "type": "string", "description": "エディタでの検証用スキーマ参照。データ属性ではない。" },
         "datasetId": { "type": "string", "minLength": 1, "description": "出力元データセットID。取込先の切替には使わない。" },
         "schemaRevision": { "type": "integer", "minimum": 1, "description": "出力時のリビジョン。取込先のリビジョンを上書きしない。" },
-        "columns": { "$ref": "#/$defs/columns" }
+        "licenseText": { "type": "string", "description": "データセットの出典・ライセンス。省略は保持、空文字列は消去。" },
+        "licenseRevision": { "type": "integer", "minimum": 1, "description": "出力時のライセンス改訂番号。取込先の改訂番号を上書きしない。" },
+        "columns": { "$ref": "#/$defs/columns" },
+        "multiResponseGroups": { "type": "array", "items": { "$ref": "#/$defs/multiResponseGroup" }, "description": "groupIdで親設問を追加・更新する。空配列は既存の親設問の一括削除ではない。" },
+        "weightConfig": { "anyOf": [ { "$ref": "#/$defs/weightConfig" }, { "type": "null" } ], "description": "省略は保持、nullは解除。変更時にsurveyDesignを再指定しなければ既存の調査設計は解除される。" },
+        "surveyDesign": { "anyOf": [ { "$ref": "#/$defs/surveyDesign" }, { "type": "null" } ], "description": "省略は保持（重み設定変更時を除く）、nullは解除。" }
       },
       "additionalProperties": false
     },
@@ -30,12 +39,61 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "columnReference": {
+      "type": "string",
+      "minLength": 1,
+      "description": "列照合で対応付けた出力元ID、取込先の列IDまたは列名。実在する列への解決は取込時に検証する。"
+    },
+    "columnReferences": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/columnReference" },
+      "uniqueItems": true
+    },
+    "nullableColumnReference": {
+      "anyOf": [ { "$ref": "#/$defs/columnReference" }, { "type": "null" } ]
+    },
+    "multiResponseGroup": {
+      "type": "object",
+      "required": ["groupId", "label"],
+      "properties": {
+        "groupId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "selectedCodes": { "$ref": "#/$defs/codes", "minItems": 1 },
+        "unselectedCodes": { "$ref": "#/$defs/codes", "minItems": 1 },
+        "allUnselectedMeaning": { "type": "string", "enum": ["valid", "missing", "notApplicable"] },
+        "maxSelections": { "type": ["integer", "null"], "minimum": 1 },
+        "optionOrder": { "$ref": "#/$defs/columnReferences" },
+        "optionOrderNames": { "$ref": "#/$defs/columnReferences", "description": "読込専用。取込先の列名で選択肢順を指定する。optionOrderと同時には指定できない。" }
+      },
+      "not": { "required": ["optionOrder", "optionOrderNames"] },
+      "additionalProperties": false
+    },
+    "weightConfig": {
+      "type": "object",
+      "required": ["weightColumnId", "weightType"],
+      "properties": {
+        "weightColumnId": { "$ref": "#/$defs/columnReference" },
+        "weightType": { "type": "string", "enum": ["survey", "frequency"] }
+      },
+      "additionalProperties": false
+    },
+    "surveyDesign": {
+      "type": "object",
+      "properties": {
+        "weightColumnId": { "$ref": "#/$defs/nullableColumnReference", "description": "省略またはnullならweightConfigの列を使う。最終的に重み列が必要。" },
+        "strataColumnId": { "$ref": "#/$defs/nullableColumnReference" },
+        "psuColumnId": { "$ref": "#/$defs/nullableColumnReference" },
+        "fpcColumnId": { "$ref": "#/$defs/nullableColumnReference" },
+        "replicateWeightColumnIds": { "$ref": "#/$defs/columnReferences" }
+      },
+      "additionalProperties": false
+    },
     "column": {
       "type": "object",
-      "description": "columnId優先、次にnameで照合。省略属性は保持し、指定した辞書・配列は全体を置換する。",
+      "description": "name指定時は名前で照合し、不一致でもcolumnIdにはフォールバックしない。name省略時だけcolumnIdで照合。省略属性は保持し、指定した辞書・配列は全体を置換する。",
       "anyOf": [ { "required": ["name"] }, { "required": ["columnId"] } ],
       "properties": {
-        "columnId": { "type": "string", "minLength": 1, "description": "既存の列ID。別データセットへの再利用時は省略を推奨。" },
+        "columnId": { "type": "string", "minLength": 1, "description": "出力元の列ID。nameと併記した場合は名前で対応付け、MA・重み・調査設計の参照IDを取込先に解決する。" },
         "name": { "type": "string", "minLength": 1, "description": "既存データの列名。大文字・小文字を含めて一致させる。" },
         "label": { "type": "string", "description": "質問文または変数表示名。" },
         "scaleType": { "type": "string", "enum": ["nominal", "ordinal", "interval", "ratio", "text", "id"] },
@@ -45,7 +103,8 @@
         "missingCodes": { "$ref": "#/$defs/codes", "description": "欠損として除外するコード文字列。" },
         "missingReasons": { "$ref": "#/$defs/labels", "description": "missingCodesに含まれるコードの理由。非該当と無回答を指定する。" },
         "isReversed": { "type": "boolean", "description": "軸方向と分析上の得点方向を逆転する。" },
-        "multiResponseGroup": { "type": ["string", "null"], "description": "複数回答設問のグループ名。JSON読込でnullを指定しても既存値は解除されない。" }
+        "multiResponseGroup": { "type": ["string", "null"], "description": "複数回答設問のグループID。nullまたは空文字列で既存の所属を解除する。" },
+        "multiResponseOptionLabel": { "type": "string", "description": "複数回答設問の子列の選択肢ラベル。空文字列で消去。" }
       },
       "additionalProperties": false
     }
