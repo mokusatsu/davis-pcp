@@ -791,10 +791,11 @@ def _mca_materialize(result_id: str, manifest, req):
         codebook = cur_code
         existing_names = {c.get("name") for c in (codebook.get("columns", []) or [])}
         existing_names |= {c.get("name") for c in (cur_meta.get("schema", []) or [])}
+        df = store.get_dataframe(dataset_id)
+        existing_names.update(df.columns)
         for f in fields:
             if f["name"] in existing_names:
                 _err("COLUMN_ALREADY_EXISTS", f"既存列への上書きは禁止です: {f['name']}", 409)
-        df = store.get_dataframe(dataset_id)
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         # Context intersection: only requested scope members receive values.
         legacy = AnalysisContext(datasetId=dataset_id, expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
@@ -1113,10 +1114,11 @@ def _famd_materialize(result_id: str, manifest, req):
         codebook = cur_code
         existing_names = {c.get("name") for c in (codebook.get("columns", []) or [])}
         existing_names |= {c.get("name") for c in (cur_meta.get("schema", []) or [])}
+        df = store.get_dataframe(dataset_id)
+        existing_names.update(df.columns)
         for f in fields:
             if f["name"] in existing_names:
                 _err("COLUMN_ALREADY_EXISTS", f"既存列への上書きは禁止です: {f['name']}", 409)
-        df = store.get_dataframe(dataset_id)
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         legacy = AnalysisContext(datasetId=dataset_id, expectedDataRevision=ctx.get("expectedDataRevision"), expectedSchemaRevision=ctx.get("expectedSchemaRevision"), scope=ctx.get("scope", "all"), rowIds=ctx.get("rowIds"), activeRowIds=ctx.get("activeRowIds"), selectedRowIds=ctx.get("selectedRowIds"), sampledRowIds=ctx.get("sampledRowIds"))
         scope_ids = set(resolve_scope(all_ids, legacy))

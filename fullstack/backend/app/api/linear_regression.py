@@ -1859,11 +1859,12 @@ def lr_materialize(result_id, manifest, req):
                     (codebook.get("columns", []) or [])}
         existing |= {c.get("name") for c in
                      (cur_meta.get("schema", []) or [])}
+        df = store.get_dataframe(dataset_id)
+        existing.update(df.columns)
         for f in fields:
             if f["name"] in existing:
                 _err("COLUMN_ALREADY_EXISTS",
                      f"既存列への上書きは禁止です: {f['name']}", 409)
-        df = store.get_dataframe(dataset_id)
         all_ids = [str(v) for v in df["__rowId__"].to_list()]
         legacy = _AC(datasetId=dataset_id,
                      expectedDataRevision=ctx.get("expectedDataRevision"),
