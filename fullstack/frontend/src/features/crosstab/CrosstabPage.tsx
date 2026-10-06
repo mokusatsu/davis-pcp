@@ -95,6 +95,12 @@ interface CrosstabResponse {
   weightStatus: string
 }
 
+interface CrosstabRunInput {
+  context: Record<string, unknown>
+  rowVariableId: string
+  colVariableId: string
+}
+
 /**
  * The API layer throws a plain error object, not an `Error`, so a rejection
  * like WEIGHT_TYPE_REQUIRED would otherwise collapse into a generic message and
@@ -114,7 +120,7 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-export function crosstabToCsv(result: CrosstabResponse): string {
+export function crosstabToCsv(result: CrosstabResponse, completedInput?: CrosstabRunInput | null): string {
   const header = ['rowCategoryId', 'rowLabel', 'colCategoryId', 'colLabel', 'unweightedCount',
     'count', 'rowPct', 'colPct', 'totalPct', 'expectedCount', 'asr', 'significance', 'rowIdCount']
   const lines = [header.join(',')]
@@ -125,17 +131,24 @@ export function crosstabToCsv(result: CrosstabResponse): string {
     lines.push(row.map(csvCell).join(','))
   }
   lines.push('')
-  lines.push(['# datasetId', result.meta.datasetId].map(csvCell).join(','))
-  lines.push(['# dataRevision', result.meta.dataRevision].map(csvCell).join(','))
-  lines.push(['# schemaRevision', result.meta.schemaRevision].map(csvCell).join(','))
-  lines.push(['# scope', result.meta.scope].map(csvCell).join(','))
-  lines.push(['# scopeHash', result.meta.scopeHash].map(csvCell).join(','))
-  lines.push(['# weightApplied', result.meta.weightApplied].map(csvCell).join(','))
-  lines.push(`# missingPolicy,`)
+  const metadata = new Map<string, unknown>([
+    ['datasetId', result.meta.datasetId],
+    ['dataRevision', result.meta.dataRevision],
+    ['schemaRevision', result.meta.schemaRevision],
+    ['scope', result.meta.scope],
+    ['scopeHash', result.meta.scopeHash],
+    ['weightApplied', result.meta.weightApplied],
+    ['missingPolicy', completedInput?.context.missingPolicy],
+    ['rowVariableId', completedInput?.rowVariableId],
+    ['colVariableId', completedInput?.colVariableId],
+  ])
   // Provenance travels with the export: which weight *meaning* produced these
-  // numbers is not recoverable from the numbers themselves.
-  const provenance = result.analysisProvenance
-  for (const [key, value] of Object.entries(provenance ?? {})) {
+  // numbers is not recoverable from the numbers themselves. It must not repeat
+  // or override result identity or captured inputs; uncaptured inputs stay blank.
+  for (const [key, value] of Object.entries(result.analysisProvenance ?? {})) {
+    if (!metadata.has(key)) metadata.set(key, value)
+  }
+  for (const [key, value] of metadata) {
     lines.push([`# ${key}`, value].map(csvCell).join(','))
   }
   return lines.join('\n')
@@ -182,8 +195,7 @@ export default function CrosstabPage() {
   const [missingPolicy, setMissingPolicy] = useState('exclude')
   const [mode, setMode] = useState<DisplayMode>('rowPct')
   const [result, setResult] = useState<CrosstabResponse | null>(null)
-  const [resultInput, setResultInput] = useState<{
-    context: Record<string, unknown>; rowVariableId: string; colVariableId: string;
+  const [resultInput, setResultInput] = useState<CrosstabRunInput & {
     inputKey: string; label: string; count: number; dataKey: string;
   } | null>(null)
   const resultInputRef = useRef(resultInput)
@@ -449,14 +461,14 @@ export default function CrosstabPage() {
 
   const handleExport = useCallback(() => {
     if (!result) return
-    const blob = new Blob([crosstabToCsv(result)], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([crosstabToCsv(result, resultInput)], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = `crosstab-${result.meta.datasetId}-r${result.meta.dataRevision}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [result])
+  }, [result, resultInput])
 
   if (!datasetId) return <Typography.Text>データセットを読み込んでください。</Typography.Text>
 

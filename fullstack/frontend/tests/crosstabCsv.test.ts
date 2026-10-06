@@ -50,3 +50,54 @@ it.each(['=SUM(1,2)', '+cmd', '-text', '@cmd', '\t=cmd', '\r=cmd'])('neutralizes
   expect(rows[1][1]).toBe("'" + prefix + '\n"continued"')
   expect(rows[1][10]).toBe('-0.103')
 })
+
+it.each(['exclude', 'include_missing', 'separate_not_applicable'])('exports the completed %s input without changing cell data', missingPolicy => {
+  const value = result('A')
+  const rows = readCsv(crosstabToCsv(value, {
+    context: { missingPolicy }, rowVariableId: 'submitted-row', colVariableId: 'submitted-col',
+  }))
+  expect(rows.slice(0, 2)).toEqual(readCsv(crosstabToCsv(value)).slice(0, 2))
+  expect(rows).toContainEqual(['# missingPolicy', missingPolicy])
+  expect(rows).toContainEqual(['# rowVariableId', 'submitted-row'])
+  expect(rows).toContainEqual(['# colVariableId', 'submitted-col'])
+})
+
+it('keeps one canonical identity and completed-input value when response provenance overlaps', () => {
+  const value = result('A')
+  value.analysisProvenance = {
+    ...value.analysisProvenance,
+    datasetId: 'different-dataset', dataRevision: 900, schemaRevision: 901,
+    scope: 'selected', scopeHash: 'different-hash', weightApplied: true,
+    missingPolicy: 'include_missing', rowVariableId: 'other-row', colVariableId: 'other-col',
+    weightSum: 1085218.1, inferenceMethod: null,
+  }
+  const metadata = readCsv(crosstabToCsv(value, {
+    context: { missingPolicy: 'exclude' }, rowVariableId: 'row', colVariableId: 'col',
+  })).filter(row => row[0].startsWith('# '))
+  expect(new Set(metadata.map(row => row[0])).size).toBe(metadata.length)
+  expect(Object.fromEntries(metadata)).toEqual({
+    '# datasetId': value.meta.datasetId, '# dataRevision': '1', '# schemaRevision': '1',
+    '# scope': 'active', '# scopeHash': 'sha256:test', '# weightApplied': 'false',
+    '# missingPolicy': 'exclude', '# rowVariableId': 'row', '# colVariableId': 'col',
+    '# weightType': 'none', '# note': 'quoted "source",\nsecond line',
+    '# weightSum': '1085218.1', '# inferenceMethod': '',
+  })
+})
+
+it.each([undefined, null])('leaves uncaptured input metadata blank (%s) instead of guessing from provenance', completedInput => {
+  const value = result('A')
+  value.analysisProvenance = { missingPolicy: 'exclude', rowVariableId: 'guessed-row', colVariableId: 'guessed-col' }
+  const rows = readCsv(crosstabToCsv(value, completedInput))
+  for (const key of ['missingPolicy', 'rowVariableId', 'colVariableId']) {
+    expect(rows.filter(row => row[0] === `# ${key}`)).toEqual([[`# ${key}`, '']])
+  }
+})
+
+it('escapes captured variable identifiers and does not invent a missing policy for an incomplete context', () => {
+  const rows = readCsv(crosstabToCsv(result('A'), {
+    context: {}, rowVariableId: '=row,"quoted"\nnext', colVariableId: '@column',
+  }))
+  expect(rows).toContainEqual(['# rowVariableId', '\'=row,"quoted"\nnext'])
+  expect(rows).toContainEqual(['# colVariableId', "'@column"])
+  expect(rows).toContainEqual(['# missingPolicy', ''])
+})

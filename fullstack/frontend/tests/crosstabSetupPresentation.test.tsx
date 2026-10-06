@@ -103,7 +103,7 @@ beforeEach(() => {
   vi.spyOn(api, 'post').mockResolvedValue({})
   vi.spyOn(api, 'put').mockResolvedValue({})
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Crosstab setup presentation with real controls', () => {
   it.each(pickerCases)('names and links $role without changing its candidates', async ({ role, label, testId, choices, design }) => {
@@ -324,3 +324,109 @@ it('names display-only controls and keeps captured result scope visible while Ra
   })
   expect(api.put).not.toHaveBeenCalled()
 })
+
+function captureCsvDownloads() {
+  const create = vi.fn<(blob: Blob) => string>().mockReturnValue('blob:crosstab-test')
+  const revoke = vi.fn()
+  vi.stubGlobal('URL', class extends URL { static createObjectURL = create; static revokeObjectURL = revoke })
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  return {
+    create,
+    async download() {
+      const before = create.mock.calls.length
+      fireEvent.click(screen.getByTestId('crosstab-export'))
+      expect(create).toHaveBeenCalledTimes(before + 1)
+      const blob = create.mock.calls[before][0]
+      expect(blob).toBeInstanceOf(Blob)
+      expect(blob.type).toBe('text/csv;charset=utf-8')
+      expect(click.mock.instances[before].download).toBe('crosstab-d-r3.csv')
+      expect(revoke).toHaveBeenLastCalledWith('blob:crosstab-test')
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsText(blob)
+      })
+    },
+  }
+}
+
+async function chooseMissingPolicy(label: string) {
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'クロス集計の欠損の扱い' }))
+  const option = await screen.findByText(label, { selector: '.ant-select-item-option-content' })
+  fireEvent.click(option)
+}
+
+// Allow CI headroom for this complete real-control draft/rerun/export flow.
+it('downloads completed inputs across draft edits and pending reruns, then replaces them with the successful submission', async () => {
+  const downloads = captureCsvDownloads()
+  vi.mocked(api.post).mockResolvedValue(surveyResult())
+  mount()
+  await chooseInline(roles.row, 'row'); await chooseInline(roles.column, 'col'); await chooseInline(roles.weight, 'weightRatio')
+  fireEvent.click(screen.getByTestId('crosstab-run'))
+  await screen.findByTestId('crosstab-cell-r-c')
+  const completed = await downloads.download()
+  expect(completed).toContain('# missingPolicy,exclude\n# rowVariableId,row\n# colVariableId,col')
+
+  await chooseInline(roles.row, 'col'); await chooseInline(roles.column, 'legacy')
+  await chooseMissingPolicy('欠損を含める')
+  expect(await downloads.download()).toBe(completed)
+  expect(api.post).toHaveBeenCalledTimes(1)
+
+  let resolve!: (value: ReturnType<typeof surveyResult>) => void
+  vi.mocked(api.post).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  fireEvent.click(screen.getByTestId('crosstab-run'))
+  expect(api.post).toHaveBeenLastCalledWith('/summaries/crosstab', expect.objectContaining({
+    rowVariableId: 'col', colVariableId: 'legacy', context: expect.objectContaining({ missingPolicy: 'include_missing' }),
+  }))
+  // The response must retain its own submission even if the next draft changes
+  // while it is pending. The old downloadable result retains its own input too.
+  await chooseInline(roles.row, 'legacy'); await chooseInline(roles.column, 'row')
+  await chooseMissingPolicy('非該当を分離')
+  expect(await downloads.download()).toBe(completed)
+  const replacement = surveyResult()
+  replacement.cells[0].count = 7
+  replacement.rowTotals[0].count = 7
+  replacement.colTotals[0].count = 7
+  replacement.grandTotal.count = 7
+  replacement.weightDiagnostics.weightSum = 7
+  await act(async () => { resolve(replacement) })
+  const replaced = await downloads.download()
+  expect(replaced).toContain('# missingPolicy,include_missing\n# rowVariableId,col\n# colVariableId,legacy')
+  expect(replaced.split('\n')[1]).toBe('r,R,c,C,2,7,100,100,100,2,,,2')
+  expect(replaced.match(/^# schemaRevision,/gm)).toHaveLength(1)
+  expect(replaced).toContain('# weightType,survey')
+  expect(api.post).toHaveBeenCalledTimes(2)
+  expect(api.put).not.toHaveBeenCalled()
+}, 10000)
+
+// Allow CI headroom for the complete failed-rerun/retry export flow.
+it('disables export after a failed rerun and captures the successful retry instead of the failed inputs', async () => {
+  const downloads = captureCsvDownloads()
+  vi.mocked(api.post).mockResolvedValue(surveyResult())
+  mount()
+  await chooseInline(roles.row, 'row'); await chooseInline(roles.column, 'col'); await chooseInline(roles.weight, 'weightRatio')
+  fireEvent.click(screen.getByTestId('crosstab-run'))
+  await screen.findByTestId('crosstab-cell-r-c')
+  await downloads.download()
+
+  await chooseInline(roles.row, 'col'); await chooseInline(roles.column, 'legacy')
+  await chooseMissingPolicy('欠損を含める')
+  vi.mocked(api.post).mockRejectedValueOnce(new Error('Rerun failed'))
+  fireEvent.click(screen.getByTestId('crosstab-run'))
+  await screen.findByText('Rerun failed')
+  expect(screen.getByTestId('crosstab-export')).toBeDisabled()
+  expect(screen.queryByTestId('crosstab-cell-r-c')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('crosstab-export'))
+  expect(downloads.create).toHaveBeenCalledTimes(1)
+
+  await chooseInline(roles.row, 'legacy'); await chooseInline(roles.column, 'row')
+  await chooseMissingPolicy('非該当を分離')
+  fireEvent.click(screen.getByTestId('crosstab-run'))
+  await screen.findByTestId('crosstab-cell-r-c')
+  const retried = await downloads.download()
+  expect(retried).toContain('# missingPolicy,separate_not_applicable\n# rowVariableId,legacy\n# colVariableId,row')
+  expect(retried).not.toContain('# missingPolicy,include_missing')
+  expect(api.post).toHaveBeenCalledTimes(3)
+  expect(api.put).not.toHaveBeenCalled()
+}, 10000)
