@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { afterEach, expect, it, vi } from 'vitest'
+import { datasetLoaded, selectionReducer } from '../src/app/store'
 import { api, type CodebookColumn } from '../src/api/client'
 import { codebookSlice, fetchCodebookThunk, saveCodebookThunk, draftColumnUpdated } from '../src/features/dataset/codebookSlice'
 
@@ -9,7 +10,9 @@ const saved = { ...draft, categoryOrder: ['1', '2', '3', '4', '5', '6'] }
 afterEach(() => vi.restoreAllMocks())
 
 function setup() {
-  const local = configureStore({ reducer: { codebook: codebookSlice.reducer } })
+  const local = configureStore({ reducer: { codebook: codebookSlice.reducer, selection: selectionReducer },
+    middleware: get => get({ serializableCheck: false }) })
+  local.dispatch(datasetLoaded({ datasetId: 'd', name: 'D', rowIds: ['r1'], dataRevision: 1 }))
   local.dispatch(fetchCodebookThunk.pending('load', 'd'))
   local.dispatch(fetchCodebookThunk.fulfilled({ datasetId: 'd', schemaRevision: 1, columns: [draft] }, 'load', 'd'))
   return local

@@ -15,7 +15,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 function mountHistory() {
   const base = store.getState()
   const state = { ...base, selection: { ...base.selection, datasetId: 'iris', dataRevision: 2 },
-    provenance: { ...base.provenance, datasetId: 'iris', dataRevision: 2, schemaRevision: 2,
+    codebook: { ...base.codebook, datasetId: 'iris', schemaRevision: 2 },
+    provenance: { ...base.provenance, ready: true, datasetId: 'iris', dataRevision: 2, schemaRevision: 2,
       canUndo: true, canRedo: false, rawDataRevision: 1, maskRevision: 0,
       loading: false, error: null, steps: [] } }
   const local = configureStore({ reducer: (current = state) => current,

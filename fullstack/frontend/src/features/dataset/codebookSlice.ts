@@ -74,7 +74,10 @@ export const fetchCodebookThunk = createAsyncThunk(
     if (current.fetchRequestId !== requestId || current.datasetId !== datasetId)
       return rejectWithValue('CODEBOOK_FETCH_SUPERSEDED')
     return res
-  }
+  },
+  // Dataset installation uses codebookReceived; fetches only refresh the
+  // selected workspace. Reject foreign callbacks before pending clears drafts.
+  { condition: (datasetId, { getState }) => (getState() as RootState).selection.datasetId === datasetId },
 )
 
 export const saveCodebookThunk = createAsyncThunk(

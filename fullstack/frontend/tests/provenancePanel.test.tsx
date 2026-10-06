@@ -17,7 +17,8 @@ it('renders provenance steps with revert actions', async () => {
   const base = store.getState()
   const state: any = { ...base,
     selection: { ...base.selection, datasetId: 'd', dataRevision: 3 },
-    provenance: {
+    codebook: { ...base.codebook, datasetId: 'd', schemaRevision: 1 },
+    provenance: { ...base.provenance, ready: true,
       datasetId: 'd', dataRevision: 3, schemaRevision: 1, currentOperationId: 'op-2',
       rawDataRevision: 1, maskRevision: 1, maskFilter: 'all', loading: false, error: null,
       steps: [
