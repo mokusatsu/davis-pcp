@@ -14,6 +14,12 @@ export interface CodebookState {
   saveRequestId: string | null
   /** One canonical read may precede the save response; a second change supersedes it. */
   saveSnapshotAdvanced: boolean
+  /** Weight writes own their pending state separately from the column editor. */
+  weightRequestId: string | null
+  weightRequestDataRevision: number | null
+  weightSnapshotAdvanced: boolean
+  isWeightSaving: boolean
+  weightNeedsRefresh: boolean
   schemaRevision: number
   licenseText: string
   licenseRevision: number
@@ -45,6 +51,11 @@ const initialState: CodebookState = {
   fetchRequestId: null,
   saveRequestId: null,
   saveSnapshotAdvanced: false,
+  weightRequestId: null,
+  weightRequestDataRevision: null,
+  weightSnapshotAdvanced: false,
+  isWeightSaving: false,
+  weightNeedsRefresh: false,
   schemaRevision: 1,
   licenseText: '',
   licenseRevision: 1,
@@ -131,7 +142,9 @@ type CodebookSaveResult = Awaited<ReturnType<typeof updateCodebook>> & {
 
 /** Only the live save producer may publish this synchronous installation. */
 export const codebookSaveAccepted = createAction('codebook/saveAccepted',
-  (payload: CodebookSaveResult, requestId: string) => ({ payload, meta: { requestId } }))
+  (payload: CodebookSaveResult, requestId: string, weightRequestId: string | null = null) => ({
+    payload, meta: { requestId, weightRequestId },
+  }))
 
 export const saveCodebookThunk = createAsyncThunk(
   'codebook/save',
@@ -190,7 +203,7 @@ export const saveCodebookThunk = createAsyncThunk(
     // RTK's later fulfilled acknowledgment has a microtask gap and must not
     // install this snapshot in any slice. Supersession does not undo the PUT.
     if (!ownsSave(result)) return rejectWithValue({ code: 'CODEBOOK_SAVE_SUPERSEDED', committed: 'confirmed' })
-    dispatch(codebookSaveAccepted(result, requestId))
+    dispatch(codebookSaveAccepted(result, requestId, state.weightRequestId))
     return result
   },
   { condition: (_, { getState }) => {
@@ -220,26 +233,65 @@ export const saveLicenseTextThunk = createAsyncThunk(
  * of the data, not of one crosstab. Declaring it bumps the schema revision, so
  * a cached result computed under the old meaning can never be reused.
  */
-export const saveWeightConfigThunk = createAsyncThunk(
+type WeightSaveResult = Awaited<ReturnType<typeof updateCodebook>> & Required<SavedSnapshot>
+
+/** Fan out a live weight commit atomically; fulfilled is only an acknowledgment. */
+export const codebookWeightAccepted = createAction('codebook/weightAccepted',
+  (payload: WeightSaveResult, requestId: string, weightSelectionRevision: number, editorSaveRequestId: string | null) => ({
+    payload, meta: { requestId, weightSelectionRevision, editorSaveRequestId },
+  }))
+
+export const saveWeightConfigThunk = createAsyncThunk<WeightSaveResult,
+  { weightConfig: WeightConfig | null; surveyDesign?: SurveyDesignSpec | null },
+  { state: RootState; rejectValue: { code: 'CODEBOOK_WEIGHT_SUPERSEDED'; committed: 'unknown' | 'confirmed' };
+    pendingMeta: { dataRevision: number } }
+>(
   'codebook/saveWeightConfig',
   async (
     payload: { weightConfig: WeightConfig | null; surveyDesign?: SurveyDesignSpec | null },
-    { getState }
+    { getState, dispatch, requestId, rejectWithValue, signal }
   ) => {
-    const state = (getState() as RootState).codebook
+    const started = getState() as RootState
+    const state = started.codebook
     if (!state.datasetId) throw new Error('No dataset loaded')
-    const res = await updateCodebook(state.datasetId, [], {
-      weightConfig: payload.weightConfig,
-      ...(payload.surveyDesign !== undefined ? { surveyDesign: payload.surveyDesign } : {}),
-      expectedSchemaRevision: state.schemaRevision,
-    })
-    return {
-      ...res,
-      datasetId: state.datasetId,
+    const ownsWeight = (response?: WeightSaveResult) => {
+      const current = getState() as RootState
+      return !signal.aborted && current.codebook.weightRequestId === requestId
+        && current.codebook.datasetId === state.datasetId && current.selection.datasetId === state.datasetId
+        && current.selection.revision === started.selection.revision
+        && current.selection.dataRevision === started.selection.dataRevision
+        && (sameSavedSnapshot(current.codebook, state)
+          || (!!response && sameSavedSnapshot(current.codebook, response)))
+    }
+    let res: Awaited<ReturnType<typeof updateCodebook>>
+    try {
+      res = await updateCodebook(state.datasetId, [], {
+        weightConfig: payload.weightConfig,
+        ...(payload.surveyDesign !== undefined ? { surveyDesign: payload.surveyDesign } : {}),
+        expectedSchemaRevision: state.schemaRevision,
+      })
+    } catch (error) {
+      if (!ownsWeight()) return rejectWithValue({ code: 'CODEBOOK_WEIGHT_SUPERSEDED', committed: 'unknown' })
+      throw error
+    }
+    const result: WeightSaveResult = {
+      ...res, datasetId: state.datasetId,
+      columns: res.codebook.columns,
+      multiResponseGroups: res.codebook.multiResponseGroups ?? [],
       weightConfig: res.codebook.weightConfig ?? null,
       surveyDesign: res.codebook.surveyDesign ?? null,
     }
-  }
+    if (!ownsWeight(result)) return rejectWithValue({ code: 'CODEBOOK_WEIGHT_SUPERSEDED', committed: 'confirmed' })
+    // No asynchronous boundary between ownership validation and ALL consumers.
+    dispatch(codebookWeightAccepted(result, requestId, started.globalVariables.weightSelectionRevision, state.saveRequestId))
+    return result
+  },
+  { getPendingMeta: (_, { getState }) => ({ dataRevision: getState().selection.dataRevision }),
+    condition: (_, { getState }) => {
+      const { codebook, selection } = getState()
+      return !!codebook.datasetId && codebook.datasetId === selection.datasetId
+        && !codebook.isWeightSaving && !codebook.weightNeedsRefresh
+    } },
 )
 
 function isColumnEqual(left: CodebookColumn[], right: CodebookColumn[]): boolean {
@@ -398,7 +450,21 @@ export const codebookSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase('selection/datasetValuesUpdated', (state, action: PayloadAction<{ datasetId: string; dataRevision: number }, 'selection/datasetValuesUpdated'>) => {
+        if (state.datasetId !== action.payload.datasetId || state.weightRequestDataRevision === null
+          || action.payload.dataRevision <= state.weightRequestDataRevision) return
+        state.weightRequestId = null
+        state.weightRequestDataRevision = null
+        state.weightSnapshotAdvanced = false
+        state.isWeightSaving = false
+        state.weightNeedsRefresh = false
+      })
       .addCase('selection/datasetLoaded', state => {
+        state.weightRequestId = null
+        state.weightRequestDataRevision = null
+        state.weightSnapshotAdvanced = false
+        state.isWeightSaving = false
+        state.weightNeedsRefresh = false
         state.fetchRequestId = null
         state.isLoading = false
         state.saveRequestId = null
@@ -414,6 +480,11 @@ export const codebookSlice = createSlice({
         state.datasetId = nextDatasetId
 
         if (isDifferentDataset) {
+          state.weightRequestId = null
+          state.weightRequestDataRevision = null
+          state.weightSnapshotAdvanced = false
+          state.isWeightSaving = false
+          state.weightNeedsRefresh = false
           state.saveRequestId = null
           state.saveSnapshotAdvanced = false
           state.isSaving = false
@@ -440,11 +511,15 @@ export const codebookSlice = createSlice({
         // the producer accepts it only if the full saved snapshot still agrees.
         // Changed reads release busy ownership so a newer save can replace it.
         if (!sameSavedSnapshot(state, action.payload)) {
+          if (state.weightSnapshotAdvanced) state.weightRequestId = null
+          state.weightSnapshotAdvanced = true
+          state.isWeightSaving = false
           if (state.saveSnapshotAdvanced) state.saveRequestId = null
           state.saveSnapshotAdvanced = true
           state.isSaving = false
         }
         state.isLoading = false
+        state.weightNeedsRefresh = false
         state.schemaRevision = action.payload.schemaRevision
         if ((action.payload.licenseRevision ?? 1) >= (state.licenseRevision ?? 1)) {
           state.licenseText = action.payload.licenseText ?? ''
@@ -478,6 +553,15 @@ export const codebookSlice = createSlice({
 
         state.isSaving = false
         state.saveSnapshotAdvanced = true
+        // As with weight acceptance, retire only the receipt that existed at
+        // submission. A canonical read may already have enabled a NEW weight PUT.
+        if (action.meta.weightRequestId && state.weightRequestId === action.meta.weightRequestId) {
+          state.weightRequestId = null
+          state.weightRequestDataRevision = null
+          state.weightSnapshotAdvanced = false
+          state.isWeightSaving = false
+          state.weightNeedsRefresh = false
+        }
         state.fetchRequestId = null
         state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
@@ -505,14 +589,42 @@ export const codebookSlice = createSlice({
         state.licenseText = action.payload.licenseText
         state.licenseRevision = action.payload.licenseRevision
       })
-      .addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
-        if (action.payload.datasetId !== state.datasetId) return
-        state.saveRequestId = null
-        state.saveSnapshotAdvanced = false
-        state.isSaving = false
+      .addCase(saveWeightConfigThunk.pending, (state, action) => {
+        state.weightRequestId = action.meta.requestId
+        state.weightRequestDataRevision = action.meta.dataRevision
+        state.weightSnapshotAdvanced = false
+        state.isWeightSaving = true
+      })
+      .addCase(codebookWeightAccepted, (state, action) => {
+        if (state.weightRequestId !== action.meta.requestId || action.payload.datasetId !== state.datasetId) return
+        state.isWeightSaving = false
+        state.weightSnapshotAdvanced = true
+        state.weightNeedsRefresh = false
+        // Retire only the editor receipt that already existed at submission.
+        // A later editor Save owns its own busy state and completion notice.
+        if (action.meta.editorSaveRequestId && state.saveRequestId === action.meta.editorSaveRequestId) {
+          state.saveRequestId = null
+          state.saveSnapshotAdvanced = false
+          state.isSaving = false
+        }
+        state.fetchRequestId = null
+        state.isLoading = false
         state.schemaRevision = action.payload.schemaRevision
         state.weightConfig = action.payload.weightConfig
         state.surveyDesign = action.payload.surveyDesign
+      })
+      .addCase(saveWeightConfigThunk.rejected, (state, action) => {
+        if (state.weightRequestId !== action.meta.requestId) return
+        state.isWeightSaving = false
+        // A lost/aborted response may have committed. Read, never retry the PUT
+        // blindly. A superseded or already-canonical receipt needs no lock.
+        if (!state.weightSnapshotAdvanced && action.payload?.code !== 'CODEBOOK_WEIGHT_SUPERSEDED') {
+          state.weightNeedsRefresh = true
+          // A read already in flight may predate the uncertain write. Recovery
+          // must observe a new canonical GET after this failed acknowledgment.
+          state.fetchRequestId = null
+          state.isLoading = false
+        }
       })
   },
 })

@@ -277,6 +277,8 @@ export interface GlobalVariableState {
   variableMeta: Record<string, VariableMetaItem>
   /** Survey weight column (columnId) for the active dataset. Null = unweighted. */
   weightColumnId: string | null
+  /** Live intent generation; never replay a persisted generation on restore. */
+  weightSelectionRevision: number
 }
 
 const initialGlobalVariables: GlobalVariableState = {
@@ -287,6 +289,7 @@ const initialGlobalVariables: GlobalVariableState = {
   targetVariableId: null,
   variableMeta: {},
   weightColumnId: null,
+  weightSelectionRevision: 0,
 }
 
 export const globalVariablesSlice = createSlice({
@@ -300,6 +303,7 @@ export const globalVariablesSlice = createSlice({
       if (state.datasetId && action.payload.datasetId && state.datasetId !== action.payload.datasetId) {
         state.weightColumnId = null
       }
+      state.weightSelectionRevision = (state.weightSelectionRevision ?? 0) + 1
       state.allVariables = action.payload.variables
       state.datasetId = action.payload.datasetId ?? null
       state.activeEntities = action.payload.variables.map(name => ({ kind: 'column', columnId: action.payload.meta?.[name]?.columnId ?? name }))
@@ -331,14 +335,18 @@ export const globalVariablesSlice = createSlice({
     },
     weightColumnSet(state, action: PayloadAction<{ columnId: string | null; datasetId?: string }>) {
       if (action.payload.datasetId && state.datasetId && action.payload.datasetId !== state.datasetId) return
+      state.weightSelectionRevision = (state.weightSelectionRevision ?? 0) + 1
       state.weightColumnId = action.payload.columnId
     },
     weightColumnCleared(state) {
+      state.weightSelectionRevision = (state.weightSelectionRevision ?? 0) + 1
       state.weightColumnId = null
     },
   },
   extraReducers: builder => {
-    builder.addCase(analysisWorkspaceRestored, (_state, { payload }) => payload.globalVariables)
+    builder.addCase(analysisWorkspaceRestored, (state, { payload }) => ({
+      ...payload.globalVariables, weightSelectionRevision: (state.weightSelectionRevision ?? 0) + 1,
+    }))
     for (const actionCreator of [codebookReadAccepted, codebookSaveAccepted]) {
       builder.addCase(actionCreator, (state, action) => {
         if (state.datasetId && state.datasetId !== action.payload.datasetId) return
@@ -354,8 +362,9 @@ export const globalVariablesSlice = createSlice({
       if (state.weightColumnId && !ids.has(state.weightColumnId)) state.weightColumnId = null
     })
     // Declaring a weight's meaning changes no column, so there is nothing to reconcile.
-    builder.addCase(saveWeightConfigThunk.fulfilled, (state, action) => {
-      if (state.datasetId && state.datasetId !== action.payload.datasetId) return
+    builder.addCase(codebookWeightAccepted, (state, action) => {
+      if (state.datasetId !== action.payload.datasetId
+        || state.weightSelectionRevision !== action.meta.weightSelectionRevision) return
       const declared = action.payload.weightConfig?.weightColumnId
       if (state.weightColumnId && declared && state.weightColumnId !== declared) state.weightColumnId = declared
     })
@@ -528,7 +537,7 @@ export function selectEffectiveRowIds(state: RootState): string[] {
 }
 
 import {
-  codebookSlice, codebookReadAccepted, codebookSaveAccepted, saveWeightConfigThunk,
+  codebookSlice, codebookReadAccepted, codebookSaveAccepted, codebookWeightAccepted,
 } from '../features/dataset/codebookSlice'
 import { provenanceReducer } from '../features/dataset/provenanceSlice'
 

@@ -1,6 +1,6 @@
-import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
+import { useAnalysisScope, useAnalysisViewActive, AnalysisScopeSummary, captureAnalysisRunContext } from '../selection/analysisScope'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector, useStore } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert, Button, Card, Col, Radio, Row, Segmented, Select, Space, Statistic, Tag, Typography, message,
@@ -11,7 +11,7 @@ import { api } from '../../api/client'
 import type { WeightType } from '../../api/client'
 import SelectColumn from '../common/ColumnSelect'
 import { useCodebook } from '../dataset/useCodebookColumn'
-import { saveWeightConfigThunk } from '../dataset/codebookSlice'
+import { fetchCodebookThunk, sameSavedSnapshot, saveWeightConfigThunk } from '../dataset/codebookSlice'
 import { useGraphExpansion } from '../common/GraphExpansion'
 import CrosstabTable, { type CrosstabCell, type DisplayMode } from './CrosstabTable'
 
@@ -160,9 +160,11 @@ export default function CrosstabPage() {
   const { session } = useGraphExpansion()
   const focused = session !== null
   const dispatch = useDispatch<AppDispatch>()
+  const store = useStore<RootState>()
   const navigate = useNavigate()
   const selection = useSelector((s: RootState) => s.selection)
   const analysisScope = useAnalysisScope()
+  const viewActive = useAnalysisViewActive()
   const { columns, schemaRevision, weightConfig, surveyDesign } = useCodebook()
   const [rowVariable, setRowVariable] = useState<string | null>(null)
   const [colVariable, setColVariable] = useState<string | null>(null)
@@ -184,6 +186,27 @@ export default function CrosstabPage() {
   const selectionSequence = useRef(0)
   const dataKeyRef = useRef('')
   const datasetId = selection.datasetId
+  const weightState = useSelector((s: RootState) => s.codebook)
+  const weightPending = weightState.isWeightSaving || weightState.weightNeedsRefresh
+  const mounted = useRef(false)
+  const weightNoticeSequence = useRef(0)
+  const inputIntent = useRef(0)
+  // Event handlers advance this synchronously, including same-tick roundtrips.
+  // Rendered external changes (scope/install/data) also detach old callbacks.
+  // Schema is checked against the accepted receipt instead: our own PUT/read
+  // may legitimately advance it before the awaited RTK acknowledgment arrives.
+  const noticeInput = JSON.stringify([viewActive, datasetId, selection.revision, selection.dataRevision,
+    rowVariable, colVariable, weightColumn, inference, missingPolicy,
+    analysisScope.contextRows, analysisScope.sampling?.sampleId])
+  const noticeInputRef = useRef(noticeInput)
+  if (noticeInputRef.current !== noticeInput) {
+    noticeInputRef.current = noticeInput
+    inputIntent.current++
+  }
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; weightNoticeSequence.current++ }
+  }, [])
 
   const globalVars = useSelector(selectOrdinaryVariables)
   // selectOrdinaryVariables derives its lists from the codebook, which the
@@ -225,32 +248,68 @@ export default function CrosstabPage() {
     return surveyDesign.weightColumnId === selectedWeight.columnId ? surveyDesign : null
   }, [selectedWeight, surveyDesign])
 
+  const saveWeight = useCallback(async (
+    payload: Parameters<typeof saveWeightConfigThunk>[0], failureMessage: string, resetInference = false,
+  ) => {
+    const started = store.getState()
+    if (started.codebook.isWeightSaving || started.codebook.weightNeedsRefresh) return
+    const sequence = ++weightNoticeSequence.current
+    const intent = inputIntent.current
+    const request = dispatch(saveWeightConfigThunk(payload))
+    const result = await request
+    const current = store.getState()
+    if (!mounted.current || sequence !== weightNoticeSequence.current || intent !== inputIntent.current
+      || current.selection.datasetId !== started.selection.datasetId
+      || current.selection.revision !== started.selection.revision
+      || current.selection.dataRevision !== started.selection.dataRevision
+      || current.codebook.datasetId !== started.codebook.datasetId
+      || current.codebook.weightRequestId !== request.requestId) return
+    if (saveWeightConfigThunk.fulfilled.match(result)) {
+      if (!sameSavedSnapshot(current.codebook, result.payload)) return
+      if (resetInference) setInference('auto')
+    } else if (!result.meta.condition && !result.meta.aborted
+      && (result.payload as { code?: string } | undefined)?.code !== 'CODEBOOK_WEIGHT_SUPERSEDED'
+      && sameSavedSnapshot(current.codebook, started.codebook)) {
+      message.error(failureMessage)
+    }
+  }, [dispatch, store])
+
   const declareWeightType = useCallback(async (weightType: WeightType) => {
     if (!selectedWeight) return
-    const result = await dispatch(saveWeightConfigThunk({
+    await saveWeight({
       weightConfig: { weightColumnId: selectedWeight.columnId, weightType },
       ...(weightType === 'survey' && !designForWeight
         ? { surveyDesign: { weightColumnId: selectedWeight.columnId } }
         : {}),
-    }))
-    if (saveWeightConfigThunk.rejected.match(result)) {
-      message.error('ウェイトの種類を保存できませんでした。')
-      return
-    }
-    if (weightType === 'survey') setInference('auto')
-  }, [dispatch, selectedWeight, designForWeight])
+    }, 'ウェイトの種類の保存結果を確認できませんでした。', weightType === 'survey')
+  }, [saveWeight, selectedWeight, designForWeight])
 
   const setDesignColumn = useCallback(async (key: 'strataColumnId' | 'psuColumnId', name: string | null) => {
     if (!selectedWeight) return
     const columnId = name ? columns.find((c) => c.name === name)?.columnId ?? null : null
-    const result = await dispatch(saveWeightConfigThunk({
+    await saveWeight({
       weightConfig: { weightColumnId: selectedWeight.columnId, weightType: 'survey' },
       surveyDesign: { ...(designForWeight ?? {}), weightColumnId: selectedWeight.columnId, [key]: columnId },
-    }))
-    if (saveWeightConfigThunk.rejected.match(result)) {
-      message.error('調査設計を保存できませんでした。')
+    }, '調査設計の保存結果を確認できませんでした。')
+  }, [saveWeight, selectedWeight, columns, designForWeight])
+
+  const refreshWeight = useCallback(async () => {
+    if (!datasetId) return
+    const started = store.getState()
+    const sequence = ++weightNoticeSequence.current
+    const intent = inputIntent.current
+    const request = dispatch(fetchCodebookThunk(datasetId))
+    const result = await request
+    const current = store.getState()
+    if (mounted.current && sequence === weightNoticeSequence.current && intent === inputIntent.current
+      && current.selection.revision === started.selection.revision
+      && current.selection.dataRevision === started.selection.dataRevision
+      && current.selection.datasetId === datasetId && current.codebook.fetchRequestId === request.requestId
+      && fetchCodebookThunk.rejected.match(result) && !result.meta.aborted && !result.meta.condition
+      && result.payload !== 'CODEBOOK_FETCH_SUPERSEDED') {
+      message.error('最新のウェイト設定を確認できませんでした。もう一度読み込んでください。')
     }
-  }, [dispatch, selectedWeight, columns, designForWeight])
+  }, [datasetId, dispatch, store])
 
   const dataKey = JSON.stringify([datasetId, selection.dataRevision, schemaRevision])
   dataKeyRef.current = dataKey
@@ -261,6 +320,8 @@ export default function CrosstabPage() {
     || result.meta.dataRevision !== selection.dataRevision || result.meta.schemaRevision !== schemaRevision)
   const runCrosstab = useCallback(async () => {
     if (!datasetId || !rowVariable || !colVariable || analysisScope.count === 0) return
+    const live = store.getState()
+    if (live.codebook.isWeightSaving || live.codebook.weightNeedsRefresh) return
     const version = ++requestVersion.current
     selectionSequence.current += 1
     setCellLoading(false)
@@ -297,7 +358,7 @@ export default function CrosstabPage() {
     }
   }, [datasetId, rowVariable, colVariable, weightColumn, missingPolicy,
     selection.dataRevision, schemaRevision, analysisScope.contextRows, analysisScope.scopeKey,
-    analysisScope.label, analysisScope.count, inputContext, inference, dataKey])
+    analysisScope.label, analysisScope.count, inputContext, inference, dataKey, store])
 
   // Switching the test on must actually run it — the button's whole promise is
   // that the design-based result appears, and the request now differs.
@@ -404,7 +465,7 @@ export default function CrosstabPage() {
               style={{ minWidth: 220 }}
               placeholder="行変数を選択"
               value={rowVariable}
-              onChange={(v) => setRowVariable(v as string)}
+              onChange={(v) => { inputIntent.current++; setRowVariable(v as string) }}
               options={categoricalOptions}
             />
             <span>表頭</span>
@@ -413,7 +474,7 @@ export default function CrosstabPage() {
               style={{ minWidth: 220 }}
               placeholder="列変数を選択"
               value={colVariable}
-              onChange={(v) => setColVariable(v as string)}
+              onChange={(v) => { inputIntent.current++; setColVariable(v as string) }}
               options={categoricalOptions}
             />
             <SelectColumn
@@ -422,7 +483,7 @@ export default function CrosstabPage() {
               placeholder="ウェイトなし"
               allowClear
               value={weightColumn}
-              onChange={(v) => { setWeightColumn(v ?? null); setResult(null); setResultInput(null); if (!v) setInference('auto') }}
+              onChange={(v) => { inputIntent.current++; setWeightColumn(v ?? null); setResult(null); setResultInput(null); if (!v) setInference('auto') }}
               options={weightOptions}
             />
             <AnalysisScopeSummary label="次回の集計対象" />
@@ -430,7 +491,7 @@ export default function CrosstabPage() {
               data-testid="crosstab-missing-policy"
               style={{ minWidth: 180 }}
               value={missingPolicy}
-              onChange={(v) => setMissingPolicy(v)}
+              onChange={(v) => { inputIntent.current++; setMissingPolicy(v) }}
               options={[
                 { value: 'exclude', label: '欠損を除外' },
                 { value: 'include_missing', label: '欠損を含める' },
@@ -443,14 +504,24 @@ export default function CrosstabPage() {
               loading={loading}
               // An undeclared weight cannot be used at all, so asking the server
               // only to be told so would waste the round trip.
-              disabled={!rowVariable || !colVariable || analysisScope.count === 0 || Boolean(selectedWeight && !declaredType)}
-              onClick={() => void runCrosstab()}
+              disabled={weightPending || !rowVariable || !colVariable || analysisScope.count === 0 || Boolean(selectedWeight && !declaredType)}
+              onClick={() => { inputIntent.current++; void runCrosstab() }}
             >
               集計実行
             </Button>
             <Button data-testid="crosstab-export" disabled={!result} onClick={handleExport}>CSV出力</Button>
             <Button disabled={!result} onClick={() => navigate('/pcp')}>PCPへ移動</Button>
           </Space>
+          {weightState.isWeightSaving && <Typography.Text role="status">ウェイト設定を保存中…</Typography.Text>}
+          {weightState.weightNeedsRefresh && <Alert
+            type="warning"
+            data-testid="crosstab-weight-recovery"
+            message="ウェイト設定の保存結果を確認してください"
+            description="応答を確認できなくても、保存が完了している場合があります。最新の設定を読み込んでから、必要な変更を指定してください。"
+            action={<Button data-testid="crosstab-weight-refresh" loading={weightState.isLoading}
+              onClick={() => void refreshWeight()}>最新の設定を読み込む</Button>}
+            style={{ marginTop: 8 }}
+          />}
           {!rowVariable || !colVariable ? (
             <Alert type="info" message="行変数と列変数を選択してください。" style={{ marginTop: 8 }} />
           ) : null}
@@ -467,6 +538,7 @@ export default function CrosstabPage() {
                   <Radio.Group
                     data-testid="crosstab-weight-type"
                     value={declaredType}
+                    disabled={weightPending}
                     onChange={(e) => void declareWeightType(e.target.value as WeightType)}
                   >
                     <Radio value="survey">調査ウェイト（母集団代表性の補正）</Radio>
@@ -485,6 +557,7 @@ export default function CrosstabPage() {
               <span>層（strata）</span>
               <SelectColumn
                 data-testid="crosstab-strata"
+                disabled={weightPending}
                 style={{ minWidth: 180 }}
                 placeholder="未指定"
                 allowClear
@@ -497,6 +570,7 @@ export default function CrosstabPage() {
               <span>PSU</span>
               <SelectColumn
                 data-testid="crosstab-psu"
+                disabled={weightPending}
                 style={{ minWidth: 180 }}
                 placeholder="未指定"
                 allowClear
@@ -614,7 +688,8 @@ export default function CrosstabPage() {
                       <Button
                         data-testid="crosstab-rao-scott"
                         size="small"
-                        onClick={() => setInference('rao_scott')}
+                        disabled={weightPending}
+                        onClick={() => { inputIntent.current++; setInference('rao_scott') }}
                       >
                         調査設計を考慮した検定を表示（Rao–Scott）
                       </Button>
