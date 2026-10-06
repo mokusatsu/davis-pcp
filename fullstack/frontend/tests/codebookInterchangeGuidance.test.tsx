@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { notification } from 'antd'
 import { Provider } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -100,9 +100,16 @@ describe('Codebook interchange guidance at the action boundary', () => {
   ] as const)('keeps the export popup inside the scrollbar-excluding viewport: %s', async (_name, widths) => {
     const viewport = mockExportGeometry(widths[0])
     render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
-    fireEvent.click(screen.getByRole('button', { name: /エクスポート/ }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /エクスポート/ })) })
     const menu = await screen.findByRole('menu')
     const popup = menu.closest('.ant-dropdown') as HTMLElement
+    // The menu is positioned during appear preparation, but rc-trigger ignores
+    // resize until that motion finishes. Wait for the open popup before resizing.
+    await waitFor(() => {
+      expect(popup).toBeVisible()
+      expect(popup.style.left).toMatch(/^-?\d+(?:\.\d+)?px$/)
+      expect(popup.className).not.toMatch(/ant-slide-up-(?:appear|enter)/)
+    })
     for (const width of widths) {
       viewport.width = width
       fireEvent.resize(window)
