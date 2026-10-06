@@ -229,6 +229,16 @@ describe('Crosstab setup presentation with real controls', () => {
     expect(again.getByRole('radio', { name: 'row row question' })).toBeChecked()
     expect(again.getByRole('radio', { name: 'legacy legacy question' })).not.toBeChecked()
     await cancel(again)
+    expect(api.post).not.toHaveBeenCalled()
+    expect(api.put).not.toHaveBeenCalled()
+  })
+
+  it('clears a confirmed weight dialog choice and removes dependent design controls without metadata writes', async () => {
+    mount()
+    // Match the completed row/column inputs while keeping their independent
+    // dialog cancellation and reopening in the scenario above.
+    await chooseInline(roles.row, 'row')
+    await chooseInline(roles.column, 'col')
     await choose(roles.weight, 'weightRatio')
     await choose(roles.weight, null)
     expect(screen.getByTestId('crosstab-weight').querySelector('.ant-select-selection-item')).toBeNull()

@@ -186,8 +186,7 @@ async function choose(testId: string, name: string | null) {
   await waitFor(() => expect(dialog).not.toBeVisible())
 }
 
-async function chooseDesign(testId: string, name: string | null, surface: 'inline' | 'dialog') {
-  if (surface === 'dialog') return choose(testId, name)
+async function chooseInline(testId: string, name: string | null) {
   const picker = screen.getByTestId(testId)
   if (name === null) {
     const clear = picker.querySelector('.ant-select-clear')
@@ -204,6 +203,11 @@ async function chooseDesign(testId: string, name: string | null, surface: 'inlin
     })
     fireEvent.click(option)
   }
+}
+
+async function chooseDesign(testId: string, name: string | null, surface: 'inline' | 'dialog') {
+  if (surface === 'dialog') return choose(testId, name)
+  return chooseInline(testId, name)
 }
 
 function expectDesignValue(testId: string, name: string | null) {
@@ -228,10 +232,12 @@ async function expectDesignDialogValue(testId: string, name: string | null) {
   await waitFor(() => expect(dialog).not.toBeVisible())
 }
 
+// Prerequisite inputs use real inline controls. Target dialog, receipt, header,
+// and remount interactions remain explicit in their individual scenarios.
 async function inputs(weightName = 'W1') {
-  await choose('crosstab-row-variable', 'Row')
-  await choose('crosstab-col-variable', 'Col')
-  await choose('crosstab-weight', weightName)
+  await chooseInline('crosstab-row-variable', 'Row')
+  await chooseInline('crosstab-col-variable', 'Col')
+  await chooseInline('crosstab-weight', weightName)
 }
 
 function declareSurvey() {
@@ -363,8 +369,7 @@ describe('Crosstab design pickers project the saved design', () => {
   )
 
   // Keep selection, saved receipt, clear, and both reopened dialog checks in one
-  // flow. Up to seven real picker dialogs need more than 5s on shared CI runners;
-  // only the outer scenario budget changes, not any individual wait/assertion.
+  // flow. Individual receipt and reopened-dialog assertions retain their waits.
   it.each(designPickerCases)('shows $testId accepted $surface selection and clear only after saved receipts',
     async ({ testId, key, name, columnId, surface }) => {
       const server = harness({ declared: true })
@@ -473,8 +478,7 @@ describe('Crosstab weight completion ownership with real controls and store', ()
   })
 
   // Preserve the original failed write across a real remount, two canonical
-  // reads, and retry. Six/seven real picker dialogs can exceed 5s in shared CI;
-  // individual recovery waits still use their normal assertion deadlines.
+  // reads, and retry. Individual recovery waits retain their assertion deadlines.
   it.each([true, false])('keeps unknown-commit recovery across remount, requires GET-only recovery, and permits retry (committed=%s)', async firstWriteCommits => {
     const server = harness({ firstWriteCommits })
     await install('a')
