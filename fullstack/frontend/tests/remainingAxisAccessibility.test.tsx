@@ -244,18 +244,34 @@ async function runEfa(nFactors: number, hasScores: boolean) {
 it('EFA names real axis INPUTs and preserves independent one-based same-factor choices', async () => {
   const view = await runEfa(2, true)
   const [x, y] = axes(view.panel, 'EFA'), ids = [x.id, y.id]
+  const saved = within(view.panel).getByRole('combobox', { name: 'EFAの保存する因子', exact: true })
+  expect(saved).toBeInstanceOf(HTMLInputElement)
+  const savedId = saved.id
+  expect(savedId).not.toBe('')
+  expectValue(saved, 'F1')
+  expect(view.getByPlaceholderText('保存列名')).toHaveValue('efa_f1')
   const expectPlot = (xLabel: string, yLabel: string, xValue: number, yValue: number) => {
     expect(plot('efa-score-figure')).toMatchObject({ xLabel, yLabel,
       points: [{ rowId: 'r1', x: xValue, y: yValue, selected: true },
         { rowId: 'r2', x: -xValue, y: -yValue, selected: false }] })
   }
   expectPlot('F1', 'F2', 11, 22)
+  await chooseAxis(saved, 'F1', 'F2')
+  expectValue(saved, 'F2')
+  expectValue(x, 'F1'); expectValue(y, 'F2'); expectPlot('F1', 'F2', 11, 22)
   await chooseAxis(x, 'F1', 'F2')
   expectValue(x, 'F2'); expectValue(y, 'F2'); expectPlot('F2', 'F2', 22, 22)
   await chooseAxis(y, 'F2', 'F1')
   expectValue(x, 'F2'); expectValue(y, 'F1'); expectPlot('F2', 'F1', 22, 11)
   await chooseAxis(x, 'F2', 'F1')
   expectPlot('F1', 'F1', 11, 11)
+  expectValue(saved, 'F2')
+  await chooseAxis(saved, 'F2', 'F1')
+  expectValue(saved, 'F1')
+  expectValue(x, 'F1'); expectValue(y, 'F1'); expectPlot('F1', 'F1', 11, 11)
+  expect(within(view.panel).getByRole('combobox', { name: 'EFAの保存する因子', exact: true })).toBe(saved)
+  expect(saved.id).toBe(savedId)
+  expect(view.getByPlaceholderText('保存列名')).toHaveValue('efa_f1')
   expect(axes(view.panel, 'EFA')).toEqual([x, y]); expect([x.id, y.id]).toEqual(ids)
   const host = view.getByTestId('graph-host-factor-analysis/scores')
   expect(host).not.toContainElement(x); expect(host).not.toContainElement(y)
@@ -270,10 +286,21 @@ it('EFA names real axis INPUTs and preserves independent one-based same-factor c
 it('EFA names both one-factor INPUTs without requiring score capability', async () => {
   const view = await runEfa(1, false)
   const [x, y] = axes(view.panel, 'EFA')
+  const saved = within(view.panel).getByRole('combobox', { name: 'EFAの保存する因子', exact: true })
+  expect(saved).toBeInstanceOf(HTMLInputElement)
+  const savedId = saved.id
+  expect(savedId).not.toBe('')
+  expectValue(saved, 'F1')
+  await chooseAxis(saved, 'F1', 'F1', 0)
   expectValue(x, 'F1'); expectValue(y, 'F1')
   await chooseAxis(x, 'F1', 'F1', 0)
   await chooseAxis(y, 'F1', 'F1', 0)
   expectValue(x, 'F1'); expectValue(y, 'F1')
+  expectValue(saved, 'F1')
+  expect(within(view.panel).getByRole('combobox', { name: 'EFAの保存する因子', exact: true })).toBe(saved)
+  expect(saved.id).toBe(savedId)
+  expect(view.getByPlaceholderText('保存列名')).toHaveValue('efa_f1')
+  expect(view.getByRole('button', { name: '派生列保存' })).toBeDisabled()
   expect(view.queryByTestId('efa-score-figure')).not.toBeInTheDocument()
   expect(view.fetch).not.toHaveBeenCalled()
   expect(view.run).toHaveBeenCalledTimes(1)
@@ -282,4 +309,5 @@ it('EFA names both one-factor INPUTs without requiring score capability', async 
   expect(view.dispatch).not.toHaveBeenCalled()
   expect(view.local.getState().selection.selectedRowIds).toEqual(['r1'])
   expect(view.result).toEqual(view.original)
+  expect(api.post).not.toHaveBeenCalled()
 })
