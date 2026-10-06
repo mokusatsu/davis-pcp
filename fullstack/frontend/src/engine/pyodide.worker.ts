@@ -6,6 +6,7 @@
 
 import { createSerialQueue } from './serialQueue'
 import { consumePythonResponse } from './pythonResponse'
+import { loadRequiredPackages } from './pyodidePackages'
 
 declare const self: DedicatedWorkerGlobalScope & {
   loadPyodide: (options: { indexURL: string }) => Promise<any>
@@ -69,8 +70,9 @@ async function initPyodide(baseUrl: string) {
     }
 
     postStatus('loading_packages', 0.3, '分析ライブラリ (NumPy, SciPy, Polars, scikit-learn, PyArrow) を読み込み中...')
-    // Load native packages from local pyodide-lock.json
-    await pyodideInstance.loadPackage([
+    // Pyodide 0.27.7 exposes its exact loader lock through this internal field.
+    // Validate it and the full dependency closure before importing Python.
+    await loadRequiredPackages(pyodideInstance, pyodideInstance._api?.lockfile_packages, [
       'numpy',
       'scipy',
       'scikit-learn',
@@ -85,18 +87,18 @@ async function initPyodide(baseUrl: string) {
     postStatus('loading_pure_wheels', 0.65, 'APIフレームワーク (FastAPI, HTTPX, multipart) を展開中...')
     // Unpack pure-python wheels into site-packages from local wheels/ directory
     const wheelsListRes = await fetch(new URL('wheels/manifest.json', baseUrl).href)
-    if (wheelsListRes.ok) {
-      const wheelNames: string[] = await wheelsListRes.json()
-      for (const whl of wheelNames) {
-        console.log(`Unpacking wheel: ${whl}`)
-        const whlRes = await fetch(new URL(`wheels/${whl}`, baseUrl).href)
-        if (whlRes.ok) {
-          const buf = await whlRes.arrayBuffer()
-          pyodideInstance.unpackArchive(buf, 'zip', { extractDir: '/lib/python3.12/site-packages' })
-        } else {
-          console.error(`Failed to fetch wheel ${whl}: ${whlRes.status}`)
-        }
+    if (!wheelsListRes.ok) {
+      throw new Error(`Failed to fetch required wheels/manifest.json: ${wheelsListRes.status}`)
+    }
+    const wheelNames: string[] = await wheelsListRes.json()
+    for (const whl of wheelNames) {
+      console.log(`Unpacking wheel: ${whl}`)
+      const whlRes = await fetch(new URL(`wheels/${whl}`, baseUrl).href)
+      if (!whlRes.ok) {
+        throw new Error(`Failed to fetch required wheel ${whl}: ${whlRes.status}`)
       }
+      const buf = await whlRes.arrayBuffer()
+      pyodideInstance.unpackArchive(buf, 'zip', { extractDir: '/lib/python3.12/site-packages' })
     }
 
     postStatus('loading_backend', 0.85, 'DAVIS-PCP バックエンドコードを展開中...')
