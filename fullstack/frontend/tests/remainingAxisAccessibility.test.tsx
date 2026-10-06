@@ -162,15 +162,16 @@ it.each(correspondenceCases)('$name names real axis INPUTs while retaining numer
   expectPlot(first, second, 10, 20)
   await chooseAxis(x, first, second)
   await waitFor(() => expectPlot(second, first, 20, 10))
-  expectValue(x, second); expectValue(y, second)
-  await chooseAxis(y, second, third)
+  expectValue(x, second); expectValue(y, first)
+  await chooseAxis(y, first, third, 2)
   await waitFor(() => expectPlot(second, third, 20, 30))
-  expectValue(y, third)
+  expectValue(x, second); expectValue(y, third)
   // Selecting X's value for Y retains the already effective Y.
   await chooseAxis(y, third, second, 2)
   expectValue(y, third); expectPlot(second, third, 20, 30)
   await chooseAxis(x, second, first, 2)
   await waitFor(() => expectPlot(first, third, 10, 30))
+  expectValue(x, first); expectValue(y, third)
   expect(view.fetch.mock.calls.map(call => call[3])).toEqual([[1, 2], [2, 1], [2, 3], [1, 3]])
   expect(view.fetch.mock.calls.every(call => call[0] === view.result.resultId)).toBe(true)
   expect(axes(view.panel, test.name)).toEqual([x, y]); expect([x.id, y.id]).toEqual(ids)
@@ -182,6 +183,30 @@ it.each(correspondenceCases)('$name names real axis INPUTs while retaining numer
   expect(view.result).toEqual(view.original)
   expect(vi.mocked(api.post).mock.calls).toEqual([[`/analysis-results/${view.result.resultId}/export`,
     { format: 'json', table: 'members', offset: 0, limit: 5000 }]])
+})
+it.each(correspondenceCases)('$name displays effective Y and restores the retained Y choice when only X changes', async test => {
+  const view = await runCorrespondence(test, 3)
+  const [x, y] = axes(view.panel, test.name), ids = [x.id, y.id]
+  const first = '第1軸 (50.0%)', second = '第2軸 (30.0%)'
+  const expectAxes = (xLabel: string, yLabel: string, xAxis: number, yAxis: number) => {
+    expectValue(x, xLabel); expectValue(y, yLabel)
+    expect(view.fetch).toHaveBeenLastCalledWith(view.result.resultId, 0, 5000, [xAxis, yAxis])
+    expect(plot(`${test.graph}-individual-svg`)).toMatchObject({ xLabel, yLabel,
+      points: [{ id: 'r1', rowId: 'r1', x: xAxis * 10, y: yAxis * 10, selected: true },
+        { id: 'r2', rowId: 'r2', x: xAxis * -10, y: yAxis * -10, selected: false }] })
+  }
+  expectAxes(first, second, 1, 2)
+  await chooseAxis(x, first, second)
+  await waitFor(() => expectAxes(second, first, 2, 1))
+  // No Y interaction: restoring X must reveal the original stored Y choice.
+  await chooseAxis(x, second, first, 2)
+  await waitFor(() => expectAxes(first, second, 1, 2))
+  expect(view.fetch.mock.calls.map(call => call[3])).toEqual([[1, 2], [2, 1], [1, 2]])
+  expect(axes(view.panel, test.name)).toEqual([x, y]); expect([x.id, y.id]).toEqual(ids)
+  expect(view.dispatch).not.toHaveBeenCalled()
+  expect(view.local.getState().selection.selectedRowIds).toEqual(['r1'])
+  expect(view.run).toHaveBeenCalledTimes(1)
+  expect(view.result).toEqual(view.original)
 })
 it.each(correspondenceCases)('$name keeps its named X INPUT and omits Y for rank one', async test => {
   const view = await runCorrespondence(test, 1)

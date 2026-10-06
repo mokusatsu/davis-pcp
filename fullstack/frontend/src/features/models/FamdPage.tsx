@@ -507,7 +507,7 @@ export default function FamdPage(): JSX.Element {
                         {rank >= 2 && (
                           <>
                             <span>Y軸</span>
-                            <Select aria-label="FAMDのY軸" value={axisY} onChange={(v) => setAxisY(v === axisX ? effAxisY : v)} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: famdAxisLabel(rank, ratio, i + 1) }))} style={{ minWidth: 160 }} />
+                            <Select aria-label="FAMDのY軸" value={effAxisY} onChange={(v) => setAxisY(v === axisX ? effAxisY : v)} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: famdAxisLabel(rank, ratio, i + 1) }))} style={{ minWidth: 160 }} />
                           </>
                         )}
                         <Button onClick={() => setOverlay((v) => !v)}>{overlay ? '重ね合わせを解除' : 'カテゴリ点を重ねる'}</Button>
