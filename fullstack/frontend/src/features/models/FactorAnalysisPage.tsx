@@ -818,7 +818,7 @@ export default function FactorAnalysisPage(): JSX.Element {
                     <Button disabled={stale || loading || analysisScope.count === 0 || !result.capabilities.rows} onClick={() => void handlePredict()}>予測</Button>
                     <span>保存する因子:</span>
                     <SelectSetting aria-label="EFAの保存する因子" value={matFactor} onChange={setMatFactor} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
-                    <Input value={matName} onChange={(e) => setMatName(e.target.value)} style={{ width: 160 }} placeholder="保存列名" />
+                    <Input aria-label="EFAの保存列名" value={matName} onChange={(e) => setMatName(e.target.value)} style={{ width: 160 }} placeholder="保存列名" />
                     <Button disabled={stale || loading || scoreSave.saving || !result.capabilities.rows} loading={scoreSave.saving} onClick={() => void handleSave()}>派生列保存</Button>
                   </Space>
                   <Table

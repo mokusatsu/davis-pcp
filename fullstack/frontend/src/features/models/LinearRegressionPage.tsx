@@ -792,6 +792,7 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                     <Space wrap>
                       <span>保存元:</span>
                       <SelectSetting
+                        aria-label="重回帰の保存元"
                         value={matSource}
                         onChange={handleMatSourceChange}
                         style={{ width: 200 }}
@@ -803,9 +804,10 @@ function OrdinaryLinearRegressionPanel(): JSX.Element {
                         ]}
                       />
                       <span>項目:</span>
-                      <SelectSetting value={matField} onChange={setMatField} style={{ width: 220 }} options={(matSource === 'fit' ? result.capabilities.materializeFitFields : result.capabilities.materializePredictionFields).map((f) => ({ value: f, label: f }))} />
+                      <SelectSetting aria-label="重回帰の保存項目" value={matField} onChange={setMatField} style={{ width: 220 }} options={(matSource === 'fit' ? result.capabilities.materializeFitFields : result.capabilities.materializePredictionFields).map((f) => ({ value: f, label: f }))} />
                       <span>列名:</span>
                       <Input
+                        aria-label="重回帰の保存列名"
                         value={matName}
                         onChange={(e) => setMatName(e.target.value)}
                         style={{ width: 200 }}

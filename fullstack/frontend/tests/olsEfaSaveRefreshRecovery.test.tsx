@@ -86,7 +86,7 @@ function fitResponse(test: Case, body: any, fit: number) {
         rSquaredType: 'centered', adjustedRSquared: .89, rmse: .1 },
       details: { coefficients: [], vif: [] },
       capabilities: { rows: true, materialize: true, projection: true,
-        materializeFitFields: ['fitted'], materializePredictionFields: ['predicted'] }, unavailableReasons: {} }
+        materializeFitFields: ['fitted', 'residual'], materializePredictionFields: ['predicted'] }, unavailableReasons: {} }
   }
   // Explicit regression scores, four continuous items, identified one-factor
   // Pearson solution, and admissible non-boundary uniqueness. This does not use
@@ -233,6 +233,31 @@ async function chooseInline(label: string, names: readonly string[]) {
   }
   fireEvent.keyDown(input, { key: 'Escape', code: 'Escape', keyCode: 27 })
 }
+function savePanel(test: Case) {
+  return document.getElementById(resultTab(test.tab).getAttribute('aria-controls')!)!
+}
+function expectSelected(input: HTMLElement, value: string) {
+  expect(input.closest('.ant-select')!.querySelector('.ant-select-selection-item')).toHaveTextContent(value)
+}
+async function chooseSavedOption(input: HTMLElement, current: string, next: string, steps = 1) {
+  expect(input).toBeInstanceOf(HTMLInputElement)
+  expect(input).toBeEnabled()
+  expect(input.closest('.ant-select-selector')).toBeVisible()
+  fireEvent.mouseDown(input)
+  // rc-select reuses TEST_OR_SSR IDs in JSDOM; ignore earlier hidden portals.
+  const activeOption = () => document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+    ?.querySelector(`[id="${input.getAttribute('aria-activedescendant')}"]`)
+  await waitFor(() => expect(activeOption()).toHaveAccessibleName(current))
+  for (let step = 0; step < steps; step++) {
+    fireEvent.keyDown(input, { key: 'ArrowDown', keyCode: 40, which: 40 })
+    fireEvent.keyUp(input, { key: 'ArrowDown', keyCode: 40, which: 40 })
+  }
+  expect(activeOption()).toHaveAccessibleName(next)
+  fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 })
+  fireEvent.keyUp(input, { key: 'Enter', keyCode: 13, which: 13 })
+  await waitFor(() => expect(input).toHaveAttribute('aria-expanded', 'false'))
+  expectSelected(input, next)
+}
 async function prepare(test: Case, options: Parameters<typeof mount>[1] = {}) {
   const fixture = mount(test, options)
   for (const [label, names] of test.fields) await chooseInline(label, names)
@@ -264,6 +289,47 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+
+it('OLS names real saved-result INPUTs through field selection and destination restore without saving', async () => {
+  const test = cases[0]
+  const { post, saves, reads, local, server, initialColumns, cacheBefore } = await prepare(test)
+  const panel = savePanel(test)
+  expect(panel).toBeVisible()
+  const source = within(panel).queryByRole('combobox', { name: '重回帰の保存元', exact: true })
+  const field = within(panel).queryByRole('combobox', { name: '重回帰の保存項目', exact: true })
+  const destination = within(panel).queryByRole('textbox', { name: '重回帰の保存列名', exact: true })
+  // Report every missing name on the unchanged production baseline in one fit.
+  expect.soft(source, '重回帰の保存元 reaches its actual INPUT').toBeInstanceOf(HTMLInputElement)
+  expect.soft(field, '重回帰の保存項目 reaches its actual INPUT').toBeInstanceOf(HTMLInputElement)
+  expect.soft(destination, '重回帰の保存列名 reaches its actual INPUT').toBeInstanceOf(HTMLInputElement)
+  if (!source || !field || !destination) return
+  expect(source).toHaveAccessibleName('重回帰の保存元')
+  expect(field).toHaveAccessibleName('重回帰の保存項目')
+  expect(destination).toHaveAccessibleName('重回帰の保存列名')
+  expect(destination).toBeVisible(); expect(destination).toBeEnabled()
+  expect(destination).toHaveValue('LR_FITTED')
+  expect(destination).toHaveAttribute('placeholder', 'LR_FITTED')
+  expectSelected(source, 'fit'); expectSelected(field, 'fitted')
+  await chooseSavedOption(source, 'fit', 'fit', 0)
+  await chooseSavedOption(field, 'fitted', 'residual')
+  fireEvent.change(destination, { target: { value: 'OLS_residual_draft' } })
+  expect(destination).toHaveValue('OLS_residual_draft')
+  expect(destination).toHaveAccessibleName('重回帰の保存列名')
+  await chooseSavedOption(field, 'residual', 'fitted')
+  fireEvent.change(destination, { target: { value: 'LR_FITTED' } })
+  expect(destination).toHaveValue('LR_FITTED')
+  expect(within(panel).getByRole('combobox', { name: '重回帰の保存元', exact: true })).toBe(source)
+  expect(within(panel).getByRole('combobox', { name: '重回帰の保存項目', exact: true })).toBe(field)
+  expect(within(panel).getByRole('textbox', { name: '重回帰の保存列名', exact: true })).toBe(destination)
+  expectSelected(source, 'fit'); expectSelected(field, 'fitted')
+  expect(saveButton(test)).toBeEnabled()
+  expect(post.mock.calls.map(([path]) => path)).toEqual([test.path])
+  expect(saves()).toHaveLength(0); expect(reads()).toHaveLength(0)
+  expect(server()).toEqual({ dataRevision: 1, schemaRevision: 1, columns: initialColumns })
+  expect(local.getState().selection.dataRevision).toBe(1)
+  expect(local.getState().codebook.schemaRevision).toBe(1)
+  expect(getColumnarCacheGeneration()).toBe(cacheBefore)
+})
 
 // Keep the uninterrupted commit/failure/retry flow within its measured 5–6s
 // runtime plus runner variation; other cases retain the ordinary budget.
@@ -513,7 +579,25 @@ it('OLS preserves the prediction source, captured selected scope, field, name an
     local.dispatch(observationScopeChanged('all'))
   })
   fireEvent.click(resultTab(test.tab))
+  const panel = savePanel(test)
+  const source = within(panel).getByRole('combobox', { name: '重回帰の保存元', exact: true })
+  const field = within(panel).getByRole('combobox', { name: '重回帰の保存項目', exact: true })
+  const destination = within(panel).getByRole('textbox', { name: '重回帰の保存列名', exact: true })
+  expect(destination).toBeInstanceOf(HTMLInputElement)
+  expectSelected(source, '予測:predicti'); expectSelected(field, 'predicted')
+  await chooseSavedOption(source, '予測:predicti', 'fit')
+  expectSelected(field, 'fitted')
+  await chooseSavedOption(source, 'fit', '予測:predicti')
+  expectSelected(field, 'predicted')
+  expect(within(panel).getByRole('combobox', { name: '重回帰の保存元', exact: true })).toBe(source)
+  expect(within(panel).getByRole('combobox', { name: '重回帰の保存項目', exact: true })).toBe(field)
+  expect(within(panel).getByRole('textbox', { name: '重回帰の保存列名', exact: true })).toBe(destination)
+  expect(post.mock.calls.filter(([path]) => path === test.path)).toHaveLength(1)
+  expect(post.mock.calls.filter(([path]) => path.endsWith('/predict'))).toHaveLength(1)
+  expect(saves()).toHaveLength(0); expect(reads()).toHaveLength(0)
   setName(test, 'OLS_prediction')
+  expect(destination).toHaveValue('OLS_prediction')
+  expect(destination).toHaveAccessibleName('重回帰の保存列名')
   fireEvent.click(saveButton(test))
   await waitFor(() => expect(reads()).toHaveLength(1))
   setName(test, 'Next_prediction')
