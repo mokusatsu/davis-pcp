@@ -1,11 +1,12 @@
 import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { scoreSaveIdempotencyKey, scoreSaveNameError } from './scoreSaveName'
 import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
 import EChart from '../charts/EChart'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Alert, Button, Card, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Input, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
 import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
@@ -86,6 +87,10 @@ export default function FamdPage(): JSX.Element {
   const [rows, setRows] = useState<{ rowId: string; coordinates: number[] }[]>([])
   const [rowsTotal, setRowsTotal] = useState(0)
   const [matAxis, setMatAxis] = useState(1)
+  const [matName, setMatName] = useState('')
+  const defaultMatName = `FAMD${matAxis}`
+  const destinationName = matName || defaultMatName
+  const destinationError = scoreSaveNameError(destinationName, columns)
   const [predicting, setPredicting] = useState(false)
   const [predictError, setPredictError] = useState<string | null>(null)
   const [predictInfo, setPredictInfo] = useState<string | null>(null)
@@ -133,6 +138,7 @@ export default function FamdPage(): JSX.Element {
     selectionSequence.current += 1
     setCompleted(null)
     setSubmittedKey('')
+    setMatName('')
     setError(null)
     setLoading(false)
     setSelecting(false)
@@ -736,50 +742,65 @@ export default function FamdPage(): JSX.Element {
                   key: 'save',
                   label: '保存・出力',
                   children: (
-                    <Space wrap>
-                      <span>軸</span>
-                      <Select value={matAxis} onChange={setMatAxis} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: `第${i + 1}軸` }))} style={{ minWidth: 120 }} />
-                      <Button
-                        disabled={shownStale || loading || !resultContext}
-                        onClick={() => {
-                          void (async () => {
-                            if (!resultContext || shownStale || loading) return
-                            const startedDataset = datasetId
-                            try {
-                              const res = await api.post<{ createdColumns: { name: string }[]; writtenRowCount: number; dataRevision: number; schemaRevision: number }>(
-                                `/analysis-results/${result!.resultId}/materialize`,
-                                {
-                                  context: resultContext,
-                                  source: 'fit',
-                                  columns: [{ sourceField: `coordinate:${matAxis}`, name: `FAMD${matAxis}`, label: `FAMD第${matAxis}軸` }],
-                                  idempotencyKey: `${result!.resultId}-fit-${matAxis}`,
-                                },
-                              )
-                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-                              if (datasetId) {
-                                invalidateColumnarCache()
-                                dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
-                                await dispatch(fetchCodebookThunk(datasetId))
+                    <div className="analysis-form-stack">
+                      <div className="analysis-variable-grid">
+                        <AnalysisField label="保存する軸" htmlFor="famd-save-axis" help="選んだ軸の個体座標を新しい派生列に保存します。">
+                          <Select id="famd-save-axis" aria-describedby="famd-save-axis-help" value={matAxis} onChange={setMatAxis} options={Array.from({ length: rank }, (_, i) => ({ value: i + 1, label: `第${i + 1}軸` }))} style={{ width: '100%' }} />
+                        </AnalysisField>
+                        <AnalysisField label="保存先の列名（任意）" htmlFor="famd-save-name" help={`空欄なら ${defaultMatName} を使用します。半角英字または _ で始め、半角英数字と _ を使用してください。既存列は上書きしません。`}>
+                          <Input id="famd-save-name" value={matName} onChange={event => setMatName(event.target.value)} placeholder={defaultMatName}
+                            aria-invalid={Boolean(destinationError)} aria-describedby={`famd-save-name-help${destinationError ? ' famd-save-name-error' : ''}`}
+                            status={destinationError ? 'error' : undefined} />
+                          {destinationError && <Typography.Text id="famd-save-name-error" type="danger" role="alert" style={{ overflowWrap: 'anywhere' }}>{destinationError}</Typography.Text>}
+                        </AnalysisField>
+                      </div>
+                      <div className="analysis-inline-fields">
+                        <Button
+                          style={{ height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                          disabled={shownStale || loading || !resultContext || Boolean(destinationError)}
+                          onClick={() => {
+                            void (async () => {
+                              if (!resultContext || shownStale || loading || destinationError) return
+                              const startedDataset = datasetId
+                              const submittedName = destinationName
+                              const submittedAxis = matAxis
+                              try {
+                                const res = await api.post<{ createdColumns: { name: string }[]; writtenRowCount: number; dataRevision: number; schemaRevision: number }>(
+                                  `/analysis-results/${result!.resultId}/materialize`,
+                                  {
+                                    context: resultContext,
+                                    source: 'fit',
+                                    columns: [{ sourceField: `coordinate:${submittedAxis}`, name: submittedName, label: `FAMD第${submittedAxis}軸` }],
+                                    idempotencyKey: scoreSaveIdempotencyKey(result!.resultId, submittedAxis, submittedName, defaultMatName),
+                                  },
+                                )
+                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
+                                if (datasetId) {
+                                  invalidateColumnarCache()
+                                  dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
+                                  await dispatch(fetchCodebookThunk(datasetId))
+                                }
+                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
+                                message.success(`${submittedName}を保存しました（${res.writtenRowCount}行）。新列がTableに表示されます。`)
+                              } catch (err) {
+                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
+                                message.error(apiErrorMessage(err, '保存に失敗しました。'))
                               }
-                              message.success(`FAMD${matAxis}を保存しました（${res.writtenRowCount}行）。新列がTableに表示されます。`)
-                            } catch (err) {
-                              if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-                              message.error(apiErrorMessage(err, '保存に失敗しました。'))
-                            }
-                          })()
-                        }}
-                      >
-                        FAMD{matAxis}を派生列へ保存
-                      </Button>
-                      <AsyncExportButton exportKey={result.resultId} statusLabel="固有値CSV" onExport={() => exportFamdTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</AsyncExportButton>
-                      <AsyncExportButton exportKey={result.resultId} statusLabel="カテゴリCSV" onExport={() => exportFamdTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</AsyncExportButton>
-                      <AsyncExportButton exportKey={result.resultId} statusLabel="変数CSV" onExport={() => exportFamdTable(result.resultId, 'variables', 'csv')}>変数CSV</AsyncExportButton>
-                      <AsyncExportButton exportKey={result.resultId} statusLabel="個体CSV（全件）" onExport={() => exportFamdTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</AsyncExportButton>
-                      <AsyncExportButton exportKey={result.resultId} statusLabel="設定JSON" onExport={() => exportFamdTable(result.resultId, 'manifest', 'json')}>設定JSON</AsyncExportButton>
-                      <Typography.Text type="secondary">図のSVG・PNGは各グラフ右上から保存できます。</Typography.Text>
-                      <Button onClick={() => setTab('individuals')}>個体図を開く</Button>
-                      <Button onClick={() => setTab('categories')}>カテゴリ図を開く</Button>
-                    </Space>
+                            })()
+                          }}
+                        >
+                          {destinationName}を派生列へ保存
+                        </Button>
+                        <AsyncExportButton exportKey={result.resultId} statusLabel="固有値CSV" onExport={() => exportFamdTable(result.resultId, 'eigenvalues', 'csv')}>固有値CSV</AsyncExportButton>
+                        <AsyncExportButton exportKey={result.resultId} statusLabel="カテゴリCSV" onExport={() => exportFamdTable(result.resultId, 'categories', 'csv')}>カテゴリCSV</AsyncExportButton>
+                        <AsyncExportButton exportKey={result.resultId} statusLabel="変数CSV" onExport={() => exportFamdTable(result.resultId, 'variables', 'csv')}>変数CSV</AsyncExportButton>
+                        <AsyncExportButton exportKey={result.resultId} statusLabel="個体CSV（全件）" onExport={() => exportFamdTable(result.resultId, 'rows', 'csv')}>個体CSV（全件）</AsyncExportButton>
+                        <AsyncExportButton exportKey={result.resultId} statusLabel="設定JSON" onExport={() => exportFamdTable(result.resultId, 'manifest', 'json')}>設定JSON</AsyncExportButton>
+                        <Typography.Text type="secondary">図のSVG・PNGは各グラフ右上から保存できます。</Typography.Text>
+                        <Button onClick={() => setTab('individuals')}>個体図を開く</Button>
+                        <Button onClick={() => setTab('categories')}>カテゴリ図を開く</Button>
+                      </div>
+                    </div>
                   ),
                 },
               ]}
