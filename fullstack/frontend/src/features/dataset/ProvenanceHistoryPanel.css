@@ -1,0 +1,20 @@
+.provenance-history-panel > .ant-card-head {
+  padding-block: 8px;
+}
+
+.provenance-history-panel > .ant-card-head > .ant-card-head-wrapper {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.provenance-history-panel > .ant-card-head .ant-card-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.provenance-history-panel > .ant-card-head .ant-card-extra {
+  min-width: 0;
+  max-width: 100%;
+}

@@ -9,6 +9,7 @@ import { fetchCodebookThunk, codebookReadAccepted } from './codebookSlice'
 import { fetchProvenanceThunk, isProvenanceReady, provenanceReset, selectRestoreRefresh,
   restoreRefreshStarted, restoreRefreshRevisionReceived, restoreRefreshFailed, restoreRefreshFinished } from './provenanceSlice'
 import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
+import './ProvenanceHistoryPanel.css'
 
 interface RestoreResponse {
   currentDataRevision: number
@@ -239,11 +240,12 @@ export default function ProvenanceHistoryPanel() {
 
   return (
     <Card
+      className="provenance-history-panel"
       size="small"
       title="データ来歴・操作履歴"
       data-testid="provenance-panel"
       extra={
-        <Space>
+        <Space wrap style={{ maxWidth: '100%' }}>
           <Button size="small" disabled={!!busy} loading={busy === 'export'} onClick={() => void handleExport()}>
             再現パッケージ出力
           </Button>

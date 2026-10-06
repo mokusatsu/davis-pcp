@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, render, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -35,6 +35,15 @@ it('renders provenance steps with revert actions', async () => {
   })
   const view = render(<Provider store={local}><MemoryRouter><ProvenanceHistoryPanel /></MemoryRouter></Provider>)
   await waitFor(() => expect(view.getByTestId('provenance-panel')).toBeTruthy())
+  const panel = view.getByTestId('provenance-panel')
+  // Preserve control order and the import association; geometry needs browser QA.
+  const actionNames = ['再現パッケージ出力', '再現パッケージ取込', 'Revert to Raw', 'Undo', 'Redo']
+  const actions = actionNames.map(name => within(panel).getByRole('button', { name, exact: true }))
+  expect(within(panel).getAllByRole('button').slice(0, 5)).toEqual(actions)
+  const title = within(panel).getByText('データ来歴・操作履歴')
+  expect(title.compareDocumentPosition(actions[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(panel.querySelector('input[type="file"][accept=".zip"]')?.closest('label'))
+    .toContainElement(actions[1])
   expect(view.container.textContent).toContain('Revert to Raw')
   expect(view.container.textContent).toContain('impute')
   expect(view.container.textContent).toContain('この履歴へ戻す')
