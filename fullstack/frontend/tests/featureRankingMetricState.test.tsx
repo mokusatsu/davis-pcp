@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { configureStore } from '@reduxjs/toolkit'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
+import { message } from 'antd'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeEntitiesSet, store, variableOrderReordered } from '../src/app/store'
 import { api } from '../src/api/client'
@@ -69,7 +70,12 @@ function expectApplied(dispatch: ReturnType<typeof vi.spyOn>, names: string[]) {
   expect(dispatch).toHaveBeenCalledWith(variableOrderReordered([...names, ...columns.map(c => c.name).filter(name => !names.includes(name))]))
 }
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(async () => {
+  cleanup()
+  // Static messages own a separate React root; flush their queued cleanup before jsdom teardown.
+  await act(async () => { message.destroy() })
+  vi.restoreAllMocks()
+})
 
 describe('completed feature-ranking metric state', () => {
   it('keeps an old RF sort attached to its completed run, then resets it after rerunning without RF and applies Borda Top-K', async () => {

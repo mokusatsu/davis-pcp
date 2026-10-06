@@ -1,7 +1,8 @@
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
+import { message } from 'antd'
 import { configureStore } from '@reduxjs/toolkit'
 import { store, activeEntitiesSet, variableOrderReordered } from '../src/app/store'
 import { api } from '../src/api/client'
@@ -26,7 +27,12 @@ vi.mock('../src/features/pcp/useDatasetColumns', () => {
   return { useColumnarData: () => { throw new Error('Ranking must not load raw columns') } }
 })
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(async () => {
+  cleanup()
+  // Static messages own a separate React root; flush their queued cleanup before jsdom teardown.
+  await act(async () => { message.destroy() })
+  vi.restoreAllMocks()
+})
 
 const payload = {
   scopeCount: 2, usedRows: 2, ordinaryMissingExcluded: 0, taskType: 'classification',
