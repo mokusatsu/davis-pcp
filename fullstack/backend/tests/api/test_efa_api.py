@@ -75,6 +75,100 @@ def test_pearson_ml_scores_rows_predict_materialize():
     assert exp["total"] == 4
 
 
+@pytest.mark.parametrize("source_kind", ["fit", "prediction"])
+def test_materialize_replay_retains_original_receipt_after_later_mutation(source_kind):
+    """Replay returns the committed receipt, even after a newer dataset revision."""
+    from app.storage.dataset_store import DatasetStore
+
+    store = DatasetStore()
+    ds, ctx, colids = _make_continuous()
+    fitted = client.post("/api/v1/models/factor-analysis", json={
+        "context": ctx,
+        "variables": [{"columnId": c, "measurement": "continuous", "treatment": "continuous"}
+                      for c in colids],
+        "correlation": "pearson", "extraction": "ml", "nFactors": 1,
+        "rotation": "varimax", "scoreMethod": "regression",
+        "parallelAnalysis": {"enabled": False},
+        "uniquenessLower": 0.005, "nStarts": 1, "maxIterations": 300, "seed": 1,
+        "method": "efa", "schemaVersion": "factor_extensions.1",
+    })
+    assert fitted.status_code == 200, fitted.text
+    assert fitted.json()["capabilities"]["materialize"] is True
+    rid = fitted.json()["resultId"]
+    source = "fit"
+    if source_kind == "prediction":
+        predicted = client.post(f"/api/v1/analysis-results/{rid}/predict", json={
+            "context": ctx, "options": {"interval": "none", "evaluate": False}})
+        assert predicted.status_code == 200, predicted.text
+        source = predicted.json()["predictionId"]
+
+    def persisted_bytes():
+        files = {}
+        for path in store.root.glob(f"{ds}.*"):
+            for item in path.rglob("*") if path.is_dir() else [path]:
+                if item.is_file():
+                    files[str(item.relative_to(store.root))] = item.read_bytes()
+        assert files
+        return files
+
+    endpoint = f"/api/v1/analysis-results/{rid}/materialize"
+    request = {"context": ctx, "source": source,
+               "columns": [{"source": "score:1", "name": "efa_receipt_score"}],
+               "idempotencyKey": "receipt"}
+    first = client.post(endpoint, json=request)
+    assert first.status_code == 200, first.text
+    receipt = first.json()
+    assert receipt == {
+        "status": "success", "resultId": rid, "idempotentReplay": False,
+        "columns": request["columns"], "datasetId": ds,
+        "dataRevision": 2, "schemaRevision": 2,
+    }
+    saved_provenance = store.load_provenance(ds)
+    assert len(saved_provenance["operations"]) == 2
+    saved_operation = saved_provenance["operations"][-1]
+    assert saved_operation["outputDataRevision"] == receipt["dataRevision"]
+    assert saved_operation["outputSchemaRevision"] == receipt["schemaRevision"]
+
+    for current_revision in (2, 3):
+        if current_revision == 3:
+            changed = client.post(f"/api/v1/datasets/{ds}/calculate", json={
+                "expression": "q1 * 2", "columnName": "later_calculation", "mode": "create",
+                "expectedDataRevision": 2, "expectedSchemaRevision": 2,
+            })
+            assert changed.status_code == 200, changed.text
+            assert changed.json()["dataRevision"] == 3
+            assert changed.json()["schemaRevision"] == 3
+        before = persisted_bytes()
+        provenance = store.load_provenance(ds)
+        assert len(provenance["operations"]) == current_revision
+        assert provenance["operations"][1] == saved_operation
+
+        # Original, saved and current expected revisions all replay before
+        # stale-fit checks. The receipt must never use the newer dataset head.
+        for expected_revision in range(1, current_revision + 1):
+            replay = client.post(endpoint, json={**request, "context": dict(
+                ctx, expectedDataRevision=expected_revision,
+                expectedSchemaRevision=expected_revision)})
+            assert replay.status_code == 200, replay.text
+            assert replay.json() == {**receipt, "idempotentReplay": True}
+            assert persisted_bytes() == before
+            assert store.load_provenance(ds) == provenance
+
+        conflict = client.post(endpoint, json={**request,
+            "columns": [{"source": "score:1", "name": "changed_payload"}]})
+        assert conflict.status_code == 409, conflict.text
+        assert conflict.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+        assert persisted_bytes() == before
+        stale = client.post(endpoint, json={**request, "idempotencyKey": "new-save",
+            "context": dict(ctx, expectedDataRevision=current_revision,
+                            expectedSchemaRevision=current_revision),
+            "columns": [{"source": "score:1", "name": "new_score"}]})
+        assert stale.status_code == 409, stale.text
+        assert stale.json()["error"]["code"] == "ANALYSIS_INPUT_STALE"
+        assert persisted_bytes() == before
+        assert store.load_provenance(ds) == provenance
+
+
 def test_rejects_weight_and_mixed_and_old_inputs():
     ds, ctx, colids = _make_continuous()
     base_vars = [{"columnId": c, "measurement": "continuous", "treatment": "continuous"} for c in colids]

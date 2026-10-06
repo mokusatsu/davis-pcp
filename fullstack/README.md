@@ -69,18 +69,34 @@ CSV / TSV / Parquet / Arrow IPC(Feather) / ARFF / SQLite(.db/.sqlite のtable選
 
 ## 試験
 
-```bash
-# backend unit + property + API integration (100 tests)
-cd backend && python -m pip install -r requirements-test.txt && python -m pytest tests/ -q
+以下は `fullstack/` から実行する。
 
-# frontend unit (11 tests)
-cd frontend && npx vitest run
+backend は通常テスト・統計検証・アンケート監査をそれぞれ新しい Python プロセスで実行する。統計検証とアンケート監査は専用 workspace を設定するため、製品 API を import 済みのプロセスでは収集時に停止する。
+
+統計検証の完全実行には、PATH 上の `Rscript` と R パッケージ `survey` が必要。未導入の場合、live-R 比較テストは自動 skip されずエラーになる。
+
+```bash
+# backend unit + property + API integration / statistical + survey audit
+(cd backend && \
+  python -m pip install -r requirements-test.txt && \
+  python -m pytest tests/ --ignore=tests/stats_tests --ignore=tests/survey_audit -q && \
+  python -m pytest tests/stats_tests -q && \
+  python -m pytest tests/survey_audit -q)
+
+# frontend unit
+(cd frontend && npx vitest run)
 
 # E2E (10 tests; サーバーを8425等で起動してから)
 python -m pytest e2e/test_e2e.py -q
 ```
 
-合計121件。詳細は `TEST_REPORT.md`。
+R を使わない統計検証だけを行う場合は、上記の統計検証コマンドを次に置き換える（`backend/` で実行）。`r_oracle` を除外するため、この結果に live-R 比較の検証結果は含まれない。
+
+```bash
+python -m pytest tests/stats_tests -m 'not r_oracle' -q
+```
+
+詳細は `TEST_REPORT.md`。
 
 ## ライセンス / 出典
 

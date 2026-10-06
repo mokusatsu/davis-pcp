@@ -1176,8 +1176,8 @@ def efa_materialize(result_id, manifest, req):
                        "idempotentReplay": True,
                        "columns": params.get("efaColumns"),
                        "datasetId": manifest.get("ownerDatasetId"),
-                       "dataRevision": params.get("efaDataRevision"),
-                       "schemaRevision": params.get("efaSchemaRevision")}
+                       "dataRevision": op["outputDataRevision"],
+                       "schemaRevision": op["outputSchemaRevision"]}
                 check_json_finite(out)
                 return out
         # E007: stale-fit guard BEFORE writing, but AFTER the replay check
@@ -1254,23 +1254,6 @@ def efa_materialize(result_id, manifest, req):
                                  codebook=codebook, step=step)
         fresh_meta = store.get_meta(manifest.get("ownerDatasetId"))
         fresh_cb = store.load_codebook(manifest.get("ownerDatasetId")) or {}
-        for op in (store.load_provenance(manifest.get("ownerDatasetId")) or {}).get(
-                "operations", []) or []:
-            if op.get("operationId") == step["operationId"]:
-                op.setdefault("params", {})["efaDataRevision"] = int(
-                    fresh_meta.get("dataRevision", 1))
-                op["params"]["efaSchemaRevision"] = int(
-                    fresh_cb.get("schemaRevision",
-                                 fresh_meta.get("schemaRevision", 1)))
-                ppath = store._provenance_path(manifest.get("ownerDatasetId"))
-                import os as _os
-                import json as _js2
-                prov2 = store.load_provenance(manifest.get("ownerDatasetId")) or {}
-                tmp = ppath.with_suffix(".tmp")
-                tmp.write_bytes(_js2.dumps(prov2, ensure_ascii=False,
-                                           indent=2).encode("utf-8"))
-                _os.replace(tmp, ppath)
-                break
     out = {"status": "success", "resultId": result_id,
            "idempotentReplay": False,
            "columns": [{"source": k, "name": v} for k, v in colmap.items()],
