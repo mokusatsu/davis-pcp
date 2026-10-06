@@ -48,6 +48,7 @@ export default function ProvenanceHistoryPanel() {
   const historyReady = useSelector(isProvenanceReady)
   const [pending, setPending] = useState<PendingOperation | null>(null)
   const pendingRef = useRef<PendingOperation | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
   const restoreRefresh = useSelector(selectRestoreRefresh)
   const mounted = useRef(false)
   const ownsDataset = (operation: PendingOperation) => {
@@ -251,6 +252,7 @@ export default function ProvenanceHistoryPanel() {
           </Button>
           <label style={{ cursor: 'pointer' }}>
             <input
+              ref={importInputRef}
               type="file"
               accept=".zip"
               disabled={!!busy}
@@ -261,7 +263,7 @@ export default function ProvenanceHistoryPanel() {
                 event.target.value = ''
               }}
             />
-            <Button size="small" disabled={!!busy} loading={busy === 'import'}>再現パッケージ取込</Button>
+            <Button size="small" disabled={!!busy} loading={busy === 'import'} onClick={() => importInputRef.current?.click()}>再現パッケージ取込</Button>
           </label>
         </Space>
       }

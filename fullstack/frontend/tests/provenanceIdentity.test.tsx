@@ -57,6 +57,93 @@ function mockReads() {
   return { server, get }
 }
 
+it('opens the package file input from the visible Import button and ignores cancellation', async () => {
+  const local = makeStore()
+  mockReads()
+  const upload = vi.spyOn(api, 'upload')
+  const success = vi.spyOn(message, 'success'), error = vi.spyOn(message, 'error')
+  const view = mount(local); await ready()
+  const input = view.container.querySelector<HTMLInputElement>('input[type=file]')!
+  const open = vi.spyOn(input, 'click')
+  const button = screen.getByRole('button', { name: '再現パッケージ取込' })
+  const before = local.getState()
+
+  // Exercise the rendered Button, not a label click or a direct input change.
+  // jsdom proves chooser invocation only; native mouse/Enter still need browser QA.
+  fireEvent.click(button)
+  expect(open).toHaveBeenCalledTimes(1)
+  fireEvent(input, new Event('cancel', { bubbles: true }))
+  fireEvent.change(input, { target: { files: [] } })
+  expect(upload).not.toHaveBeenCalled()
+  expect(success).not.toHaveBeenCalled()
+  expect(error).not.toHaveBeenCalled()
+  expect(local.getState()).toBe(before)
+  expect(button).toBeEnabled()
+  expect(input).toBeEnabled()
+  fireEvent.click(button)
+  expect(open).toHaveBeenCalledTimes(2)
+})
+
+it.each(['import', 'export', 'undo'] as const)('suppresses the Import chooser while %s is busy and restores it afterward', async kind => {
+  const local = makeStore(), request = deferred()
+  mockReads()
+  const upload = vi.spyOn(api, 'upload').mockReturnValue(request.promise)
+  vi.spyOn(api, 'downloadBlob').mockReturnValue(request.promise)
+  vi.spyOn(api, 'post').mockReturnValue(request.promise)
+  vi.spyOn(message, 'error').mockImplementation(() => (() => {}) as never)
+  const view = mount(local); await ready()
+  const input = view.container.querySelector<HTMLInputElement>('input[type=file]')!
+  const open = vi.spyOn(input, 'click')
+  const button = screen.getByRole('button', { name: '再現パッケージ取込' })
+  if (kind === 'import') fireEvent.change(input, { target: { files: [new File(['zip'], 'package.zip')] } })
+  else fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '再現パッケージ出力' : 'Undo' }))
+  expect(button).toBeDisabled()
+  expect(input).toBeDisabled()
+  fireEvent.click(button)
+  expect(open).not.toHaveBeenCalled()
+  expect(upload).toHaveBeenCalledTimes(kind === 'import' ? 1 : 0)
+
+  await act(async () => { request.reject(new Error('operation failed')) })
+  await ready()
+  expect(button).toBeEnabled()
+  expect(input).toBeEnabled()
+  fireEvent.click(button)
+  expect(open).toHaveBeenCalledTimes(1)
+})
+
+it.each(['resolve', 'reject'] as const)('clears the package input and accepts the same file after an import %s', async outcome => {
+  const local = makeStore(), first = deferred(), second = deferred()
+  mockReads()
+  const upload = vi.spyOn(api, 'upload').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+  vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as never)
+  vi.spyOn(message, 'error').mockImplementation(() => (() => {}) as never)
+  const view = mount(local); await ready()
+  const input = view.container.querySelector<HTMLInputElement>('input[type=file]')!
+  const open = vi.spyOn(input, 'click')
+  const button = screen.getByRole('button', { name: '再現パッケージ取込' })
+  const file = new File(['zip'], 'package.zip'), before = local.getState()
+  const selectFile = () => {
+    // jsdom cannot assign a nonempty native file value; model the selected path.
+    Object.defineProperty(input, 'value', { configurable: true, writable: true, value: 'C:\\fakepath\\package.zip' })
+    fireEvent.change(input, { target: { files: [file] } })
+    expect(input.value).toBe('')
+  }
+  fireEvent.click(button); selectFile()
+  expect(upload).toHaveBeenNthCalledWith(1, '/datasets/import_package', file)
+  await act(async () => {
+    if (outcome === 'resolve') first.resolve({ datasetId: 'imported-first' })
+    else first.reject(new Error('first import failed'))
+  })
+  await ready()
+  fireEvent.click(button); selectFile()
+  expect(open).toHaveBeenCalledTimes(2)
+  expect(upload).toHaveBeenCalledTimes(2)
+  expect(upload).toHaveBeenNthCalledWith(2, '/datasets/import_package', file)
+  await act(async () => { second.resolve({ datasetId: 'imported-second' }) })
+  await ready()
+  expect(local.getState()).toBe(before)
+})
+
 it('rejects a foreign codebook fetch before pending can discard the selected draft', async () => {
   const local = makeStore()
   install(local, 'b')
