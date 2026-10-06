@@ -1,5 +1,6 @@
 import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
+import { useScoreSaveRefresh, type ScoreSaveReceipt } from './useScoreSaveRefresh'
 import { scoreSaveIdempotencyKey, scoreSaveNameError } from './scoreSaveName'
 import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
@@ -8,9 +9,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Alert, Button, Card, Input, Radio, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { datasetValuesUpdated, selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { editorModalOpened, fetchCodebookThunk } from '../dataset/codebookSlice'
-import { invalidateColumnarCache } from '../pcp/useDatasetColumns'
+import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
+import { editorModalOpened } from '../dataset/codebookSlice'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import GraphPanel from '../common/GraphPanel'
@@ -73,6 +73,7 @@ export default function FamdPage(): JSX.Element {
   const [tab, setTab] = useState('individuals')
 
   const [completed, setCompleted] = useState<{ result: FAMDResponse; context: FAMDContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const scoreSave = useScoreSaveRefresh(completed)
   const result = completed?.result ?? null
   const resultContext = completed?.context
   const resultRef = useRef(result)
@@ -102,11 +103,8 @@ export default function FamdPage(): JSX.Element {
   const runSequence = useRef(0)
   const selectionSequence = useRef(0)
   const predictionSequence = useRef(0)
-  const mounted = useRef(true)
   useEffect(() => {
-    mounted.current = true
     return () => {
-      mounted.current = false
       runSequence.current += 1
       selectionSequence.current += 1
       predictionSequence.current += 1
@@ -757,36 +755,20 @@ export default function FamdPage(): JSX.Element {
                       <div className="analysis-inline-fields">
                         <Button
                           style={{ height: 'auto', minHeight: 32, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
-                          disabled={shownStale || loading || !resultContext || Boolean(destinationError)}
+                          disabled={shownStale || loading || scoreSave.saving || !resultContext || Boolean(destinationError)}
                           onClick={() => {
-                            void (async () => {
-                              if (!resultContext || shownStale || loading || destinationError) return
-                              const startedDataset = datasetId
-                              const submittedName = destinationName
-                              const submittedAxis = matAxis
-                              try {
-                                const res = await api.post<{ createdColumns: { name: string }[]; writtenRowCount: number; dataRevision: number; schemaRevision: number }>(
-                                  `/analysis-results/${result!.resultId}/materialize`,
-                                  {
-                                    context: resultContext,
-                                    source: 'fit',
-                                    columns: [{ sourceField: `coordinate:${submittedAxis}`, name: submittedName, label: `FAMD第${submittedAxis}軸` }],
-                                    idempotencyKey: scoreSaveIdempotencyKey(result!.resultId, submittedAxis, submittedName, defaultMatName),
-                                  },
-                                )
-                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-                                if (datasetId) {
-                                  invalidateColumnarCache()
-                                  dispatch(datasetValuesUpdated({ datasetId, dataRevision: res.dataRevision }))
-                                  await dispatch(fetchCodebookThunk(datasetId))
-                                }
-                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-                                message.success(`${submittedName}を保存しました（${res.writtenRowCount}行）。新列がTableに表示されます。`)
-                              } catch (err) {
-                                if (!mounted.current || selectionRef.current.datasetId !== startedDataset) return
-                                message.error(apiErrorMessage(err, '保存に失敗しました。'))
-                              }
-                            })()
+                            if (!resultContext || shownStale || loading || destinationError) return
+                            const submittedName = destinationName
+                            const submittedAxis = matAxis
+                            void scoreSave.save(submittedName, () => api.post<ScoreSaveReceipt>(
+                              `/analysis-results/${result!.resultId}/materialize`,
+                              {
+                                context: resultContext,
+                                source: 'fit',
+                                columns: [{ sourceField: `coordinate:${submittedAxis}`, name: submittedName, label: `FAMD第${submittedAxis}軸` }],
+                                idempotencyKey: scoreSaveIdempotencyKey(result!.resultId, submittedAxis, submittedName, defaultMatName),
+                              },
+                            ), err => apiErrorMessage(err, '保存に失敗しました。'))
                           }}
                         >
                           {destinationName}を派生列へ保存
@@ -805,6 +787,7 @@ export default function FamdPage(): JSX.Element {
                 },
               ]}
             />
+            {scoreSave.notice}
             {shownStale && <Alert type="warning" style={{ marginTop: 8 }} message="データ版が更新されました。表示は旧版のままです。選択・保存・予測はできません。" />}
           </Card>
         </>
