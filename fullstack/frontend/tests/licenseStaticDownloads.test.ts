@@ -31,3 +31,16 @@ it.each(['json', 'csv'] as const)('exports licensed codebooks as %s through the 
   expect(fetch).not.toHaveBeenCalled(); expect(click).toHaveBeenCalledOnce()
   expect(create.mock.calls[0][0].size).toBeGreaterThan(0)
 })
+
+it('rejects static history-package export before either worker or HTTP without changing allowed sample downloads', async () => {
+  ;(window as any).__DAVIS_PCP_STATIC__ = true
+  const { pyodideClient } = await import('../src/engine/pyodideClient')
+  const request = vi.spyOn(pyodideClient, 'request')
+  const fetch = vi.spyOn(globalThis, 'fetch')
+  const { api, IS_STATIC_BUILD } = await import('../src/api/client')
+  expect(IS_STATIC_BUILD).toBe(true)
+  await expect(api.downloadBlob('/datasets/history-data/export_package'))
+    .rejects.toThrow('再現パッケージ出力はstaticビルドで未対応です (ANALYSIS_CONTEXT_UNSUPPORTED)。')
+  expect(request).not.toHaveBeenCalled()
+  expect(fetch).not.toHaveBeenCalled()
+})

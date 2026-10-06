@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { nanoid } from '@reduxjs/toolkit'
 import { useDispatch, useSelector, useStore } from 'react-redux'
 import { Alert, Button, Card, List, Popconfirm, Space, Tag, Tooltip, Typography, message } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
 import { datasetValuesUpdated } from '../../app/store'
-import { api, getCodebook } from '../../api/client'
+import { api, getCodebook, IS_STATIC_BUILD } from '../../api/client'
 import { fetchCodebookThunk, codebookReadAccepted } from './codebookSlice'
 import { fetchProvenanceThunk, isProvenanceReady, provenanceReset, selectRestoreRefresh,
   restoreRefreshStarted, restoreRefreshRevisionReceived, restoreRefreshFailed, restoreRefreshFinished } from './provenanceSlice'
@@ -49,6 +49,7 @@ export default function ProvenanceHistoryPanel() {
   const [pending, setPending] = useState<PendingOperation | null>(null)
   const pendingRef = useRef<PendingOperation | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const exportDescriptionId = useId()
   const restoreRefresh = useSelector(selectRestoreRefresh)
   const mounted = useRef(false)
   const ownsDataset = (operation: PendingOperation) => {
@@ -203,6 +204,7 @@ export default function ProvenanceHistoryPanel() {
   }
 
   const handleExport = async () => {
+    if (IS_STATIC_BUILD) return
     const operation = beginOperation('export')
     if (!operation) return
     try {
@@ -247,7 +249,8 @@ export default function ProvenanceHistoryPanel() {
       data-testid="provenance-panel"
       extra={
         <Space wrap style={{ maxWidth: '100%' }}>
-          <Button size="small" disabled={!!busy} loading={busy === 'export'} onClick={() => void handleExport()}>
+          <Button size="small" disabled={IS_STATIC_BUILD || !!busy} loading={busy === 'export'}
+            aria-describedby={IS_STATIC_BUILD ? exportDescriptionId : undefined} onClick={() => void handleExport()}>
             再現パッケージ出力
           </Button>
           <label style={{ cursor: 'pointer' }}>
@@ -268,6 +271,9 @@ export default function ProvenanceHistoryPanel() {
         </Space>
       }
     >
+      {IS_STATIC_BUILD && <Typography.Paragraph id={exportDescriptionId}>
+        このブラウザー版では再現パッケージを出力できません。サーバー版では、サーバーに保存したデータを出力できます。
+      </Typography.Paragraph>}
       <Space wrap style={{ marginBottom: 8 }}>
         <Popconfirm
           title="原データへ戻しますか？"
