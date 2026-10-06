@@ -783,9 +783,9 @@ export default function FactorAnalysisPage(): JSX.Element {
                   <SelectionMenu />
                   <Space wrap>
                     <span>X軸:</span>
-                    <SelectSetting value={figX} onChange={setFigX} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
+                    <SelectSetting aria-label="EFAのX軸" value={figX} onChange={setFigX} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
                     <span>Y軸:</span>
-                    <SelectSetting value={figY} onChange={setFigY} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
+                    <SelectSetting aria-label="EFAのY軸" value={figY} onChange={setFigY} style={{ width: 110 }} options={factorIds.map((f, a) => ({ value: a + 1, label: f }))} />
                     <span>全{rowsTotal}行{q >= 2 ? '' : '（1因子のため単軸選択）'}</span>
                   </Space>
                   {selectInfo && <Alert type={selectInfo.startsWith('一致') ? 'success' : 'warning'} message={selectInfo} showIcon />}
