@@ -1256,6 +1256,7 @@ def efa_materialize(result_id, manifest, req):
                 "outputSchemaRevision": int(codebook.get("schemaRevision", 1)),
                 "algorithmVersion": ALGORITHM_VERSION,
                 "timestamp": now_iso(), "createdBy": "local-session"}
+        meta_now["columnCount"] = df.width - 1
         store.commit_data_change(manifest.get("ownerDatasetId"), meta_now, df,
                                  codebook=codebook, step=step)
         fresh_meta = store.get_meta(manifest.get("ownerDatasetId"))

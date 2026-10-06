@@ -1928,6 +1928,7 @@ def lr_materialize(result_id, manifest, req):
                            "semanticType": "numeric"})
         meta_now["schema"] = schema
         meta_now["schemaRevision"] = int(cb.get("schemaRevision", 1))
+        meta_now["columnCount"] = df.width - 1
         store.commit_data_change(dataset_id, meta_now, df, codebook=cb,
                                  step=step)
         fresh_meta = store.get_meta(dataset_id)
