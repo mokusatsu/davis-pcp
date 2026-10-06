@@ -280,6 +280,7 @@ export const GlobalHeaderControlBar: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' }}>
             <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>ウェイト:</Typography.Text>
             <Select
+              key={selection.datasetId}
               size="small"
               style={{ minWidth: 140 }}
               placeholder="未選択"
