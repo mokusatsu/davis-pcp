@@ -24,6 +24,12 @@ vi.mock('../src/api/client', async original => ({
 }))
 
 const restoreViewportProperties: Array<() => void> = []
+// Native 175% browser zoom at CSS 320×432 and 375×432: both measured the
+// same trigger; their wrapped menu heights were 302px and 280px respectively.
+const observedExportTrigger = {
+  x: 43.71428680419922, y: 178.42857360839844,
+  width: 138.7232208251953, height: 24.000001907348633,
+}
 
 beforeEach(() => {
   vi.mocked(downloadCodebookExport).mockReset().mockResolvedValue(undefined)
@@ -55,10 +61,16 @@ function createStore() {
   return local
 }
 
-function mockExportGeometry(initialWidth: number) {
+function mockExportGeometry(initialWidth: number, {
+  height = 800, menuHeight = 200, triggerY = 100, menuWidth, scrollbarWidth = 15, triggerRect,
+}: {
+  height?: number; menuHeight?: number; triggerY?: number; menuWidth?: number; scrollbarWidth?: number
+  triggerRect?: { x: number; y: number; width: number; height: number }
+} = {}) {
   // jsdom has no layout. Supply viewport/element measurements while keeping
   // the real AntD/rc-trigger positioning, resize listener and popup styles.
-  const viewport = { width: initialWidth }
+  const viewport = { width: initialWidth, height, menuHeight }
+  const trigger = triggerRect ?? { x: 43, y: triggerY, width: 104, height: 24 }
   const dimension = (property: string, get: () => number) => {
     const original = Object.getOwnPropertyDescriptor(document.documentElement, property)
     Object.defineProperty(document.documentElement, property, { configurable: true, get })
@@ -67,28 +79,67 @@ function mockExportGeometry(initialWidth: number) {
       else Reflect.deleteProperty(document.documentElement, property)
     })
   }
-  dimension('clientWidth', () => viewport.width - 15)
-  dimension('clientHeight', () => 800)
+  dimension('clientWidth', () => viewport.width - scrollbarWidth)
+  dimension('clientHeight', () => viewport.height)
   dimension('scrollWidth', () => viewport.width + 40)
   const originalRect = HTMLElement.prototype.getBoundingClientRect
   const rectangle = (x: number, y: number, width: number, height: number) => ({
     x, y, width, height, left: x, right: x + width, top: y, bottom: y + height,
     toJSON: () => ({}),
   })
+  const menuMaxHeight = (menu: HTMLElement | null) => {
+    if (!menu) return Infinity
+    const css = getComputedStyle(menu).maxHeight
+    const calc = /^calc\(([\d.]+)vh - ([\d.]+)px\)$/.exec(css)
+    if (calc) return viewport.height * Number(calc[1]) / 100 - Number(calc[2])
+    if (css.endsWith('vh')) return viewport.height * parseFloat(css) / 100
+    if (css.endsWith('px')) return parseFloat(css)
+    return Infinity
+  }
+  const popupRectangle = (popup: HTMLElement) => {
+    const width = menuWidth ?? Math.min(360, viewport.width - 32)
+    const padding = parseFloat(popup.style.paddingBlock) || 0
+    const height = Math.min(viewport.menuHeight, menuMaxHeight(popup.querySelector('[role="menu"]'))) + padding * 2
+    const left = popup.style.left === 'auto'
+      ? document.documentElement.clientWidth - width - (parseFloat(popup.style.right) || 0)
+      : parseFloat(popup.style.left) || 0
+    const top = popup.style.top === 'auto'
+      ? viewport.height - height - (parseFloat(popup.style.bottom) || 0)
+      : parseFloat(popup.style.top) || 0
+    return rectangle(left, top, width, height)
+  }
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     if (this.tagName === 'BUTTON' && this.textContent?.includes('エクスポート')) {
-      return rectangle(43, 100, 104, 24)
+      return rectangle(trigger.x, trigger.y, trigger.width, trigger.height)
     }
-    if (this.classList.contains('ant-dropdown')) {
-      const width = Math.min(360, viewport.width - 32)
-      const left = this.style.left === 'auto'
-        ? document.documentElement.clientWidth - width - (parseFloat(this.style.right) || 0)
-        : parseFloat(this.style.left) || 0
-      return rectangle(left, parseFloat(this.style.top) || 0, width, 200)
+    if (this.classList.contains('ant-dropdown')) return popupRectangle(this)
+    if (this.getAttribute('role') === 'menu') {
+      const popup = this.closest('.ant-dropdown') as HTMLElement
+      const bounds = popupRectangle(popup)
+      const padding = parseFloat(popup.style.paddingBlock) || 0
+      return rectangle(bounds.left, bounds.top + padding, bounds.width, bounds.height - padding * 2)
     }
+    // rc-menu checks a nonempty item rect before focusing. This fixture does
+    // not model text layout or browser scrolling; native acceptance covers it.
+    if (this.getAttribute('role') === 'menuitem') return rectangle(0, 0, 100, 24)
     return originalRect.call(this)
   })
   return viewport
+}
+
+async function openExportMenu() {
+  const trigger = screen.getByRole('button', { name: /エクスポート/ })
+  await act(async () => { fireEvent.click(trigger) })
+  const menu = await screen.findByRole('menu')
+  const popup = menu.closest('.ant-dropdown') as HTMLElement
+  // rc-trigger does not respond to resize until its opening motion finishes.
+  await waitFor(() => {
+    expect(popup).toBeVisible()
+    expect(popup).not.toHaveClass('ant-dropdown-hidden')
+    expect(popup.style.left === 'auto' ? popup.style.right : popup.style.left).toMatch(/^-?\d+(?:\.\d+)?px$/)
+    expect(popup.className).not.toMatch(/ant-slide-up-(?:appear|enter)/)
+  })
+  return { trigger, menu, popup }
 }
 
 describe('Codebook interchange guidance at the action boundary', () => {
@@ -100,16 +151,7 @@ describe('Codebook interchange guidance at the action boundary', () => {
   ] as const)('keeps the export popup inside the scrollbar-excluding viewport: %s', async (_name, widths) => {
     const viewport = mockExportGeometry(widths[0])
     render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /エクスポート/ })) })
-    const menu = await screen.findByRole('menu')
-    const popup = menu.closest('.ant-dropdown') as HTMLElement
-    // The menu is positioned during appear preparation, but rc-trigger ignores
-    // resize until that motion finishes. Wait for the open popup before resizing.
-    await waitFor(() => {
-      expect(popup).toBeVisible()
-      expect(popup.style.left).toMatch(/^-?\d+(?:\.\d+)?px$/)
-      expect(popup.className).not.toMatch(/ant-slide-up-(?:appear|enter)/)
-    })
+    const { popup } = await openExportMenu()
     for (const width of widths) {
       viewport.width = width
       fireEvent.resize(window)
@@ -120,6 +162,93 @@ describe('Codebook interchange guidance at the action boundary', () => {
         expect(popup.style.left).not.toContain('vw')
       })
     }
+  })
+
+  it.each([
+    ['observed 320×432 below trigger', 320, 302, 288.5714416503906, observedExportTrigger.y],
+    ['observed 375×432 below trigger', 375, 280, 343.4285888671875, observedExportTrigger.y],
+    ['320×432 above trigger', 320, 302, 288.5714416503906, 260],
+    ['menu taller than viewport', 320, 600, 288.5714416503906, observedExportTrigger.y],
+  ] as const)('keeps the export menu within the short viewport: %s', async (_name, width, menuHeight, menuWidth, triggerY) => {
+    const height = 432
+    mockExportGeometry(width, { height, menuHeight, menuWidth, scrollbarWidth: 0,
+      triggerRect: { ...observedExportTrigger, y: triggerY } })
+    render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
+    const { menu, popup } = await openExportMenu()
+    await waitFor(() => {
+      for (const element of [popup, menu]) {
+        const bounds = element.getBoundingClientRect()
+        expect(bounds.top).toBeGreaterThanOrEqual(0)
+        expect(bounds.bottom).toBeLessThanOrEqual(height)
+      }
+    })
+    if (menuHeight > height) {
+      expect(menu.getBoundingClientRect().height).toBeLessThan(height)
+      expect(menu).toHaveStyle({ overflowY: 'auto' })
+    } else {
+      expect(menu.getBoundingClientRect().height).toBe(menuHeight)
+    }
+  })
+
+  it.each([['below', 100], ['above', 760]] as const)('preserves the normal 4px visible gap %s the trigger', async (placement, triggerY) => {
+    mockExportGeometry(1180, { triggerY })
+    render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
+    const { trigger, menu } = await openExportMenu()
+    await waitFor(() => {
+      const triggerBounds = trigger.getBoundingClientRect()
+      const menuBounds = menu.getBoundingClientRect()
+      expect(placement === 'below' ? menuBounds.top - triggerBounds.bottom : triggerBounds.top - menuBounds.bottom).toBe(4)
+    })
+  })
+
+  it('repositions and constrains the open menu when the viewport becomes shorter', async () => {
+    const viewport = mockExportGeometry(320, { menuHeight: 302, triggerRect: observedExportTrigger })
+    render(<Provider store={createStore()}><CodebookEditorModal /></Provider>)
+    const { menu, popup } = await openExportMenu()
+    for (const height of [432, 240, 800]) {
+      viewport.height = height
+      fireEvent.resize(window)
+      await waitFor(() => {
+        const bounds = popup.getBoundingClientRect()
+        expect(bounds.top).toBeGreaterThanOrEqual(0)
+        expect(bounds.bottom).toBeLessThanOrEqual(height)
+        expect(menu.getBoundingClientRect().height).toBe(Math.min(302, height - 32))
+      })
+    }
+  })
+
+  it('keeps Tab, arrow navigation, trigger dismissal and Enter export working in the constrained menu', async () => {
+    mockExportGeometry(320, { height: 432, menuHeight: 600, triggerRect: observedExportTrigger })
+    const local = createStore()
+    local.dispatch(draftColumnUpdated({ columnId: 'q', patch: { label: '未保存の編集' } }))
+    render(<Provider store={local}><CodebookEditorModal /></Provider>)
+    const { trigger, menu, popup } = await openExportMenu()
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Tab', keyCode: 9, which: 9 })
+    const csv = within(menu).getByRole('menuitem', { name: /CSV形式でエクスポート/ })
+    const json = within(menu).getByRole('menuitem', { name: /JSON形式でエクスポート/ })
+    await waitFor(() => expect(csv).toHaveFocus())
+    fireEvent.keyDown(csv, { key: 'ArrowDown', keyCode: 40, which: 40 })
+    await waitFor(() => expect(json).toHaveFocus())
+    expect(downloadCodebookExport).not.toHaveBeenCalled()
+    fireEvent.click(trigger)
+    await waitFor(() => expect(popup).toHaveClass('ant-dropdown-hidden'))
+    expect(local.getState().codebook.isEditorOpen).toBe(true)
+    expect(downloadCodebookExport).not.toHaveBeenCalled()
+
+    const reopened = await openExportMenu()
+    fireEvent.keyDown(trigger, { key: 'Tab', keyCode: 9, which: 9 })
+    const reopenedJson = within(reopened.menu).getByRole('menuitem', { name: /JSON形式でエクスポート/ })
+    // rc-menu may restore the previously active item on reopen.
+    await waitFor(() => expect(within(reopened.menu).getAllByRole('menuitem')).toContain(document.activeElement))
+    fireEvent.keyDown(document.activeElement!, { key: 'End', keyCode: 35, which: 35 })
+    await waitFor(() => expect(reopenedJson).toHaveFocus())
+    fireEvent.keyDown(reopenedJson, { key: 'Enter', keyCode: 13, which: 13 })
+    expect(downloadCodebookExport).toHaveBeenCalledOnce()
+    expect(downloadCodebookExport).toHaveBeenCalledWith('survey', 'json')
+    expect(local.getState().codebook.hasChanges).toBe(true)
+    expect(local.getState().codebook.draftColumns[0].label).toBe('未保存の編集')
+    expect(importCodebook).not.toHaveBeenCalled()
   })
 
   it.each(['csv', 'json'] as const)('explains the saved format before exporting %s and preserves a dirty draft', async format => {

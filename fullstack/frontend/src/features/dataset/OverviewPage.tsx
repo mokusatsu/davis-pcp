@@ -108,7 +108,7 @@ export default function OverviewPage() {
 
   // Transformation Modals state
   const [binModalTarget, setBinModalTarget] = useState<string | null>(null)
-  const [oneHotModalTarget, setOneHotModalTarget] = useState<{ col: string; categories: string[] } | null>(null)
+  const [oneHotModalTarget, setOneHotModalTarget] = useState<{ col: string; categories: string[]; categoriesComplete: boolean } | null>(null)
   const [imputeModalOpen, setImputeModalOpen] = useState<boolean>(false)
   const [imputeTargetCol, setImputeTargetCol] = useState<string | null>(null)
   const [addVarModalOpen, setAddVarModalOpen] = useState<boolean>(false)
@@ -396,7 +396,12 @@ export default function OverviewPage() {
                   if (record.isMaParent) return null
                   const isNumeric = record.schema?.semanticType === 'numeric' || typeof record.min === 'number'
                   const isCategorical = record.schema?.semanticType === 'categorical' || (!isNumeric && record.uniqueCount)
-                  const categories = record.schema?.categories || Object.keys(record.frequencies || {})
+                  const observedCategories = record.schema?.categories || Object.keys(record.frequencies || {})
+                  const categoriesComplete = Number.isFinite(record.schema?.uniqueCount)
+                    && record.schema.uniqueCount === observedCategories.length
+                  const missingCodes = new Set(definitionMap.get(record.name)?.missingCodes ?? [])
+                  const categories = observedCategories
+                    .filter((category: string) => !missingCodes.has(category))
 
                   return (
                     <Space direction="horizontal" size="small" wrap>
@@ -430,7 +435,7 @@ export default function OverviewPage() {
                           type="primary"
                           ghost
                           data-testid={`btn-onehot-${record.name}`}
-                          onClick={() => setOneHotModalTarget({ col: record.name, categories })}
+                          onClick={() => setOneHotModalTarget({ col: record.name, categories, categoriesComplete })}
                         >
                           One-Hot二値化
                         </Button>
@@ -471,6 +476,7 @@ export default function OverviewPage() {
           datasetId={selection.datasetId}
           columnName={oneHotModalTarget.col}
           categories={oneHotModalTarget.categories}
+          categoriesComplete={oneHotModalTarget.categoriesComplete}
           onClose={() => setOneHotModalTarget(null)}
           onSuccess={notifyDatasetMutationCommitted}
         />

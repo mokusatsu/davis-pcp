@@ -11,6 +11,7 @@ import zipfile
 
 import polars as pl
 import pyarrow.ipc as ipc
+import pyarrow.parquet as pq
 import pytest
 from fastapi.testclient import TestClient
 
@@ -102,6 +103,50 @@ def assert_same_frame(actual, expected):
         assert left[name].is_null().to_pylist() == right[name].is_null().to_pylist()
 
 
+def track_package_readers(monkeypatch, mode):
+    """Model the deployed missing capability; use real readers/conversion."""
+    native_polars = pl.read_parquet
+    native_arrow = pq.read_table
+    native_from_arrow = pl.from_arrow
+    calls = {"polars": [], "arrow": [], "schema_rows": []}
+
+    def polars_reader(source, *args, **kwargs):
+        if isinstance(source, io.BytesIO):
+            calls["polars"].append(source.getvalue())
+        if mode == "fallback":
+            if isinstance(source, io.BytesIO):
+                source.read(17)  # A failed native read may already consume bytes.
+            raise AttributeError("type object 'builtins.PyLazyFrame' has no attribute 'new_from_parquet'")
+        return native_polars(source, *args, **kwargs)
+
+    def arrow_reader(source, *args, **kwargs):
+        assert mode == "fallback", "Successful native reads must not need Arrow"
+        if isinstance(source, io.BytesIO):
+            assert source.tell() == 0, "Fallback must rewind a partially consumed member"
+            calls["arrow"].append(source.getvalue())
+        return native_arrow(source, *args, **kwargs)
+
+    def schema_only(table, *args, **kwargs):
+        calls["schema_rows"].append(table.num_rows)
+        assert table.num_rows == 0, "Nonempty Arrow buffers must not cross into WASM Polars"
+        return native_from_arrow(table, *args, **kwargs)
+
+    monkeypatch.setattr(pl, "read_parquet", polars_reader)
+    monkeypatch.setattr(pq, "read_table", arrow_reader)
+    if mode == "fallback":
+        monkeypatch.setattr(pl, "from_arrow", schema_only)
+    return calls
+
+
+def assert_package_reader_calls(calls, payload, mode):
+    files = unpack(payload)
+    members = [files["data/current.parquet"], files["data/raw.parquet"]]
+    assert calls["polars"] == members
+    assert calls["arrow"] == (members if mode == "fallback" else [])
+    if mode == "fallback":
+        assert calls["schema_rows"] and set(calls["schema_rows"]) == {0}
+
+
 def actual_response(client, did):
     response = client.post(f"/api/v1/datasets/{did}/view", json={})
     assert response.status_code == 200, response.text
@@ -154,7 +199,8 @@ def assert_published_schema(client, store, did):
     return disk
 
 
-def test_native_package_reconstructs_complete_schema_without_changing_typed_data(api):
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+def test_native_package_reconstructs_complete_schema_without_changing_typed_data(api, monkeypatch, reader_mode):
     client, store = api
     frame = pl.DataFrame({
         "q1": pl.Series([1, None, 3, 4, 5], dtype=pl.Int16),
@@ -186,6 +232,7 @@ def test_native_package_reconstructs_complete_schema_without_changing_typed_data
     payload = export_package(client, did)
     evidence_bytes("mixed-native-export.zip", payload)
     before_files = file_state(store)
+    reader_calls = track_package_readers(monkeypatch, reader_mode)
     imported = ok(import_package(client, payload))
     restored_id = imported["datasetId"]
     assert restored_id != did
@@ -226,6 +273,7 @@ def test_native_package_reconstructs_complete_schema_without_changing_typed_data
     assert rejected_undo.status_code == 409
     assert file_state(store) == after_files
     evidence("mixed-roundtrip.json", {"before": before, "restored": actual_response(client, restored_id)})
+    assert_package_reader_calls(reader_calls, payload, reader_mode)
 
 
 def make_binned(api):
@@ -248,11 +296,13 @@ def make_binned(api):
     return did, export_package(client, did)
 
 
-def test_generated_bins_restore_encoded_current_category_meaning_beside_numeric_ordinal(api):
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+def test_generated_bins_restore_encoded_current_category_meaning_beside_numeric_ordinal(api, monkeypatch, reader_mode):
     client, store = api
     did, payload = make_binned(api)
     evidence_bytes("bins-native-export.zip", payload)
     before = actual_response(client, did)
+    reader_calls = track_package_readers(monkeypatch, reader_mode)
     restored_id = ok(import_package(client, payload))["datasetId"]
     meta = assert_published_schema(client, store, restored_id)
     schemas = {c["name"]: c for c in meta["schema"]}
@@ -266,6 +316,7 @@ def test_generated_bins_restore_encoded_current_category_meaning_beside_numeric_
     assert_same_frame(store.read_raw(restored_id), store.read_raw(did))
     assert store.load_codebook(restored_id) == {**store.load_codebook(did), "datasetId": restored_id}
     evidence("bins-roundtrip.json", {"before": before, "restored": actual_response(client, restored_id)})
+    assert_package_reader_calls(reader_calls, payload, reader_mode)
 
 
 def test_explicit_current_scale_edit_keeps_history_without_restoring_bin_semantics(api):
@@ -342,7 +393,8 @@ def test_package_binds_custom_column_ids_without_merging_codebook_roles(api):
 @pytest.mark.parametrize("kind", ["duplicate_name", "duplicate_id", "missing_name", "missing_id",
     "empty_name", "empty_id", "blank_name", "blank_id", "nonstring_name", "nonstring_id",
     "extra_name", "missing_column", "nonobject_column", "null_columns", "object_columns"])
-def test_malformed_package_column_identity_rejects_before_any_publication(api, kind):
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+def test_malformed_package_column_identity_rejects_before_any_publication(api, monkeypatch, kind, reader_mode):
     client, store = api
     did = upload(api, pl.DataFrame({"q": [1, 2], "id": ["a", "b"]}))
     def corrupt(book):
@@ -368,14 +420,17 @@ def test_malformed_package_column_identity_rejects_before_any_publication(api, k
             book["columns"] = {"q": cols[0]}
     payload = change_book(export_package(client, did), corrupt)
     before = file_state(store)
+    reader_calls = track_package_readers(monkeypatch, reader_mode)
     response = import_package(client, payload)
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == "PROVENANCE_PACKAGE_INVALID"
     assert file_state(store) == before
+    assert_package_reader_calls(reader_calls, payload, reader_mode)
 
 
 @pytest.mark.parametrize("kind", ["checksum", "version", "unlisted", "duplicate_manifest", "path", "row_id"])
-def test_existing_package_guards_still_reject_without_writes(api, kind):
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+def test_existing_package_guards_still_reject_without_writes(api, monkeypatch, kind, reader_mode):
     client, store = api
     did = upload(api, pl.DataFrame({"q": [1, 2], "id": ["a", "b"]}))
     files = unpack(export_package(client, did))
@@ -401,6 +456,53 @@ def test_existing_package_guards_still_reject_without_writes(api, kind):
         refresh = True
     files["manifest.json"] = json.dumps(manifest).encode()
     before = file_state(store)
-    response = import_package(client, pack(files, refresh_manifest=refresh))
+    reader_calls = track_package_readers(monkeypatch, reader_mode)
+    payload = pack(files, refresh_manifest=refresh)
+    response = import_package(client, payload)
     assert response.status_code == 422, response.text
+    assert file_state(store) == before
+    if kind == "row_id":
+        assert_package_reader_calls(reader_calls, payload, reader_mode)
+    else:
+        assert reader_calls == {"polars": [], "arrow": [], "schema_rows": []}
+
+
+@pytest.mark.parametrize("member", ["data/current.parquet", "data/raw.parquet"])
+@pytest.mark.parametrize("failure", ["malformed_parquet", "arrow_io"])
+def test_package_member_fallback_failure_rejects_before_publication(api, monkeypatch, member, failure):
+    client, store = api
+    did = upload(api, pl.DataFrame({"q": [1, None, 3], "id": ["a", "b", "c"]}))
+    ok(client.post(f"/api/v1/datasets/{did}/impute", json={
+        "columns": ["q"], "strategy": "mean", "inPlace": True}))
+    files = unpack(export_package(client, did))
+    assert files["data/current.parquet"] != files["data/raw.parquet"]
+    if failure == "malformed_parquet":
+        files[member] = b"not a Parquet file; intentionally malformed synthetic payload"
+    payload = pack(files)  # Valid checksums let the actual member reader decide.
+    before = file_state(store)
+    calls = track_package_readers(monkeypatch, "fallback")
+    tracked_arrow = pq.read_table
+
+    def failing_arrow(source, *args, **kwargs):
+        if failure == "arrow_io" and isinstance(source, io.BytesIO) and source.getvalue() == files[member]:
+            assert source.tell() == 0
+            calls["arrow"].append(source.getvalue())
+            raise OSError("forced package Arrow I/O failure")
+        return tracked_arrow(source, *args, **kwargs)
+
+    def forbid_publication(*_args, **_kwargs):
+        pytest.fail("Unreadable package members must be rejected before publication")
+
+    monkeypatch.setattr(pq, "read_table", failing_arrow)
+    monkeypatch.setattr(store, "commit_data_change", forbid_publication)
+    response = import_package(client, payload)
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "PROVENANCE_PACKAGE_INVALID"
+    assert "new_from_parquet" not in response.json()["error"]["message"]
+    if failure == "arrow_io":
+        assert "forced package Arrow I/O failure" in response.json()["error"]["message"]
+    attempted = [files["data/current.parquet"]]
+    if member == "data/raw.parquet":
+        attempted.append(files[member])
+    assert calls["polars"] == calls["arrow"] == attempted
     assert file_state(store) == before

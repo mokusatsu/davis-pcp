@@ -2531,9 +2531,9 @@ async def import_package(file: UploadFile = File(...)) -> dict:
         provenance = json.loads(archive.read("metadata/provenance.json").decode("utf-8"))
         mask = json.loads(archive.read("metadata/imputation-mask.json").decode("utf-8"))
         session_state = json.loads(archive.read("metadata/session-state.json").decode("utf-8"))
-        current_df = pl.read_parquet(io.BytesIO(archive.read("data/current.parquet")))
+        current_df = store._read_parquet(io.BytesIO(archive.read("data/current.parquet")))
         if "data/raw.parquet" in names:
-            raw_df = pl.read_parquet(io.BytesIO(archive.read("data/raw.parquet")))
+            raw_df = store._read_parquet(io.BytesIO(archive.read("data/raw.parquet")))
         else:
             raw_df = pl.read_csv(io.BytesIO(archive.read("data/raw.csv")))
     except Exception as exc:

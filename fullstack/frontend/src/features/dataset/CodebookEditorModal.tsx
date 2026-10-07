@@ -316,8 +316,17 @@ export default function CodebookEditorModal() {
             </Button>
 
             <Dropdown
-              menu={{ items: exportMenuItems, style: { width: 360, maxWidth: 'calc(100vw - 32px)' } }}
-              align={{ overflow: { adjustX: true, adjustY: true, shiftX: true } }}
+              menu={{ items: exportMenuItems, style: {
+                width: 360, maxWidth: 'calc(100vw - 32px)',
+                maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
+              } }}
+              overlayStyle={{ paddingBlock: 4 }}
+              align={{
+                // The gap is popup padding: a nonzero alignment offset would
+                // remain outside the viewport after rc-trigger shifts it.
+                offset: [0, 0],
+                overflow: { adjustX: true, adjustY: true, shiftX: true, shiftY: true },
+              }}
               trigger={['click']}
             >
               <Button size="small" icon={<DownloadOutlined />}>

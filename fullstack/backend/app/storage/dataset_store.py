@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import tempfile
+from io import BytesIO
 from threading import RLock
 from pathlib import Path
 from typing import Any
@@ -274,13 +275,15 @@ class DatasetStore:
         return self._read_parquet(path, columns)
 
     @staticmethod
-    def _read_parquet(path: Path, columns: list[str] | None = None) -> pl.DataFrame:
+    def _read_parquet(path: Path | BytesIO, columns: list[str] | None = None) -> pl.DataFrame:
         """Read every data generation through the same native/WASM bridge."""
         try:
             return pl.read_parquet(path, columns=columns)
         except Exception:
             import pyarrow as pa
             import pyarrow.parquet as pq
+            if isinstance(path, BytesIO):
+                path.seek(0)
             table = pq.read_table(path, columns=columns)
             if columns == []:
                 # Polars' native empty projection is (0, 0), independent of

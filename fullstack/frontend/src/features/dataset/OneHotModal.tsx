@@ -12,6 +12,7 @@ interface OneHotModalProps {
   datasetId: string
   columnName: string
   categories: string[]
+  categoriesComplete?: boolean
   onClose: () => void
   onSuccess: (committedDatasetId: string) => void
 }
@@ -21,6 +22,7 @@ export default function OneHotModal({
   datasetId,
   columnName,
   categories,
+  categoriesComplete = true,
   onClose,
   onSuccess,
 }: OneHotModalProps) {
@@ -32,7 +34,8 @@ export default function OneHotModal({
   const request = useRequestIdentity(JSON.stringify([datasetId, columnName, open]))
   useEffect(() => { if (open) { setPrefix(columnName); setDropFirst(false) } }, [open, datasetId, columnName])
 
-  const effectiveDropFirst = dropFirst && categories.length > 1
+  const effectiveDropFirst = categoriesComplete && dropFirst && categories.length > 1
+  const noEligibleCategories = categoriesComplete && categories.length === 0
   const effectivePrefix = prefix.trim() || columnName
   const activeCategories = effectiveDropFirst ? categories.slice(1) : categories
   const previewColNames = activeCategories.map((cat) => {
@@ -41,7 +44,7 @@ export default function OneHotModal({
   })
 
   const handleApply = async () => {
-    if (busy.current || !open || !datasetId || !columnName) return
+    if (busy.current || !open || !datasetId || !columnName || noEligibleCategories) return
     busy.current = true
     const current = request.begin()
     setApplying(true)
@@ -79,7 +82,7 @@ export default function OneHotModal({
       keyboard={!applying}
       maskClosable={!applying}
       cancelButtonProps={{ disabled: applying }}
-      okButtonProps={{ disabled: applying }}
+      okButtonProps={{ disabled: applying || noEligibleCategories }}
       onOk={handleApply}
       okText="0/1二値列を生成"
       confirmLoading={applying}
@@ -106,7 +109,7 @@ export default function OneHotModal({
           >
             最初の水準を除外する (Drop First Category — 回帰・多重共線性対策)
           </Checkbox>
-          {categories.length === 1 && (
+          {categoriesComplete && categories.length === 1 && (
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
               水準が1つの場合は除外せず、0/1列を生成します。
             </Typography.Paragraph>
@@ -115,6 +118,16 @@ export default function OneHotModal({
 
         <div>
           <Typography.Text strong>二値列名の候補 (プレビュー):</Typography.Text>
+          {noEligibleCategories && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              生成できる有効なカテゴリ水準がありません。欠損コードの設定を確認してください。
+            </Typography.Paragraph>
+          )}
+          {!categoriesComplete && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              プレビューは一部の水準です。除外する水準と生成する列は実行時に確定します。
+            </Typography.Paragraph>
+          )}
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {previewColNames.map((name, index) => (
               <Tag color="blue" key={index}>{name}</Tag>
@@ -138,6 +151,7 @@ export default function OneHotModal({
                 title: '生成ステータス',
                 key: 'status',
                 render: (_, record) => {
+                  if (!categoriesComplete) return <Tag>実行時に確定</Tag>
                   const isDropped = effectiveDropFirst && record.index === 1
                   return isDropped ? (
                     <Tag color="default">除外 (Base)</Tag>
