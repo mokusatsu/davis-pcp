@@ -135,7 +135,9 @@ describe('Codebook interchange guidance at the action boundary', () => {
     const csv = within(menu).getByRole('menuitem', { name: /CSV形式でエクスポート/ })
     const json = within(menu).getByRole('menuitem', { name: /JSON形式でエクスポート/ })
     expect(csv).toHaveTextContent('列定義・ライセンスのみ（MA親設問・重み設定・調査設計は含みません）')
+    expect(csv).toHaveTextContent('数式としての解釈を抑える接頭辞により文字列が変わる場合があります。正確な文字列の引継ぎにはJSONを選んでください。')
     expect(json).toHaveTextContent('MA親設問・重み設定・調査設計を含む対応メタデータ')
+    expect(json).toHaveTextContent('文字列を変えずに出力')
     for (const item of [csv, json]) {
       expect(item.querySelector('div[style]')).toHaveStyle({ whiteSpace: 'normal', overflowWrap: 'anywhere' })
     }

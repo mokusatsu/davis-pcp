@@ -148,6 +148,8 @@ export default function CodebookEditorModal() {
               <div>CSV形式でエクスポート (.csv)</div>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 列定義・ライセンスのみ（MA親設問・重み設定・調査設計は含みません）
+                <br />
+                数式としての解釈を抑える接頭辞により文字列が変わる場合があります。正確な文字列の引継ぎにはJSONを選んでください。
               </Typography.Text>
             </div>
           ),
@@ -162,6 +164,8 @@ export default function CodebookEditorModal() {
               <div>JSON形式でエクスポート (.json)</div>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 MA親設問・重み設定・調査設計を含む対応メタデータ
+                <br />
+                文字列を変えずに出力
               </Typography.Text>
             </div>
           ),

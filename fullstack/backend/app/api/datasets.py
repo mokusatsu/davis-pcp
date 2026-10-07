@@ -772,6 +772,7 @@ def _update_codebook(dataset_id: str, request: dict) -> dict:
         "role",
         "valueLabels",
         "categoryOrder",
+        "binDefinitions",
         "missingCodes",
         "missingReasons",
         "isReversed",
@@ -1207,6 +1208,23 @@ def export_codebook(dataset_id: str, format: str = "csv") -> Response:
         return _export_codebook(dataset_id, format)
 
 
+def _codebook_csv_text_cell(value: Any) -> Any:
+    """Prefix formula-like CSV text; JSON retains the exact original strings.
+
+    Detection skips only leading ASCII C0 controls/space (U+0000–U+0020)
+    and DEL (U+007F). A leading TAB, CR or LF also triggers prefixing by
+    itself. This is a serialization policy, not an application-level guarantee.
+    """
+    if not isinstance(value, str):
+        return value
+    start = 0
+    while start < len(value) and (ord(value[start]) <= 0x20 or value[start] == "\x7f"):
+        start += 1
+    if any(char in "\t\r\n" for char in value[:start]) or value[start:].startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
     cb = store.load_codebook(dataset_id)
     if not cb:
@@ -1245,8 +1263,10 @@ def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
     writer = csv.writer(output)
     writer.writerow(fields)
     # A separate typed row keeps the license dataset-level, even for an empty
-    # codebook. CSV quoting preserves Unicode, commas, quotes and line breaks.
-    writer.writerow([""] * (len(fields) - 2) + ["dataset", cb["licenseText"]])
+    # codebook. Prefix final text cells before ordinary CSV quoting; do not
+    # mutate stored strings or strings nested inside a JSON-valued cell.
+    dataset_row = [""] * (len(fields) - 2) + ["dataset", cb["licenseText"]]
+    writer.writerow([_codebook_csv_text_cell(cell) for cell in dataset_row])
 
     for col in cb.get("columns", []):
         row = [
@@ -1264,7 +1284,7 @@ def _export_codebook(dataset_id: str, format: str = "csv") -> Response:
             "column",
             "",
         ]
-        writer.writerow(row)
+        writer.writerow([_codebook_csv_text_cell(cell) for cell in row])
 
     return Response(
         content=output.getvalue(),
@@ -1399,19 +1419,22 @@ class BinningPreviewRequest(BaseModel):
     method: str = "equal_width"
     num_bins: int = 4
     custom_cuts: list[float] | None = None
+    labels_format: str = "range"
 
 
 @router.post("/datasets/{dataset_id}/transform/preview")
 def preview_dataset_binning(dataset_id: str, request: BinningPreviewRequest) -> dict:
     from ..algorithms.transform.core import preview_binning
-    df = store.get_dataframe(dataset_id)
-    return preview_binning(
-        df,
-        column=request.column,
-        method=request.method,
-        num_bins=request.num_bins,
-        custom_cuts=request.custom_cuts,
-    )
+    with store.lock(dataset_id):
+        return preview_binning(
+            store.get_dataframe(dataset_id),
+            column=request.column,
+            method=request.method,
+            num_bins=request.num_bins,
+            custom_cuts=request.custom_cuts,
+            codebook=store.load_codebook(dataset_id),
+            labels_format=request.labels_format,
+        )
 
 
 @router.post("/datasets/{dataset_id}/transform")
@@ -1437,6 +1460,7 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
             prefix=request.options.get("prefix"),
             handle_null=str(request.options.get("handle_null", "as_missing")),
             max_categories=int(request.options.get("max_categories", 30)),
+            codebook=store.load_codebook(dataset_id),
         )
         created_columns = new_col_names
     elif request.type == "binning":
@@ -1448,6 +1472,7 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
             custom_cuts=request.options.get("custom_cuts"),
             output_name=request.options.get("output_column_name"),
             labels_format=str(request.options.get("labels_format", "range")),
+            codebook=store.load_codebook(dataset_id),
         )
         created_columns = [target_col_name]
     else:
@@ -1455,7 +1480,27 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
 
     # Re-probe schema on updated dataframe
     schema_payload = _derive_dataset_schema(df, meta.get("schema", []))
-    cb = _sync_codebook(dataset_id, df, source_schema=meta.get("schema", []))
+    if bin_summaries is not None:
+        codes = [str(item["binId"]) for item in bin_summaries]
+        for column_schema in schema_payload:
+            if column_schema["name"] == created_columns[0]:
+                column_schema.update(semanticType="categorical", role="categorical_axis",
+                                     categoryOrder="manual", manualCategories=codes, categories=codes)
+    cb = _sync_codebook(dataset_id, df, source_schema=schema_payload)
+    if bin_summaries is not None:
+        from ..domain.codebook import CodebookColumn
+
+        for index, column_spec in enumerate(cb["columns"]):
+            if column_spec["name"] == created_columns[0]:
+                # The typed definition is validated before any data or metadata
+                # is committed. Labels and observed counts do not identify bins.
+                cb["columns"][index] = CodebookColumn(**{
+                    **column_spec, "scaleType": "ordinal", "categoryOrder": codes,
+                    "valueLabels": {str(item["binId"]): item["label"] for item in bin_summaries},
+                    "binDefinitions": [{key: item[key] for key in (
+                        "binId", "min", "max", "lowerInclusive", "upperInclusive")}
+                        for item in bin_summaries],
+                }).model_dump(mode="json")
     schema_revision = cb.get("schemaRevision", 1)
 
     # Invalidate cached fingerprint (commit_data_change recomputes it too)
@@ -1471,7 +1516,7 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     input_revision = int(store.get_meta(dataset_id).get("dataRevision", 1))
     provenance_before = store.load_provenance(dataset_id)
     step = _provenance_step("transform", {"type": request.type, "source_column": request.source_column,
-                                          "options": request.options}, meta, cb, "transform-1",
+                                          "options": request.options}, meta, cb, "transform-2",
                             parent_operation_id=(provenance_before or {}).get("currentOperationId"))
     commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
     meta.pop("rowIds", None)
@@ -2289,6 +2334,64 @@ def get_imputation_mask(dataset_id: str, rowIds: str | None = None,
 PACKAGE_VERSION = "provenance-package-1"
 
 
+def _derive_package_schema(current_df: pl.DataFrame, codebook: dict) -> list[dict]:
+    """Rebuild fields encoded by current values and bind preserved column IDs."""
+    columns = codebook.get("columns")
+    if not isinstance(columns, list) or any(
+        not isinstance(column, dict)
+        or any(not isinstance(column.get(key), str) or not column[key].strip()
+               for key in ("name", "columnId"))
+        for column in columns
+    ):
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       "codebook列のnameとcolumnIdは空でない文字列で指定してください。",
+                       status_code=422)
+    names = [column["name"] for column in columns]
+    ids = [column["columnId"] for column in columns]
+    if len(set(names)) != len(names) or len(set(ids)) != len(ids):
+        raise BizError("PROVENANCE_PACKAGE_INVALID", "codebook列のnameまたはcolumnIdが重複しています。",
+                       status_code=422)
+    frame_names = set(current_df.columns) - {"__rowId__"}
+    if set(names) != frame_names:
+        raise BizError("PROVENANCE_PACKAGE_INVALID",
+                       f"codebookとデータ列が一致しません: {sorted(set(names) ^ frame_names)[:10]}",
+                       status_code=422)
+
+    # Packages carry no standalone physical-schema overrides. Re-probe the
+    # current values, without copying codebook roles/scales into physical fields.
+    schema = _derive_dataset_schema(current_df)
+    by_name = {column["name"]: column for column in columns}
+    from pydantic import TypeAdapter, ValidationError
+    from ..domain.codebook import BinDefinitions
+
+    definitions_adapter = TypeAdapter(BinDefinitions)
+    for column in schema:
+        spec = by_name[column["name"]]
+        column["columnId"] = spec["columnId"]
+        # Interval definitions are historical. Only reconstruct generated-bin
+        # semantics when the current scale, order, type and values still agree.
+        # Malformed/stale history remains untouched and uses canonical inference.
+        if spec.get("scaleType") != "ordinal" or not spec.get("binDefinitions"):
+            continue
+        try:
+            definitions = definitions_adapter.validate_python(spec["binDefinitions"], strict=True)
+        except ValidationError:
+            continue
+        codes = [str(item.binId) for item in definitions]
+        order = spec.get("categoryOrder")
+        if (not isinstance(order, list) or any(not isinstance(code, str) for code in order)
+                or len(order) != len(codes) or set(order) != set(codes)):
+            continue
+        values = current_df[column["name"]]
+        if not values.dtype.is_integer() or not values.drop_nulls().is_in(
+            [item.binId for item in definitions]
+        ).all():
+            continue
+        column.update(semanticType="categorical", role="categorical_axis",
+                      categoryOrder="manual", manualCategories=list(order), categories=list(order))
+    return schema
+
+
 @router.get("/datasets/{dataset_id}/export_package")
 def export_package(dataset_id: str):
     import io
@@ -2439,12 +2542,7 @@ async def import_package(file: UploadFile = File(...)) -> dict:
     if "__rowId__" not in current_df.columns or current_df["__rowId__"].n_unique() != current_df.height:
         raise BizError("PROVENANCE_PACKAGE_INVALID", "__rowId__ の一意性を確認できません。",
                        status_code=422)
-    codebook_names = {c.get("name") for c in codebook.get("columns", []) if isinstance(c, dict)}
-    frame_names = {c for c in current_df.columns if c != "__rowId__"}
-    if codebook_names != frame_names:
-        raise BizError("PROVENANCE_PACKAGE_INVALID",
-                       f"codebookとデータ列が一致しません: {sorted(codebook_names ^ frame_names)[:10]}",
-                       status_code=422)
+    schema_payload = _derive_package_schema(current_df, codebook)
     new_id_value = new_id("ds")
     # PK03: rebind every active reference to the new id; keep the source id as
     # lineage only. Imported history becomes a read-only archive; the new edit
@@ -2467,7 +2565,7 @@ async def import_package(file: UploadFile = File(...)) -> dict:
                 "format": "package",
                 "rowCount": current_df.height,
                 "columnCount": current_df.width - 1,
-                "schema": [{"name": c} for c in current_df.columns if c != "__rowId__"],
+                "schema": schema_payload,
                 "schemaRevision": int(codebook.get("schemaRevision", 1)),
                 "rowIdentity": "preserved",
                 "rowIds": current_df["__rowId__"].to_list(),

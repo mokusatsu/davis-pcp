@@ -15,20 +15,38 @@ from ...domain.errors import BizError
 
 
 def _safe_zscore(arr: np.ndarray) -> np.ndarray:
-    mean = np.nanmean(arr)
-    std = np.nanstd(arr)
-    if std < 1e-12:
-        return np.zeros_like(arr)
-    return (arr - mean) / std
+    # Standardize bounded coordinates so small/large measurement units cannot
+    # underflow/overflow the population variance or an absolute cutoff.
+    result = _safe_minmax(arr)
+    valid = np.isfinite(result)
+    observed = result[valid]
+    if observed.size and np.any(observed != observed[0]):
+        result[valid] = (observed - np.mean(observed)) / np.std(observed)
+    return result
 
 
 def _safe_minmax(arr: np.ndarray) -> np.ndarray:
-    min_v = np.nanmin(arr)
-    max_v = np.nanmax(arr)
-    span = max_v - min_v
-    if span < 1e-12:
-        return np.zeros_like(arr)
-    return (arr - min_v) / span
+    values = np.asarray(arr, dtype=np.float64)
+    valid = np.isfinite(values)
+    result = np.full(values.shape, np.nan, dtype=np.float64)
+    observed = values[valid]
+    if not observed.size:
+        return result
+    low, high = np.min(observed), np.max(observed)
+    if low == high:
+        result[valid] = 0.0
+        return result
+    with np.errstate(over="ignore"):
+        span = high - low
+    if np.isfinite(span):
+        # Subtract before scaling to retain representable local differences.
+        result[valid] = (observed - low) / span
+    else:
+        # Opposite-sign finite endpoints may have an overflowing range.
+        scale = max(abs(low), abs(high))
+        lower, upper = low / scale, high / scale
+        result[valid] = (observed / scale - lower) / (upper - lower)
+    return result
 
 
 def _safe_log(arr: np.ndarray) -> np.ndarray:
@@ -67,6 +85,48 @@ def _safe_yeojohnson(arr: np.ndarray, lmbda: float = 0.5) -> np.ndarray:
     return res
 
 
+def _safe_where(cond: Any, a: Any, b: Any) -> np.ndarray:
+    left_arr, right_arr = np.asarray(a), np.asarray(b)
+    if left_arr.dtype.kind in "biuf" and right_arr.dtype.kind in "biuf":
+        return np.where(cond, left_arr, right_arr)
+
+    # NumPy otherwise coerces numeric NaN/None to literal text when the other
+    # branch contains strings. Select actual values before choosing a dtype.
+    result = np.where(cond, left_arr.astype(object), right_arr.astype(object))
+    observed = [v for v in result.flat if v is not None]
+    numeric = (int, float, np.integer, np.floating)
+    has_number = any(isinstance(v, numeric) and not isinstance(v, (bool, np.bool_))
+                     for v in observed)
+    if ((has_number and all(isinstance(v, (*numeric, bool, np.bool_)) for v in observed))
+            or (not observed and (left_arr.dtype.kind in "iuf" or right_arr.dtype.kind in "iuf"))):
+        # Keep nullable numeric selections usable by subsequent NumPy ufuncs.
+        return result.astype(np.float64)
+    return result
+
+
+def _result_series(name: str, values: np.ndarray) -> pl.Series:
+    if values.dtype == bool:
+        return pl.Series(name, values, dtype=pl.Boolean)
+    if np.issubdtype(values.dtype, np.integer):
+        return pl.Series(name, values, dtype=pl.Int64)
+    if np.issubdtype(values.dtype, np.floating):
+        finite_values = np.where(np.isfinite(values), values, np.nan)
+        return pl.Series(name, finite_values, dtype=pl.Float64, nan_to_null=True)
+
+    # Preserve true nulls and actual nonfinite numeric results, while retaining
+    # literal strings such as "None" and "NaN" as ordinary observations.
+    cleaned = [None if v is None or (isinstance(v, (float, np.floating))
+                                    and not np.isfinite(v)) else v for v in values]
+    observed = [v for v in cleaned if v is not None]
+    if observed and all(isinstance(v, (bool, np.bool_)) for v in observed):
+        return pl.Series(name, cleaned, dtype=pl.Boolean)
+    if observed and all(isinstance(v, (int, np.integer)) for v in observed):
+        return pl.Series(name, cleaned, dtype=pl.Int64)
+    if observed and all(isinstance(v, (int, float, np.integer, np.floating)) for v in observed):
+        return pl.Series(name, cleaned, dtype=pl.Float64)
+    return pl.Series(name, [None if v is None else str(v) for v in cleaned], dtype=pl.String)
+
+
 # Whitelisted function library
 FUNCTIONS: dict[str, Callable[..., Any]] = {
     "abs": np.abs,
@@ -85,8 +145,8 @@ FUNCTIONS: dict[str, Callable[..., Any]] = {
     "zscore": _safe_zscore,
     "minmax": _safe_minmax,
     "yeojohnson": _safe_yeojohnson,
-    "where": lambda cond, a, b: np.where(cond, a, b),
-    "ifelse": lambda cond, a, b: np.where(cond, a, b),
+    "where": _safe_where,
+    "ifelse": _safe_where,
 }
 
 
@@ -204,7 +264,7 @@ class SafeEvaluator(ast.NodeVisitor):
         test = self.visit(node.test)
         body = self.visit(node.body)
         orelse = self.visit(node.orelse)
-        return np.where(test, body, orelse)
+        return _safe_where(test, body, orelse)
 
     def visit_Call(self, node: ast.Call) -> Any:
         func = self.visit(node.func)
@@ -246,7 +306,9 @@ def evaluate_expression(
         if col == "__rowId__":
             continue
         series = df[col]
-        if series.dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
+        if series.dtype == pl.Null:
+            var_map[col] = np.full(n_rows, np.nan)
+        elif series.dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64):
             var_map[col] = series.to_numpy().astype(np.float64)
         else:
             var_map[col] = np.array(series.to_list())
@@ -255,25 +317,17 @@ def evaluate_expression(
     raw_res = evaluator.visit(parsed)
 
     # Convert scalar or array result to Polars Series
-    if np.isscalar(raw_res):
-        arr_res = np.full(n_rows, raw_res)
+    arr_res = np.asarray(raw_res)
+    if arr_res.ndim == 0:
+        arr_res = np.full(n_rows, arr_res.item())
     else:
-        arr_res = np.asarray(raw_res)
         if len(arr_res) != n_rows:
             raise BizError(
                 "EXPRESSION_LENGTH_MISMATCH",
                 f"計算結果の行数 ({len(arr_res)}) がデータセットの行数 ({n_rows}) と一致しません。",
             )
 
-    # Determine dtype
-    if arr_res.dtype == bool:
-        new_series = pl.Series(new_col, arr_res, dtype=pl.Boolean)
-    elif np.issubdtype(arr_res.dtype, np.integer):
-        new_series = pl.Series(new_col, arr_res, dtype=pl.Int64)
-    elif np.issubdtype(arr_res.dtype, np.floating):
-        new_series = pl.Series(new_col, arr_res, dtype=pl.Float64)
-    else:
-        new_series = pl.Series(new_col, [str(v) for v in arr_res], dtype=pl.String)
+    new_series = _result_series(new_col, arr_res)
 
     # Reconstruct dataframe with new or replaced column
     existing_cols = [c for c in df.columns if c != new_col]

@@ -39,6 +39,19 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "binDefinition": {
+      "type": "object",
+      "required": ["binId", "min", "max", "lowerInclusive", "upperInclusive"],
+      "properties": {
+        "binId": { "type": "integer", "minimum": 1 },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "lowerInclusive": { "const": true },
+        "upperInclusive": { "type": "boolean" }
+      },
+      "additionalProperties": false,
+      "description": "整数ビンIDと正確な区間。IDの連番・境界の連続性・最終区間のみの上端包含は取込時に検証する。"
+    },
     "columnReference": {
       "type": "string",
       "minLength": 1,
@@ -100,6 +113,7 @@
         "role": { "type": "string", "enum": ["question", "attribute", "weight", "id", "other"] },
         "valueLabels": { "$ref": "#/$defs/labels", "description": "コード文字列から表示ラベルへの対応。" },
         "categoryOrder": { "$ref": "#/$defs/codes", "description": "欠損を除いた有効カテゴリの意味上の順序。未観測カテゴリも含める。" },
+        "binDefinitions": { "type": "array", "items": { "$ref": "#/$defs/binDefinition" }, "description": "生成ビンの正確な区間をID順に保存する。表示ラベルはvalueLabels、カテゴリ順はcategoryOrder。省略時は保持。" },
         "missingCodes": { "$ref": "#/$defs/codes", "description": "欠損として除外するコード文字列。" },
         "missingReasons": { "$ref": "#/$defs/labels", "description": "missingCodesに含まれるコードの理由。非該当と無回答を指定する。" },
         "isReversed": { "type": "boolean", "description": "軸方向と分析上の得点方向を逆転する。" },

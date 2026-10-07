@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 
 class ScaleType(str, Enum):
@@ -23,6 +23,34 @@ class RoleType(str, Enum):
     OTHER = "other"
 
 
+class BinDefinition(BaseModel):
+    """An integer category's exact interval, independent of its display label."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    binId: int = Field(gt=0, strict=True)
+    min: float = Field(allow_inf_nan=False)
+    max: float = Field(allow_inf_nan=False)
+    lowerInclusive: bool = Field(strict=True)
+    upperInclusive: bool = Field(strict=True)
+
+
+def _validate_bin_definitions(bins: list[BinDefinition]) -> list[BinDefinition]:
+    for index, definition in enumerate(bins):
+        if definition.binId != index + 1:
+            raise ValueError("binDefinitions must have consecutive ordered integer IDs starting at 1")
+        if definition.min >= definition.max:
+            raise ValueError("binDefinitions must have increasing finite bounds")
+        if index and bins[index - 1].max != definition.min:
+            raise ValueError("binDefinitions must have contiguous ordered bounds")
+        if not definition.lowerInclusive or definition.upperInclusive != (index == len(bins) - 1):
+            raise ValueError("binDefinitions include each lower bound and only the final upper bound")
+    return bins
+
+
+BinDefinitions = Annotated[list[BinDefinition], AfterValidator(_validate_bin_definitions)]
+
+
 class CodebookColumn(BaseModel):
     columnId: str
     name: str
@@ -31,6 +59,7 @@ class CodebookColumn(BaseModel):
     role: RoleType = RoleType.ATTRIBUTE
     valueLabels: dict[str, str] = Field(default_factory=dict)
     categoryOrder: list[str] = Field(default_factory=list)
+    binDefinitions: BinDefinitions = Field(default_factory=list)
     missingCodes: list[str] = Field(default_factory=list)
     missingReasons: dict[str, str] = Field(default_factory=dict)
     isReversed: bool = False
@@ -113,6 +142,7 @@ class CodebookColumnPatch(BaseModel):
     role: RoleType | None = None
     valueLabels: dict[str, str] | None = None
     categoryOrder: list[str] | None = None
+    binDefinitions: BinDefinitions | None = None
     missingCodes: list[str] | None = None
     missingReasons: dict[str, str] | None = None
     isReversed: bool | None = None

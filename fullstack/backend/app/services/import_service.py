@@ -252,7 +252,9 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
     has_header = options.hasHeader if options else True
     quotechar = options.quote if (options and options.quote) else '"'
     reader = csv.reader(io.StringIO(text), delimiter=delimiter, quotechar=quotechar)
-    rows = [row for row in reader if any(cell.strip() for cell in row)]
+    # csv.reader emits [] for a physical blank line. Explicit empty fields
+    # still form a record and must survive missing-value parsing and row IDs.
+    rows = [row for row in reader if row]
     if not rows:
         raise BizError("IMPORT_EMPTY_FILE", "ファイルにデータ行がありません。",
                        suggested_actions=["内容を確認してください"])

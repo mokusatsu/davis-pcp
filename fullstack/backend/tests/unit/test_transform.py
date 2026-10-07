@@ -41,7 +41,8 @@ def test_bin_numeric_equal_width():
     assert col_name == "score_bin4"
     assert len(summaries) == 4
     assert res_df["score_bin4"].null_count() == 0
-    assert res_df["score_bin4"][0] == summaries[0]["label"]
+    assert res_df["score_bin4"].dtype == pl.Int32
+    assert res_df["score_bin4"][0] == summaries[0]["binId"] == 1
 
 
 def test_bin_numeric_quantile():
