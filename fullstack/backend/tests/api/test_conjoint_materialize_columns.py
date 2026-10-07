@@ -114,6 +114,7 @@ def _prepare(client, store, source_kind, scope):
                "columns": [{"sourceField": "probability", "name": "SAFE_CJ_PROBABILITY",
                             "label": "saved probability"}],
                "idempotencyKey": "unique-save"}
+    _assert_lifecycle(client, store, dataset_id, 1, 1, 8)
     return dataset_id, result_id, frame, payload, expected
 
 
@@ -307,8 +308,12 @@ def test_complete_receipt_identity_and_historical_replay(
     assert response.status_code == 200, response.text
     first = response.json()
     operation = _assert_receipt(store, dataset_id, result_id, payload, expected, first, parent)
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 9)
+    assert (first["dataRevision"], first["schemaRevision"]) == (2, 2)
+    assert (operation["inputSchemaRevision"], operation["outputSchemaRevision"]) == (1, 2)
     assert len(publications) == 1
     _assert_atomic_publication(store, dataset_id, publications[0], operation)
+    _assert_publication_lifecycle(store, dataset_id, publications[0], 2, 2, 9)
     saved_frame = store.get_dataframe(dataset_id)
     assert saved_frame.select(frame.columns).schema == frame.schema
     assert saved_frame.select(frame.columns).equals(frame)
@@ -331,6 +336,7 @@ def test_complete_receipt_identity_and_historical_replay(
             later_operation = store.load_provenance(dataset_id)["operations"][-1]
             assert later_operation["parentOperationId"] == first["operationId"]
         current = collect_revisions(store.get_meta(dataset_id), store.load_codebook(dataset_id))
+        _assert_lifecycle(client, store, dataset_id, 3 if later else 2, 3 if later else 2, 10 if later else 9)
         assert current["dataRevision"] == first["dataRevision"] + int(later)
         before_retry = _workspace_bytes(store)
         history = store.load_provenance(dataset_id)
@@ -390,6 +396,10 @@ def test_saved_conjoint_operation_undo_restores_exact_data_and_codebook(
     saved = _save(client, result_id, payload)
     assert saved.status_code == 200, saved.text
     first = saved.json()
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 9)
+    assert (first["dataRevision"], first["schemaRevision"]) == (2, 2)
+    saved_bytes = _workspace_bytes(store)
+    saved_operation = store.load_provenance(dataset_id)["operations"][-1]
     history_response = client.get(f"/api/v1/datasets/{dataset_id}/provenance")
     assert history_response.status_code == 200, history_response.text
     history = history_response.json()
@@ -406,6 +416,7 @@ def test_saved_conjoint_operation_undo_restores_exact_data_and_codebook(
     assert store.load_codebook(dataset_id) == codebook
     assert store._codebook_path(dataset_id).read_bytes() == codebook_bytes
     restored_meta = store.get_meta(dataset_id)
+    _assert_lifecycle(client, store, dataset_id, 3, 1, 8)
     for key in ("schema", "schemaRevision", "columnCount", "rowCount", "fingerprint", "valuesFingerprint"):
         assert restored_meta[key] == meta[key]
     assert restored_meta["dataRevision"] == first["dataRevision"] + 1
@@ -413,6 +424,12 @@ def test_saved_conjoint_operation_undo_restores_exact_data_and_codebook(
     assert provenance["currentOperationId"] == provenance["cursorOperationId"] == parent
     assert provenance["operations"][-1]["params"]["undoneOperationId"] == first["operationId"]
     after = _workspace_bytes(store)
+    assert provenance["operations"][1] == saved_operation
+    assert (saved_operation["outputDataRevision"], saved_operation["outputSchemaRevision"]) == (2, 2)
+    for path, raw in saved_bytes.items():
+        if ".revisions/" in path:
+            assert after[path] == raw
+    _assert_result_state(client, result_id, (1, 1), (3, 1), "stale")
     for path, raw in before.items():
         if path.startswith("analysis-results/") or ".revisions/" in path or path.endswith(".raw.parquet"):
             assert after[path] == raw
@@ -453,6 +470,9 @@ def test_late_publication_failure_rolls_back_receipt_and_same_key_can_retry(
     assert attempted["parentOperationId"] == original_provenance["currentOperationId"]
     assert attempted["outputDataRevision"] == payload["context"]["expectedDataRevision"] + 1
     attempted_codebook = json.loads(publications[0][store._codebook_path(dataset_id)])
+    _assert_publication_lifecycle(store, dataset_id, publications[0], 2, 2, 9)
+    assert (attempted["inputSchemaRevision"], attempted["outputSchemaRevision"]) == (1, 2)
+    _assert_lifecycle(client, store, dataset_id, 1, 1, 8)
     assert attempted["outputSchemaRevision"] == attempted_codebook["schemaRevision"]
     assert attempted["params"]["cjResponse"]["source"] == payload["source"]
     assert attempted["params"]["cjResponse"]["writtenRowCount"] == sum(value is not None for value in expected)
@@ -461,14 +481,266 @@ def test_late_publication_failure_rolls_back_receipt_and_same_key_can_retry(
     first = response.json()
     operation = _assert_receipt(store, dataset_id, result_id, payload, expected, first,
                                 original_provenance["currentOperationId"])
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 9)
+    assert (first["dataRevision"], first["schemaRevision"]) == (2, 2)
     assert len(publications) == 2
     assert len(store.load_provenance(dataset_id)["operations"]) == len(original_provenance["operations"]) + 1
     assert operation["operationId"] != attempted["operationId"]
     assert operation["params"] == attempted["params"]
     _assert_atomic_publication(store, dataset_id, publications[1], operation)
+    _assert_publication_lifecycle(store, dataset_id, publications[1], 2, 2, 9)
     committed = _workspace_bytes(store)
     replay = _save(client, result_id, payload)
     assert replay.status_code == 200, replay.text
     assert replay.json() == {**first, "idempotentReplay": True}
     assert _workspace_bytes(store) == committed
     assert len(publications) == 2
+
+
+def _assert_lifecycle(client, store, dataset_id, data_revision, schema_revision, column_count):
+    """Check explicit expected revisions/counts across every public and disk view."""
+    from app.storage.dataset_store import dataset_fingerprint, values_fingerprint
+
+    before = _workspace_bytes(store)
+    frame = store.get_dataframe(dataset_id)
+    meta = store.get_meta(dataset_id)
+    codebook = store.load_codebook(dataset_id)
+    assert frame.height == 16
+    assert frame.width - 1 == column_count
+    names = [name for name in frame.columns if name != "__rowId__"]
+    assert len(names) == column_count
+    assert meta == json.loads(store._meta_path(dataset_id).read_bytes())
+    assert codebook == json.loads(store._codebook_path(dataset_id).read_bytes())
+    assert (meta["dataRevision"], meta["schemaRevision"], meta["columnCount"]) == (
+        data_revision, schema_revision, column_count,
+    )
+    assert meta["rowCount"] == 16
+    assert [column["name"] for column in meta["schema"]] == names
+    assert codebook["schemaRevision"] == schema_revision
+    assert [column["name"] for column in codebook["columns"]] == names
+    assert meta["valuesFingerprint"] == values_fingerprint(frame)
+    assert meta["fingerprint"] == dataset_fingerprint(
+        meta["schema"], schema_revision, frame, meta["format"], meta.get("importOptions") or {},
+    )
+    if schema_revision > 1:
+        assert meta["fingerprint"] != dataset_fingerprint(
+            meta["schema"], schema_revision - 1, frame, meta["format"], meta.get("importOptions") or {},
+        )
+    response = client.get(f"/api/v1/datasets/{dataset_id}")
+    assert response.status_code == 200, response.text
+    public = response.json()
+    for key in ("dataRevision", "schemaRevision", "columnCount", "rowCount", "fingerprint", "valuesFingerprint"):
+        assert public[key] == meta[key]
+    assert [column["name"] for column in public["schema"]] == names
+    response = client.get("/api/v1/datasets")
+    assert response.status_code == 200, response.text
+    listed = [item for item in response.json()["datasets"] if item["datasetId"] == dataset_id]
+    assert len(listed) == 1
+    assert listed[0]["columnCount"] == column_count
+    assert listed[0]["rowCount"] == 16
+    assert listed[0]["fingerprint"] == meta["fingerprint"]
+    response = client.get(f"/api/v1/datasets/{dataset_id}/codebook")
+    assert response.status_code == 200, response.text
+    assert response.json()["schemaRevision"] == schema_revision
+    assert response.json()["columns"] == codebook["columns"]
+    snapshot = pl.read_parquet(store._snapshot_path(dataset_id, data_revision))
+    assert snapshot.schema == frame.schema
+    assert snapshot.equals(frame)
+    state = json.loads(store._revision_state_path(dataset_id, data_revision).read_bytes())
+    for key in ("dataRevision", "schemaRevision", "columnCount", "rowCount", "schema", "fingerprint", "valuesFingerprint"):
+        assert state[key] == meta[key]
+    assert json.loads(store._revision_codebook_path(dataset_id, data_revision).read_bytes()) == codebook
+    assert _workspace_bytes(store) == before
+
+
+def _assert_publication_lifecycle(store, dataset_id, publication, data_revision, schema_revision, column_count):
+    """Inspect the real atomic payload, including a failed attempted publication."""
+    meta = json.loads(publication[store._meta_path(dataset_id)])
+    codebook = json.loads(publication[store._codebook_path(dataset_id)])
+    state = json.loads(publication[store._revision_state_path(dataset_id, data_revision)])
+    operation = json.loads(publication[store._provenance_path(dataset_id)])["operations"][-1]
+    frame = pl.read_parquet(io.BytesIO(publication[store._parquet_path(dataset_id)]))
+    assert (meta["dataRevision"], meta["schemaRevision"], meta["columnCount"]) == (
+        data_revision, schema_revision, column_count,
+    )
+    assert frame.height == meta["rowCount"] == 16
+    assert frame.width - 1 == len(meta["schema"]) == len(codebook["columns"]) == column_count
+    assert codebook["schemaRevision"] == schema_revision
+    for key in ("dataRevision", "schemaRevision", "columnCount", "rowCount", "schema", "fingerprint", "valuesFingerprint"):
+        assert state[key] == meta[key]
+    assert (operation["outputDataRevision"], operation["outputSchemaRevision"]) == (data_revision, schema_revision)
+    assert json.loads(publication[store._revision_codebook_path(dataset_id, data_revision)]) == codebook
+    assert publication[store._snapshot_path(dataset_id, data_revision)] == publication[store._parquet_path(dataset_id)]
+
+
+def _assert_result_state(client, result_id, original, current, state):
+    response = client.get(f"/api/v1/analysis-results/{result_id}")
+    assert response.status_code == 200, response.text
+    meta = response.json()["meta"]
+    assert (meta["dataRevision"], meta["schemaRevision"]) == original
+    assert (meta["currentDataRevision"], meta["currentSchemaRevision"]) == current
+    assert meta["resultState"] == state
+
+
+@pytest.mark.parametrize("source_kind", ["fit", "prediction"])
+@pytest.mark.parametrize("scope", ["all", "selected"])
+def test_current_schema_refit_and_second_save_preserve_historical_receipt(
+    conjoint_workspace, monkeypatch, source_kind, scope,
+):
+    client, store = conjoint_workspace
+    dataset_id, result_id, frame, payload, expected = _prepare(client, store, source_kind, scope)
+    parent = store.load_provenance(dataset_id)["currentOperationId"]
+    publications = _capture_publications(store, monkeypatch)
+    response = _save(client, result_id, payload)
+    assert response.status_code == 200, response.text
+    first = response.json()
+    operation = _assert_receipt(store, dataset_id, result_id, payload, expected, first, parent)
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 9)
+    assert (first["dataRevision"], first["schemaRevision"]) == (2, 2)
+    assert len(publications) == 1
+    _assert_publication_lifecycle(store, dataset_id, publications[0], 2, 2, 9)
+    saved_frame = store.get_dataframe(dataset_id)
+    assert saved_frame.select(frame.columns).schema == frame.schema
+    assert saved_frame.select(frame.columns).equals(frame)
+    saved_bytes = _workspace_bytes(store)
+    _assert_result_state(client, result_id, (1, 1), (2, 2), "stale")
+    for data_revision, schema_revision in ((1, 1), (2, 2)):
+        _assert_rejected(client, store, result_id, {
+            **payload, "idempotencyKey": "stale-result-new-key",
+            "columns": [{"sourceField": "probability", "name": "SECOND_CJ_PROBABILITY"}],
+            "context": dict(payload["context"], expectedDataRevision=data_revision,
+                            expectedSchemaRevision=schema_revision),
+        }, saved_bytes, "ANALYSIS_INPUT_STALE")
+    context = dict(payload["context"], scope="all", expectedDataRevision=2, expectedSchemaRevision=2)
+    context.pop("selectedRowIds", None)
+    model = {
+        "context": context, "mode": "choice", "method": "conjoint",
+        "columns": {"respondentId": "respondent_id", "taskId": "task_id",
+                    "alternativeId": "alternative_id", "response": "chosen"},
+        "attributes": [{"columnId": "brand", "kind": "categorical"}],
+    }
+    rejected = client.post("/api/v1/models/conjoint", json={
+        **model, "context": dict(context, expectedSchemaRevision=1),
+    })
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "ANALYSIS_INPUT_STALE"
+    assert rejected.json()["error"]["details"] == {"schemaRevision": 2, "expectedSchemaRevision": 1}
+    assert _workspace_bytes(store) == saved_bytes
+    refit = client.post("/api/v1/models/conjoint", json=model)
+    assert refit.status_code == 200, refit.text
+    new_result_id = refit.json()["resultId"]
+    assert new_result_id != result_id
+    _assert_result_state(client, new_result_id, (2, 2), (2, 2), "current")
+    source = "fit"
+    endpoint = f"/api/v1/analysis-results/{new_result_id}"
+    if source_kind == "prediction":
+        prediction = client.post(endpoint + "/predict", json={
+            "context": context, "options": {"interval": "none", "evaluate": True},
+        })
+        assert prediction.status_code == 200, prediction.text
+        assert prediction.json()["summary"]["successfulPredictions"] == 16
+        source = prediction.json()["predictionId"]
+        endpoint += f"/predictions/{source}"
+    rows = client.get(endpoint + "/rows", params={"offset": 0, "limit": 1000})
+    assert rows.status_code == 200, rows.text
+    values = {row["rowId"]: row["probability"] for row in rows.json()["rows"]}
+    assert set(values) == set(frame["__rowId__"].to_list())
+    assert all(value is not None for value in values.values())
+    after_refit = _workspace_bytes(store)
+    for path, raw in saved_bytes.items():
+        assert after_refit[path] == raw
+    assert len(publications) == 1
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 9)
+    second_payload = {
+        **payload, "source": source, "idempotencyKey": "current-refit-save",
+        "context": dict(payload["context"], expectedDataRevision=2, expectedSchemaRevision=2),
+        "columns": [{"sourceField": "probability", "name": "SECOND_CJ_PROBABILITY", "label": "saved probability"}],
+    }
+    ids = second_payload["context"].get("selectedRowIds", frame["__rowId__"].to_list())
+    second_expected = [values[row_id] if row_id in ids else None for row_id in frame["__rowId__"].to_list()]
+    second = _save(client, new_result_id, second_payload)
+    assert second.status_code == 200, second.text
+    second_receipt = second.json()
+    second_operation = _assert_receipt(
+        store, dataset_id, new_result_id, second_payload, second_expected, second_receipt, first["operationId"],
+    )
+    assert (second_receipt["dataRevision"], second_receipt["schemaRevision"]) == (3, 3)
+    assert (second_operation["inputSchemaRevision"], second_operation["outputSchemaRevision"]) == (2, 3)
+    _assert_lifecycle(client, store, dataset_id, 3, 3, 10)
+    assert len(publications) == 2
+    _assert_atomic_publication(store, dataset_id, publications[1], second_operation)
+    _assert_publication_lifecycle(store, dataset_id, publications[1], 3, 3, 10)
+    current_frame = store.get_dataframe(dataset_id)
+    assert current_frame.select(saved_frame.columns).schema == saved_frame.schema
+    assert current_frame.select(saved_frame.columns).equals(saved_frame)
+    final_bytes = _workspace_bytes(store)
+    for path, raw in after_refit.items():
+        if path.startswith("analysis-results/") or ".revisions/" in path or path.endswith(".raw.parquet"):
+            assert final_bytes[path] == raw
+    assert store.load_provenance(dataset_id)["operations"][1] == operation
+    _assert_result_state(client, result_id, (1, 1), (3, 3), "stale")
+    _assert_result_state(client, new_result_id, (2, 2), (3, 3), "stale")
+    for data_revision, schema_revision in ((1, 1), (2, 2), (3, 3)):
+        replay = _save(client, result_id, {
+            **payload, "context": dict(payload["context"], expectedDataRevision=data_revision,
+                                        expectedSchemaRevision=schema_revision),
+        })
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == {**first, "idempotentReplay": True}
+        assert _workspace_bytes(store) == final_bytes
+    assert len(publications) == 2
+
+
+@pytest.mark.parametrize("structural_case", ["two_destinations", "empty_selected"])
+def test_structural_save_increments_schema_once(conjoint_workspace, monkeypatch, structural_case):
+    client, store = conjoint_workspace
+    dataset_id, result_id, frame, payload, expected = _prepare(client, store, "fit", "all")
+    if structural_case == "two_destinations":
+        payload["columns"].append({"sourceField": "probability", "name": "SECOND_CJ_PROBABILITY", "label": "second probability"})
+        count, column_count = 16, 10
+    else:
+        payload["context"] = dict(payload["context"], scope="selected", selectedRowIds=[])
+        expected = [None] * 16
+        count, column_count = 0, 9
+    before = _workspace_bytes(store)
+    parent = store.load_provenance(dataset_id)["currentOperationId"]
+    publications = _capture_publications(store, monkeypatch)
+    response = _save(client, result_id, payload)
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    saved = store.get_dataframe(dataset_id)
+    assert saved.select(frame.columns).schema == frame.schema
+    assert saved.select(frame.columns).equals(frame)
+    assert saved.columns == frame.columns + [column["name"] for column in payload["columns"]]
+    for column in payload["columns"]:
+        assert saved[column["name"]].to_list() == expected
+        assert saved[column["name"]].null_count() == 16 - count
+    operation = store.load_provenance(dataset_id)["operations"][-1]
+    assert receipt == {
+        "status": "success", "resultId": result_id, "source": "fit", "datasetId": dataset_id,
+        "operationId": operation["operationId"], "dataRevision": 2, "schemaRevision": 2,
+        "createdColumns": [{"columnId": column["name"], **column, "nonNullCount": count}
+                           for column in payload["columns"]],
+        "writtenRowCount": count, "idempotentReplay": False,
+    }
+    assert operation["parentOperationId"] == parent
+    assert (operation["inputDataRevision"], operation["outputDataRevision"]) == (1, 2)
+    assert (operation["inputSchemaRevision"], operation["outputSchemaRevision"]) == (1, 2)
+    assert operation["targetRowIds"] == ([] if count == 0 else sorted(frame["__rowId__"].to_list()))
+    _assert_lifecycle(client, store, dataset_id, 2, 2, column_count)
+    assert len(publications) == 1
+    _assert_atomic_publication(store, dataset_id, publications[0], operation)
+    _assert_publication_lifecycle(store, dataset_id, publications[0], 2, 2, column_count)
+    after = _workspace_bytes(store)
+    for path, raw in before.items():
+        if path.startswith("analysis-results/") or ".revisions/" in path or path.endswith(".raw.parquet"):
+            assert after[path] == raw
+    for data_revision, schema_revision in ((1, 1), (2, 2)):
+        replay = _save(client, result_id, {
+            **payload, "context": dict(payload["context"], expectedDataRevision=data_revision,
+                                        expectedSchemaRevision=schema_revision),
+        })
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == {**receipt, "idempotentReplay": True}
+        assert _workspace_bytes(store) == after
+    assert len(publications) == 1

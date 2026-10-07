@@ -772,7 +772,7 @@ def conjoint_materialize(result_id, manifest, req):
             created.append({"columnId": nc["name"], "name": nc["name"],
                             "label": nc["label"], "sourceField": src,
                             "nonNullCount": non_null})
-        # Keep the existing schema lifecycle; record its actual revisions.
+        # Assemble the complete schema before publishing the structural change.
         meta_now = store.get_meta(dataset_id)
         cb = store.load_codebook(dataset_id) or {}
         cols_spec = cb.get("columns", []) or []
@@ -787,6 +787,9 @@ def conjoint_materialize(result_id, manifest, req):
             schema.append({"columnId": nc["name"], "name": nc["name"],
                            "semanticType": "numeric"})
         meta_now["schema"] = schema
+        cb["schemaRevision"] = cur["schemaRevision"] + 1
+        meta_now["schemaRevision"] = cb["schemaRevision"]
+        meta_now["columnCount"] = df.width - 1
         receipt_facts = {"status": "success", "resultId": result_id,
                          "source": source, "datasetId": dataset_id,
                          "createdColumns": created,
