@@ -48,6 +48,22 @@ async function choose(role: '属性' | '質問') {
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 }
 async function ready() { await choose('属性'); await choose('質問') }
+async function readyInline() {
+  // Other cases cover picker dialogs; retry cases only need real selected inputs.
+  for (const [role, label] of [['属性', 'seg: 属性A'], ['質問', 'score: 質問A']]) {
+    const input = screen.getByRole('combobox', { name: `Miningの${role}変数` })
+    fireEvent.mouseDown(input)
+    const option = await waitFor(() => {
+      const match = Array.from(document.querySelectorAll(
+        '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content',
+      )).find(item => within(item as HTMLElement).queryByText(label, { exact: true }))
+      if (!match) throw new Error(`Missing inline option ${label}`)
+      return match
+    })
+    fireEvent.click(option)
+    fireEvent.keyDown(input, { key: 'Escape', keyCode: 27 })
+  }
+}
 function runButton(view: View) { return view === 'classic' ? screen.getByTestId('mining-run-button') : screen.getByRole('button', { name: /指定対象で実行/ }) }
 function verificationButton(view: View) { return screen.getByTestId(view === 'classic' ? 'mining-to-verification-btn' : 'modern-to-verification-btn') }
 function settings(view: View) { return screen.getByText(view === 'classic' ? '単変量マイニングの詳細設定' : 'サブグループ発見の詳細設定').closest('details')! }
@@ -62,9 +78,9 @@ function fixture(view: View): any {
 function verified() { return { verification: { method: 'holdout', testUsed: [], correction: 'bh-fdr', alpha: 0.05, mHypotheses: 0, mExcluded: 0, nSelection: 1, nEvaluation: 1, seed: 42 }, results: [] } }
 function deferred() { let resolve!: (value: any) => void; const promise = new Promise<any>(done => { resolve = done }); return { promise, resolve } }
 function modalRun() { return within(screen.getByRole('dialog')).getByRole('button', { name: /実\s*行$/ }) }
-async function explore(view: View, post: ReturnType<typeof vi.spyOn>) {
+async function explore(view: View, post: ReturnType<typeof vi.spyOn>, prepare = ready) {
   post.mockResolvedValue(fixture(view))
-  await ready(); fireEvent.click(runButton(view))
+  await prepare(); fireEvent.click(runButton(view))
   await waitFor(() => expect(verificationButton(view)).toBeEnabled())
 }
 async function pickIndependent() {
@@ -231,7 +247,7 @@ it('keeps provenance within the matching tab and cancels hidden modern verificat
 
 it.each(['modern', 'classic'] as const)('%s shows verification failures inside the modal and permits a successful retry', async view => {
   const post = vi.spyOn(api, 'post')
-  await mount(view); await explore(view, post)
+  await mount(view); await explore(view, post, readyInline)
   post.mockRejectedValueOnce(new Error('分割設定を確認してください'))
   fireEvent.click(verificationButton(view)); fireEvent.click(modalRun())
   const dialog = screen.getByRole('dialog')
