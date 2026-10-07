@@ -558,6 +558,8 @@ it.each(cases)('$name suppresses a rejected POST from the old result and release
   expect(saves()[1][0]).toBe('/analysis-results/fit-2/materialize')
 })
 
+// The uninterrupted fit/predict/source-switch/save/recovery flow approaches 5–6s
+// in CI; preserve every step and keep the individual waits at their default budget.
 it('OLS preserves the prediction source, captured selected scope, field, name and full key through recovery', async () => {
   const test = cases[0]
   const { local, post, pendingReads, reads, saves, codebook, committedScores, cacheBefore } = await prepare(test)
@@ -617,4 +619,4 @@ it('OLS preserves the prediction source, captured selected scope, field, name an
   expect(reads()).toHaveLength(2)
   expect(getColumnarCacheGeneration()).toBe(cacheBefore + 1)
   expect(saveButton(test)).toBeDisabled()
-})
+}, 10000)
