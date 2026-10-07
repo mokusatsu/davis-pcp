@@ -47,6 +47,7 @@ interface PanelData {
   column: string
   min: number
   max: number
+  rows: GroupRows['rows']
   groups: GroupRows[]
 }
 
@@ -270,12 +271,20 @@ export default function DistributionPage() {
     const catRaw = groupBy ? data.columns[groupBy] ?? [] : null
     const next: PanelData[] = numericColumns.map((column: string) => {
       const arr = data.numeric[column]
+      const raw = data.columns[column]
+      const spec = getColumn(column)
+      // Match CodebookAdapter.mask_analysis_values on raw codes. Reasons only
+      // classify declared missing codes; labels and reversal do not change eligibility.
+      const missing = new Set((spec?.missingCodes ?? []).map(normalizeCode))
+      const allowed = spec?.categoryOrder?.length ? new Set(spec.categoryOrder.map(normalizeCode)) : null
       const rows: { id: string; v: number; index: number }[] = []
       let min = Infinity
       let max = -Infinity
       for (const index of activeIndexes) {
         const v = arr?.[index] ?? NaN
         if (!Number.isFinite(v)) continue
+        const code = normalizeCode(raw?.[index])
+        if (code === null || missing.has(code) || (allowed && !allowed.has(code))) continue
         rows.push({ id: data.rowIds[index], v, index })
         if (v < min) min = v
         if (v > max) max = v
@@ -292,7 +301,7 @@ export default function DistributionPage() {
           rows: subset,
         }
       })
-      return { column, min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max, groups }
+      return { column, min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max, rows, groups }
     })
     setPanelRows(next)
     setLoadingStats(true)
@@ -321,7 +330,7 @@ export default function DistributionPage() {
       if (!cancelled) setLoadingStats(false)
     })
     return () => { cancelled = true }
-  }, [data, numericColumns.join('|'), activeIndexes, groupBy, theme, domain])
+  }, [data, numericColumns.join('|'), activeIndexes, groupBy, theme, domain, getColumn])
 
   // For vertical we need value→x and x→value helpers.
   const verticalSlots = numericColumns.length || 1
@@ -401,26 +410,20 @@ export default function DistributionPage() {
       const slotLeftV = plotLeft + slot * slotWidthV
       const nGroupsV = Math.max(1, panel.groups.length)
       const colSpacingV = (slotWidthV - 16) / nGroupsV
-      const arr = data.numeric[panel.column]
-      for (const index of activeIndexes) {
-        const v = arr?.[index] ?? NaN
-        if (!Number.isFinite(v) || v < lo || v > hi) continue
+      // Use the same eligible rows as the plotted marks and engine. Re-reading
+      // raw columns here could select a hidden missing/invalid value inside the range.
+      for (const row of panel.rows) {
+        if (row.v < lo || row.v > hi) continue
         if (orientation === 'vertical' && panel.groups.length > 1) {
-          // find this row's group center and require it inside the rect x-range
-          const gi = l1Index(domain, data.columns[groupKeyOf(panel)]?.[index]) ?? (domain?.codes.length ?? 0)
-          if (gi >= 0) {
-            const centerX = slotLeftV + 12 + gi * colSpacingV + colSpacingV / 2
-            if (centerX < rxLo || centerX > rxHi) continue
-          }
+          const gi = l1Index(domain, data.columns[groupBy ?? '']?.[row.index]) ?? (domain?.codes.length ?? 0)
+          const centerX = slotLeftV + 12 + gi * colSpacingV + colSpacingV / 2
+          if (centerX < rxLo || centerX > rxHi) continue
         }
-        hits.add(data.rowIds[index])
+        hits.add(row.id)
       }
     }
     dispatch(selectionApplied({ rowIds: [...hits], operation: brushOp, label: '分布レンズ矩形選択' }))
 
-  function groupKeyOf(_panel: PanelData): string {
-    return groupBy ?? ''
-  }
   }
 
   const selectedSet = new Set(selection.selectedRowIds)

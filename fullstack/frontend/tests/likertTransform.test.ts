@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { neutralIndex, sortLikertRows, toLikertRow } from '../src/features/distribution/likertTransform'
+import { likertTop2Pct, neutralIndex, sortLikertRows, toLikertRow } from '../src/features/distribution/likertTransform'
 
 const cats = (counts: number[]) => counts.map((count, i) => ({
   code: String(i + 1), label: `L${i + 1}`, count, pct: count * 10,
@@ -63,7 +63,37 @@ it('excludes missing/invalid/NA from the scale and preserves valid zero-count or
   const extra = [...distribution, { code: '__missing__', isMissing: true }, { code: '99', isInvalid: true }]
   expect(validLikertOrder({}, extra)).toEqual(distribution.map(d => d.code))
   expect(validLikertOrder({ categoryOrder: ['1', '2', '3', '4', '5', '6', '9'], missingCodes: ['9'] }, extra)).toHaveLength(6)
-  expect(validLikertOrder({ categoryOrder: ['1', '2', '3'], missingReasons: { '2': 'notApplicable' } }, [])).toEqual(['1', '3'])
+  // A reason classifies a missing code; it does not independently declare one.
+  expect(validLikertOrder({ categoryOrder: ['1', '2', '3'], missingReasons: { '2': 'notApplicable' } }, [])).toEqual(['1', '2', '3'])
+  expect(validLikertOrder({ categoryOrder: ['1', '2', '3'], missingCodes: ['2'], missingReasons: { '2': 'notApplicable' } }, [])).toEqual(['1', '3'])
+})
+
+it('uses completed result order once, retaining raw codes and zero-count levels', () => {
+  const metadata = { categoryOrder: ['1', '2', '3', '4', '5', '99'], missingCodes: ['99'], isReversed: true }
+  const distribution = ['5', '4', '3', '2', '1'].map(code => ({ code, count: code === '1' ? 3 : 0 }))
+  expect(validLikertOrder(metadata, [...distribution, { code: '99', isMissing: true }, { code: null, isMissing: true }])).toEqual(['5', '4', '3', '2', '1'])
+  expect(validLikertOrder(metadata, [])).toEqual(['5', '4', '3', '2', '1'])
+  expect(validLikertOrder(metadata, [{ code: null, isMissing: true }])).toEqual([])
+})
+
+it('distinguishes Top-2 from all high-side categories and retains unavailable versus zero', () => {
+  const categories = cats([1, 1, 1, 1, 2, 2, 2])
+  const row = toLikertRow({ columnId: 'Q7', title: 'Q7', categories, validN: 10, top2Pct: likertTop2Pct(categories), mean: 4.6 })
+  expect(row.positivePct).toBe(60)
+  expect(row.top2Pct).toBe(40)
+  expect(likertTop2Pct(cats([10, 0, 0, 0]))).toBe(0)
+  expect(likertTop2Pct(cats([10]))).toBeNull()
+  const unavailable = toLikertRow({ columnId: 'none', title: 'none', categories: categories.map(c => ({ ...c, count: null, pct: null })), validN: 10, top2Pct: null, mean: null })
+  expect([unavailable.negativePct, unavailable.neutralPct, unavailable.positivePct]).toEqual([null, null, null])
+  expect(likertTop2Pct([...unavailable.negative, unavailable.neutral!, ...unavailable.positive])).toBeNull()
+  expect(likertIntervals([unavailable], 'diverging').every(interval => interval.pct === null && interval.widthPct === 0 && interval.start === interval.end)).toBe(true)
+})
+
+it('sorts available zeros before unavailable values and resolves ties without display rounding', () => {
+  const mk = (id: string, value: number | null) => toLikertRow({ columnId: id, title: id, categories: cats([10, 0, 0, 0]), validN: 10, top2Pct: value, mean: value })
+  const order = ['missingA', 'zero', 'closeLow', 'closeHigh', 'tie', 'missingB']
+  const rows = [mk('missingA', null), mk('zero', 0), mk('closeLow', 3.1414), mk('closeHigh', 3.1415), mk('tie', 3.1415), mk('missingB', null)]
+  for (const sort of ['top2-desc', 'mean-desc'] as const) expect(sortLikertRows(rows, sort, order).map(row => row.columnId)).toEqual(['closeHigh', 'tie', 'closeLow', 'zero', 'missingA', 'missingB'])
 })
 
 it('retains unrepresentable weighted counts without losing valid percentage widths', () => {

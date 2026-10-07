@@ -1,0 +1,200 @@
+{
+  "provenance": {
+    "source": "FE-current/api-current.json",
+    "sourceSha256": "9b9865e067140fb015a5c2ffba4f6cba92e2ae22d4f328a8b10aa644f6bde379",
+    "authoritySha256": "eb98b17c0854b2a7e3caafd31f3541bcb6a6f95ac0cd766ea51a7f72a4a8096d",
+    "captureHead": "3559b25fe3399950243eca52d5e874f26a5171d2",
+    "description": "Unchanged x_missing projection of saved native FastAPI API metadata, codebook, decoded raw Arrow response and summary. Other columns omitted. Component tests replay this saved response; they do not make fresh HTTP requests."
+  },
+  "meta": {
+    "datasetId": "ds-81801b2ded3b",
+    "name": "survey-front-audit",
+    "dataRevision": 1,
+    "schema": [
+      {
+        "columnId": "col-2feb2b59c856",
+        "name": "x_missing",
+        "physicalType": "int",
+        "semanticType": "numeric",
+        "role": "question",
+        "missingCount": 0,
+        "uniqueCount": 5,
+        "min": 1,
+        "max": 99,
+        "categories": null,
+        "categoryOrder": [],
+        "manualCategories": null,
+        "constant": false,
+        "uniqueIdCandidate": true,
+        "label": "99は欠損",
+        "scaleType": "ratio",
+        "valueLabels": {},
+        "missingCodes": [
+          "99"
+        ],
+        "missingReasons": {
+          "99": "missing"
+        },
+        "isReversed": false,
+        "multiResponseGroup": null,
+        "multiResponseOptionLabel": ""
+      }
+    ]
+  },
+  "codebook": {
+    "licenseText": "",
+    "licenseRevision": 1,
+    "datasetId": "ds-81801b2ded3b",
+    "schemaRevision": 2,
+    "columns": [
+      {
+        "columnId": "col-2feb2b59c856",
+        "name": "x_missing",
+        "label": "99は欠損",
+        "scaleType": "ratio",
+        "role": "question",
+        "valueLabels": {},
+        "categoryOrder": [],
+        "missingCodes": [
+          "99"
+        ],
+        "missingReasons": {
+          "99": "missing"
+        },
+        "isReversed": false,
+        "multiResponseGroup": null,
+        "multiResponseOptionLabel": ""
+      }
+    ],
+    "multiResponseGroups": [],
+    "weightConfig": null,
+    "surveyDesign": null
+  },
+  "arrow": {
+    "__rowId__": [
+      "ROW-000001",
+      "ROW-000002",
+      "ROW-000003",
+      "ROW-000004",
+      "ROW-000005"
+    ],
+    "x_missing": [
+      1,
+      2,
+      3,
+      4,
+      99
+    ]
+  },
+  "summary": {
+    "datasetId": "ds-81801b2ded3b",
+    "schemaRevision": 2,
+    "columns": {
+      "x_missing": {
+        "count": 4,
+        "missing": 1,
+        "min": 1.0,
+        "max": 4.0,
+        "mean": 2.5,
+        "median": 2.5,
+        "std": 1.2909944487358056,
+        "q1": 1.75,
+        "q3": 3.25,
+        "iqr": 1.5,
+        "denominators": {
+          "total": 5,
+          "notApplicable": 0,
+          "missing": 1,
+          "target": 5,
+          "valid": 4
+        },
+        "distribution": [
+          {
+            "code": "1",
+            "label": "1",
+            "count": 1,
+            "percentageValid": 25.0,
+            "percentageTotal": 20.0,
+            "isMissing": false,
+            "missingReason": null
+          },
+          {
+            "code": "2",
+            "label": "2",
+            "count": 1,
+            "percentageValid": 25.0,
+            "percentageTotal": 20.0,
+            "isMissing": false,
+            "missingReason": null
+          },
+          {
+            "code": "3",
+            "label": "3",
+            "count": 1,
+            "percentageValid": 25.0,
+            "percentageTotal": 20.0,
+            "isMissing": false,
+            "missingReason": null
+          },
+          {
+            "code": "4",
+            "label": "4",
+            "count": 1,
+            "percentageValid": 25.0,
+            "percentageTotal": 20.0,
+            "isMissing": false,
+            "missingReason": null
+          },
+          {
+            "code": "99",
+            "label": "99",
+            "count": 1,
+            "percentageValid": 0.0,
+            "percentageTotal": 20.0,
+            "isMissing": true,
+            "missingReason": "missing"
+          }
+        ],
+        "auxiliaryStats": {
+          "mean": 2.5,
+          "median": 2.5,
+          "q1": 1.75,
+          "q3": 3.25,
+          "iqr": 1.5
+        },
+        "weighted": {
+          "weightedN": 13.0,
+          "weightedNStatus": "ok",
+          "weightMissingCount": 0,
+          "distribution": [
+            {
+              "code": "1",
+              "weightedCount": 1.0,
+              "weightedCountStatus": "ok",
+              "weightedPct": 7.6923
+            },
+            {
+              "code": "2",
+              "weightedCount": 1.0,
+              "weightedCountStatus": "ok",
+              "weightedPct": 7.6923
+            },
+            {
+              "code": "3",
+              "weightedCount": 1.0,
+              "weightedCountStatus": "ok",
+              "weightedPct": 7.6923
+            },
+            {
+              "code": "4",
+              "weightedCount": 10.0,
+              "weightedCountStatus": "ok",
+              "weightedPct": 76.9231
+            }
+          ],
+          "weightedMean": 3.5385
+        }
+      }
+    }
+  }
+}

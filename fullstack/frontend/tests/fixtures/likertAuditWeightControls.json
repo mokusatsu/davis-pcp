@@ -1,0 +1,1152 @@
+{
+  "sevenfold": {
+    "weights": [
+      7,
+      7,
+      7,
+      70,
+      70
+    ],
+    "request": {
+      "datasetId": "ds-251317af0810",
+      "columns": [
+        "Q_A",
+        "Q_B"
+      ],
+      "weightMode": "column",
+      "weightColumn": "w",
+      "expectedDataRevision": 1,
+      "expectedSchemaRevision": 2
+    },
+    "response": {
+      "datasetId": "ds-251317af0810",
+      "schemaRevision": 2,
+      "fingerprint": "39564c9b06ff6b0d179b62d1779f1f303eab4501bff007f5866feb06fa29067c",
+      "rowCount": 5,
+      "columns": {
+        "Q_A": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 2.6,
+          "median": 1.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 2.6,
+            "meanNote": "等間隔得点として計算",
+            "median": 1.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 40.0,
+              "n": 2
+            },
+            "bottom2Box": {
+              "pct": 60.0,
+              "n": 3
+            }
+          },
+          "weighted": {
+            "weightedN": 161.0,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 21.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": 140.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 86.9565
+              }
+            ],
+            "weightedMean": 4.4783,
+            "meanNote": "等間隔得点として計算"
+          }
+        },
+        "Q_B": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 3.4,
+          "median": 5.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 3.4,
+            "meanNote": "等間隔得点として計算",
+            "median": 5.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 60.0,
+              "n": 3
+            },
+            "bottom2Box": {
+              "pct": 40.0,
+              "n": 2
+            }
+          },
+          "weighted": {
+            "weightedN": 161.0,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 140.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 86.9565
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": 21.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              }
+            ],
+            "weightedMean": 1.5217,
+            "meanNote": "等間隔得点として計算"
+          }
+        }
+      },
+      "evidenceClass": "MODERN-EXTENSION",
+      "cacheHit": false,
+      "dataRevision": 1,
+      "weightStatus": "applied",
+      "weightApplied": true,
+      "weightColumn": "w",
+      "weightColumnId": "col-a9ee330c0dd2",
+      "unweightedN": 5,
+      "weightedN": 161.0,
+      "weightedNStatus": "ok",
+      "weightMissingCount": 0,
+      "scopeHash": "04aa813f75c5c026385c9025b4ec218cfce3f1704fa63b586002d271a64e7dca"
+    }
+  },
+  "tiny": {
+    "weights": [
+      1e-300,
+      1e-300,
+      1e-300,
+      1e-299,
+      1e-299
+    ],
+    "request": {
+      "datasetId": "ds-313464a30891",
+      "columns": [
+        "Q_A",
+        "Q_B"
+      ],
+      "weightMode": "column",
+      "weightColumn": "w",
+      "expectedDataRevision": 1,
+      "expectedSchemaRevision": 2
+    },
+    "response": {
+      "datasetId": "ds-313464a30891",
+      "schemaRevision": 2,
+      "fingerprint": "ed5551271d704fa8ca9d56aa8d33371a4cd0939adb545988a02fe630de9a611c",
+      "rowCount": 5,
+      "columns": {
+        "Q_A": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 2.6,
+          "median": 1.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 2.6,
+            "meanNote": "等間隔得点として計算",
+            "median": 1.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 40.0,
+              "n": 2
+            },
+            "bottom2Box": {
+              "pct": 60.0,
+              "n": 3
+            }
+          },
+          "weighted": {
+            "weightedN": 2.3e-299,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 3e-300,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": 2e-299,
+                "weightedCountStatus": "ok",
+                "weightedPct": 86.9565
+              }
+            ],
+            "weightedMean": 4.4783,
+            "meanNote": "等間隔得点として計算"
+          }
+        },
+        "Q_B": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 3.4,
+          "median": 5.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 3.4,
+            "meanNote": "等間隔得点として計算",
+            "median": 5.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 60.0,
+              "n": 3
+            },
+            "bottom2Box": {
+              "pct": 40.0,
+              "n": 2
+            }
+          },
+          "weighted": {
+            "weightedN": 2.3e-299,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 2e-299,
+                "weightedCountStatus": "ok",
+                "weightedPct": 86.9565
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": 3e-300,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              }
+            ],
+            "weightedMean": 1.5217,
+            "meanNote": "等間隔得点として計算"
+          }
+        }
+      },
+      "evidenceClass": "MODERN-EXTENSION",
+      "cacheHit": false,
+      "dataRevision": 1,
+      "weightStatus": "applied",
+      "weightApplied": true,
+      "weightColumn": "w",
+      "weightColumnId": "col-0a3ead753b93",
+      "unweightedN": 5,
+      "weightedN": 2.3e-299,
+      "weightedNStatus": "ok",
+      "weightMissingCount": 0,
+      "scopeHash": "04aa813f75c5c026385c9025b4ec218cfce3f1704fa63b586002d271a64e7dca"
+    }
+  },
+  "overflow": {
+    "weights": [
+      1e+307,
+      1e+307,
+      1e+307,
+      1e+308,
+      1e+308
+    ],
+    "request": {
+      "datasetId": "ds-e344f5fb5b0b",
+      "columns": [
+        "Q_A",
+        "Q_B"
+      ],
+      "weightMode": "column",
+      "weightColumn": "w",
+      "expectedDataRevision": 1,
+      "expectedSchemaRevision": 2
+    },
+    "response": {
+      "datasetId": "ds-e344f5fb5b0b",
+      "schemaRevision": 2,
+      "fingerprint": "eafbaabcceb73355bae5ac274add90c840f11562bf0da81227d32470415c1e77",
+      "rowCount": 5,
+      "columns": {
+        "Q_A": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 2.6,
+          "median": 1.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 2.6,
+            "meanNote": "等間隔得点として計算",
+            "median": 1.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 40.0,
+              "n": 2
+            },
+            "bottom2Box": {
+              "pct": 60.0,
+              "n": 3
+            }
+          },
+          "weighted": {
+            "weightedN": null,
+            "weightedNStatus": "out_of_range",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 3e+307,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": null,
+                "weightedCountStatus": "out_of_range",
+                "weightedPct": 86.9565
+              }
+            ],
+            "warnings": [
+              {
+                "code": "WEIGHT_TOTAL_OUT_OF_RANGE",
+                "message": "ウェイト合計が数値範囲を超えています。範囲外の絶対加重件数は表示できません。比率・平均は正規化したウェイトで計算しています。"
+              }
+            ],
+            "weightedMean": 4.4783,
+            "meanNote": "等間隔得点として計算"
+          }
+        },
+        "Q_B": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 3.4,
+          "median": 5.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 3.4,
+            "meanNote": "等間隔得点として計算",
+            "median": 5.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 60.0,
+              "n": 3
+            },
+            "bottom2Box": {
+              "pct": 40.0,
+              "n": 2
+            }
+          },
+          "weighted": {
+            "weightedN": null,
+            "weightedNStatus": "out_of_range",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": null,
+                "weightedCountStatus": "out_of_range",
+                "weightedPct": 86.9565
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "5",
+                "weightedCount": 3e+307,
+                "weightedCountStatus": "ok",
+                "weightedPct": 13.0435
+              }
+            ],
+            "warnings": [
+              {
+                "code": "WEIGHT_TOTAL_OUT_OF_RANGE",
+                "message": "ウェイト合計が数値範囲を超えています。範囲外の絶対加重件数は表示できません。比率・平均は正規化したウェイトで計算しています。"
+              }
+            ],
+            "weightedMean": 1.5217,
+            "meanNote": "等間隔得点として計算"
+          }
+        }
+      },
+      "evidenceClass": "MODERN-EXTENSION",
+      "cacheHit": false,
+      "dataRevision": 1,
+      "weightStatus": "applied",
+      "weightApplied": true,
+      "weightColumn": "w",
+      "weightColumnId": "col-65a863da6b70",
+      "unweightedN": 5,
+      "weightedN": null,
+      "weightedNStatus": "out_of_range",
+      "weightMissingCount": 0,
+      "scopeHash": "04aa813f75c5c026385c9025b4ec218cfce3f1704fa63b586002d271a64e7dca",
+      "warnings": [
+        {
+          "code": "WEIGHT_TOTAL_OUT_OF_RANGE",
+          "message": "ウェイト合計が数値範囲を超えています。範囲外の絶対加重件数は表示できません。比率・平均は正規化したウェイトで計算しています。"
+        }
+      ]
+    }
+  },
+  "noPositive": {
+    "weights": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "request": {
+      "datasetId": "ds-4bcd3574e58a",
+      "columns": [
+        "Q_A",
+        "Q_B"
+      ],
+      "weightMode": "column",
+      "weightColumn": "w",
+      "expectedDataRevision": 1,
+      "expectedSchemaRevision": 2
+    },
+    "response": {
+      "datasetId": "ds-4bcd3574e58a",
+      "schemaRevision": 2,
+      "fingerprint": "fa2cfb54d7cc0bc5660c3176f3bfd6650852aacfeed3317aeab0c857f8d48bc4",
+      "rowCount": 5,
+      "columns": {
+        "Q_A": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 2.6,
+          "median": 1.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 2.6,
+            "meanNote": "等間隔得点として計算",
+            "median": 1.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 40.0,
+              "n": 2
+            },
+            "bottom2Box": {
+              "pct": 60.0,
+              "n": 3
+            }
+          },
+          "weighted": {
+            "weightedN": 0.0,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "5",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              }
+            ],
+            "weightedMean": null
+          }
+        },
+        "Q_B": {
+          "count": 5,
+          "missing": 0,
+          "min": 1.0,
+          "max": 5.0,
+          "mean": 3.4,
+          "median": 5.0,
+          "std": 2.1908902300206647,
+          "q1": 1.0,
+          "q3": 5.0,
+          "iqr": 4.0,
+          "denominators": {
+            "total": 5,
+            "notApplicable": 0,
+            "missing": 0,
+            "target": 5,
+            "valid": 5
+          },
+          "distribution": [
+            {
+              "code": "1",
+              "label": "低",
+              "count": 2,
+              "percentageValid": 40.0,
+              "percentageTotal": 40.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "2",
+              "label": "やや低",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "3",
+              "label": "中立",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "4",
+              "label": "やや高",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "5",
+              "label": "高",
+              "count": 3,
+              "percentageValid": 60.0,
+              "percentageTotal": 60.0,
+              "isMissing": false,
+              "missingReason": null
+            }
+          ],
+          "auxiliaryStats": {
+            "mean": 3.4,
+            "meanNote": "等間隔得点として計算",
+            "median": 5.0,
+            "q1": 1.0,
+            "q3": 5.0,
+            "iqr": 4.0,
+            "top2Box": {
+              "pct": 60.0,
+              "n": 3
+            },
+            "bottom2Box": {
+              "pct": 40.0,
+              "n": 2
+            }
+          },
+          "weighted": {
+            "weightedN": 0.0,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "1",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "2",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "3",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "4",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              },
+              {
+                "code": "5",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": null
+              }
+            ],
+            "weightedMean": null
+          }
+        }
+      },
+      "evidenceClass": "MODERN-EXTENSION",
+      "cacheHit": false,
+      "dataRevision": 1,
+      "weightStatus": "no_positive_weight",
+      "weightApplied": false,
+      "weightColumn": "w",
+      "weightColumnId": "col-b259de5c2085",
+      "unweightedN": 5,
+      "weightedN": null,
+      "weightedNStatus": "ok",
+      "weightMissingCount": 0,
+      "scopeHash": "04aa813f75c5c026385c9025b4ec218cfce3f1704fa63b586002d271a64e7dca",
+      "warnings": [
+        {
+          "code": "WEIGHT_NO_POSITIVE",
+          "message": "正のウェイトがないため加重値を返しません。"
+        }
+      ]
+    }
+  }
+}

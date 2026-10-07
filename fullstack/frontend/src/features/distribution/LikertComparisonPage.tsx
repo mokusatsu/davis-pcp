@@ -10,13 +10,13 @@ import { getBrushOp } from '../selection/SelectionMenu'
 import GraphPanel from '../common/GraphPanel'
 import { api } from '../../api/client'
 import { normalizeCode, useCodebook } from '../dataset/useCodebookColumn'
-import { neutralIndex, sortLikertRows, toLikertRow, likertIntervals, validLikertOrder, type LikertMode, type LikertRow, type LikertSort } from './likertTransform'
+import { neutralIndex, sortLikertRows, toLikertRow, likertIntervals, likertTop2Pct, validLikertOrder, type LikertMode, type LikertRow, type LikertSort } from './likertTransform'
 
 interface LikertColumnPayload {
   denominators?: { total: number; target: number; valid: number; missing: number; notApplicable: number }
-  distribution?: { code: string; label: string; count: number; percentageValid: number; isMissing?: boolean; isInvalid?: boolean }[]
+  distribution?: { code: string | null; label: string; count: number; percentageValid: number; isMissing?: boolean; isInvalid?: boolean }[]
   auxiliaryStats?: { mean?: number; meanNote?: string; top2Box?: { pct: number; n: number } | null }
-  weighted?: { weightedN: number | null; distribution: { code: string; weightedCount: number | null; weightedPct: number | null }[] } | null
+  weighted?: { weightedN: number | null; weightedMean?: number | null; distribution: { code: string; weightedCount: number | null; weightedPct: number | null }[] } | null
 }
 
 type Basis = 'unweighted' | 'weighted'
@@ -95,12 +95,12 @@ export default function LikertComparisonPage() {
       if (!data) return null
       const order = validLikertOrder(col, data.distribution ?? [])
       const distByCode = new Map((data.distribution ?? []).map((d) => [String(d.code), d]))
-      const useWeighted = basis === 'weighted' && data.weighted
+      const useWeighted = basis === 'weighted'
       const weightedByCode = new Map((data.weighted?.distribution ?? []).map((d) => [String(d.code), d]))
       const categories = order.map((code) => {
         if (useWeighted) {
           const w = weightedByCode.get(code)
-          return { code, label: distByCode.get(code)?.label ?? code, count: w ? w.weightedCount : 0, pct: w?.weightedPct ?? 0 }
+          return { code, label: distByCode.get(code)?.label ?? code, count: w?.weightedCount ?? null, pct: w?.weightedPct ?? null }
         }
         const d = distByCode.get(code)
         return { code, label: d?.label ?? code, count: d?.count ?? 0, pct: d?.percentageValid ?? 0 }
@@ -108,8 +108,8 @@ export default function LikertComparisonPage() {
       const validN = data.denominators?.valid ?? 0
       return toLikertRow({
         columnId: col.name, title: col.label || col.name, categories, validN,
-        top2Pct: data.auxiliaryStats?.top2Box?.pct ?? null,
-        mean: data.auxiliaryStats?.mean ?? null,
+        top2Pct: useWeighted ? likertTop2Pct(categories) : data.auxiliaryStats?.top2Box?.pct ?? null,
+        mean: useWeighted ? data.weighted?.weightedMean ?? null : data.auxiliaryStats?.mean ?? null,
       })
     }).filter((r): r is LikertRow => r !== null)
     return sortLikertRows(items, sort, columnNames)
@@ -215,7 +215,7 @@ export default function LikertComparisonPage() {
                   xAxis: { type: 'value', min: mode === 'diverging' ? -100 : 0, max: 100, name: '有効回答割合 (%)', nameLocation: 'middle', nameGap: 30,
                     axisLabel: { formatter: (v: number) => `${Math.abs(v)}%` } },
                   yAxis: { type: 'category', inverse: true, data: rows.map(row => row.title), axisLabel: { width: 170, overflow: 'truncate' } },
-                  tooltip: { confine: true, formatter: (p: any) => { const mark = intervals[p.dataIndex]; return `${escapeHtml(rows[mark.rowIndex].title)}<br/>${escapeHtml(mark.label)} (${escapeHtml(mark.code)}): ${mark.count ?? '範囲外'} / ${mark.pct.toFixed(2)}%<br/>有効n=${rows[mark.rowIndex].validN}` } },
+                  tooltip: { confine: true, formatter: (p: any) => { const mark = intervals[p.dataIndex]; return `${escapeHtml(rows[mark.rowIndex].title)}<br/>${escapeHtml(mark.label)} (${escapeHtml(mark.code)}): ${mark.count ?? (mark.pct === null ? '—' : '範囲外')} / ${mark.pct === null ? '—' : `${mark.pct.toFixed(2)}%`}<br/>有効n=${rows[mark.rowIndex].validN}` } },
                   series: [{ type: 'custom', data: intervals.map(mark => [mark.start, mark.end, mark.rowIndex]),
                     renderItem: (_params: any, api: any) => {
                       const mark = intervals[_params.dataIndex], start = api.coord([mark.start, mark.rowIndex]), end = api.coord([mark.end, mark.rowIndex])
@@ -228,7 +228,7 @@ export default function LikertComparisonPage() {
                   <Space wrap>
                     {[...row.negative, ...(row.neutral ? [row.neutral] : []), ...row.positive].map(seg => <Button key={seg.code} size="small"
                       data-testid={`likert-seg-${row.columnId}-${seg.code}`} onClick={() => void clickSegment(row, seg.code)}
-                      type={selectedByCategory.has(`${row.columnId}\0${seg.code}`) ? 'primary' : 'default'}>{seg.label}: {seg.count ?? '範囲外'} ({seg.pct.toFixed(1)}%)</Button>)}
+                      type={selectedByCategory.has(`${row.columnId}\0${seg.code}`) ? 'primary' : 'default'}>{seg.label}: {seg.count ?? (seg.pct === null ? '—' : '範囲外')} ({seg.pct === null ? '—' : `${seg.pct.toFixed(1)}%`})</Button>)}
                     <span>Top-2: {row.top2Pct == null ? '—' : `${row.top2Pct.toFixed(1)}%`}</span>
                   </Space>
                   <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
@@ -236,7 +236,7 @@ export default function LikertComparisonPage() {
                       const idx = neutralIndex(row.negative.length + (row.neutral ? 1 : 0) + row.positive.length)
                       return idx === null ? '偶数カテゴリのため中立なし' : `中立カテゴリは順序中央（位置${idx + 1}）`
                     })()}
-                    {row.mean != null && <span> · 平均{row.mean.toFixed(2)}（等間隔得点として計算）</span>}
+                    <span> · 平均{row.mean == null ? '—' : row.mean.toFixed(2)}（等間隔得点として計算）</span>
                   </div>
                 </Card>
               ))}
