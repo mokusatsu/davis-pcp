@@ -754,6 +754,7 @@ def conjoint_materialize(result_id, manifest, req):
         for nc in new_cols:
             if nc["name"] in existing:
                 _err("COLUMN_ALREADY_EXISTS", "列名が既存です。", 409)
+            existing.add(nc["name"])
         id_list = [str(v) for v in df["__rowId__"].to_list()]
         for nc in new_cols:
             src = nc["sourceField"]

@@ -744,3 +744,219 @@ def test_structural_save_increments_schema_once(conjoint_workspace, monkeypatch,
         assert replay.json() == {**receipt, "idempotentReplay": True}
         assert _workspace_bytes(store) == after
     assert len(publications) == 1
+
+
+def _batch_snapshot(store, directory):
+    """Retain bytes before asserting, including on an unfixed-source failure."""
+    import hashlib
+
+    contents = _workspace_bytes(store)
+    inventory = {}
+    for name, raw in contents.items():
+        path = directory / "files" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+        inventory[name] = {"size": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    (directory / "inventory.json").write_text(json.dumps(inventory, indent=2), encoding="utf-8")
+    return contents
+
+
+def _batch_request(client, store, result_id, payload, directory):
+    before = _batch_snapshot(store, directory / "before")
+    response = _save(client, result_id, payload)
+    (directory / "request.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    (directory / "request.body").write_bytes(response.request.read())
+    (directory / "response.body").write_bytes(response.content)
+    (directory / "http.json").write_text(json.dumps({
+        "status": response.status_code, "url": str(response.request.url),
+        "request_headers": list(response.request.headers.multi_items()),
+        "response_headers": list(response.headers.multi_items()),
+    }, indent=2), encoding="utf-8")
+    after = _batch_snapshot(store, directory / "after")
+    (directory / "delta.json").write_text(json.dumps({
+        "byte_identical": before == after,
+        "added": sorted(after.keys() - before.keys()),
+        "removed": sorted(before.keys() - after.keys()),
+        "changed": sorted(name for name in before.keys() & after.keys() if before[name] != after[name]),
+    }, indent=2), encoding="utf-8")
+    return response, before, after
+
+
+@pytest.mark.parametrize("source_kind", ["fit", "prediction"])
+@pytest.mark.parametrize("case", ["duplicate_destination", "exact_duplicate", "ordered_distinct", "selected_aliases"])
+def test_conjoint_batch_destination_integrity(
+    conjoint_workspace, monkeypatch, tmp_path_factory, source_kind, case,
+):
+    import math
+
+    client, store = conjoint_workspace
+    scope = "selected" if case == "selected_aliases" else "all"
+    dataset_id, result_id, frame, payload, _ = _prepare(client, store, source_kind, scope)
+    # Evidence stays outside the fixture workspace so recording cannot alter it.
+    evidence = tmp_path_factory.mktemp(f"conjoint-batch-{source_kind}-{case}")
+    endpoint = f"/api/v1/analysis-results/{result_id}"
+    if source_kind == "prediction":
+        endpoint += f"/predictions/{payload['source']}"
+    response = client.get(endpoint + "/rows", params={"offset": 0, "limit": 1000})
+    assert response.status_code == 200, response.text
+    rows = response.json()["rows"]
+    row_ids = frame["__rowId__"].to_list()
+    assert len(rows) == len(row_ids) == 16
+    assert {row["rowId"] for row in rows} == set(row_ids)
+    source_values = {row["rowId"]: {field: row[field] for field in ("residual", "probability")}
+                     for row in rows}
+    assert all(value is not None and math.isfinite(value)
+               for values in source_values.values() for value in values.values())
+    assert [source_values[rid]["residual"] for rid in row_ids] != [
+        source_values[rid]["probability"] for rid in row_ids]
+    scope_ids = payload["context"].get("selectedRowIds", row_ids)
+    expected = {field: [source_values[rid][field] if rid in scope_ids else None for rid in row_ids]
+                for field in ("residual", "probability")}
+    mappings = {
+        "duplicate_destination": [("residual", "BATCH_OUTPUT"), ("probability", "BATCH_OUTPUT")],
+        "exact_duplicate": [("probability", "BATCH_OUTPUT"), ("probability", "BATCH_OUTPUT")],
+        "ordered_distinct": [("residual", "BATCH_Z"), ("probability", "BATCH_A")],
+        "selected_aliases": [("probability", "alias"), ("probability", "ALIAS")],
+    }[case]
+
+    def columns(pairs):
+        return [{"sourceField": field, "name": name, "label": f"saved {field}"}
+                for field, name in pairs]
+
+    payload = {**payload, "columns": columns(mappings), "idempotencyKey": f"batch-{case}"}
+    original_payload = payload
+    before = _workspace_bytes(store)
+    original_meta = store.get_meta(dataset_id)
+    original_cb = store.load_codebook(dataset_id)
+    original_provenance = store.load_provenance(dataset_id)
+    publications = _capture_publications(store, monkeypatch)
+    (evidence / "fixture.json").write_text(json.dumps({
+        "source_kind": source_kind, "case": case, "row_ids": row_ids,
+        "source_values": source_values, "expected_values": expected,
+        "original_frame": frame.to_dicts(), "original_schema": {name: str(dtype) for name, dtype in frame.schema.items()},
+        "original_request": original_payload,
+    }, indent=2), encoding="utf-8")
+
+    def reject(label, request, snapshot, code="COLUMN_ALREADY_EXISTS", status=409):
+        publication_count = len(publications)
+        rejected, actual_before, actual_after = _batch_request(
+            client, store, result_id, request, evidence / label,
+        )
+        assert rejected.status_code == status, rejected.text
+        assert rejected.json()["error"]["code"] == code, rejected.text
+        assert actual_before == actual_after == snapshot
+        assert len(publications) == publication_count
+
+    # Validate the entire batch before writing any accepted prefix.
+    collision_columns = [columns([("residual", "VALID_PREFIX"), ("probability", name)])
+                         for name in ("VALID_PREFIX", "brand", "__rowId__")]
+    for revision in ("expectedDataRevision", "expectedSchemaRevision"):
+        for index, proposed in enumerate(collision_columns):
+            reject(f"stale-{revision}-{index}", {
+                **payload, "columns": proposed,
+                "context": dict(payload["context"], **{revision: 999}),
+            }, before, "ANALYSIS_INPUT_STALE")
+    for index, proposed in enumerate(collision_columns[1:]):
+        reject(f"existing-{index}", {**payload, "columns": proposed}, before)
+    for index, suffix in enumerate((("probability", " "), ("unsupported", "VALID_SUFFIX"))):
+        reject(f"invalid-{index}", {
+            **payload, "columns": columns([("residual", "VALID_PREFIX"), suffix]),
+        }, before, "ANALYSIS_REQUEST_INVALID", 422)
+    if case in ("duplicate_destination", "exact_duplicate"):
+        reject("duplicate", payload, before)
+        # Change only the second name; both the original key and first name
+        # must remain usable after rejection. Exact-duplicate labels stay equal.
+        payload = {**payload, "columns": [payload["columns"][0],
+                   {**payload["columns"][1], "name": "BATCH_OTHER"}]}
+    assert publications == []
+    response, actual_before, after = _batch_request(
+        client, store, result_id, payload, evidence / "accepted",
+    )
+    assert actual_before == before
+    assert response.status_code == 200, response.text
+    receipt = response.json()
+    saved = store.get_dataframe(dataset_id)
+    meta = store.get_meta(dataset_id)
+    cb = store.load_codebook(dataset_id)
+    provenance = store.load_provenance(dataset_id)
+    operation = provenance["operations"][-1]
+    names = [column["name"] for column in payload["columns"]]
+    count = 8 if scope == "selected" else 16
+    assert saved.columns == frame.columns + names
+    assert len(set(saved.columns)) == saved.width
+    assert saved.select(frame.columns).schema == frame.schema
+    assert saved.select(frame.columns).equals(frame)
+    for column in payload["columns"]:
+        name, field = column["name"], column["sourceField"]
+        assert saved.schema[name] == pl.Float64
+        assert saved[name].to_list() == expected[field]
+        assert saved[name].null_count() == 16 - count
+    assert cb["columns"] == original_cb["columns"] + [{
+        "columnId": column["name"], "name": column["name"], "label": column["label"],
+        "scaleType": "interval", "role": "other", "derived": True,
+    } for column in payload["columns"]]
+    assert meta["schema"] == original_meta["schema"] + [{
+        "columnId": name, "name": name, "semanticType": "numeric",
+    } for name in names]
+    for schema in (cb["columns"], meta["schema"]):
+        assert len({column["name"] for column in schema}) == len(schema) == 10
+        assert len({column["columnId"] for column in schema}) == 10
+        assert [column["name"] for column in schema[-2:]] == names
+    assert re.fullmatch(r"op-[0-9a-f]{12}", receipt["operationId"])
+    assert receipt == {
+        "status": "success", "resultId": result_id, "source": payload["source"],
+        "datasetId": dataset_id, "operationId": operation["operationId"],
+        "dataRevision": 2, "schemaRevision": 2, "idempotentReplay": False,
+        "createdColumns": [{"columnId": column["name"], **column, "nonNullCount": count}
+                           for column in payload["columns"]],
+        "writtenRowCount": count,
+    }
+    assert len({column["columnId"] for column in receipt["createdColumns"]}) == 2
+    assert provenance["operations"] == original_provenance["operations"] + [operation]
+    assert provenance["currentOperationId"] == provenance["cursorOperationId"] == receipt["operationId"]
+    assert operation["parentOperationId"] == original_provenance["currentOperationId"]
+    assert (operation["inputDataRevision"], operation["outputDataRevision"]) == (1, 2)
+    assert (operation["inputSchemaRevision"], operation["outputSchemaRevision"]) == (1, 2)
+    assert operation["targetRowIds"] == sorted(set(scope_ids))
+    assert operation["targetCells"] == []
+    assert operation["params"] == {
+        "resultId": result_id, "cjResultId": result_id, "cjIdempotencyKey": payload["idempotencyKey"],
+        "cjPayload": {"source": payload["source"], "columns": payload["columns"],
+                      "scope": {"scope": scope, **({"selectedRowIds": sorted(set(scope_ids))}
+                                                   if scope == "selected" else {})}},
+        "cjResponse": {key: value for key, value in receipt.items()
+                       if key not in {"operationId", "dataRevision", "schemaRevision", "idempotentReplay"}},
+    }
+    _assert_lifecycle(client, store, dataset_id, 2, 2, 10)
+    assert len(publications) == 1
+    _assert_atomic_publication(store, dataset_id, publications[0], operation)
+    _assert_publication_lifecycle(store, dataset_id, publications[0], 2, 2, 10)
+    for path, raw in before.items():
+        if (path.startswith(("analysis-results/", "sessions/", "jobs/"))
+                or ".revisions/" in path or path.endswith(".raw.parquet")):
+            assert after[path] == raw
+    mask_path = str(store._mask_path(dataset_id).relative_to(store.root.parent))
+    assert json.loads(after[mask_path]) == {**json.loads(before[mask_path]), "dataRevision": 2}
+    (evidence / "accepted-facts.json").write_text(json.dumps({
+        "request": payload, "receipt": receipt, "metadata": meta, "codebook": cb,
+        "provenance": provenance, "saved_frame": saved.to_dicts(),
+        "saved_schema": {name: str(dtype) for name, dtype in saved.schema.items()},
+    }, indent=2), encoding="utf-8")
+    for revision in (1, 2):
+        context = dict(payload["context"], expectedDataRevision=revision, expectedSchemaRevision=revision)
+        replay, replay_before, replay_after = _batch_request(
+            client, store, result_id, {**payload, "context": context}, evidence / f"replay-{revision}",
+        )
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == {**receipt, "idempotentReplay": True}
+        assert replay_before == replay_after == after
+    for revision in (1, 2):
+        context = dict(payload["context"], expectedDataRevision=revision, expectedSchemaRevision=revision)
+        changed = {**payload, "context": context, "columns": list(reversed(payload["columns"]))}
+        reject(f"ordered-conflict-{revision}", changed, after, "IDEMPOTENCY_CONFLICT")
+        duplicate = {**payload, "context": context,
+                     "columns": columns([("residual", "OTHER_OUTPUT"), ("probability", "OTHER_OUTPUT")])}
+        reject(f"duplicate-conflict-{revision}", duplicate, after, "IDEMPOTENCY_CONFLICT")
+        reject(f"stale-result-{revision}", {**duplicate, "idempotencyKey": "new-key"},
+               after, "ANALYSIS_INPUT_STALE")
+    assert len(publications) == 1
