@@ -19,7 +19,7 @@ from ..storage import analysis_result_store as result_store
 from ..storage.dataset_store import DatasetStore
 router = APIRouter()
 store = DatasetStore()
-ALGORITHM_VERSION = "davis.ca.1.0.0"
+ALGORITHM_VERSION = "davis.ca.1.0.1"
 SCHEMA_VERSION = "analysis-result/1.0"
 
 
@@ -452,12 +452,23 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
     if t_phys is not None:
         phys = [[int(round(float(v))) for v in row] for row in t_phys[np.ix_(kern["keepRowIndex"], kern["keepColIndex"])].tolist()]
     details = {"rowCategories": row_entries, "columnCategories": col_entries, "omittedCategories": omitted, "table": table, "tableRowCategoryIds": row_ids_out, "tableColumnCategoryIds": col_ids_out, "physicalTable": phys, "mapScaling": req.mapScaling}
+    unavailable_reasons = {}
+    for key in ("rowCategories", "columnCategories"):
+        for i, entry in enumerate(details[key]):
+            if entry["distanceSquared"] == 0.0:
+                for k, value in enumerate(entry["cos2"]):
+                    if value is None:
+                        unavailable_reasons[f"/details/{key}/{i}/cos2/{k}"] = {
+                            "code": "ZERO_DISTANCE",
+                            "message": "重心からの距離が数値的に0のため、cos²は定義できません。",
+                            "relatedFields": [f"/details/{key}/{i}/distanceSquared"],
+                        }
     if unit == "table_record":
         meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=False, weight_type=None, weight_column=None, sum_weights=None, kish_effective_n=None, frequency_n=None, mask_revision=mask_rev, imputed_cell_count=imputed_cells, imputed_row_count=imputed_rows, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     else:
         meta = build_meta(dataset_id=ctx["datasetId"], revisions=rev, snapshot_fingerprint=snap, scope=ctx.get("scope", "all"), scope_ids=[str(v) for v in scope_for_hash], fit_count=fit_count, exclusion_counts=excl_counts, analysis_unit=unit, weight_applied=w_applied, weight_type=w_type, weight_column=w_col, sum_weights=sum_w, kish_effective_n=kish, frequency_n=freq_n, mask_revision=mask_rev, imputed_cell_count=imputed_cells, imputed_row_count=imputed_rows, fingerprint=fingerprint, algorithm_version=ALGORITHM_VERSION)
     result_id = new_result_id()
-    manifest = {"schemaVersion": SCHEMA_VERSION, "resultId": result_id, "method": "ca", "ownerDatasetId": ctx["datasetId"], "config": request_json, "meta": meta, "capabilities": {"rows": False, "projection": False, "materialize": False, "selectionKinds": ["categories"], "exportTables": ["manifest", "eigenvalues", "categories", "table"], "materializeFitFields": [], "materializePredictionFields": [], "predictionIntervals": [], "simulation": False}, "summary": summary, "details": details, "summaryKeys": list(summary.keys()), "unavailableReasons": {}}
+    manifest = {"schemaVersion": SCHEMA_VERSION, "resultId": result_id, "method": "ca", "ownerDatasetId": ctx["datasetId"], "config": request_json, "meta": meta, "capabilities": {"rows": False, "projection": False, "materialize": False, "selectionKinds": ["categories"], "exportTables": ["manifest", "eigenvalues", "categories", "table"], "materializeFitFields": [], "materializePredictionFields": [], "predictionIntervals": [], "simulation": False}, "summary": summary, "details": details, "summaryKeys": list(summary.keys()), "unavailableReasons": unavailable_reasons}
     arrays = {"eigenvalues": np.asarray(eig, dtype=np.float64), "f": np.asarray(kern["f"]), "g": np.asarray(kern["g"]), "r": np.asarray(kern["r"]), "c": np.asarray(kern["c"])}
     if isinstance(members_rows, dict):
         mem_df = pl.DataFrame({"categoryId": [a for a, b, c in members_rows["rows"]], "rowId": [b for a, b, c in members_rows["rows"]], "side": [c for a, b, c in members_rows["rows"]]})
@@ -473,6 +484,6 @@ def _publish(req, ctx, started, kern, eig, total_inertia, ratio, cum, row_entrie
                            details={"expectedDataRevision": base_rev["dataRevision"], "currentDataRevision": cur_rev["dataRevision"],
                                     "expectedSchemaRevision": base_rev["schemaRevision"], "currentSchemaRevision": cur_rev["schemaRevision"]})
         result_store.save_result(result_id, manifest, arrays, members=mem_df, exclusions=None)
-    out = {"status": "success", "resultId": result_id, "method": "ca", "meta": meta, "config": request_json, "capabilities": manifest["capabilities"], "summary": summary, "details": details, "unavailableReasons": {}}
+    out = {"status": "success", "resultId": result_id, "method": "ca", "meta": meta, "config": request_json, "capabilities": manifest["capabilities"], "summary": summary, "details": details, "unavailableReasons": unavailable_reasons}
     check_json_finite(out)
     return out

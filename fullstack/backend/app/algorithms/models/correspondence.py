@@ -14,6 +14,62 @@ from scipy import stats
 from ..analysis_numerics import check_ratio_bounds, degenerate_blocks, thin_svd
 
 
+def _normal_or_zero(values: np.ndarray) -> bool:
+    return bool(np.isfinite(values).all()
+                and ((values == 0) | (np.abs(values) >= np.finfo(np.float64).tiny)).all())
+
+
+def _numerical_zero_profiles(p: np.ndarray, mass: np.ndarray, center: np.ndarray,
+                             normalization_safe: bool) -> np.ndarray:
+    """Recognize unresolved profile residuals on the received float64 table.
+
+    For m x n cells, gamma_k = k*u/(1-k*u). The observed row profile has
+    absolute error <= A*q, A=(gamma_n+2*u)/(1-u)^2: the common rounded grand
+    total cancels from P/r. The opposite mass has error <= B*c, with
+    B=(gamma_(mn-1)+gamma_m)/(1-gamma_m). Subtraction adds u*(q+c).
+    Nonnegative sums use their worst-case addition count, not a NumPy tree.
+
+    Evaluate this envelope at eps=2*u. Its positive coefficients are at
+    least twice their u counterparts. k*eps<1/4 keeps gamma<1/3 and the
+    denominator subtractions >2/3; the fixed small evaluation operation
+    count has relative error far below 1/2 in the normal range. This
+    headroom, not the final nextafter alone, protects the error envelope.
+    Outside that model, decline only this extra classification and leave
+    the caller's existing distance/zero/bounds behavior unchanged.
+    """
+    zero = np.zeros(p.shape[0], dtype=bool)
+    if not normalization_safe:
+        return zero
+    m, n = p.shape
+    eps = np.finfo(np.float64).eps
+    if max(p.size - 1, m, n) * eps >= .25:
+        return zero
+
+    def gamma(k):
+        return k * eps / (1 - k * eps)
+
+    profile_factor = (gamma(n) + 2 * eps) / (1 - eps)**2 + eps
+    center_factor = (gamma(p.size - 1) + gamma(m)) / (1 - gamma(m)) + eps
+    with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+        center_error = center_factor * center
+        if not _normal_or_zero(center_error) or not (center_error > 0).all():
+            return zero
+        for i in range(m):
+            profile = p[i, :] / mass[i]
+            residual = profile - center
+            profile_error = profile_factor * profile
+            budget = profile_error + center_error
+            if (not _normal_or_zero(profile) or not _normal_or_zero(residual)
+                    or not _normal_or_zero(profile_error) or not _normal_or_zero(budget)
+                    or not np.array_equal(profile == 0, p[i, :] == 0)
+                    or not np.array_equal(profile_error == 0, profile == 0)):
+                continue
+            budget = np.nextafter(budget, np.inf)
+            if np.isfinite(budget).all():
+                zero[i] = bool((np.abs(residual) <= budget).all())
+    return zero
+
+
 def run_ca_numeric(
     t: np.ndarray,
     *,
@@ -69,6 +125,12 @@ def run_ca_numeric(
     cumulative = np.cumsum(inertia_ratio)
     row_dist2 = np.array([float(np.sum((p[a, :] / r[a] - c) ** 2 / c)) for a in range(p.shape[0])])
     col_dist2 = np.array([float(np.sum((p[:, b] / c[b] - r) ** 2 / r)) for b in range(p.shape[1])])
+    normalization_safe = (total >= np.finfo(np.float64).tiny
+                          and _normal_or_zero(table) and _normal_or_zero(p)
+                          and _normal_or_zero(r) and _normal_or_zero(c)
+                          and np.array_equal(p == 0, table == 0))
+    row_dist2[_numerical_zero_profiles(p, r, c, normalization_safe)] = 0.0
+    col_dist2[_numerical_zero_profiles(p.T, c, r, normalization_safe)] = 0.0
     row_contrib = np.array([[r[a] * f[a, k] ** 2 / eigenvalues[k] if eigenvalues[k] > 0 else 0.0
                              for k in range(rank)] for a in range(p.shape[0])])
     col_contrib = np.array([[c[b] * g[b, k] ** 2 / eigenvalues[k] if eigenvalues[k] > 0 else 0.0
