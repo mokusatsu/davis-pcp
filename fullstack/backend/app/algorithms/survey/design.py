@@ -8,6 +8,7 @@ approximation wherever it surfaces.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -16,6 +17,33 @@ from ...domain.errors import BizError
 ASSUMPTION_PROVIDED = "provided"
 ASSUMPTION_INDEPENDENT_ROWS = "independent_rows"
 ASSUMPTION_INDEPENDENT_ROWS_STRATA = "independent_rows_with_known_strata"
+
+
+@dataclass(frozen=True)
+class SurveyVarianceSource:
+    """Original design-only input; outcomes and scope membership are separate.
+
+    Weights use the existing extract_weights classification. Missing and zero
+    original weights are excluded; invalid weights prevent domain inference.
+    Merely carrying this input must not validate a descriptive-only request.
+    """
+
+    row_ids: tuple[str, ...]
+    weights: tuple[float | None, ...]
+    has_invalid_weights: bool = False
+    strata: tuple[Any, ...] | None = None
+    psu: tuple[Any, ...] | None = None
+    fpc: tuple[Any, ...] | None = None
+
+
+@dataclass(frozen=True)
+class SurveyVarianceFrame:
+    """Covariance frame, deliberately distinct from the analyzed-domain design."""
+
+    design: SurveyDesign | None = None
+    positions: tuple[int, ...] = ()
+    unavailable_reason: str | None = None
+    design_error_code: str | None = None
 
 
 def _design_values(values: np.ndarray | None, size: int, label: str) -> np.ndarray | None:
@@ -154,3 +182,72 @@ def build_design(
         assumption=assumption,
         lonely_psu_strata=tuple(lonely),
     )
+
+
+def build_domain_variance_frame(
+    source: SurveyVarianceSource,
+    analyzed_row_ids: list[str],
+    domain_design: SurveyDesign,
+) -> SurveyVarianceFrame:
+    """Retain original positive non-missing units without changing reference df.
+
+    Use after the ordinary scoped validation and only for resolved Rao–Scott.
+    Extra source validity failures make inference unavailable; malformed row
+    mappings are internal invariants and must not become a numerical fallback.
+    No new codebook missing-code semantics are added for design fields.
+    """
+    size = len(source.row_ids)
+    for values in (source.weights, source.strata, source.psu, source.fpc):
+        if values is not None and len(values) != size:
+            raise ValueError("Original survey source columns must align with row IDs")
+    if len(set(source.row_ids)) != size or len(set(analyzed_row_ids)) != len(analyzed_row_ids):
+        raise ValueError("Survey domain mapping requires unique row IDs")
+    if len(analyzed_row_ids) != domain_design.size:
+        raise ValueError("Survey domain row IDs must align with analyzed weights")
+    if source.has_invalid_weights:
+        return SurveyVarianceFrame(unavailable_reason="invalid_sampling_weight")
+    kept: list[int] = []
+    for i, weight in enumerate(source.weights):
+        if isinstance(weight, (bool, np.bool_)):
+            return SurveyVarianceFrame(unavailable_reason="invalid_sampling_weight")
+        if weight is None or weight == 0:
+            continue
+        if not np.isfinite(weight) or weight < 0:
+            return SurveyVarianceFrame(unavailable_reason="invalid_sampling_weight")
+        kept.append(i)
+    original_weights = np.asarray([source.weights[i] for i in kept], dtype=float)
+    index = {source.row_ids[i]: position for position, i in enumerate(kept)}
+    if any(row_id not in index for row_id in analyzed_row_ids):
+        raise ValueError("Analyzed survey row is absent from the original positive-weight frame")
+    positions = tuple(index[row_id] for row_id in analyzed_row_ids)
+    if not np.array_equal(original_weights[list(positions)], domain_design.weights):
+        raise ValueError("Original and analyzed sampling weights disagree")
+
+    def identifiers(values: tuple[Any, ...] | None) -> np.ndarray | None:
+        # Match Crosstab's current str conversion before build_design.
+        return np.asarray([str(values[i]) for i in kept], dtype=object) if values is not None else None
+
+    fpc = None
+    if source.fpc is not None:
+        # Same raw numeric acceptance as Crosstab._numeric, but a declared
+        # array that fails conversion is distinct from an absent FPC column.
+        try:
+            fpc = np.asarray([float(source.fpc[i]) for i in kept], dtype=float)
+        except (TypeError, ValueError):
+            return SurveyVarianceFrame(unavailable_reason="invalid_fpc")
+        if not np.all(np.isfinite(fpc)):
+            return SurveyVarianceFrame(unavailable_reason="invalid_fpc")
+    try:
+        original = build_design(original_weights, strata=identifiers(source.strata),
+                                psu=identifiers(source.psu), fpc=fpc)
+    except BizError as exc:
+        return SurveyVarianceFrame(unavailable_reason="invalid_sampling_design", design_error_code=exc.code)
+    # Domain implicit PSU numbers are local to its rows; only supplied IDs
+    # should match literally across the two independently constructed frames.
+    for values, original_values, domain_values in (
+        (source.strata, original.strata, domain_design.strata),
+        (source.psu, original.psu, domain_design.psu),
+    ):
+        if values is not None and not np.array_equal(original_values[list(positions)], domain_values):
+            raise ValueError("Original and analyzed sampling identities disagree")
+    return SurveyVarianceFrame(design=original, positions=positions)

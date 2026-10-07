@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
-from ..survey.design import SurveyDesign
+from ..survey.design import SurveyDesign, SurveyVarianceFrame
 from ..survey.rao_scott import METHOD_SECOND_ORDER, pearson_chi_square, rao_scott_test
 from .association import positive_marginal_submatrix
 
@@ -186,8 +186,10 @@ def survey_inference(
     row_codes: np.ndarray,
     col_codes: np.ndarray,
     design: SurveyDesign,
+    *,
+    variance_frame: SurveyVarianceFrame | None = None,
 ) -> InferenceResult:
-    """Rao–Scott second-order test, or an explicit "unavailable"."""
+    """Rao–Scott test; absent variance_frame preserves the local-design contract."""
     warnings: list[dict[str, Any]] = []
     if design.assumption != "provided":
         warnings.append({
@@ -210,7 +212,21 @@ def survey_inference(
                 }],
             )
 
-    result = rao_scott_test(counts, row_codes, col_codes, design)
+    if variance_frame is not None and variance_frame.unavailable_reason is not None:
+        details: dict[str, Any] = {"reason": variance_frame.unavailable_reason}
+        if variance_frame.design_error_code is not None:
+            details["designErrorCode"] = variance_frame.design_error_code
+        warnings.append({
+            "code": "SURVEY_DOMAIN_DESIGN_INCOMPLETE",
+            "message": "元の標本設計を確認できないため、調査設計に基づく推測はできません。",
+            "details": details,
+        })
+        return InferenceResult(
+            requested=True, status=STATUS_UNAVAILABLE, method=METHOD_RAO_SCOTT,
+            design_assumption=design.assumption, approximate=design.approximate,
+            warnings=warnings,
+        )
+    result = rao_scott_test(counts, row_codes, col_codes, design, variance_frame=variance_frame)
     if result is None:
         return InferenceResult(
             requested=True, status=STATUS_UNAVAILABLE, method=METHOD_RAO_SCOTT,

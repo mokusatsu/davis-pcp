@@ -25,8 +25,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
-from .covariance import mean_covariance
-from .design import SurveyDesign
+from .covariance import domain_mean_covariance, mean_covariance
+from .design import SurveyDesign, SurveyVarianceFrame
 from .weight_arithmetic import normalized_weights
 
 METHOD_SECOND_ORDER = "rao_scott_second_order"
@@ -95,6 +95,8 @@ def rao_scott_test(
     col_codes: np.ndarray,
     design: SurveyDesign,
     method: str = METHOD_SECOND_ORDER,
+    *,
+    variance_frame: SurveyVarianceFrame | None = None,
 ) -> RaoScottResult | None:
     """Second-order Rao-Scott test of independence.
 
@@ -103,7 +105,8 @@ def rao_scott_test(
     the cluster membership needed for the design-based covariance. Returns
     ``None`` when the design cannot support a test (fewer than two rows or
     columns, a degenerate design effect, or no residual design degrees of
-    freedom).
+    freedom). Without variance_frame, the supplied design remains the entire
+    covariance universe; domain callers must supply the original frame.
     """
     counts = np.asarray(counts, dtype=float)
     n_rows, n_cols = counts.shape
@@ -120,7 +123,8 @@ def rao_scott_test(
     size = design.size
     indicators = np.zeros((size, n_rows * n_cols), dtype=float)
     indicators[np.arange(size), np.asarray(row_codes, dtype=int) * n_cols + np.asarray(col_codes, dtype=int)] = 1.0
-    covariance = mean_covariance(indicators, design)
+    covariance = (mean_covariance(indicators, design) if variance_frame is None
+                  else domain_mean_covariance(indicators, design, variance_frame))
 
     inverse = np.where(proportions > 0, 1.0 / proportions, 0.0)
     inverse = inverse.reshape(-1)

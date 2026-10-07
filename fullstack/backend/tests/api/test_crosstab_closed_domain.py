@@ -22,8 +22,8 @@ def test_stat02_closed_domain_excludes_invalid_from_table_and_inference():
     frame, book = _closed_crosstab_fixture()
     result = compute_crosstab(frame, 'a', 'b', book)
     assert result['effectiveN'] == 80
-    assert result['algorithmVersion'] == 'crosstab-survey-3'
-    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-3'
+    assert result['algorithmVersion'] == 'crosstab-survey-4'
+    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-4'
     assert result['invalidCount'] == 80
     assert result['missingCount'] == 0
     assert [c['id'] for c in result['rowCategories']] == ['1', '2']
@@ -104,10 +104,10 @@ def test_stat02_cell_selection_cannot_resurrect_invalid_rows(audit_api):
     table = client.post('/api/v1/summaries/crosstab', json={**request, 'maxRowIdsPerCell': 1})
     assert table.status_code == 200, table.text
     result = table.json()
-    assert result['meta']['algorithmVersion'] == 'crosstab-survey-3'
+    assert result['meta']['algorithmVersion'] == 'crosstab-survey-4'
     assert result['effectiveN'] == 80
-    assert result['algorithmVersion'] == 'crosstab-survey-3'
-    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-3'
+    assert result['algorithmVersion'] == 'crosstab-survey-4'
+    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-4'
     assert result['invalidCount'] == 80
     imported = store.get_dataframe(dataset_id)
     expected = [str(v) for v in imported.filter((pl.col('a').cast(pl.String) == '1') & (pl.col('b') == 'X'))['__rowId__'].to_list()]
@@ -160,8 +160,8 @@ def test_stat02_invalid_rows_cannot_add_weight_to_counts_or_inference(weight_typ
                               weight_type=weight_type)
     assert result['grandTotal']['count'] == 80
     assert result['effectiveN'] == 80
-    assert result['algorithmVersion'] == 'crosstab-survey-3'
-    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-3'
+    assert result['algorithmVersion'] == 'crosstab-survey-4'
+    assert result['analysisProvenance']['algorithmVersion'] == 'crosstab-survey-4'
     assert result['invalidCount'] == 80
     assert [cell['count'] for cell in result['cells']] == [20.] * 4
     assert result['descriptiveAssociation']['pearsonChi2'] == 0

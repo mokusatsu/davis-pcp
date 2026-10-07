@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from ..survey.design import build_design
+from ..survey.design import SurveyVarianceSource, build_design, build_domain_variance_frame
 from ..survey.diagnostics import weight_diagnostics
 from ..survey.weight_arithmetic import absolute_weight_sum, display_weight_total
 from .association import descriptive_association, positive_marginal_submatrix
@@ -39,7 +39,7 @@ from .inference import (
     unweighted_inference,
 )
 
-ALGORITHM_VERSION = "crosstab-survey-3"
+ALGORITHM_VERSION = "crosstab-survey-4"
 MAX_POSITIVE_ASR = 3.29
 CATEGORY_SCALES = ("nominal", "ordinal", "binary")
 
@@ -191,7 +191,13 @@ def compute_crosstab(
     max_row_ids_per_cell: int = 10000,
     inference: str = REQUEST_AUTO,
     schema_revision: int | None = None,
+    survey_source: SurveyVarianceSource | None = None,
 ) -> dict[str, Any]:
+    """Compute the scoped table; optional original source affects covariance only.
+
+    Direct callers without survey_source retain their existing local-design
+    covariance universe. Domain inference requires the original source carrier.
+    """
     from ...domain.errors import BizError
 
     codebook = codebook or {}
@@ -442,7 +448,13 @@ def compute_crosstab(
                            status_code=422)
         inference_result = unweighted_inference(fisher_matrix, REQUEST_FISHER)
     elif resolved == REQUEST_RAO_SCOTT:
-        inference_result = survey_inference(survey_counts, row_of_kept, col_of_kept, survey_design)
+        variance_frame = (build_domain_variance_frame(
+            survey_source, [row_ids[k] for k in analysed], survey_design,
+        ) if survey_source is not None else None)
+        inference_result = survey_inference(
+            survey_counts, row_of_kept, col_of_kept, survey_design,
+            variance_frame=variance_frame,
+        )
     elif use_weights:
         inference_result = frequency_inference(effective_matrix)
     else:

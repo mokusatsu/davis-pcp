@@ -377,11 +377,11 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
         if weight_name is not None:
             read_columns.append(weight_name)
         read_columns.extend(name for name in design_names.values() if name)
-        df = store.get_dataframe(context.datasetId, columns=list(dict.fromkeys(read_columns)))
-        scope_ids = resolve_scope([str(v) for v in df["__rowId__"].to_list()],
+        source_df = store.get_dataframe(context.datasetId, columns=list(dict.fromkeys(read_columns)))
+        scope_ids = resolve_scope([str(v) for v in source_df["__rowId__"].to_list()],
                                    __import__("app.domain.context", fromlist=["AnalysisContext"])
                                    .AnalysisContext(**context.model_dump()))
-        df = df.filter(pl.col("__rowId__").is_in(scope_ids))
+        df = source_df.filter(pl.col("__rowId__").is_in(scope_ids))
         weights: list[float | None] | None = None
         weight_missing = 0
         weight_status = "omitted"
@@ -395,6 +395,24 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
                 raise BizError("WEIGHT_NO_POSITIVE", "正のウェイトが存在しません。",
                                status_code=422)
             weight_status = weighted_status(True, positive_mass)
+        # Carry original design information separately from the scoped table.
+        # This is classification only: outside-frame validation is consumed
+        # after the kernel resolves an explicitly requested survey test.
+        survey_source = None
+        if weight_type == "survey" and weight_spec is not None:
+            from ..algorithms.survey.design import SurveyVarianceSource
+            original_weights, _, original_invalid = extract_weights(source_df, weight_name or "", weight_spec)
+
+            def original_values(key: str) -> tuple[Any, ...] | None:
+                name = design_names.get(key)
+                return tuple(source_df[name].to_list()) if name else None
+
+            survey_source = SurveyVarianceSource(
+                row_ids=tuple(str(v) for v in source_df["__rowId__"].to_list()),
+                weights=tuple(original_weights), has_invalid_weights=original_invalid,
+                strata=original_values("strataColumnId"), psu=original_values("psuColumnId"),
+                fpc=original_values("fpcColumnId"),
+            )
         result = compute_crosstab(
             df, row_name, col_name, codebook=codebook,
             missing_policy=context.missingPolicy, weights=weights,
@@ -406,6 +424,7 @@ def crosstab_summary(req: CrosstabRequest) -> dict:
             max_row_ids_per_cell=req.maxRowIdsPerCell,
             inference=req.inference,
             schema_revision=revisions.get("schemaRevision"),
+            survey_source=survey_source,
         )
         mask_revision = store.mask_revision(context.datasetId)
         result_meta = build_meta(

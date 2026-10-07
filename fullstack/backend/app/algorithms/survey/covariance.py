@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .design import SurveyDesign
+from .design import SurveyDesign, SurveyVarianceFrame
 from .weight_arithmetic import normalized_weights
 
 
@@ -53,3 +53,32 @@ def mean_covariance(indicators: np.ndarray, design: SurveyDesign) -> np.ndarray:
     average = (indicators * weights[:, None]).sum(axis=0)
     linearized = (indicators - average) * weights[:, None]
     return linearized_total_covariance(linearized, design)
+
+
+def domain_mean_covariance(
+    indicators: np.ndarray, domain_design: SurveyDesign, frame: SurveyVarianceFrame,
+) -> np.ndarray:
+    """Domain ratio covariance with zero scores in the original sampling frame.
+
+    Original zero/missing weights have already been excluded by the source
+    builder. Valid original units outside the analyzed domain retain their
+    design membership; their scores alone are zero.
+    """
+    if frame.design is None or frame.unavailable_reason is not None:
+        raise ValueError("Domain covariance requires a complete original survey frame")
+    indicators = np.asarray(indicators, dtype=float)
+    if indicators.ndim != 2 or indicators.shape[0] != domain_design.size:
+        raise ValueError("Domain indicators must align with analyzed rows")
+    positions = np.asarray(frame.positions)
+    if (positions.ndim != 1 or positions.size != domain_design.size
+            or positions.dtype.kind not in "iu"
+            or len(set(frame.positions)) != len(frame.positions)
+            or np.any(positions < 0) or np.any(positions >= frame.design.size)):
+        raise ValueError("Domain positions must uniquely index the original survey frame")
+    if not np.array_equal(frame.design.weights[positions], domain_design.weights):
+        raise ValueError("Original and domain sampling weights disagree")
+    weights = normalized_weights(domain_design.weights)
+    average = (indicators * weights[:, None]).sum(axis=0)
+    scores = np.zeros((frame.design.size, indicators.shape[1]), dtype=float)
+    scores[positions] = (indicators - average) * weights[:, None]
+    return linearized_total_covariance(scores, frame.design)
