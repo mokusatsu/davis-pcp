@@ -617,8 +617,18 @@ def conjoint_predict(result_id, manifest, req):
 
 def conjoint_materialize(result_id, manifest, req):
     import re as _re
-    import uuid as _uuid
-    meta, stale, cur = _stale_state(manifest)
+    from ..domain.provenance import new_operation_id
+    from ..services.dataset_service import now_iso
+
+    def receipt(operation, replay):
+        out = {**operation["params"]["cjResponse"],
+               "operationId": operation["operationId"],
+               "dataRevision": operation["outputDataRevision"],
+               "schemaRevision": operation["outputSchemaRevision"],
+               "idempotentReplay": replay}
+        check_json_finite(out)
+        return out
+
     ctx = req.context.model_dump()
     if ctx.get("datasetId") != manifest.get("ownerDatasetId"):
         _err("ANALYSIS_DATASET_MISMATCH",
@@ -637,110 +647,93 @@ def conjoint_materialize(result_id, manifest, req):
                                  for k in ("sourceField", "name", "label")}
                                 for c in cols],
                     "scope": norm}
-    prov = store.load_provenance(dataset_id) or {}
-    for op in prov.get("operations", []) or []:
-        params = op.get("params") or {}
-        if params.get("cjIdempotencyKey") == req.idempotencyKey and \
-                params.get("cjResultId") == result_id:
-            import json as _json
-            if _json.dumps(params.get("cjPayload"), sort_keys=True) == \
-                    _json.dumps(payload_norm, sort_keys=True, default=str):
-                replay = dict(params.get("cjResponse") or {})
-                replay["idempotentReplay"] = True
-                check_json_finite(replay)
-                return replay
-            _err("IDEMPOTENCY_CONFLICT",
-                 "idempotencyKey が別payloadで使用済みです。", 409)
-    if stale:
-        _err("ANALYSIS_INPUT_STALE", "stale result", 409)
-    from ..domain.context import check_revisions as _check
-    _check(cur, ctx.get("expectedSchemaRevision"),
-           ctx.get("expectedDataRevision"))
-    caps = manifest.get("capabilities") or {}
-    summary = manifest.get("summary") or {}
-    mode = str(summary.get("mode") or "choice")
-    allowed_by_mode = {
-        "ratings": {"predicted_rating", "residual"},
-        "choice": {"probability", "residual"},
-        "ranking": {"probability"},
-    }[mode]
-    source = req.source
-    if source == "fit":
-        rows_df = result_store.load_rows(result_id)
-        if rows_df is None:
-            _err("ANALYSIS_OPERATION_UNSUPPORTED", "no rows", 422)
-        values = {}
-        for r in rows_df.rows(named=True):
-            rid = str(r.get("rowId"))
-            entry = {}
-            if r.get("predictedRating") is not None:
-                entry["predicted_rating"] = float(r.get("predictedRating"))
-            if r.get("probability") is not None:
-                entry["probability"] = float(r.get("probability"))
-            if r.get("residual") is not None:
-                entry["residual"] = float(r.get("residual"))
-            values[rid] = entry
-    else:
-        pdf = result_store.load_prediction_rows(result_id, source)
-        if pdf is None:
-            _err("ANALYSIS_RESULT_NOT_FOUND",
-                 "prediction が見つかりません。", 404)
-        values = {}
-        for r in pdf.rows(named=True):
-            if str(r.get("predictionStatus") or "ok") != "ok":
-                continue
-            rid = str(r.get("rowId"))
-            entry = {}
-            if r.get("predictedRating") is not None:
-                entry["predicted_rating"] = float(r.get("predictedRating"))
-            if r.get("probability") is not None:
-                entry["probability"] = float(r.get("probability"))
-            if r.get("residual") is not None:
-                entry["residual"] = float(r.get("residual"))
-            values[rid] = entry
-    # Method-gated fields: reject unprovided sourceFields per capabilities.
-    for c in cols:
-        src = c.get("sourceField") if isinstance(c, dict) \
-            else getattr(c, "sourceField", None)
-        if src not in allowed_by_mode:
-            _err("ANALYSIS_REQUEST_INVALID",
-                 f"この mode では保存できません: {src}", 422)
-    # CJ-R006: resolve scope under the write lock later; here compute
-    # only lock-free payload validation (fields, names).
-    from ..domain.context import resolve_scope as _scope
-    # Write derived columns atomically via dataset store.
-    import re as _re2
-    new_cols = []
-    for c in cols:
-        src = c.get("sourceField") if isinstance(c, dict) \
-            else getattr(c, "sourceField", None)
-        name = c.get("name") if isinstance(c, dict) \
-            else getattr(c, "name", None)
-        label = (c.get("label") if isinstance(c, dict)
-                 else getattr(c, "label", "")) or ""
-        if not name or not isinstance(name, str):
-            _err("ANALYSIS_REQUEST_INVALID", "列名が不正です。", 422)
-        if _re.fullmatch(r"\s*", name):
-            _err("ANALYSIS_REQUEST_INVALID", "列名が不正です。", 422)
-        new_cols.append({"sourceField": src, "name": name,
-                         "label": label})
-    created = []
-    written_rows = 0
     with store.lock(dataset_id):
-        # CJ-R006: re-verify the learned revision inside the write lock.
-        # A concurrent edit between the stale check and the write must
-        # 409 with no side effects instead of saving onto new data.
-        lock_meta = store.get_meta(dataset_id)
-        lock_code = store.load_codebook(dataset_id) or {}
-        lock_rev = collect_revisions(lock_meta, lock_code)
-        if (lock_rev["dataRevision"] != meta.get("dataRevision")
-                or lock_rev["schemaRevision"] != meta.get("schemaRevision")):
-            _err("ANALYSIS_INPUT_STALE",
-                 "保存時にデータが更新されました。再実行してください。",
-                 409)
-        from ..domain.context import check_revisions as _check2
-        _check2(lock_rev, ctx.get("expectedSchemaRevision"),
-                ctx.get("expectedDataRevision"))
+        # Same-key retries resolve before stale checks, even at a newer head.
+        prov = store.load_provenance(dataset_id) or {}
+        for op in prov.get("operations", []) or []:
+            params = op.get("params") or {}
+            if params.get("cjIdempotencyKey") == req.idempotencyKey and \
+                    params.get("cjResultId") == result_id:
+                import json as _json
+                if _json.dumps(params.get("cjPayload"), sort_keys=True) == \
+                        _json.dumps(payload_norm, sort_keys=True, default=str):
+                    return receipt(op, True)
+                _err("IDEMPOTENCY_CONFLICT",
+                     "idempotencyKey が別payloadで使用済みです。", 409)
+        _, stale, cur = _stale_state(manifest)
+        if stale:
+            _err("ANALYSIS_INPUT_STALE", "stale result", 409)
+        from ..domain.context import check_revisions as _check
+        _check(cur, ctx.get("expectedSchemaRevision"),
+               ctx.get("expectedDataRevision"))
+        caps = manifest.get("capabilities") or {}
+        summary = manifest.get("summary") or {}
+        mode = str(summary.get("mode") or "choice")
+        allowed_by_mode = {
+            "ratings": {"predicted_rating", "residual"},
+            "choice": {"probability", "residual"},
+            "ranking": {"probability"},
+        }[mode]
+        source = req.source
+        if source == "fit":
+            rows_df = result_store.load_rows(result_id)
+            if rows_df is None:
+                _err("ANALYSIS_OPERATION_UNSUPPORTED", "no rows", 422)
+            values = {}
+            for r in rows_df.rows(named=True):
+                rid = str(r.get("rowId"))
+                entry = {}
+                if r.get("predictedRating") is not None:
+                    entry["predicted_rating"] = float(r.get("predictedRating"))
+                if r.get("probability") is not None:
+                    entry["probability"] = float(r.get("probability"))
+                if r.get("residual") is not None:
+                    entry["residual"] = float(r.get("residual"))
+                values[rid] = entry
+        else:
+            pdf = result_store.load_prediction_rows(result_id, source)
+            if pdf is None:
+                _err("ANALYSIS_RESULT_NOT_FOUND",
+                     "prediction が見つかりません。", 404)
+            values = {}
+            for r in pdf.rows(named=True):
+                if str(r.get("predictionStatus") or "ok") != "ok":
+                    continue
+                rid = str(r.get("rowId"))
+                entry = {}
+                if r.get("predictedRating") is not None:
+                    entry["predicted_rating"] = float(r.get("predictedRating"))
+                if r.get("probability") is not None:
+                    entry["probability"] = float(r.get("probability"))
+                if r.get("residual") is not None:
+                    entry["residual"] = float(r.get("residual"))
+                values[rid] = entry
+        # Method-gated fields: reject unprovided sourceFields per capabilities.
+        for c in cols:
+            src = c.get("sourceField") if isinstance(c, dict) \
+                else getattr(c, "sourceField", None)
+            if src not in allowed_by_mode:
+                _err("ANALYSIS_REQUEST_INVALID",
+                     f"この mode では保存できません: {src}", 422)
+        # Resolve scope and append columns under the same write lock.
+        from ..domain.context import resolve_scope as _scope
+        # Write derived columns atomically via dataset store.
+        new_cols = []
+        for c in cols:
+            src = c.get("sourceField") if isinstance(c, dict) \
+                else getattr(c, "sourceField", None)
+            name = c.get("name") if isinstance(c, dict) \
+                else getattr(c, "name", None)
+            label = (c.get("label") if isinstance(c, dict)
+                     else getattr(c, "label", "")) or ""
+            if not name or not isinstance(name, str):
+                _err("ANALYSIS_REQUEST_INVALID", "列名が不正です。", 422)
+            if _re.fullmatch(r"\s*", name):
+                _err("ANALYSIS_REQUEST_INVALID", "列名が不正です。", 422)
+            new_cols.append({"sourceField": src, "name": name,
+                             "label": label})
+        created = []
+        written_rows = 0
         df_ids = store.get_dataframe(dataset_id, columns=["__rowId__"])
         all_ids = [str(v) for v in df_ids["__rowId__"].to_list()]
         legacy = AnalysisContext(
@@ -779,8 +772,7 @@ def conjoint_materialize(result_id, manifest, req):
             created.append({"columnId": nc["name"], "name": nc["name"],
                             "label": nc["label"], "sourceField": src,
                             "nonNullCount": non_null})
-        # Codebook append + revision bump via commit_data_change (LR pattern).
-        import datetime as _dt
+        # Keep the existing schema lifecycle; record its actual revisions.
         meta_now = store.get_meta(dataset_id)
         cb = store.load_codebook(dataset_id) or {}
         cols_spec = cb.get("columns", []) or []
@@ -795,45 +787,29 @@ def conjoint_materialize(result_id, manifest, req):
             schema.append({"columnId": nc["name"], "name": nc["name"],
                            "semanticType": "numeric"})
         meta_now["schema"] = schema
-        step = {"operation": "calculate",
+        receipt_facts = {"status": "success", "resultId": result_id,
+                         "source": source, "datasetId": dataset_id,
+                         "createdColumns": created,
+                         "writtenRowCount": int(written_rows)}
+        check_json_finite(receipt_facts)
+        step = {"operationId": new_operation_id(),
+                "parentOperationId": prov.get("currentOperationId"),
+                "operation": "calculate",
                 "params": {"resultId": result_id,
                            "cjIdempotencyKey": req.idempotencyKey,
                            "cjResultId": result_id,
                            "cjPayload": payload_norm,
-                           "cjResponse": None},
-                "createdAt": _dt.datetime.now(
-                    _dt.timezone.utc).isoformat()}
-        store.commit_data_change(dataset_id, meta_now, df, codebook=cb,
-                                 step=step)
-        fresh_meta = store.get_meta(dataset_id)
-        fresh_cb = store.load_codebook(dataset_id) or {}
-        data_rev = int(fresh_meta.get("dataRevision", 1))
-        schema_rev = int(fresh_cb.get("schemaRevision", 1))
-    resp = {"status": "success", "resultId": result_id,
-            "source": source, "operationId": str(_uuid.uuid4()),
-            "datasetId": dataset_id, "dataRevision": data_rev,
-            "schemaRevision": schema_rev, "createdColumns": created,
-            "writtenRowCount": int(written_rows),
-            "idempotentReplay": False}
-    # Record idempotency payload in provenance params.
-    try:
-        prov3 = store.load_provenance(dataset_id) or {}
-        for op in prov3.get("operations", []) or []:
-            params = op.get("params") or {}
-            if params.get("cjIdempotencyKey") == req.idempotencyKey and \
-                    params.get("cjResultId") == result_id and \
-                    params.get("cjResponse") is None:
-                params["cjResponse"] = {k: v for k, v in resp.items()
-                                        if k != "idempotentReplay"}
-                break
-        try:
-            store.save_provenance(dataset_id, prov3)
-        except AttributeError:
-            pass
-    except Exception:
-        pass
-    check_json_finite(resp)
-    return resp
+                           "cjResponse": receipt_facts},
+                "targetRowIds": sorted(scope_ids), "targetCells": [],
+                "inputSchemaRevision": cur["schemaRevision"],
+                "outputSchemaRevision": int(cb.get("schemaRevision")
+                                             or meta_now.get("schemaRevision")
+                                             or 1),
+                "algorithmVersion": ALGORITHM_VERSION,
+                "timestamp": now_iso(), "createdBy": "local-session"}
+        committed = store.commit_data_change(
+            dataset_id, meta_now, df, codebook=cb, step=step)
+        return receipt(committed["provenance"]["operations"][-1], False)
 
 
 def conjoint_export_table(manifest, meta, result_id, req):
