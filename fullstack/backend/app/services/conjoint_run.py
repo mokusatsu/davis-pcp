@@ -155,7 +155,9 @@ def run_conjoint_estimation(
                          "モデル行列がランク欠損です。", 422)
                 raise
             beta = np.asarray(sol["beta"])
-            bread = np.asarray(sol["bread"])
+            # Keep the fitted intercept in the sandwich. Taking the slope
+            # block of bread first loses intercept/slope cross-covariances.
+            bread = np.asarray(sol["breadFull"])
             intercept = float(sol["intercept"])
             fitted = np.asarray(sol["fitted"])
             resid = np.asarray(sol["residual"])
@@ -178,10 +180,10 @@ def run_conjoint_estimation(
                 xa = np.zeros((p + 1,))
                 xa[0] = 1.0
                 xa[1:] = Xa[i]
-                u = xa[1:] * float(resid[i])
+                u = xa * float(resid[i])
                 respondent_scores[r["respondentId"]] = (
                     respondent_scores.get(
-                        r["respondentId"], np.zeros((p,))) + u)
+                        r["respondentId"], np.zeros((p + 1,))) + u)
             optimizer_info = {"method": "ols_pooled",
                               "rankInfo": sol["rankInfo"]}
     else:
@@ -330,7 +332,7 @@ def run_conjoint_estimation(
         except BizError:
             raise
         # Scope-outside respondents keep score 0.
-        full_scores = {r: respondent_scores.get(r, np.zeros((p,)))
+        full_scores = {r: respondent_scores.get(r, np.zeros((bread.shape[0],)))
                        for r in seen_r}
         surv = _cov.conjoint_survey_covariance(
             bread=bread, respondent_scores=full_scores,
@@ -386,6 +388,11 @@ def run_conjoint_estimation(
             "code": "INFERENCE_UNAVAILABLE",
             "message": "共分散が非有限です。",
             "relatedFields": ["/details/coefficients"]}
+    if covariance is not None and mode == "ratings" and str(req.ratingEffects) != "respondent_fixed":
+        # Both CR1 and survey covariance now include the nuisance intercept.
+        # Expose only the slope block after the complete sandwich and finite
+        # check, matching the coefficient/utility parameterization.
+        covariance = covariance[1:, 1:]
     trows = cf.t_rows(beta=beta, covariance=covariance,
                       reference_df=reference_df,
                       confidence_level=confidence_level)

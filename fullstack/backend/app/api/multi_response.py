@@ -13,6 +13,7 @@ import polars as pl
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..algorithms.survey.weight_arithmetic import display_weight_total
 from ..domain.errors import BizError
 from ..domain.multi_response import prepare_classifier, match_group, resolve_groups, summarize_group, validate_group
 from ..domain.codebook_adapter import normalize_code
@@ -235,8 +236,10 @@ def _weight_context(
                 spec["name"], spec["columnId"], error.message)
     missing_count = sum(1 for weight in scoped if weight is None)
     zero_count = sum(1 for weight in scoped if weight == 0)
-    positive_mass = round(sum(weight for weight in scoped if weight is not None and weight > 0), 4)
-    if positive_mass <= 0:
+    positive_weights = [weight for weight in scoped if weight is not None and weight > 0]
+    # A representable positive weight is usable regardless of display scale.
+    # Rounding the mass here can silently replace weighted ratios by raw ones.
+    if not positive_weights:
         block = _unsupported_weight(spec["name"], spec["columnId"],
                                     "正のウェイトがないため、無加重で集計しました。")
         block["weightStatus"] = "no_positive_weight"
@@ -247,7 +250,7 @@ def _weight_context(
         "weightStatus": "applied",
         "weightColumn": spec["name"],
         "weightColumnId": spec["columnId"],
-        "weightedN": positive_mass,
+        "weightedN": display_weight_total(sum(positive_weights)),
         "weightMissingCount": missing_count,
         "weightZeroCount": zero_count,
         "warnings": [{"code": "MA_WEIGHT_APPLIED", "message": MA_WEIGHT_APPLIED_MESSAGE}],

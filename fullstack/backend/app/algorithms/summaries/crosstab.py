@@ -39,7 +39,7 @@ from .inference import (
     unweighted_inference,
 )
 
-ALGORITHM_VERSION = "crosstab-survey-2"
+ALGORITHM_VERSION = "crosstab-survey-3"
 MAX_POSITIVE_ASR = 3.29
 CATEGORY_SCALES = ("nominal", "ordinal", "binary")
 
@@ -78,20 +78,26 @@ def ordered_display_categories(values: list[str], spec: dict[str, Any]) -> list[
 
 
 def _ordered_categories(values: list[str], spec: dict[str, Any]) -> list[str]:
-    order = [str(v) for v in (spec.get("categoryOrder") or []) if v is not None]
+    from ...domain.codebook_adapter import normalize_code
+
+    declared = bool(spec.get("categoryOrder"))
+    missing = {normalize_code(value) for value in (spec.get("missingCodes") or [])}
+    order = [normalize_code(value) for value in (spec.get("categoryOrder") or [])]
     labels = spec.get("valueLabels") or {}
-    if order:
-        ordered = [v for v in order if v in set(values) or True]
-    elif labels:
-        ordered = [str(k) for k in labels.keys()]
-    else:
-        ordered = []
+    ordered = order if declared else [normalize_code(value) for value in labels]
     seen: set[str] = set()
-    result = [v for v in ordered if not (v in seen or seen.add(v))]
-    for value in values:
-        if value not in seen:
+    result: list[str] = []
+    for value in ordered:
+        if value is not None and value not in missing and value not in seen:
             seen.add(value)
             result.append(value)
+    # A declared categoryOrder is a closed domain. Missing pseudo-categories
+    # are appended by the caller only when the selected policy includes them.
+    if not declared:
+        for value in values:
+            if value not in seen and value not in missing:
+                seen.add(value)
+                result.append(value)
     return result
 
 
@@ -118,19 +124,34 @@ def _numeric(values: list[Any] | None) -> list[float] | None:
     return out
 
 
-def _split_missing(values: list[Any], spec: dict[str, Any], missing_policy: str,
-                   reasons: dict[str, Any] | None = None) -> tuple[list[str | None], list[str]]:
+def _resolve_category_values(
+    values: list[Any], spec: dict[str, Any], missing_policy: str,
+    reasons: dict[str, Any] | None = None,
+) -> tuple[list[str | None], list[str], list[bool]]:
+    """Classify once for both displayed cells and their full row selection.
+
+    Missing codes (including not-applicable reasons) take precedence over a
+    declared domain. Invalid observed codes are always excluded, even when
+    the display policy includes missing values.
+    """
     from ...domain.codebook_adapter import is_not_applicable_reason, normalize_code
 
-    reasons = reasons or {}
+    reasons = {normalize_code(code): reason for code, reason in (reasons or {}).items()}
     missing_codes = {normalize_code(c) for c in (spec.get("missingCodes") or [])}
     missing_codes.discard(None)
+    declared = bool(spec.get("categoryOrder"))
+    domain = {normalize_code(c) for c in (spec.get("categoryOrder") or [])}
+    domain.discard(None)
     out: list[str | None] = []
     missing_reasons: list[str] = []
+    invalid: list[bool] = []
     for raw in values:
         code = normalize_code(raw)
-        if code is None or code in missing_codes:
-            reason = reasons.get(code, "") if isinstance(reasons, dict) else ""
+        is_missing = code is None or code in missing_codes
+        is_invalid = not is_missing and declared and code not in domain
+        invalid.append(is_invalid)
+        if is_missing:
+            reason = reasons.get(code, "")
             if missing_policy == "include_missing":
                 out.append("__missing__")
             elif missing_policy == "separate_not_applicable" and is_not_applicable_reason(reason):
@@ -141,9 +162,17 @@ def _split_missing(values: list[Any], spec: dict[str, Any], missing_policy: str,
                 out.append(None)
             missing_reasons.append(reason if isinstance(reason, str) else "")
         else:
-            out.append(code)
+            out.append(None if is_invalid else code)
             missing_reasons.append("")
-    return out, missing_reasons
+    return out, missing_reasons, invalid
+
+
+def _split_missing(values: list[Any], spec: dict[str, Any], missing_policy: str,
+                   reasons: dict[str, Any] | None = None) -> tuple[list[str | None], list[str]]:
+    # Keep the cell-row-ids route on exactly the same validity policy as the
+    # table without changing this shared helper's established tuple contract.
+    codes, missing_reasons, _ = _resolve_category_values(values, spec, missing_policy, reasons)
+    return codes, missing_reasons
 
 
 def compute_crosstab(
@@ -192,13 +221,17 @@ def compute_crosstab(
 
     row_ids = [str(v) for v in df["__rowId__"].to_list()] if "__rowId__" in df.columns else [
         str(i) for i in range(df.height)]
-    row_vals, _ = _split_missing(df[row_name].to_list(), row_spec, missing_policy,
+    row_vals, _, row_invalid = _resolve_category_values(df[row_name].to_list(), row_spec, missing_policy,
                                  (row_spec.get("missingReasons") or {}))
-    col_vals, _ = _split_missing(df[col_name].to_list(), col_spec, missing_policy,
+    col_vals, _, col_invalid = _resolve_category_values(df[col_name].to_list(), col_spec, missing_policy,
                                  (col_spec.get("missingReasons") or {}))
     scope_count = len(row_ids)
     kept: list[int] = [i for i in range(scope_count) if row_vals[i] is not None and col_vals[i] is not None]
-    missing_count = scope_count - len(kept)
+    # Count a row invalid once even if both axes are invalid. Invalid takes
+    # precedence over an opposite-axis missing value, keeping exclusions
+    # disjoint while missingCount retains its excluded-missing meaning.
+    invalid_count = sum(row_invalid[i] or col_invalid[i] for i in range(scope_count))
+    missing_count = scope_count - len(kept) - invalid_count
 
     row_cats = _ordered_categories(sorted({row_vals[i] for i in kept if row_vals[i] is not None}),
                                    row_spec)
@@ -230,7 +263,7 @@ def compute_crosstab(
                             "smallMarginalWarnings": []},
             "analysisProvenance": None,
             "warnings": [{"code": "CROSSTAB_EMPTY", "message": "有効なセルがありません。"}],
-            "scopeCount": scope_count, "effectiveN": 0, "missingCount": missing_count,
+            "scopeCount": scope_count, "effectiveN": 0, "missingCount": missing_count, "invalidCount": invalid_count,
             "weightZeroCount": 0,
             "algorithmVersion": ALGORITHM_VERSION,
         }
@@ -477,7 +510,7 @@ def compute_crosstab(
             "algorithmVersion": ALGORITHM_VERSION,
         },
         "warnings": warnings,
-        "scopeCount": scope_count, "effectiveN": len(kept), "missingCount": missing_count,
+        "scopeCount": scope_count, "effectiveN": len(kept), "missingCount": missing_count, "invalidCount": invalid_count,
         "weightZeroCount": weight_zero if use_weights else 0,
         "algorithmVersion": ALGORITHM_VERSION,
     }

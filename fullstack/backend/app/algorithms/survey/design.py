@@ -114,64 +114,43 @@ def build_design(
             raise BizError("SURVEY_DESIGN_UNSUPPORTED", "FPC が不正です。",
                            status_code=422)
         checked_fpc = raw_fpc
-    if psu is None:
-        checked_strata = _design_values(strata, size, "strata") if strata is not None else None
-        if checked_strata is None:
-            if checked_fpc is not None:
-                # FPC without any cluster/stratum information has no defined
-                # target: reject instead of silently discarding it (F07).
-                raise BizError("SURVEY_DESIGN_UNSUPPORTED",
-                               "PSU未指定時のFPCは未対応です。",
-                               status_code=422)
-            # No cluster information: every respondent becomes an independent PSU.
-            return SurveyDesign(
-                weights=weights,
-                strata=np.full(size, "1", dtype=object),
-                psu=np.arange(size).astype(str),
-                fpc=None,
-                assumption=ASSUMPTION_INDEPENDENT_ROWS,
-            )
-        # Known strata, unknown PSU: one PSU per row, strata preserved. A
-        # supplied FPC applies to the independent-row model as the population
-        # size (sampling fraction 1 - n/N); without it, no correction.
-        if checked_fpc is not None:
-            population = float(np.median(checked_fpc))
-            if not np.isfinite(population) or population < size:
-                raise BizError("SURVEY_DESIGN_UNSUPPORTED", "FPC が不正です。",
-                               status_code=422)
-        return SurveyDesign(
-            weights=weights,
-            strata=checked_strata,
-            psu=np.arange(size).astype(str),
-            fpc=checked_fpc,
-            assumption=ASSUMPTION_INDEPENDENT_ROWS_STRATA,
-        )
-    strata = (np.full(size, "1", dtype=object) if strata is None
-              else _design_values(strata, size, "strata"))
-    assert strata is not None
-    psu = _design_values(psu, size, "psu")
-    assert psu is not None
+    has_strata = strata is not None
+    has_psu = psu is not None
+    if not has_psu and not has_strata and checked_fpc is not None:
+        # Keep the existing contract: FPC needs at least one supplied design
+        # variable, rather than silently inventing its population target.
+        raise BizError("SURVEY_DESIGN_UNSUPPORTED",
+                       "PSU未指定時のFPCは未対応です。",
+                       status_code=422)
+    checked_strata = (np.full(size, "1", dtype=object) if strata is None
+                      else _design_values(strata, size, "strata"))
+    checked_psu = (np.arange(size).astype(str) if psu is None
+                   else _design_values(psu, size, "psu"))
+    assert checked_strata is not None and checked_psu is not None
+    assumption = (ASSUMPTION_PROVIDED if has_psu else
+                  ASSUMPTION_INDEPENDENT_ROWS_STRATA if has_strata else
+                  ASSUMPTION_INDEPENDENT_ROWS)
     lonely: list[str] = []
-    for stratum in dict.fromkeys(strata.tolist()):
-        count = len(set(psu[strata == stratum].tolist()))
+    for stratum in dict.fromkeys(checked_strata.tolist()):
+        in_stratum = checked_strata == stratum
+        count = len(set(checked_psu[in_stratum].tolist()))
         if count < 2:
             lonely.append(stratum)
-    if checked_fpc is not None:
-        # The population must cover the sample in every stratum; a sampling
-        # fraction in (0,1) or a population smaller than the sampled count is
-        # a different FPC convention and stays unsupported (422).
-        for stratum in dict.fromkeys(strata.tolist()):
-            in_stratum = strata == stratum
-            count = len(set(psu[in_stratum].tolist()))
+        if checked_fpc is not None:
+            # Explicit and implicit row PSUs describe the same design. FPC
+            # is the population PSU count for this stratum, never global n.
             pop_values = checked_fpc[in_stratum]
-            if np.any(pop_values < count) or np.any((pop_values > 0) & (pop_values < 1)):
+            if np.any(pop_values < count):
                 raise BizError("SURVEY_DESIGN_UNSUPPORTED", "FPC が不正です。",
                                status_code=422)
+            if np.any(np.abs(pop_values - pop_values[0]) > 1e-9):
+                raise BizError("SURVEY_DESIGN_UNSUPPORTED",
+                               "FPC は層内で一定である必要があります。", status_code=422)
     return SurveyDesign(
         weights=weights,
-        strata=strata,
-        psu=psu,
+        strata=checked_strata,
+        psu=checked_psu,
         fpc=checked_fpc,
-        assumption=ASSUMPTION_PROVIDED,
+        assumption=assumption,
         lonely_psu_strata=tuple(lonely),
     )

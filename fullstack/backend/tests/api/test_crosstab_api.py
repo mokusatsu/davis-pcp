@@ -56,7 +56,7 @@ def test_crosstab_contract_and_meta(crosstab_ds):
     body = client.post("/api/v1/summaries/crosstab", json=_body(context)).json()
     assert body["grandTotal"] == {"unweightedCount": 200, "count": 200.0}
     assert body["meta"]["scopeCount"] == 200 and body["meta"]["effectiveN"] == 200
-    assert body["meta"]["algorithmVersion"] == "crosstab-survey-2"
+    assert body["meta"]["algorithmVersion"] == "crosstab-survey-3"
     assert body["meta"]["scopeHash"].startswith("sha256:")
     assert body["descriptiveAssociation"]["df"] == 2
     assert body["inference"]["method"] == "pearson"

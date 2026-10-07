@@ -29,7 +29,7 @@ from ..domain.context import check_revisions, collect_revisions, resolve_scope
 from ..domain.context import AnalysisContext, scope_hash
 from ..domain.errors import BizError
 
-ALGORITHM_VERSION = "davis.conjoint.1.0.0"
+ALGORITHM_VERSION = "davis.conjoint.1.0.1"
 SCHEMA_VERSION = "analysis-result/1.0"
 
 
