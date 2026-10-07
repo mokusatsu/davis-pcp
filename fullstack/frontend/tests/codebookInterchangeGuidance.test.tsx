@@ -139,6 +139,9 @@ async function openExportMenu() {
     expect(popup.style.left === 'auto' ? popup.style.right : popup.style.left).toMatch(/^-?\d+(?:\.\d+)?px$/)
     expect(popup.className).not.toMatch(/ant-slide-up-(?:appear|enter)/)
   })
+  // Motion classes disappear before rc-trigger's final state commit. Flush
+  // that commit so the first resize is not ignored by its inMotion guard.
+  await act(async () => {})
   return { trigger, menu, popup }
 }
 
