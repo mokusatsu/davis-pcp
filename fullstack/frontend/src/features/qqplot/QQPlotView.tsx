@@ -28,22 +28,30 @@ interface QQResponse {
     shapiroWilkW: number | null
     pValue: number | null
     isNormalAlpha05: boolean | null
-    skewness: number
-    kurtosis: number
+    skewness: number | null
+    kurtosis: number | null
   }
   referenceLine: {
-    slope: number
-    intercept: number
-    q1Sample: number
-    q3Sample: number
+    slope: number | null
+    intercept: number | null
+    q1Sample: number | null
+    q3Sample: number | null
     q1Theoretical: number
     q3Theoretical: number
   }
   points: QQPoint[]
-  minZ: number
-  maxZ: number
+  minZ: number | null
+  maxZ: number | null
   minVal: number
   maxVal: number
+}
+
+function isFiniteNumber(value: number | null): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function formatDiagnostic(value: number | null, digits: number): string {
+  return value === null ? '算出不能' : value.toFixed(digits)
 }
 
 export default function QQPlotView() {
@@ -127,6 +135,17 @@ export default function QQPlotView() {
     return <EmptyStatePanel message="QQプロットには1つ以上の数値変数が必要です。上部の変数セレクタから追加してください。" />
   }
 
+  // A constant sample has no fitted reference line. Never coerce its null
+  // coefficients/bounds to a zero line; a genuine finite slope of zero is valid.
+  const referencePoints = qqData
+    && isFiniteNumber(qqData.minZ) && isFiniteNumber(qqData.maxZ)
+    && isFiniteNumber(qqData.referenceLine.slope) && isFiniteNumber(qqData.referenceLine.intercept)
+    ? [
+      [qqData.minZ, qqData.referenceLine.intercept + qqData.referenceLine.slope * qqData.minZ],
+      [qqData.maxZ, qqData.referenceLine.intercept + qqData.referenceLine.slope * qqData.maxZ],
+    ]
+    : null
+
   const columnControls = (
     <Space wrap align="center">
       <Typography.Text strong>対象変数: </Typography.Text>
@@ -174,8 +193,8 @@ export default function QQPlotView() {
               <RowScatter points={(qqData?.points ?? []).map(point => ({ rowId: point.rowId, x: point.theoreticalQuantile, y: point.sampleValue,
                 tooltip: `rowId: ${point.rowId}\n順位: ${point.rank}\n理論分位点: ${point.theoreticalQuantile}\n観測値: ${point.sampleValue}` }))}
                 xName="理論正規分位点" yName={`サンプル分位点 (${qqData?.column ?? ''})`} height={height} testId="qqplot-canvas"
-                option={{ series: qqData ? [{ type: 'line', name: 'Q1–Q3基準線', symbol: 'none', lineStyle: { color: '#ff4d4f', type: 'dashed' },
-                  data: [qqData.minZ, qqData.maxZ].map(z => [z, qqData.referenceLine.intercept + qqData.referenceLine.slope * z]) }] : [] }} />
+                option={{ series: referencePoints ? [{ type: 'line', name: 'Q1–Q3基準線', symbol: 'none', lineStyle: { color: '#ff4d4f', type: 'dashed' },
+                  data: referencePoints }] : [] }} />
             </div>
           </Dropdown>
       </GraphPanel>
@@ -197,13 +216,15 @@ export default function QQPlotView() {
                 <div>
                   <Typography.Text type="secondary">Shapiro-Wilk 検定: </Typography.Text>
                   <div>
-                    W = {qqData.normalityTest.shapiroWilkW?.toFixed(4) ?? '—'}, p = {qqData.normalityTest.pValue?.toFixed(4) ?? '—'}
+                    W = {formatDiagnostic(qqData.normalityTest.shapiroWilkW, 4)}, p = {formatDiagnostic(qqData.normalityTest.pValue, 4)}
                   </div>
                   <div style={{ marginTop: 4 }}>
-                    {qqData.normalityTest.isNormalAlpha05 ? (
+                    {qqData.normalityTest.isNormalAlpha05 === true ? (
                       <Tag color="success">正規分布 (p &ge; 0.05)</Tag>
-                    ) : (
+                    ) : qqData.normalityTest.isNormalAlpha05 === false ? (
                       <Tag color="error">非正規分布 (p &lt; 0.05)</Tag>
+                    ) : (
+                      <Tag>判定不能</Tag>
                     )}
                   </div>
                 </div>
@@ -211,29 +232,30 @@ export default function QQPlotView() {
                 <div>
                   <Typography.Text type="secondary">歪度 (Skewness): </Typography.Text>
                   <Typography.Text strong>
-                    {qqData.normalityTest.skewness.toFixed(3)}
+                    {formatDiagnostic(qqData.normalityTest.skewness, 3)}
                     {' '}
-                    <span style={{ fontSize: 11, color: '#888' }}>
+                    {qqData.normalityTest.skewness !== null && (<span style={{ fontSize: 11, color: '#888' }}>
                       {qqData.normalityTest.skewness > 0.5 ? '(右に裾が長い)' : qqData.normalityTest.skewness < -0.5 ? '(左に裾が長い)' : '(対称に近い)'}
-                    </span>
+                    </span>)}
                   </Typography.Text>
                 </div>
 
                 <div>
                   <Typography.Text type="secondary">尖度 (Kurtosis): </Typography.Text>
                   <Typography.Text strong>
-                    {qqData.normalityTest.kurtosis.toFixed(3)}
+                    {formatDiagnostic(qqData.normalityTest.kurtosis, 3)}
                     {' '}
-                    <span style={{ fontSize: 11, color: '#888' }}>
+                    {qqData.normalityTest.kurtosis !== null && (<span style={{ fontSize: 11, color: '#888' }}>
                       {qqData.normalityTest.kurtosis > 0.5 ? '(尖鋭・重裾)' : qqData.normalityTest.kurtosis < -0.5 ? '(平坦・軽裾)' : '(正規に近い)'}
-                    </span>
+                    </span>)}
                   </Typography.Text>
                 </div>
 
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e8e8e8' }}>
                   <Typography.Text type="secondary">Q1-Q3 頑健基準線: </Typography.Text>
                   <div style={{ fontSize: 11 }}>
-                    Slope: {qqData.referenceLine.slope.toFixed(3)} (標準偏差近似)
+                    Slope: {formatDiagnostic(qqData.referenceLine.slope, 3)}
+                    {qqData.referenceLine.slope !== null && ' (標準偏差近似)'}
                   </div>
                 </div>
               </Space>

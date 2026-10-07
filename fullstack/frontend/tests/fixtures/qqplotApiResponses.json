@@ -1,0 +1,1181 @@
+{
+  "irisConstant": {
+    "request": {
+      "datasetId": "ds-builtin-iris",
+      "column": "petal_width_cm",
+      "rowIds": [
+        "ROW-000001",
+        "ROW-000002",
+        "ROW-000003",
+        "ROW-000004",
+        "ROW-000005"
+      ],
+      "expectedDataRevision": 1
+    },
+    "status": 200,
+    "response": {
+      "column": "petal_width_cm",
+      "count": 5,
+      "normalityTest": {
+        "shapiroWilkW": null,
+        "pValue": null,
+        "isNormalAlpha05": null,
+        "skewness": null,
+        "kurtosis": null
+      },
+      "referenceLine": {
+        "slope": null,
+        "intercept": null,
+        "q1Sample": null,
+        "q3Sample": null,
+        "q1Theoretical": -0.6744897501960817,
+        "q3Theoretical": 0.6744897501960817
+      },
+      "points": [],
+      "minZ": null,
+      "maxZ": null,
+      "minVal": 0.2,
+      "maxVal": 0.2
+    }
+  },
+  "irisFiniteNormal": {
+    "request": {
+      "datasetId": "ds-builtin-iris",
+      "column": "sepal_length_cm",
+      "rowIds": [
+        "ROW-000001",
+        "ROW-000002",
+        "ROW-000003",
+        "ROW-000004",
+        "ROW-000005"
+      ],
+      "expectedDataRevision": 1
+    },
+    "status": 200,
+    "response": {
+      "column": "sepal_length_cm",
+      "count": 5,
+      "normalityTest": {
+        "shapiroWilkW": 0.9523514920112116,
+        "pValue": 0.7539729991906838,
+        "isNormalAlpha05": true,
+        "skewness": -0.15798755143759033,
+        "kurtosis": -1.4908058409951341
+      },
+      "referenceLine": {
+        "slope": 0.22239033277584017,
+        "intercept": 4.85,
+        "q1Sample": 4.7,
+        "q3Sample": 5.0,
+        "q1Theoretical": -0.6744897501960817,
+        "q3Theoretical": 0.6744897501960817
+      },
+      "points": [
+        {
+          "rowId": "ROW-000004",
+          "rank": 1,
+          "sampleValue": 4.6,
+          "theoreticalQuantile": -1.1797611176118612
+        },
+        {
+          "rowId": "ROW-000003",
+          "rank": 2,
+          "sampleValue": 4.7,
+          "theoreticalQuantile": -0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000002",
+          "rank": 3,
+          "sampleValue": 4.9,
+          "theoreticalQuantile": 0.0
+        },
+        {
+          "rowId": "ROW-000005",
+          "rank": 4,
+          "sampleValue": 5.0,
+          "theoreticalQuantile": 0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000001",
+          "rank": 5,
+          "sampleValue": 5.1,
+          "theoreticalQuantile": 1.1797611176118612
+        }
+      ],
+      "minZ": -1.1797611176118612,
+      "maxZ": 1.1797611176118612,
+      "minVal": 4.6,
+      "maxVal": 5.1
+    }
+  },
+  "irisFiniteNonNormal": {
+    "request": {
+      "datasetId": "ds-builtin-iris",
+      "column": "petal_width_cm",
+      "rowIds": null,
+      "expectedDataRevision": 1
+    },
+    "status": 200,
+    "response": {
+      "column": "petal_width_cm",
+      "count": 150,
+      "normalityTest": {
+        "shapiroWilkW": 0.9018349379959362,
+        "pValue": 1.680465167139728e-08,
+        "isNormalAlpha05": false,
+        "skewness": -0.10193420656560036,
+        "kurtosis": -1.3360674052315529
+      },
+      "referenceLine": {
+        "slope": 1.1119516638792015,
+        "intercept": 1.05,
+        "q1Sample": 0.3,
+        "q3Sample": 1.8,
+        "q1Theoretical": -0.6744897501960817,
+        "q3Theoretical": 0.6744897501960817
+      },
+      "points": [
+        {
+          "rowId": "ROW-000013",
+          "rank": 1,
+          "sampleValue": 0.1,
+          "theoreticalQuantile": -2.638821897874132
+        },
+        {
+          "rowId": "ROW-000014",
+          "rank": 2,
+          "sampleValue": 0.1,
+          "theoreticalQuantile": -2.2967923944734574
+        },
+        {
+          "rowId": "ROW-000010",
+          "rank": 3,
+          "sampleValue": 0.1,
+          "theoreticalQuantile": -2.109032647238103
+        },
+        {
+          "rowId": "ROW-000033",
+          "rank": 4,
+          "sampleValue": 0.1,
+          "theoreticalQuantile": -1.975134277741419
+        },
+        {
+          "rowId": "ROW-000038",
+          "rank": 5,
+          "sampleValue": 0.1,
+          "theoreticalQuantile": -1.8694224766019278
+        },
+        {
+          "rowId": "ROW-000002",
+          "rank": 6,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.7812280197555674
+        },
+        {
+          "rowId": "ROW-000005",
+          "rank": 7,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.705043262645249
+        },
+        {
+          "rowId": "ROW-000001",
+          "rank": 8,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.6376366919871126
+        },
+        {
+          "rowId": "ROW-000012",
+          "rank": 9,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.5769429518894658
+        },
+        {
+          "rowId": "ROW-000011",
+          "rank": 10,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.5215582701687436
+        },
+        {
+          "rowId": "ROW-000008",
+          "rank": 11,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.4704831409611046
+        },
+        {
+          "rowId": "ROW-000009",
+          "rank": 12,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.4229795053908982
+        },
+        {
+          "rowId": "ROW-000015",
+          "rank": 13,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.3784861386687317
+        },
+        {
+          "rowId": "ROW-000030",
+          "rank": 14,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.336565849261011
+        },
+        {
+          "rowId": "ROW-000003",
+          "rank": 15,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.2968711028989532
+        },
+        {
+          "rowId": "ROW-000004",
+          "rank": 16,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.2591208380579704
+        },
+        {
+          "rowId": "ROW-000029",
+          "rank": 17,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.223084355377603
+        },
+        {
+          "rowId": "ROW-000028",
+          "rank": 18,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.1885698322284495
+        },
+        {
+          "rowId": "ROW-000026",
+          "rank": 19,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.155415950662456
+        },
+        {
+          "rowId": "ROW-000031",
+          "rank": 20,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.123485674879979
+        },
+        {
+          "rowId": "ROW-000025",
+          "rank": 21,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.0926615461394262
+        },
+        {
+          "rowId": "ROW-000047",
+          "rank": 22,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.0628420702168273
+        },
+        {
+          "rowId": "ROW-000048",
+          "rank": 23,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.0339389054430155
+        },
+        {
+          "rowId": "ROW-000043",
+          "rank": 24,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -1.0058746467012272
+        },
+        {
+          "rowId": "ROW-000040",
+          "rank": 25,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.9785810594291898
+        },
+        {
+          "rowId": "ROW-000039",
+          "rank": 26,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.9519976578352288
+        },
+        {
+          "rowId": "ROW-000037",
+          "rank": 27,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.926070549527643
+        },
+        {
+          "rowId": "ROW-000036",
+          "rank": 28,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.9007514885765627
+        },
+        {
+          "rowId": "ROW-000034",
+          "rank": 29,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.875997093269424
+        },
+        {
+          "rowId": "ROW-000035",
+          "rank": 30,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.851768195193456
+        },
+        {
+          "rowId": "ROW-000021",
+          "rank": 31,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.8280292939267434
+        },
+        {
+          "rowId": "ROW-000023",
+          "rank": 32,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.8047480973238681
+        },
+        {
+          "rowId": "ROW-000050",
+          "rank": 33,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.7818951316822116
+        },
+        {
+          "rowId": "ROW-000049",
+          "rank": 34,
+          "sampleValue": 0.2,
+          "theoreticalQuantile": -0.7594434093486139
+        },
+        {
+          "rowId": "ROW-000019",
+          "rank": 35,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.7373681438412608
+        },
+        {
+          "rowId": "ROW-000007",
+          "rank": 36,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.7156465045108168
+        },
+        {
+          "rowId": "ROW-000018",
+          "rank": 37,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.6942574042875215
+        },
+        {
+          "rowId": "ROW-000042",
+          "rank": 38,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.6731813152595335
+        },
+        {
+          "rowId": "ROW-000046",
+          "rank": 39,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.6524001077779581
+        },
+        {
+          "rowId": "ROW-000020",
+          "rank": 40,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.6318969095422766
+        },
+        {
+          "rowId": "ROW-000041",
+          "rank": 41,
+          "sampleValue": 0.3,
+          "theoreticalQuantile": -0.6116559817288839
+        },
+        {
+          "rowId": "ROW-000045",
+          "rank": 42,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.5916626097174374
+        },
+        {
+          "rowId": "ROW-000022",
+          "rank": 43,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.5719030063694798
+        },
+        {
+          "rowId": "ROW-000032",
+          "rank": 44,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.5523642261403146
+        },
+        {
+          "rowId": "ROW-000017",
+          "rank": 45,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.5330340885731975
+        },
+        {
+          "rowId": "ROW-000016",
+          "rank": 46,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.5139011099460536
+        },
+        {
+          "rowId": "ROW-000006",
+          "rank": 47,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.4949544420242017
+        },
+        {
+          "rowId": "ROW-000027",
+          "rank": 48,
+          "sampleValue": 0.4,
+          "theoreticalQuantile": -0.4761838170251143
+        },
+        {
+          "rowId": "ROW-000024",
+          "rank": 49,
+          "sampleValue": 0.5,
+          "theoreticalQuantile": -0.4575794980287405
+        },
+        {
+          "rowId": "ROW-000044",
+          "rank": 50,
+          "sampleValue": 0.6,
+          "theoreticalQuantile": -0.43913223417389674
+        },
+        {
+          "rowId": "ROW-000061",
+          "rank": 51,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.4208332200713367
+        },
+        {
+          "rowId": "ROW-000058",
+          "rank": 52,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.40267405894026587
+        },
+        {
+          "rowId": "ROW-000063",
+          "rank": 53,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.3846467290396601
+        },
+        {
+          "rowId": "ROW-000094",
+          "rank": 54,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.3667435530206971
+        },
+        {
+          "rowId": "ROW-000080",
+          "rank": 55,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.3489571698735078
+        },
+        {
+          "rowId": "ROW-000068",
+          "rank": 56,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.3312805091815874
+        },
+        {
+          "rowId": "ROW-000082",
+          "rank": 57,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": -0.31370676743165027
+        },
+        {
+          "rowId": "ROW-000099",
+          "rank": 58,
+          "sampleValue": 1.1,
+          "theoreticalQuantile": -0.29622938615632993
+        },
+        {
+          "rowId": "ROW-000081",
+          "rank": 59,
+          "sampleValue": 1.1,
+          "theoreticalQuantile": -0.27884203171267663
+        },
+        {
+          "rowId": "ROW-000070",
+          "rank": 60,
+          "sampleValue": 1.1,
+          "theoreticalQuantile": -0.2615385765214648
+        },
+        {
+          "rowId": "ROW-000083",
+          "rank": 61,
+          "sampleValue": 1.2,
+          "theoreticalQuantile": -0.24431308161142484
+        },
+        {
+          "rowId": "ROW-000096",
+          "rank": 62,
+          "sampleValue": 1.2,
+          "theoreticalQuantile": -0.22715978032906653
+        },
+        {
+          "rowId": "ROW-000091",
+          "rank": 63,
+          "sampleValue": 1.2,
+          "theoreticalQuantile": -0.21007306308912904
+        },
+        {
+          "rowId": "ROW-000093",
+          "rank": 64,
+          "sampleValue": 1.2,
+          "theoreticalQuantile": -0.19304746305316764
+        },
+        {
+          "rowId": "ROW-000074",
+          "rank": 65,
+          "sampleValue": 1.2,
+          "theoreticalQuantile": -0.17607764263463258
+        },
+        {
+          "rowId": "ROW-000095",
+          "rank": 66,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.15915838073821043
+        },
+        {
+          "rowId": "ROW-000097",
+          "rank": 67,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.14228456064937178
+        },
+        {
+          "rowId": "ROW-000090",
+          "rank": 68,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.12545115849715335
+        },
+        {
+          "rowId": "ROW-000100",
+          "rank": 69,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.10865323221931798
+        },
+        {
+          "rowId": "ROW-000098",
+          "rank": 70,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.09188591096430083
+        },
+        {
+          "rowId": "ROW-000065",
+          "rank": 71,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.07514438486884732
+        },
+        {
+          "rowId": "ROW-000088",
+          "rank": 72,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.05842389515406064
+        },
+        {
+          "rowId": "ROW-000054",
+          "rank": 73,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.041719724485760515
+        },
+        {
+          "rowId": "ROW-000056",
+          "rank": 74,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.025027187547673604
+        },
+        {
+          "rowId": "ROW-000059",
+          "rank": 75,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": -0.008341621778056528
+        },
+        {
+          "rowId": "ROW-000089",
+          "rank": 76,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": 0.008341621778056528
+        },
+        {
+          "rowId": "ROW-000072",
+          "rank": 77,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": 0.025027187547673604
+        },
+        {
+          "rowId": "ROW-000075",
+          "rank": 78,
+          "sampleValue": 1.3,
+          "theoreticalQuantile": 0.041719724485760515
+        },
+        {
+          "rowId": "ROW-000060",
+          "rank": 79,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.05842389515406064
+        },
+        {
+          "rowId": "ROW-000064",
+          "rank": 80,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.07514438486884732
+        },
+        {
+          "rowId": "ROW-000076",
+          "rank": 81,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.0918859109643007
+        },
+        {
+          "rowId": "ROW-000077",
+          "rank": 82,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.10865323221931784
+        },
+        {
+          "rowId": "ROW-000066",
+          "rank": 83,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.12545115849715321
+        },
+        {
+          "rowId": "ROW-000092",
+          "rank": 84,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.14228456064937164
+        },
+        {
+          "rowId": "ROW-000051",
+          "rank": 85,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.15915838073821056
+        },
+        {
+          "rowId": "ROW-000135",
+          "rank": 86,
+          "sampleValue": 1.4,
+          "theoreticalQuantile": 0.17607764263463271
+        },
+        {
+          "rowId": "ROW-000053",
+          "rank": 87,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.19304746305316778
+        },
+        {
+          "rowId": "ROW-000052",
+          "rank": 88,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.2100730630891292
+        },
+        {
+          "rowId": "ROW-000120",
+          "rank": 89,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.22715978032906667
+        },
+        {
+          "rowId": "ROW-000062",
+          "rank": 90,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.24431308161142484
+        },
+        {
+          "rowId": "ROW-000073",
+          "rank": 91,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.2615385765214648
+        },
+        {
+          "rowId": "ROW-000079",
+          "rank": 92,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.27884203171267663
+        },
+        {
+          "rowId": "ROW-000085",
+          "rank": 93,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.29622938615632993
+        },
+        {
+          "rowId": "ROW-000087",
+          "rank": 94,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.31370676743165027
+        },
+        {
+          "rowId": "ROW-000069",
+          "rank": 95,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.3312805091815874
+        },
+        {
+          "rowId": "ROW-000055",
+          "rank": 96,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.3489571698735078
+        },
+        {
+          "rowId": "ROW-000134",
+          "rank": 97,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.3667435530206971
+        },
+        {
+          "rowId": "ROW-000067",
+          "rank": 98,
+          "sampleValue": 1.5,
+          "theoreticalQuantile": 0.3846467290396601
+        },
+        {
+          "rowId": "ROW-000057",
+          "rank": 99,
+          "sampleValue": 1.6,
+          "theoreticalQuantile": 0.40267405894026576
+        },
+        {
+          "rowId": "ROW-000086",
+          "rank": 100,
+          "sampleValue": 1.6,
+          "theoreticalQuantile": 0.4208332200713366
+        },
+        {
+          "rowId": "ROW-000084",
+          "rank": 101,
+          "sampleValue": 1.6,
+          "theoreticalQuantile": 0.43913223417389663
+        },
+        {
+          "rowId": "ROW-000130",
+          "rank": 102,
+          "sampleValue": 1.6,
+          "theoreticalQuantile": 0.4575794980287403
+        },
+        {
+          "rowId": "ROW-000107",
+          "rank": 103,
+          "sampleValue": 1.7,
+          "theoreticalQuantile": 0.4761838170251142
+        },
+        {
+          "rowId": "ROW-000078",
+          "rank": 104,
+          "sampleValue": 1.7,
+          "theoreticalQuantile": 0.4949544420242019
+        },
+        {
+          "rowId": "ROW-000124",
+          "rank": 105,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.5139011099460539
+        },
+        {
+          "rowId": "ROW-000128",
+          "rank": 106,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.5330340885731976
+        },
+        {
+          "rowId": "ROW-000127",
+          "rank": 107,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.5523642261403147
+        },
+        {
+          "rowId": "ROW-000126",
+          "rank": 108,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.57190300636948
+        },
+        {
+          "rowId": "ROW-000117",
+          "rank": 109,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.5916626097174374
+        },
+        {
+          "rowId": "ROW-000071",
+          "rank": 110,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.6116559817288839
+        },
+        {
+          "rowId": "ROW-000108",
+          "rank": 111,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.6318969095422766
+        },
+        {
+          "rowId": "ROW-000104",
+          "rank": 112,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.6524001077779581
+        },
+        {
+          "rowId": "ROW-000138",
+          "rank": 113,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.6731813152595335
+        },
+        {
+          "rowId": "ROW-000109",
+          "rank": 114,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.6942574042875215
+        },
+        {
+          "rowId": "ROW-000150",
+          "rank": 115,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.7156465045108168
+        },
+        {
+          "rowId": "ROW-000139",
+          "rank": 116,
+          "sampleValue": 1.8,
+          "theoreticalQuantile": 0.7373681438412608
+        },
+        {
+          "rowId": "ROW-000143",
+          "rank": 117,
+          "sampleValue": 1.9,
+          "theoreticalQuantile": 0.7594434093486139
+        },
+        {
+          "rowId": "ROW-000131",
+          "rank": 118,
+          "sampleValue": 1.9,
+          "theoreticalQuantile": 0.7818951316822116
+        },
+        {
+          "rowId": "ROW-000102",
+          "rank": 119,
+          "sampleValue": 1.9,
+          "theoreticalQuantile": 0.8047480973238681
+        },
+        {
+          "rowId": "ROW-000147",
+          "rank": 120,
+          "sampleValue": 1.9,
+          "theoreticalQuantile": 0.8280292939267434
+        },
+        {
+          "rowId": "ROW-000112",
+          "rank": 121,
+          "sampleValue": 1.9,
+          "theoreticalQuantile": 0.8517681951934557
+        },
+        {
+          "rowId": "ROW-000123",
+          "rank": 122,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 0.8759970932694239
+        },
+        {
+          "rowId": "ROW-000114",
+          "rank": 123,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 0.900751488576563
+        },
+        {
+          "rowId": "ROW-000111",
+          "rank": 124,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 0.926070549527643
+        },
+        {
+          "rowId": "ROW-000148",
+          "rank": 125,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 0.9519976578352288
+        },
+        {
+          "rowId": "ROW-000132",
+          "rank": 126,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 0.9785810594291898
+        },
+        {
+          "rowId": "ROW-000122",
+          "rank": 127,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 1.0058746467012272
+        },
+        {
+          "rowId": "ROW-000103",
+          "rank": 128,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.0339389054430155
+        },
+        {
+          "rowId": "ROW-000106",
+          "rank": 129,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.0628420702168273
+        },
+        {
+          "rowId": "ROW-000125",
+          "rank": 130,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.0926615461394262
+        },
+        {
+          "rowId": "ROW-000113",
+          "rank": 131,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.123485674879979
+        },
+        {
+          "rowId": "ROW-000129",
+          "rank": 132,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.155415950662456
+        },
+        {
+          "rowId": "ROW-000140",
+          "rank": 133,
+          "sampleValue": 2.1,
+          "theoreticalQuantile": 1.1885698322284495
+        },
+        {
+          "rowId": "ROW-000133",
+          "rank": 134,
+          "sampleValue": 2.2,
+          "theoreticalQuantile": 1.2230843553776025
+        },
+        {
+          "rowId": "ROW-000118",
+          "rank": 135,
+          "sampleValue": 2.2,
+          "theoreticalQuantile": 1.2591208380579704
+        },
+        {
+          "rowId": "ROW-000105",
+          "rank": 136,
+          "sampleValue": 2.2,
+          "theoreticalQuantile": 1.2968711028989532
+        },
+        {
+          "rowId": "ROW-000149",
+          "rank": 137,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.336565849261011
+        },
+        {
+          "rowId": "ROW-000146",
+          "rank": 138,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.378486138668731
+        },
+        {
+          "rowId": "ROW-000142",
+          "rank": 139,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.4229795053908978
+        },
+        {
+          "rowId": "ROW-000121",
+          "rank": 140,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.4704831409611037
+        },
+        {
+          "rowId": "ROW-000119",
+          "rank": 141,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.5215582701687431
+        },
+        {
+          "rowId": "ROW-000116",
+          "rank": 142,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.5769429518894662
+        },
+        {
+          "rowId": "ROW-000144",
+          "rank": 143,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.637636691987113
+        },
+        {
+          "rowId": "ROW-000136",
+          "rank": 144,
+          "sampleValue": 2.3,
+          "theoreticalQuantile": 1.705043262645249
+        },
+        {
+          "rowId": "ROW-000141",
+          "rank": 145,
+          "sampleValue": 2.4,
+          "theoreticalQuantile": 1.7812280197555679
+        },
+        {
+          "rowId": "ROW-000137",
+          "rank": 146,
+          "sampleValue": 2.4,
+          "theoreticalQuantile": 1.8694224766019278
+        },
+        {
+          "rowId": "ROW-000115",
+          "rank": 147,
+          "sampleValue": 2.4,
+          "theoreticalQuantile": 1.975134277741419
+        },
+        {
+          "rowId": "ROW-000110",
+          "rank": 148,
+          "sampleValue": 2.5,
+          "theoreticalQuantile": 2.109032647238103
+        },
+        {
+          "rowId": "ROW-000101",
+          "rank": 149,
+          "sampleValue": 2.5,
+          "theoreticalQuantile": 2.2967923944734574
+        },
+        {
+          "rowId": "ROW-000145",
+          "rank": 150,
+          "sampleValue": 2.5,
+          "theoreticalQuantile": 2.6388218978741325
+        }
+      ],
+      "minZ": -2.638821897874132,
+      "maxZ": 2.6388218978741325,
+      "minVal": 0.1,
+      "maxVal": 2.5
+    }
+  },
+  "finiteZeroSkewAndIntercept": {
+    "request": {
+      "datasetId": "ds-645e8024d285",
+      "column": "symmetric"
+    },
+    "status": 200,
+    "response": {
+      "column": "symmetric",
+      "count": 5,
+      "normalityTest": {
+        "shapiroWilkW": 0.9867621554477195,
+        "pValue": 0.9671739359680402,
+        "isNormalAlpha05": true,
+        "skewness": 0.0,
+        "kurtosis": -1.3
+      },
+      "referenceLine": {
+        "slope": 1.482602218505602,
+        "intercept": 0.0,
+        "q1Sample": -1.0,
+        "q3Sample": 1.0,
+        "q1Theoretical": -0.6744897501960817,
+        "q3Theoretical": 0.6744897501960817
+      },
+      "points": [
+        {
+          "rowId": "ROW-000001",
+          "rank": 1,
+          "sampleValue": -2.0,
+          "theoreticalQuantile": -1.1797611176118612
+        },
+        {
+          "rowId": "ROW-000002",
+          "rank": 2,
+          "sampleValue": -1.0,
+          "theoreticalQuantile": -0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000003",
+          "rank": 3,
+          "sampleValue": 0.0,
+          "theoreticalQuantile": 0.0
+        },
+        {
+          "rowId": "ROW-000004",
+          "rank": 4,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": 0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000005",
+          "rank": 5,
+          "sampleValue": 2.0,
+          "theoreticalQuantile": 1.1797611176118612
+        }
+      ],
+      "minZ": -1.1797611176118612,
+      "maxZ": 1.1797611176118612,
+      "minVal": -2.0,
+      "maxVal": 2.0
+    },
+    "independentOracle": {
+      "skewness": 0.0,
+      "kurtosis": -1.3,
+      "slope": 1.482602218505602,
+      "intercept": 0.0
+    }
+  },
+  "finiteZeroSlope": {
+    "request": {
+      "datasetId": "ds-645e8024d285",
+      "column": "tied"
+    },
+    "status": 200,
+    "response": {
+      "column": "tied",
+      "count": 5,
+      "normalityTest": {
+        "shapiroWilkW": 0.5521816830869036,
+        "pValue": 0.00013097817585188158,
+        "isNormalAlpha05": false,
+        "skewness": 1.5,
+        "kurtosis": 0.24999999999999956
+      },
+      "referenceLine": {
+        "slope": 0.0,
+        "intercept": 0.0,
+        "q1Sample": 0.0,
+        "q3Sample": 0.0,
+        "q1Theoretical": -0.6744897501960817,
+        "q3Theoretical": 0.6744897501960817
+      },
+      "points": [
+        {
+          "rowId": "ROW-000001",
+          "rank": 1,
+          "sampleValue": 0.0,
+          "theoreticalQuantile": -1.1797611176118612
+        },
+        {
+          "rowId": "ROW-000002",
+          "rank": 2,
+          "sampleValue": 0.0,
+          "theoreticalQuantile": -0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000003",
+          "rank": 3,
+          "sampleValue": 0.0,
+          "theoreticalQuantile": 0.0
+        },
+        {
+          "rowId": "ROW-000004",
+          "rank": 4,
+          "sampleValue": 0.0,
+          "theoreticalQuantile": 0.49720057068155404
+        },
+        {
+          "rowId": "ROW-000005",
+          "rank": 5,
+          "sampleValue": 1.0,
+          "theoreticalQuantile": 1.1797611176118612
+        }
+      ],
+      "minZ": -1.1797611176118612,
+      "maxZ": 1.1797611176118612,
+      "minVal": 0.0,
+      "maxVal": 1.0
+    },
+    "independentOracle": {
+      "skewness": 1.5,
+      "kurtosis": 0.24999999999999956,
+      "slope": 0.0,
+      "intercept": 0.0
+    }
+  }
+}
