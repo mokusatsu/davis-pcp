@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
+from itertools import chain
+import math
 from typing import Any
 
 import polars as pl
 
+from ..algorithms.survey.weight_arithmetic import absolute_weight_sum
 from .codebook_adapter import is_not_applicable_reason, normalize_code
 
 
@@ -266,6 +270,38 @@ def classify_row(values: list[Any], group: dict[str, Any]) -> tuple[str, list[st
     return prepare_classifier(group)(values)
 
 
+def _weight_mass(contributors: Callable[[], Iterable[float]]) -> tuple[float | None, float, int]:
+    """Keep the original-unit total and a bounded representation for ratios.
+
+    Aggregate before scaling so many tiny contributions can survive together.
+    Only overflowing totals need a scaled pass. The factory must return a fresh
+    iterator each time: absolute_weight_sum may consume it before overflowing.
+    Inputs are the already-validated positive weights of this particular mass.
+    """
+    absolute = absolute_weight_sum(contributors())
+    if absolute is not None:
+        mantissa, exponent = math.frexp(absolute)
+        return absolute, mantissa, exponent
+    scale_exponent = math.frexp(max(contributors()))[1]
+    scaled = math.fsum(math.ldexp(weight, -scale_exponent) for weight in contributors())
+    mantissa, exponent = math.frexp(scaled)
+    return None, mantissa, exponent + scale_exponent
+
+
+def _weight_percentage(
+    numerator: tuple[float | None, float, int],
+    denominator: tuple[float | None, float, int],
+) -> float | None:
+    if denominator[1] == 0:
+        return None
+    if numerator[1] == 0:
+        return 0.0
+    # Apply the percent factor before the exponent: a tiny quotient may round
+    # to zero even when the percentage of an aggregated mass is representable.
+    return math.ldexp((numerator[1] / denominator[1]) * 100.0,
+                      numerator[2] - denominator[2])
+
+
 def summarize_group(
     df: pl.DataFrame,
     group: dict[str, Any],
@@ -300,11 +336,11 @@ def summarize_group(
 
     selected_counts: dict[str, int] = {cid: 0 for cid in option_ids}
     selected_in_selection: dict[str, int] = {cid: 0 for cid in option_ids}
-    selected_weights: dict[str, float] = {cid: 0.0 for cid in option_ids}
+    selected_weight_values: dict[str, list[float]] = {cid: [] for cid in option_ids}
     mask_buffers = {cid: bytearray((df.height + 7) // 8) for cid in option_ids} if selection_masks is not None else {}
     # Weighted denominators mirror the unweighted ones: ``valid`` counts
     # respondents, the response denominator counts selections.
-    den_valid_weight = 0.0
+    valid_weight_values: list[float] = []
     weighted = weights is not None
     if weighted and len(weights or []) != df.height:
         from .errors import BizError
@@ -351,15 +387,15 @@ def summarize_group(
 
         row_weight = weights[idx] if weighted else 1.0
         carries_weight = row_weight is not None and row_weight > 0
-        if carries_weight:
-            den_valid_weight += row_weight
+        if weighted and carries_weight:
+            valid_weight_values.append(row_weight)
 
         row_id = row_ids[idx]
         for cid in selected:
             if cid in selected_counts:
                 selected_counts[cid] += 1
-                if carries_weight:
-                    selected_weights[cid] += row_weight
+                if weighted and carries_weight:
+                    selected_weight_values[cid].append(row_weight)
                 if selection_masks is not None:
                     mask_buffers[cid][idx // 8] |= 1 << (idx % 8)
                 if row_id in selected_ids_set:
@@ -375,19 +411,26 @@ def summarize_group(
     total_responses = sum(selected_counts.values())
     den_valid = denominators["valid"]
     den_total_responses = total_responses
-    # Σ w_r × (その回答者の選択数) — every accumulation above is one selection,
-    # so summing the weighted selections gives the weighted response total.
-    den_total_weight = sum(selected_weights.values())
+    if weighted:
+        valid_mass = _weight_mass(lambda: iter(valid_weight_values))
+        option_masses = {
+            cid: _weight_mass(lambda values=values: iter(values))
+            for cid, values in selected_weight_values.items()
+        }
+        # Repeat each original weight once per selection, without overflowing
+        # a raw weight * selection-count product. All-unselected valid rows
+        # belong only to valid_mass, never to this response denominator.
+        response_mass = _weight_mass(lambda: chain.from_iterable(selected_weight_values.values()))
 
     items: list[dict[str, Any]] = []
     for cid in option_ids:
         selected_n = selected_counts.get(cid, 0)
-        selected_weighted = selected_weights.get(cid, 0.0)
+        selected_weighted = option_masses[cid][0] if weighted else float(selected_n)
         pct_respondent_unweighted = (selected_n / den_valid * 100.0) if den_valid > 0 else None
         pct_response_unweighted = (selected_n / den_total_responses * 100.0) if den_total_responses > 0 else None
         if weighted:
-            pct_respondent = (selected_weighted / den_valid_weight * 100.0) if den_valid_weight > 0 else None
-            pct_response = (selected_weighted / den_total_weight * 100.0) if den_total_weight > 0 else None
+            pct_respondent = _weight_percentage(option_masses[cid], valid_mass)
+            pct_response = _weight_percentage(option_masses[cid], response_mass)
         else:
             pct_respondent = pct_respondent_unweighted
             pct_response = pct_response_unweighted
@@ -412,8 +455,8 @@ def summarize_group(
         "denominators": denominators,
         "allUnselectedN": all_unselected_n,
         "totalResponses": total_responses,
-        "weightedValidN": den_valid_weight if weighted else None,
-        "weightedResponses": den_total_weight if weighted else None,
+        "weightedValidN": valid_mass[0] if weighted else None,
+        "weightedResponses": response_mass[0] if weighted else None,
         "items": items,
     }
 
