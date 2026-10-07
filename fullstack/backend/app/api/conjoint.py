@@ -757,6 +757,7 @@ def conjoint_materialize(result_id, manifest, req):
         existing = {s.get("name") for s in
                     (codebook.get("columns", []) or [])
                     if isinstance(s, dict)}
+        existing.update(df.columns)
         for nc in new_cols:
             if nc["name"] in existing:
                 _err("COLUMN_ALREADY_EXISTS", "列名が既存です。", 409)
