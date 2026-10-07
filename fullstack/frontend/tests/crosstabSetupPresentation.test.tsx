@@ -293,7 +293,9 @@ function surveyResult() {
 it('names display-only controls and keeps captured result scope visible while Rao–Scott reruns current inputs', async () => {
   vi.mocked(api.post).mockResolvedValue(surveyResult())
   const { local } = mount()
-  await choose(roles.row, 'row'); await choose(roles.column, 'col'); await choose(roles.weight, 'weightRatio')
+  // Use real inline controls for prerequisites; the captured-result transition
+  // below still exercises the row dialog, with picker behavior covered above.
+  await chooseInline(roles.row, 'row'); await chooseInline(roles.column, 'col'); await chooseInline(roles.weight, 'weightRatio')
   fireEvent.click(screen.getByTestId('crosstab-run'))
   const display = await screen.findByRole('radiogroup', { name: '表の表示' })
   // Layout contract only: responsive columns give the unchanged statistics
