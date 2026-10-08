@@ -90,7 +90,7 @@ def build_encoding(
         ur = attr.get("utilityRange")
         if ur is not None:
             lo, hi = float(ur[0]), float(ur[1])
-            if lo > fit_lo or hi < fit_hi:
+            if lo < fit_lo or hi > fit_hi:
                 warnings.append({
                     "code": "CONJOINT_UTILITY_RANGE_EXTRAPOLATION",
                     "message": "指定rangeは訓練範囲外を含みます。",
