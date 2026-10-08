@@ -71,7 +71,7 @@ export default function MultiResponseGroupDialog({ open, onClose }: { open: bool
           </Space.Compact>
         </Form.Item>
         <Form.Item name="columnIds" label="選択肢の列（表示順）" rules={[{ required: true, type: 'array', min: 1 }]}>
-          <Select mode="multiple" optionFilterProp="label" options={columns.map(c => ({ value: c.columnId,
+          <Select mode="multiple" style={{ width: '100%' }} optionFilterProp="label" options={columns.map(c => ({ value: c.columnId,
             label: `${c.name}: ${c.multiResponseOptionLabel || c.label}`, disabled: !!c.multiResponseGroup && c.multiResponseGroup !== editing }))} />
         </Form.Item>
         {memberIds.map(id => <Form.Item key={id} name={['optionLabels', id]} label={`${columns.find(c => c.columnId === id)?.name} の選択肢名`}>
