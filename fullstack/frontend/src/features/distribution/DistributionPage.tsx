@@ -160,7 +160,7 @@ export default function DistributionPage() {
     const common = { datasetId: selection.datasetId, rowIds: effectiveRowIds, expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
       ...(weightName ? { weightColumn: weightName } : {}) }
     Promise.all([
-      columns.length ? api.post<{ columns: Record<string, any>; selectedCountByCode?: Record<string, Record<string, number>> }>('/summaries', { ...common, columns, selectedRowIds: selection.selectedRowIds }) : Promise.resolve({ columns: {}, selectedCountByCode: {} }),
+      columns.length ? api.post<{ columns: Record<string, any>; selectedCountByCode?: Record<string, Record<string, number>> }>('/summaries', { ...common, weightMode: weightName ? 'column' : 'none', columns, selectedRowIds: selection.selectedRowIds }) : Promise.resolve({ columns: {}, selectedCountByCode: {} }),
       groupIds.length ? api.post<MultiResponseSummaryResponse>('/summaries/multi-response', {
         ...common, groupIds, selectedRowIds: selection.selectedRowIds,
       }) : Promise.resolve({ groups: [] }),

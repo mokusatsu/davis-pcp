@@ -1,0 +1,370 @@
+{
+  "provenance": {
+    "source": "Public shipped census-kdd-adult600 sample, native TestClient /summaries captures on 2026-10-08",
+    "sourceCommit": "5f07beec3836d68ecfe2d8d15d9f964f03904c3e",
+    "dataset": "Census-Income (KDD). (2000). UCI Machine Learning Repository.",
+    "sourceUrl": "https://doi.org/10.24432/C5N30T",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "projection": "Eight imported public sample row IDs; two codebook columns; unchanged summary fields consumed by Distribution cards. No response numbers regenerated. This is a projected API fixture, not browser or population-inference evidence.",
+    "responseContract": "An omitted mode and column uses the saved survey-weight column. Explicit none is unweighted. Explicit column with MARSUPWT is weighted.",
+    "captureSha256": {
+      "01-codebook.response.json": "ba9444992654385fe45f9a2ba81cd222c7554283cd301de2604cb3a8ac3901a7",
+      "03-baseline-on-summary.request.json": "af39d66df5b9f0adf164df5e74bdd770e4be039ecffb614ad10fce1159eb93fb",
+      "03-baseline-on-summary.response.json": "708a2f94f85f24847433a3a07ebe91ed42b8695e768a1a360ed5aee5b647b375",
+      "06-off-omitted-summary.response.json": "1e8f35524f00a0fd7337a6b68a0f3fb6a374410a6e495b615e0a5627ab418c1a",
+      "08-off-none-summary-diagnostic.response.json": "cb2da4f55df07e4f6342eb7cfaa0399cdd83485665064c795a5fd5af7ebec994"
+    },
+    "sampleSha256": {
+      "census-kdd-adult600.csv": "6262e9095c43409a1756b6b596a8f311de5018a4a2242a8f4511ed535c11fa74",
+      "census-kdd-adult600.codebook.json": "0f6e6a622fe86bf54a8a07b861a793cab462eeb49b6bbe67f9739715c4d2cc66"
+    }
+  },
+  "codebook": {
+    "datasetId": "ds-builtin-census-kdd-adult600",
+    "schemaRevision": 1,
+    "weightConfig": {
+      "weightColumnId": "col-89e996b24f8a",
+      "weightType": "survey"
+    },
+    "columns": [
+      {
+        "columnId": "col-89e996b24f8a",
+        "name": "MARSUPWT",
+        "label": "CPS population weight (MARSUPWT), original unnormalized（原データの変数説明）",
+        "scaleType": "ratio",
+        "role": "weight",
+        "valueLabels": {},
+        "categoryOrder": [],
+        "missingCodes": [],
+        "missingReasons": {},
+        "isReversed": false,
+        "multiResponseGroup": null
+      },
+      {
+        "columnId": "col-2640ded1e6a6",
+        "name": "migration_msa",
+        "label": "Migration code: change in MSA (MIGMTR1)（原データの変数説明）",
+        "scaleType": "nominal",
+        "role": "attribute",
+        "valueLabels": {
+          "Abroad to MSA": "Abroad to MSA",
+          "MSA to MSA": "MSA to MSA",
+          "MSA to nonMSA": "MSA to nonMSA",
+          "NonMSA to MSA": "NonMSA to MSA",
+          "NonMSA to nonMSA": "NonMSA to nonMSA",
+          "Nonmover": "Nonmover",
+          "Abroad to nonMSA": "Abroad to nonMSA"
+        },
+        "categoryOrder": [
+          "Abroad to MSA",
+          "Abroad to nonMSA",
+          "MSA to MSA",
+          "MSA to nonMSA",
+          "NonMSA to MSA",
+          "NonMSA to nonMSA",
+          "Nonmover"
+        ],
+        "missingCodes": [
+          "?",
+          "Not in universe"
+        ],
+        "missingReasons": {
+          "?": "missing",
+          "Not in universe": "not_applicable"
+        },
+        "isReversed": false,
+        "multiResponseGroup": null
+      }
+    ],
+    "multiResponseGroups": []
+  },
+  "request": {
+    "datasetId": "ds-builtin-census-kdd-adult600",
+    "rowIds": [
+      "ROW-000001",
+      "ROW-000002",
+      "ROW-000003",
+      "ROW-000004",
+      "ROW-000019",
+      "ROW-000020",
+      "ROW-000032",
+      "ROW-000046"
+    ],
+    "expectedDataRevision": 1,
+    "expectedSchemaRevision": 1,
+    "columns": [
+      "migration_msa"
+    ],
+    "selectedRowIds": []
+  },
+  "responses": {
+    "weighted": {
+      "datasetId": "ds-builtin-census-kdd-adult600",
+      "schemaRevision": 1,
+      "dataRevision": 1,
+      "rowCount": 8,
+      "weightStatus": "applied",
+      "weightColumn": "MARSUPWT",
+      "unweightedN": 8,
+      "weightedN": 18155.39,
+      "weightedNStatus": "ok",
+      "weightMissingCount": 0,
+      "selectedCountByCode": {
+        "migration_msa": {}
+      },
+      "columns": {
+        "migration_msa": {
+          "denominators": {
+            "total": 8,
+            "notApplicable": 0,
+            "missing": 2,
+            "target": 8,
+            "valid": 6
+          },
+          "distribution": [
+            {
+              "code": "Abroad to MSA",
+              "label": "Abroad to MSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "Abroad to nonMSA",
+              "label": "Abroad to nonMSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "MSA to MSA",
+              "label": "MSA to MSA",
+              "count": 2,
+              "percentageValid": 33.3,
+              "percentageTotal": 25.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "MSA to nonMSA",
+              "label": "MSA to nonMSA",
+              "count": 1,
+              "percentageValid": 16.7,
+              "percentageTotal": 12.5,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "NonMSA to MSA",
+              "label": "NonMSA to MSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "NonMSA to nonMSA",
+              "label": "NonMSA to nonMSA",
+              "count": 1,
+              "percentageValid": 16.7,
+              "percentageTotal": 12.5,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "Nonmover",
+              "label": "Nonmover",
+              "count": 2,
+              "percentageValid": 33.3,
+              "percentageTotal": 25.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "?",
+              "label": "?",
+              "count": 2,
+              "percentageValid": 0.0,
+              "percentageTotal": 25.0,
+              "isMissing": true,
+              "missingReason": "missing"
+            },
+            {
+              "code": "Not in universe",
+              "label": "Not in universe",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": true,
+              "missingReason": "not_applicable"
+            }
+          ],
+          "weighted": {
+            "weightedN": 13539.87,
+            "weightedNStatus": "ok",
+            "weightMissingCount": 0,
+            "distribution": [
+              {
+                "code": "Abroad to MSA",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "Abroad to nonMSA",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "MSA to MSA",
+                "weightedCount": 5520.57,
+                "weightedCountStatus": "ok",
+                "weightedPct": 40.7727
+              },
+              {
+                "code": "MSA to nonMSA",
+                "weightedCount": 3297.07,
+                "weightedCountStatus": "ok",
+                "weightedPct": 24.3508
+              },
+              {
+                "code": "NonMSA to MSA",
+                "weightedCount": 0.0,
+                "weightedCountStatus": "ok",
+                "weightedPct": 0.0
+              },
+              {
+                "code": "NonMSA to nonMSA",
+                "weightedCount": 459.87,
+                "weightedCountStatus": "ok",
+                "weightedPct": 3.3964
+              },
+              {
+                "code": "Nonmover",
+                "weightedCount": 4262.36,
+                "weightedCountStatus": "ok",
+                "weightedPct": 31.4801
+              }
+            ],
+            "weightedMean": null
+          }
+        }
+      }
+    },
+    "unweighted": {
+      "datasetId": "ds-builtin-census-kdd-adult600",
+      "schemaRevision": 1,
+      "dataRevision": 1,
+      "rowCount": 8,
+      "weightStatus": "omitted",
+      "weightColumn": null,
+      "unweightedN": 8,
+      "weightedN": null,
+      "weightMissingCount": 0,
+      "selectedCountByCode": {
+        "migration_msa": {}
+      },
+      "columns": {
+        "migration_msa": {
+          "denominators": {
+            "total": 8,
+            "notApplicable": 0,
+            "missing": 2,
+            "target": 8,
+            "valid": 6
+          },
+          "distribution": [
+            {
+              "code": "Abroad to MSA",
+              "label": "Abroad to MSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "Abroad to nonMSA",
+              "label": "Abroad to nonMSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "MSA to MSA",
+              "label": "MSA to MSA",
+              "count": 2,
+              "percentageValid": 33.3,
+              "percentageTotal": 25.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "MSA to nonMSA",
+              "label": "MSA to nonMSA",
+              "count": 1,
+              "percentageValid": 16.7,
+              "percentageTotal": 12.5,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "NonMSA to MSA",
+              "label": "NonMSA to MSA",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "NonMSA to nonMSA",
+              "label": "NonMSA to nonMSA",
+              "count": 1,
+              "percentageValid": 16.7,
+              "percentageTotal": 12.5,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "Nonmover",
+              "label": "Nonmover",
+              "count": 2,
+              "percentageValid": 33.3,
+              "percentageTotal": 25.0,
+              "isMissing": false,
+              "missingReason": null
+            },
+            {
+              "code": "?",
+              "label": "?",
+              "count": 2,
+              "percentageValid": 0.0,
+              "percentageTotal": 25.0,
+              "isMissing": true,
+              "missingReason": "missing"
+            },
+            {
+              "code": "Not in universe",
+              "label": "Not in universe",
+              "count": 0,
+              "percentageValid": 0.0,
+              "percentageTotal": 0.0,
+              "isMissing": true,
+              "missingReason": "not_applicable"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
