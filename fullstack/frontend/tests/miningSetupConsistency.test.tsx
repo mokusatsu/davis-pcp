@@ -49,7 +49,7 @@ async function choose(role: '属性' | '質問') {
 }
 async function ready() { await choose('属性'); await choose('質問') }
 async function readyInline() {
-  // Other cases cover picker dialogs; retry cases only need real selected inputs.
+  // Other cases cover picker dialogs; verification lifecycle cases only need real selected inputs.
   for (const [role, label] of [['属性', 'seg: 属性A'], ['質問', 'score: 質問A']]) {
     const input = screen.getByRole('combobox', { name: `Miningの${role}変数` })
     fireEvent.mouseDown(input)
@@ -193,7 +193,7 @@ it('distinguishes loading, failure and confirmed empty independent lists', async
 })
 it.each(['modern', 'classic'] as const)('%s prevents duplicate verification and ignores canceled completion without unlocking a newer request', async view => {
   const post = vi.spyOn(api, 'post')
-  const { local } = await mount(view); await explore(view, post)
+  const { local } = await mount(view); await explore(view, post, readyInline)
   act(() => { local.dispatch({ type: 'test/scope', payload: ['r1'] }) })
   const old = deferred(), latest = deferred(); post.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise)
   fireEvent.click(verificationButton(view))

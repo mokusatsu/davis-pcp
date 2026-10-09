@@ -353,18 +353,19 @@ export default function OverviewPage() {
           <Table
             size="small"
             pagination={false}
-            scroll={{ x: true }}
+            scroll={{ x: 1045 }}
             dataSource={rows}
             columns={[
               {
                 title: '列名',
                 dataIndex: 'name',
                 key: 'name',
+                width: 280,
                 render: (name: string, record) => {
-                  if (record.isMaParent) return <Space><Typography.Text strong>{name}</Typography.Text><Tag color="blue">MA・{record.children.length}選択肢</Tag></Space>
+                  if (record.isMaParent) return <Space direction="vertical" size={0} style={{ maxWidth: '100%' }}><Typography.Text strong>{name}</Typography.Text><Tag color="blue">MA・{record.children.length}選択肢</Tag></Space>
                   const isNumeric = record.schema?.semanticType === 'numeric' || typeof record.min === 'number'
                   return (
-                    <Space>
+                    <Space direction="vertical" size={0} style={{ maxWidth: '100%' }}>
                       <Typography.Text strong><ColumnQuestionTooltip nameOrId={name}>{name}</ColumnQuestionTooltip></Typography.Text>
                       {record.schema && (
                         <Tag color={isNumeric ? 'blue' : 'green'} style={{ fontSize: 10 }}>
