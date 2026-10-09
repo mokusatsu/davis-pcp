@@ -131,7 +131,7 @@ export default function ModelScatter({ points, xLabel, yLabel, oneDimensional = 
     if (lo?.every(Number.isFinite) && hi?.every(Number.isFinite)) onBrush?.({x:[lo[0],hi[0]],y:oneDimensional?null:[lo[1],hi[1]]})
   }} onPointerCancel={e => { if(start.current?.pointerId===e.pointerId){suppressClick.current=true; clear()} }} onLostPointerCapture={e=>{if(start.current?.pointerId===e.pointerId)clear()}}>
   <EChart fitPointMarkers chartRef={chartRef} option={modelScatterOption(points.map(p=>({...p,highlighted:p.highlighted || !!p.rowId && p.rowId===hoveredRow})), xLabel, yLabel, oneDimensional, xExtent, yExtent, extraSeries, note)}
-    height={height} svgRef={svgRef} testId={testId} ariaLabel={`${xLabel} / ${yLabel}`}
+    height={height} svgRef={svgRef} testId={testId} ariaLabel={oneDimensional ? `${xLabel}（1次元）` : `${xLabel} / ${yLabel}`}
     exportFormats={['svg', 'png']} exportFileName={testId.replace(/-svg$/, '')} exportTarget={exportTarget}
     keyboardNavigation={{ items: finitePoints.map((point, dataIndex) => ({ id: point.id, label: `${point.title}${point.selected ? '、選択中' : ''}`,
       seriesIndex: pointSeriesIndex, dataIndex })), onSelect: onToggle,

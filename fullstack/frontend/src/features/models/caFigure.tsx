@@ -21,5 +21,6 @@ export default function CaFigure({ rows, cols, rank, ratio, scaling, selected, h
       selected: selected.has(c.categoryId), highlighted: highlighted.has(c.categoryId) }
   })
   return <ModelScatter points={points} xLabel={axisLabel(rank, ratio, 1)} yLabel={axisLabel(rank, ratio, 2)}
+    note={rank < 2 ? '1次元表示：上下の配置は見やすさのためのものです。\n上下の位置に分析上の意味はありません。' : undefined}
     oneDimensional={rank < 2} onToggle={onToggle} svgRef={svgRef} testId="ca-map-svg" />
 }
