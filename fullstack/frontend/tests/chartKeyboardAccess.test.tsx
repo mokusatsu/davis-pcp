@@ -116,6 +116,87 @@ it('RowScatter clears keyboard hover when the data changes and handles an empty 
   expect(store.getState().selection.selectedRowIds).toEqual([])
 })
 
+it.each([
+  ['pointer', 'host'], ['pointer', 'nested plot'], ['mouse', 'host'], ['mouse', 'nested plot'],
+] as const)('native-series %s focus from the %s does not enter an unrelated keyboard mark', (input, targetKind) => {
+  const hover = vi.fn(), select = vi.fn()
+  const items = [{ id: 'a', label: 'row a detail', seriesIndex: 0, dataIndex: 0 }, { id: 'b', label: 'row b detail', seriesIndex: 0, dataIndex: 1 }]
+  const view = render(<EChart testId="series" option={{ animation: false, xAxis: {}, yAxis: {}, series: [{ type: 'scatter', data: [[0, 0], [1, 1]] }] }}
+    keyboardNavigation={{ items, onSelect: select, onHover: hover }} />)
+  const host = view.getByTestId('series'), chart = getInstanceByDom(host)!, action = vi.spyOn(chart, 'dispatchAction')
+  const target = targetKind === 'host' ? host : host.querySelector('svg')!
+  const live = view.container.querySelector('[aria-live]')!
+  // jsdom needs the browser's down -> default focus -> up sequence explicitly.
+  fireEvent[input === 'pointer' ? 'pointerDown' : 'mouseDown'](target, { button: 0 })
+  act(() => host.focus())
+  expect(host).toHaveFocus()
+  expect(hover).not.toHaveBeenCalled()
+  expect(select).not.toHaveBeenCalled()
+  expect(action).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'highlight' }))
+  expect(action).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'showTip' }))
+  expect(live).toBeEmptyDOMElement()
+  fireEvent[input === 'pointer' ? 'pointerUp' : 'mouseUp'](target, { button: 0 })
+  expect(live).toBeEmptyDOMElement()
+  // Explicit keyboard navigation remains available on the pointer-focused host.
+  fireEvent.keyDown(host, { key: 'End' })
+  expect(live).toHaveTextContent('row b detail')
+  fireEvent.keyDown(host, { key: 'Enter' })
+  expect(select).toHaveBeenLastCalledWith('b')
+  fireEvent.keyDown(host, { key: 'Escape' })
+  expect(live).toBeEmptyDOMElement()
+  // A later Tab-like focus still starts ordinary keyboard traversal.
+  act(() => host.blur())
+  act(() => host.focus())
+  expect(hover).toHaveBeenLastCalledWith('a')
+  expect(live).toHaveTextContent('row a detail')
+})
+
+it.each(['pointerUp', 'mouseUp', 'pointerCancel'] as const)('native-series %s outside the host releases pending pointer focus', release => {
+  const hover = vi.fn()
+  const view = render(<EChart testId="series" option={{ series: [] }}
+    keyboardNavigation={{ items: [{ id: 'a', label: 'row a detail' }], onHover: hover }} />)
+  const host = view.getByTestId('series')
+  // No focus was acquired; a stopped release must not suppress the next Tab.
+  fireEvent.pointerDown(host, { button: 0 })
+  fireEvent.mouseDown(host, { button: 0 })
+  const outside = document.createElement('button')
+  document.body.append(outside)
+  const stop = (event: Event) => event.stopPropagation()
+  outside.addEventListener(release.toLowerCase(), stop)
+  fireEvent[release](outside, { button: 0 })
+  outside.remove()
+  act(() => host.focus())
+  expect(host).toHaveFocus()
+  expect(hover).toHaveBeenCalledTimes(1)
+  expect(hover).toHaveBeenLastCalledWith('a')
+  expect(view.container.querySelector('[aria-live]')).toHaveTextContent('row a detail')
+})
+
+it('model category pointer selection leaves keyboard details empty until keyboard entry', () => {
+  const select = vi.fn()
+  const view = render(<ModelScatter testId="model" xLabel="X" yLabel="Y" onToggle={select} points={[
+    { id: 'male', x: 0, y: 0, title: 'male category detail' },
+    { id: 'female', x: 1, y: 1, title: 'female category detail' },
+  ]} />)
+  const host = view.getByTestId('model'), chart = getInstanceByDom(host)!
+  const wrapper = host.parentElement!.parentElement!
+  host.getBoundingClientRect = wrapper.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 420 } as DOMRect)
+  const [x, y] = chart.convertToPixel({ gridIndex: 0 }, [1, 1]) as number[]
+  const target = host.querySelector('svg')!, pointer = { clientX: x, clientY: y, button: 0 }
+  fireEvent.pointerDown(target, pointer)
+  fireEvent.mouseDown(target, pointer)
+  act(() => host.focus())
+  expect(view.container.querySelector('[aria-live]')).toBeEmptyDOMElement()
+  fireEvent.pointerUp(target, pointer)
+  fireEvent.mouseUp(target, pointer)
+  expect(select.mock.calls).toEqual([['female']])
+  expect(view.container.querySelector('[aria-live]')).toBeEmptyDOMElement()
+  fireEvent.keyDown(host, { key: 'End' })
+  expect(view.container.querySelector('[aria-live]')).toHaveTextContent('female category detail')
+  fireEvent.keyDown(host, { key: ' ' })
+  expect(select.mock.calls).toEqual([['female'], ['female']])
+})
+
 it('I18 exposes shared native-series navigation, symmetric hover, Home/End and current labels', () => {
   const hover = vi.fn(), select = vi.fn()
   const items = [{ id: 'a', label: 'row a detail', seriesIndex: 0, dataIndex: 0 }, { id: 'b', label: 'row b detail', seriesIndex: 0, dataIndex: 1 }]

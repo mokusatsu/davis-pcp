@@ -213,8 +213,17 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
   const [keyboardId, setKeyboardId] = useState<string | null>(null)
   const keyboard = useRef(keyboardNavigation); keyboard.current = keyboardNavigation
   const activeKeyboardItem = useRef<EChartKeyboardItem | null>(null)
+  const pointerFocus = useRef(false)
   const keyboardScope = `${resetKey ?? datasetId ?? ''}`
   const previousKeyboardScope = useRef(keyboardScope)
+  useEffect(() => {
+    const ownerDocument = container.current?.ownerDocument
+    const release = () => { pointerFocus.current = false }
+    // Capture releases even outside the host or stopped by native chart controls.
+    const events = ['pointerup', 'mouseup', 'pointercancel']
+    events.forEach(name => ownerDocument?.addEventListener(name, release, true))
+    return () => events.forEach(name => ownerDocument?.removeEventListener(name, release, true))
+  }, [])
   const leaveKeyboard = () => {
     const previous = activeKeyboardItem.current
     activeKeyboardItem.current = null
@@ -279,8 +288,15 @@ export default function EChart({ option, height = 360, width = '100%', onEvents,
     <div ref={container} data-testid={testId} data-chart-renderer="echarts" role={keyboardEnabled ? 'group' : 'img'}
       tabIndex={keyboardEnabled ? 0 : undefined}
       aria-label={keyboardEnabled ? `${ariaLabel}。矢印キーでマークを移動${keyboardNavigation?.onSelect ? '、EnterまたはSpaceで選択' : ''}、Escapeで詳細を閉じる` : ariaLabel}
-      onFocus={event => { if (event.target === event.currentTarget) enterKeyboard(keyboardItem ?? keyboard.current?.items[0]) }}
-      onBlur={() => { leaveKeyboard(); setKeyboardId(null) }}
+      // Observe nested plot/control presses before native handlers stop bubbling.
+      onPointerDownCapture={() => { pointerFocus.current = true }}
+      onMouseDownCapture={() => { pointerFocus.current = true }}
+      onFocus={event => {
+        const fromPointer = pointerFocus.current
+        pointerFocus.current = false
+        if (event.target === event.currentTarget && !fromPointer) enterKeyboard(keyboardItem ?? keyboard.current?.items[0])
+      }}
+      onBlur={() => { pointerFocus.current = false; leaveKeyboard(); setKeyboardId(null) }}
       onKeyDown={event => {
         if (event.target !== event.currentTarget || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
         const navigation = keyboard.current, items = navigation?.items
