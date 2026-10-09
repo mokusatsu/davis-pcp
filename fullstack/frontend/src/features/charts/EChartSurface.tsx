@@ -128,6 +128,7 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
   const definitions = useSyncExternalStore(redux?.store.subscribe ?? (() => () => {}), () => redux?.store.getState().codebook?.columns)
   const questions = useMemo<Record<string, string>>(() => Object.fromEntries((definitions ?? []).flatMap((column: any) => [[column.name, column.label], [column.columnId, column.label]])), [definitions])
   const host = useRef<HTMLDivElement>(null)
+  const pointerFocus = useRef(false)
   const chart = useRef<any>(null)
   const svg = useRef<SVGSVGElement>(null)
   const vb = viewBox?.split(/[ ,]+/).map(Number)
@@ -136,6 +137,15 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
   const [size, setSize] = useState({ width: logicalWidth, height: logicalHeight })
   const [tip, setTip] = useState<string | null>(null)
   const [keyboardIndex, setKeyboardIndex] = useState(0)
+  useEffect(() => {
+    const ownerDocument = host.current?.ownerDocument
+    const release = () => { pointerFocus.current = false }
+    // A canceled gesture or release outside the host must not suppress the next
+    // keyboard focus. Capture also sees releases stopped by chart controls.
+    const events = ['pointerup', 'mouseup', 'pointercancel']
+    events.forEach(name => ownerDocument?.addEventListener(name, release, true))
+    return () => events.forEach(name => ownerDocument?.removeEventListener(name, release, true))
+  }, [])
   useEffect(() => {
     const node = host.current
     if (!node) return
@@ -224,8 +234,17 @@ const EChartSurface = forwardRef<SVGSVGElement, Props>(function EChartSurface({ 
   }
   const autoHeight = style?.height === 'auto' || (!height && !style?.height)
   return <div ref={host} tabIndex={0} aria-label={`${props['aria-label'] ?? props['data-testid'] ?? '統計グラフ'}。矢印キーでマークを移動、Enterで選択`}
-    onFocus={event => { if (event.target === event.currentTarget) enterKeyboardMark(keyboardMark, event.nativeEvent) }}
+    // Clickable graphics stop down-event bubbling inside EChart. Observe capture
+    // before default focus can enter a keyboard mark and redraw the pressed hit.
+    onPointerDownCapture={() => { pointerFocus.current = true }}
+    onMouseDownCapture={() => { pointerFocus.current = true }}
+    onFocus={event => {
+      const fromPointer = pointerFocus.current
+      pointerFocus.current = false
+      if (event.target === event.currentTarget && !fromPointer) enterKeyboardMark(keyboardMark, event.nativeEvent)
+    }}
     onBlur={event => {
+      pointerFocus.current = false
       leaveKeyboardMark(event.nativeEvent)
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTip(null)
     }}

@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { createRef } from 'react'
+import { createRef, useState } from 'react'
 import { getInstanceByDom, init } from 'echarts'
+import { configureStore } from '@reduxjs/toolkit'
+import { Provider, useSelector } from 'react-redux'
+import { datasetLoaded, selectionApplied, selectionCleared, selectionReducer } from '../src/app/store'
 import EChart from '../src/features/charts/EChart'
 import EChartSurface, { geometryToGraphic } from '../src/features/charts/EChartSurface'
 import { getSvgPoint } from '../src/utils/svgCoordinates'
@@ -72,6 +75,90 @@ it('preserves graphics mark clicks, native pointer guards, tooltips and logical 
   expect(context).toHaveBeenCalledTimes(1)
   svg.current!.getBoundingClientRect = () => ({ left: 50, top: 60, width: 300, height: 200 } as DOMRect)
   expect(getSvgPoint(svg.current, { clientX: 150, clientY: 110 })).toEqual({ x: 200, y: 100 })
+})
+it.each(['pointer', 'mouse'])('keeps the first %s click on the hovered row when chart focus follows down', input => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400)
+  const local = configureStore({ reducer: { selection: selectionReducer },
+    middleware: getDefaultMiddleware => getDefaultMiddleware({ serializableCheck: false }) })
+  local.dispatch(datasetLoaded({ datasetId: 'loess-focus', name: 'Loess focus', rowIds: ['r61', 'r42'] }))
+  const enter = vi.fn(), brush = vi.fn()
+  const select = vi.fn((id: string) => local.dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'test point' })))
+  function StatefulPlot() {
+    const [hovered, setHovered] = useState<string | null>(null)
+    const selected = useSelector((state: ReturnType<typeof local.getState>) => state.selection.selectedRowIds)
+    return <><output data-testid="hovered-row">{hovered}</output>
+      <EChartSurface width={600} height={400} data-testid="surface" onPointerDown={brush} onMouseDown={brush}>
+        {['r61', 'r42'].map((id, index) => <circle key={id} cx={100 + index * 100} cy={100}
+          r={hovered === id ? 6 : 4} fill={selected.includes(id) ? '#2a78d6' : '#555'}
+          onMouseEnter={() => { enter(id); setHovered(id) }} onMouseLeave={() => setHovered(null)}
+          onClick={event => { event.stopPropagation(); select(id) }} />)}
+        {hovered && <text x={20} y={40}>{hovered}</text>}
+      </EChartSurface></>
+  }
+  // jsdom does not perform the browser's mousedown default focus. Model that
+  // actual down -> focus -> up ordering while keeping React, ECharts, zrender
+  // hit testing and the Loess-like stateful hover/selection redraws real.
+  for (let opening = 0; opening < 2; opening++) {
+    const view = render(<Provider store={local}><StatefulPlot /></Provider>)
+    const host = view.getByTestId('surface')
+    const chartDom = host.querySelector('[data-chart-renderer="echarts"]') as HTMLElement
+    const chart = getInstanceByDom(chartDom)!
+    const bounds = () => ({ left: 0, top: 0, width: 600, height: 400 } as DOMRect)
+    host.getBoundingClientRect = chartDom.getBoundingClientRect = bounds
+    const pointer = { clientX: 200, clientY: 100, button: 0 }
+    for (let acquisition = 0; acquisition < 2; acquisition++) {
+      act(() => { host.blur(); local.dispatch(selectionCleared()) })
+      fireEvent.mouseMove(chartDom.firstElementChild!, pointer)
+      expect(view.getByTestId('hovered-row')).toHaveTextContent('r42')
+      enter.mockClear(); select.mockClear(); brush.mockClear()
+      const target = chart.getZr().findHover(200, 100).target
+      if (input === 'pointer') fireEvent.pointerDown(chartDom.firstElementChild!, pointer)
+      fireEvent.mouseDown(chartDom.firstElementChild!, pointer)
+      act(() => host.focus())
+      expect(host).toHaveFocus()
+      const focusedTarget = chart.getZr().findHover(200, 100).target
+      if (input === 'pointer') fireEvent.pointerUp(chartDom.firstElementChild!, pointer)
+      fireEvent.mouseUp(chartDom.firstElementChild!, pointer)
+      fireEvent.click(chartDom.firstElementChild!, pointer)
+      expect(local.getState().selection.selectedRowIds).toEqual(['r42'])
+      expect(select).toHaveBeenCalledTimes(1)
+      expect(select).toHaveBeenLastCalledWith('r42')
+      expect(enter).not.toHaveBeenCalledWith('r61')
+      expect(view.getByTestId('hovered-row')).toHaveTextContent('r42')
+      expect(focusedTarget).toBe(target)
+      expect(brush).not.toHaveBeenCalled()
+    }
+    act(() => host.blur())
+    act(() => host.focus())
+    expect(view.getByTestId('hovered-row')).toHaveTextContent('r61')
+    fireEvent.keyDown(host, { key: 'ArrowRight' })
+    expect(view.getByTestId('hovered-row')).toHaveTextContent('r42')
+    fireEvent.keyDown(host, { key: 'Enter' })
+    expect(local.getState().selection.selectedRowIds).toEqual([])
+    fireEvent.keyDown(host, { key: ' ' })
+    expect(local.getState().selection.selectedRowIds).toEqual(['r42'])
+    fireEvent.keyDown(host, { key: 'Escape' })
+    expect(view.getByTestId('hovered-row')).toBeEmptyDOMElement()
+    view.unmount()
+  }
+})
+it.each(['pointerUp', 'mouseUp', 'pointerCancel'] as const)('restores keyboard focus after %s outside the chart', release => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const enter = vi.fn()
+  const view = render(<EChartSurface width={600} height={400} data-testid="surface">
+    <circle cx={100} cy={100} r={4} onMouseEnter={enter}><title>first row</title></circle>
+  </EChartSurface>)
+  const host = view.getByTestId('surface')
+  // A prevented focus or canceled gesture can finish outside the chart.
+  fireEvent.pointerDown(host, { button: 0 })
+  fireEvent.mouseDown(host, { button: 0 })
+  fireEvent[release](document.body, { button: 0 })
+  act(() => host.focus())
+  expect(host).toHaveFocus()
+  expect(enter).toHaveBeenCalledTimes(1)
+  expect(view.getByRole('tooltip')).toHaveTextContent('first row')
 })
 it('retains nested tspan values and variable names, and split native titles without HTML interpretation', () => {
   const graphics = geometryToGraphic(<>
