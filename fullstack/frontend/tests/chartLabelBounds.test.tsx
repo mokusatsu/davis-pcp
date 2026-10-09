@@ -37,6 +37,44 @@ it('keeps the PCA component axis title inside normal and expanded SVG edges', ()
   const chart = getInstanceByDom(view.getByTestId('pca-biplot-canvas'))!
   for (const width of [720, 1120]) { chart.resize({ width, height: 480 }); assertTextInside(chart, 'PC1') }
 })
+it('biplot renders compact fractional bounds without rounding scores, vector coordinates or tooltips', () => {
+  const minX = -0.87263637429, maxX = 0.854589727251
+  const minY = -0.77263637429, maxY = 0.728483948572
+  const scores = [
+    { rowId: 'left', pc: [-2, minY, minX] },
+    { rowId: 'exact', pc: [0, 0.4784238321249003, 0.12727962370642537] },
+    { rowId: 'right', pc: [2, maxY, maxX] },
+  ]
+  const loading = [0.25, -0.728483948572, 0.77263637429]
+  const fractionalData = { nComponents: 3, eigenvalues: [2, 1, 0.1],
+    explainedVarianceRatio: [0.65, 0.32, 0.03], scores, columns: ['feature'], loadings: { feature: loading } } as any
+  const view = render(<Provider store={store}><GraphExpansionProvider>
+    <BiplotView pcaData={fractionalData} selectedX={2} selectedY={1} onSelectX={() => {}} onSelectY={() => {}} />
+  </GraphExpansionProvider></Provider>)
+  const chartDom = view.getByTestId('pca-biplot-canvas')
+  const chart = getInstanceByDom(chartDom)!
+  const option = chart.getOption() as any
+  // Both ranges use the existing 0.5 padding; only their displayed labels change.
+  expect(option.xAxis[0]).toMatchObject({ name: 'PC3', min: minX - 0.5, max: maxX + 0.5 })
+  expect(option.yAxis[0]).toMatchObject({ name: 'PC2', min: minY - 0.5, max: maxY + 0.5 })
+  const labels = Array.from(chartDom.querySelectorAll('svg text'), label => label.textContent)
+  expect(labels).not.toContain(String(maxX + 0.5))
+  expect(labels).not.toContain(String(maxY + 0.5))
+  expect(labels).toEqual(expect.arrayContaining(['1', '1.35', '1.23', 'PC3', 'PC2']))
+  expect(option.xAxis[0].axisLabel.hideOverlap).toBe(true)
+  expect(option.yAxis[0].axisLabel.hideOverlap).toBe(true)
+  expect(option.xAxis[0].axisLabel.formatter(maxX + 0.5)).toBe('1.35')
+  expect(option.yAxis[0].axisLabel.formatter(maxY + 0.5)).toBe('1.23')
+  const rows = option.series.find((series: any) => series.id === 'respondent-rows').data
+  expect(rows.map((row: any) => ({ rowId: row.rowId, value: row.value })))
+    .toEqual(scores.map(score => ({ rowId: score.rowId, value: [score.pc[2], score.pc[1]] })))
+  expect(option.tooltip[0].formatter({ data: rows[1] }))
+    .toBe(`rowId: exact<br/>PC3: ${scores[1].pc[2]}<br/>PC2: ${scores[1].pc[1]}`)
+  const vector = option.series.find((series: any) => series.name === 'feature').markLine
+  const scale = Math.min(((maxX + 0.5) - (minX - 0.5)) / 2, ((maxY + 0.5) - (minY - 0.5)) / 2) * 0.75
+  expect(vector.data[0].map((endpoint: any) => endpoint.coord)).toEqual([[0, 0], [loading[2] * scale, loading[1] * scale]])
+  expect(vector.tooltip.formatter()).toBe(`feature: (${loading[2]}, ${loading[1]})`)
+})
 it('keeps the complete normalized-score title within the ranking export', () => {
   const chart = init(null, undefined, { renderer: 'svg', ssr: true, width: 560, height: 350 })
   try {

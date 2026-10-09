@@ -20,6 +20,18 @@ interface BiplotViewProps {
   onSelectY: (val: number) => void
 }
 
+// Format axis labels only; preserve detail for narrow ranges around large offsets.
+function formatPcaAxisValue(value: number, min: number, max: number): string {
+  if (!Number.isFinite(value)) return ''
+  if (value === 0) return '0'
+  const span = Math.abs(max - min)
+  const magnitude = Math.max(Math.abs(min), Math.abs(max))
+  const digits = span > 0 && magnitude > 0
+    ? Math.min(14, Math.max(3, Math.ceil(Math.log10(magnitude / span)) + 3)) : 4
+  const rounded = Number(value.toPrecision(digits))
+  return Math.abs(rounded) >= 1e6 || Math.abs(rounded) < 1e-4 ? rounded.toExponential() : String(rounded)
+}
+
 export const BiplotView: FC<BiplotViewProps> = ({
 
   pcaData,
@@ -77,8 +89,10 @@ export const BiplotView: FC<BiplotViewProps> = ({
   }, [scoreBounds, pcaData, selectedX, selectedY])
 
   const chartOption: EChartsOption = {
-    xAxis: { type: 'value', name: `PC${selectedX + 1}`, nameLocation: 'middle', nameGap: 32, min: scoreBounds.minX, max: scoreBounds.maxX },
-    yAxis: { type: 'value', name: `PC${selectedY + 1}`, min: scoreBounds.minY, max: scoreBounds.maxY },
+    xAxis: { type: 'value', name: `PC${selectedX + 1}`, nameLocation: 'middle', nameGap: 32, min: scoreBounds.minX, max: scoreBounds.maxX,
+      axisLabel: { hideOverlap: true, formatter: (value: number) => formatPcaAxisValue(value, scoreBounds.minX, scoreBounds.maxX) } },
+    yAxis: { type: 'value', name: `PC${selectedY + 1}`, min: scoreBounds.minY, max: scoreBounds.maxY,
+      axisLabel: { hideOverlap: true, formatter: (value: number) => formatPcaAxisValue(value, scoreBounds.minY, scoreBounds.maxY) } },
     series: showVectors && pcaData ? pcaData.columns.map(column => ({
       type: 'line' as const, name: column, data: [],
       markLine: { symbol: ['none', 'arrow'], symbolSize: 9, lineStyle: { color: '#d4380d', width: 2, type: 'solid' },
