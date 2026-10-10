@@ -17,6 +17,7 @@ from ..algorithms.outliers.core import detect as detect_outliers
 from ..domain.errors import BizError
 from ..domain.analysis_columns import resolve_analysis_columns
 from ..domain.codebook_adapter import CodebookAdapter
+from ..domain.weight_unsupported import weight_unsupported_block
 from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
@@ -106,6 +107,7 @@ class ClusterRequest(BaseModel):
     datasetId: str
     method: Literal["kmeans", "kmedoids", "divisive", "gmm", "class_variable", "agglomerative", "cobweb", "disc"]
     columns: list[str]
+    weightColumn: str | None = None
     k: int = 3
     seed: int = 42
     scaling: str = "none"
@@ -140,6 +142,7 @@ def _create_cluster(req: ClusterRequest) -> dict:
         req.activeRowIds, req.expectedSchemaRevision, req.expectedDataRevision)
     if df.height == 0:
         raise BizError('CLUSTERING_TOO_FEW_ROWS', '有効な対象行がありません。', status_code=422)
+    weight_info = weight_unsupported_block(store.load_codebook(req.datasetId), req.weightColumn)
     req = req.model_copy(update={'columns': numeric_names, 'categoricalColumns': categorical_names,
         'classColumn': categorical_names[0] if req.method == 'class_variable' and categorical_names else req.classColumn})
     if req.method == "class_variable":
@@ -231,6 +234,7 @@ def _create_cluster(req: ClusterRequest) -> dict:
     result_id = f"clu-{int(time.time() * 1000):x}"
     payload = {
         **input_info,
+        **weight_info,
         "requestedColumns": input_info["usedColumns"],
         "usedColumns": columns_used,
         "resultId": result_id,
