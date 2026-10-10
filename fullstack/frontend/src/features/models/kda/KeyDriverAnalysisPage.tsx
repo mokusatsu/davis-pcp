@@ -22,6 +22,8 @@ import { api } from '../../../api/client'
 import GraphPanel from '../../common/GraphPanel'
 import { captureKdaPraHandoff, type KdaPraHandoff } from '../../pra/kdaHandoff'
 import { numericModelInputError, useNumericModelInputs } from './useNumericModelInputs'
+import { useCodebook } from '../../dataset/useCodebookColumn'
+import WeightUnsupportedAlert from '../../common/WeightUnsupportedAlert'
 
 export interface DriverItem {
   name: string
@@ -79,6 +81,9 @@ export default function KeyDriverAnalysisPage() {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const { columns: savedColumns } = useCodebook()
+  const weightColumnName = savedColumns.find(column => column.columnId === weightColumnId)?.name
 
   const { outcomeColumns, predictorColumns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs('kda')
   const [loading, setLoading] = useState<boolean>(false)
@@ -179,6 +184,7 @@ export default function KeyDriverAnalysisPage() {
       }}
       data-testid="kda-page"
     >
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Alert type="info" message={inputError ? '現在の入力と異なる実行済み結果です。入力の不足を修正すると再実行できます。' : '現在の入力と異なる実行済み結果です。再実行すると更新されます。'} />}
       {columnsError && <Alert type="error" message={columnsError} action={<Button onClick={retryColumns}>列を再読込み</Button>} />}

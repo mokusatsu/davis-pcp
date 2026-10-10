@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 import KeyDriverAnalysisPage, { type KdaResponse } from '../src/features/models/kda/KeyDriverAnalysisPage'
 import PenaltyRewardPage from '../src/features/pra/PenaltyRewardPage'
+import GlobalHeaderControlBar from '../src/features/selection/GlobalHeaderControlBar'
 import { AnalysisViewActivityContext, createScopeSnapshot } from '../src/features/selection/analysisScope'
 import { captureKdaPraHandoff, readKdaPraHandoff, type KdaPraHandoff } from '../src/features/pra/kdaHandoff'
 import { store, selectionReducer, globalObservationsSlice, globalVariablesSlice, datasetLoaded, variablesInitialized, datasetValuesUpdated, activeEntitiesSet, selectOrdinaryVariables, selectionApplied } from '../src/app/store'
@@ -63,6 +64,116 @@ function KeptPages({ praVisited = false }: { praVisited?: boolean }) {
     <AnalysisViewActivityContext.Provider value={!praActive}><div style={{ display: praActive ? 'none' : 'block' }}><KeyDriverAnalysisPage /></div></AnalysisViewActivityContext.Provider>
     {(visited || praActive) && <AnalysisViewActivityContext.Provider value={praActive}><div style={{ display: praActive ? 'block' : 'none' }}><PenaltyRewardPage /></div></AnalysisViewActivityContext.Provider>}</>
 }
+
+describe('KDA/PRA selected-weight disclosure', () => {
+  const weight = { columnId: 'col-survey-weight', name: 'survey_weight' }
+  const notice = `この分析は調査ウェイト（${weight.name}）を適用しません。表示値は非加重です。`
+  const analysisCalls = () => mocks.post.mock.calls.filter(([path]) => path === '/models/kda' || path === '/pra/evaluate')
+  async function prepare() {
+    const ns = ['y', 'z', 'x', weight.name], saved = book(ns)
+    saved.columns = saved.columns.map(column => column.name === weight.name
+      ? { ...column, columnId: weight.columnId, role: 'weight', label: 'Survey weight label' } : column)
+    mocks.get.mockResolvedValue(metadata(ns)); mocks.getCodebook.mockResolvedValue(saved)
+    mocks.post.mockImplementation(async (path: string, body: any) => {
+      if (path === '/datasets/d/color-domains') return { domains: [] }
+      if (path === '/models/kda') return kdaResponse(body)
+      return { ...praResponse(body), attributes: body.attributes.map((name: string) => ({
+        name, label: name, penalty: { coef: -1, se: .1, p: .01, ci: [-1.2, -.8] },
+        reward: { coef: .2, se: .1, p: .1, ci: [0, .4] }, asymmetry: -.8, asym_p: .02,
+        asymmetry_significant: true, classification: 'basic', class_label: '当たり前品質 (Must-be)',
+        n_dissatisfied: 1, dissatisfied_row_ids: ['r1'], narrative: `${name}の低評価を改善する`,
+      })) }
+    })
+    const local = localStore(ns)
+    await local.dispatch(fetchCodebookThunk('d'))
+    local.dispatch(selectionApplied({ rowIds: ['r1'], operation: 'replace', label: 'fit' }))
+    local.dispatch(globalObservationsSlice.actions.observationScopeChanged('selected'))
+    return local
+  }
+  async function setWeight(local: ReturnType<typeof localStore>, enabled: boolean) {
+    const control = screen.getByTestId('global-weight-select')
+    if (enabled) {
+      fireEvent.mouseDown(within(control).getByRole('combobox'))
+      const option = await waitFor(() => {
+        const match = document.querySelector(`.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="${weight.name}"]`)
+        expect(match).not.toBeNull(); return match!
+      })
+      fireEvent.click(option)
+    } else {
+      const clear = control.querySelector('.ant-select-clear')
+      expect(clear).not.toBeNull(); fireEvent.mouseDown(clear!)
+    }
+    expect(local.getState().globalVariables.weightColumnId).toBe(enabled ? weight.columnId : null)
+    expect(control).toHaveTextContent(enabled ? weight.name : '未選択')
+  }
+
+  it('discloses header weight on/off/on while retaining the executed KDA and actual PRA handoff', async () => {
+    const local = await prepare()
+    render(tree(local, <><GlobalHeaderControlBar /><KeptPages /></>, '/key-drivers'))
+    await waitFor(() => expect(screen.getByTestId('kda-run-btn')).toBeEnabled())
+    expect(selected('kda-outcome-select')).toEqual(['x']); expect(selected('kda-drivers-select')).toEqual(['y', 'z'])
+    expect(analysisCalls()).toEqual([])
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    const contrast = await screen.findByTestId('kda-contrast-table'), page = within(screen.getByTestId('kda-page'))
+    expect(within(contrast).getAllByText('50.0%', { exact: true })).toHaveLength(2)
+    const conclusion = contrast.textContent, scope = page.getByTestId('analysis-scope-summary').textContent
+    const request = { datasetId: 'd', expectedDataRevision: 1, expectedSchemaRevision: 1, outcome: 'x', drivers: ['y', 'z'], rowIds: ['r1'] }
+    expect(page.queryByTestId('weight-unsupported-alert')).toBeNull()
+    const notices = []
+    for (const enabled of [true, false, true]) {
+      await setWeight(local, enabled)
+      expect(page.getByTestId('kda-contrast-table').textContent).toBe(conclusion)
+      expect(page.getByTestId('analysis-scope-summary').textContent).toBe(scope)
+      expect(page.queryByText(/現在の入力と異なる実行済み結果/)).toBeNull()
+      expect(screen.getByTestId('send-pra-btn')).toBeEnabled()
+      expect(analysisCalls()).toEqual([['/models/kda', request]])
+      notices.push(page.queryByTestId('weight-unsupported-alert')?.textContent ?? null)
+    }
+    fireEvent.click(screen.getByTestId('send-pra-btn'))
+    await screen.findByTestId('pra-inherited-scope')
+    expect(JSON.parse(screen.getByTestId('location-state').textContent!).kdaHandoff).toEqual(handoff({
+      sourceRunId: 'kda-run-1', sourceConclusion: { kind: 'shapley-importance', method: 'shapley_lmg', rSquared: .84, nValid: 1,
+        drivers: [{ name: 'y', importancePct: 50, direction: 1 }, { name: 'z', importancePct: 50, direction: 1 }] },
+    }))
+    expect(selected('pra-outcome-select')).toEqual(['x']); expect(selected('pra-attributes-select')).toEqual(['y', 'z'])
+    expect(screen.getByTestId('pra-inherited-scope')).toHaveTextContent('KDA実行時の選択中の行 (Selected) 1行に固定')
+    expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent('元のShapley重要度: y 50.0%, z 50.0%')
+    expect(analysisCalls()).toEqual([['/models/kda', request]])
+    // Check disclosure after the result and real navigation have established the regression's setup.
+    expect(notices).toEqual([expect.stringContaining(notice), null, expect.stringContaining(notice)])
+    expect(within(screen.getByTestId('penalty-reward-page')).getByTestId('weight-unsupported-alert')).toHaveTextContent(notice)
+  })
+
+  it('discloses header weight on/off/on without changing a standalone completed PRA result or rerunning it', async () => {
+    const local = await prepare()
+    render(tree(local, <><GlobalHeaderControlBar /><PenaltyRewardPage /></>))
+    await waitFor(() => expect(screen.getByTestId('pra-run-btn')).toBeEnabled())
+    expect(selected('pra-outcome-select')).toEqual(['x']); expect(selected('pra-attributes-select')).toEqual(['y', 'z'])
+    expect(analysisCalls()).toEqual([])
+    fireEvent.click(screen.getByTestId('pra-run-btn'))
+    const result = await screen.findByTestId('asymmetry-test-table'), page = within(screen.getByTestId('penalty-reward-page'))
+    expect(within(result).getAllByText('当たり前品質', { exact: true })).toHaveLength(2)
+    expect(page.getByTestId('attribute-detail-card')).toHaveTextContent('yの低評価を改善する')
+    expect(page.getByTestId('pra-valid-population')).toHaveTextContent('このPRA結果の有効行数: 1行')
+    const conclusion = result.textContent, detail = page.getByTestId('attribute-detail-card').textContent
+    const scope = page.getByTestId('analysis-scope-summary').textContent, notices = []
+    expect(page.queryByTestId('weight-unsupported-alert')).toBeNull()
+    for (const enabled of [true, false, true]) {
+      await setWeight(local, enabled)
+      expect(page.getByTestId('asymmetry-test-table').textContent).toBe(conclusion)
+      expect(page.getByTestId('attribute-detail-card').textContent).toBe(detail)
+      expect(page.getByTestId('analysis-scope-summary').textContent).toBe(scope)
+      expect(page.getByTestId('pra-valid-population')).toHaveTextContent('このPRA結果の有効行数: 1行')
+      expect(page.queryByText(/現在の入力と異なる実行済み結果/)).toBeNull()
+      expect(local.getState().selection).toMatchObject({ datasetId: 'd', dataRevision: 1, selectedRowIds: ['r1'], activeRowIds: rows })
+      expect(local.getState().codebook.schemaRevision).toBe(1)
+      expect(analysisCalls()).toEqual([['/pra/evaluate', { datasetId: 'd', expectedDataRevision: 1, expectedSchemaRevision: 1,
+        outcome: 'x', attributes: ['y', 'z'], rowIds: ['r1'] }]])
+      notices.push(page.queryByTestId('weight-unsupported-alert')?.textContent ?? null)
+    }
+    expect(notices).toEqual([expect.stringContaining(notice), null, expect.stringContaining(notice)])
+  })
+})
 
 describe('KDA nominal results and numeric what-if controls', () => {
   async function prepare(ns: string[], nominalNames: string[]) {

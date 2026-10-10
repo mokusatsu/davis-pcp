@@ -24,6 +24,8 @@ import { kanoOption, praImpactOption } from './praCharts'
 import SelectionMenu, { getBrushOp } from '../selection/SelectionMenu'
 import { kdaHandoffError, readKdaPraHandoff, type KdaPraHandoff } from './kdaHandoff'
 import { numericModelInputError, useNumericModelInputs } from '../models/kda/useNumericModelInputs'
+import { useCodebook } from '../dataset/useCodebookColumn'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 
 export interface PraAttribute {
   name: string
@@ -54,6 +56,9 @@ export default function PenaltyRewardPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const { columns: savedColumns } = useCodebook()
+  const weightColumnName = savedColumns.find(column => column.columnId === weightColumnId)?.name
   const allRowIds = useSelector((s: RootState) => s.selection.allRowIds)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
 
@@ -220,6 +225,7 @@ export default function PenaltyRewardPage() {
       }}
       data-testid="penalty-reward-page"
     >
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       {handoff ? <Typography.Text type="secondary" data-testid="pra-inherited-scope">
         要求対象: KDA実行時の{handoff.scopeSnapshot.label} {handoff.scopeSnapshot.count}行に固定
         {handoff.scopeSnapshot.sampling && <> / seed {handoff.scopeSnapshot.sampling.seed ?? '未記録'}・抽出元{handoff.scopeSnapshot.sampling.sourceRowCount ?? '未記録'}行</>}
