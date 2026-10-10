@@ -52,6 +52,7 @@ IMPUTE_METHOD_LABELS = {
 
 def _provenance_step(operation: str, params: dict[str, Any], meta: dict[str, Any],
                      codebook: dict[str, Any] | None, algorithm_version: str,
+                     input_schema_revision: int,
                      target_row_ids: list[str] | None = None,
                      target_cells: list[dict[str, Any]] | None = None,
                      parent_operation_id: str | None = None) -> dict[str, Any]:
@@ -66,7 +67,7 @@ def _provenance_step(operation: str, params: dict[str, Any], meta: dict[str, Any
              for c in (target_cells or []) if isinstance(c, dict)),
             key=lambda c: (c["rowId"], c["columnId"]),
         ),
-        "inputSchemaRevision": int((codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1))),
+        "inputSchemaRevision": int(input_schema_revision),
         "outputSchemaRevision": int((codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1))),
         "algorithmVersion": algorithm_version,
         "timestamp": now_iso(),
@@ -518,7 +519,8 @@ def _finalize_dataset(
         # entries, plus whatever mask it inherited from the source.
         step_params = dict(derivation.get("params") or {})
         seed_step = _provenance_step(derivation.get("operation", "import"), step_params, meta, cb,
-                                     f"{derivation.get('operation', 'import')}-1")
+                                     f"{derivation.get('operation', 'import')}-1",
+                                     input_schema_revision=schema_revision)
         source_provenance = store.load_provenance(source_dataset_id) if source_dataset_id else None
         seed_step["parentOperationId"] = (source_provenance or {}).get("currentOperationId")
         # Inherited entries keep their original attribution and gain the marker
@@ -538,7 +540,7 @@ def _finalize_dataset(
     else:
         seed_step = _provenance_step("import", {"name": name, "format": fmt,
                                                 "source_dataset_id": source_dataset_id}, meta, cb,
-                                     "import-1")
+                                     "import-1", input_schema_revision=schema_revision)
         if source_dataset_id:
             source_provenance = store.load_provenance(source_dataset_id) or {}
             source_mask = store.load_mask(source_dataset_id) or {"entries": []}
@@ -1399,7 +1401,8 @@ def _patch_schema(dataset_id: str, patch: SchemaPatch) -> dict:
         cb["schemaRevision"] = meta["schemaRevision"]
     # commit_data_change recomputes the fingerprint from the same inputs.
     step = _provenance_step("schema_update", {"columns": sorted(by_name.keys())}, meta, cb,
-                            "schema-patch-1", parent_operation_id=parent_op)
+                            "schema-patch-1", input_schema_revision=input_schema_revision,
+                            parent_operation_id=parent_op)
     commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
     meta.pop("rowIds", None)
     provenance = commit["provenance"]
@@ -1447,6 +1450,8 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     from ..algorithms.transform.core import bin_numeric, nominal_to_binary
 
     meta = store.get_meta(dataset_id)
+    current_cb = store.load_codebook(dataset_id) or {}
+    input_schema_revision = int(current_cb.get("schemaRevision", meta.get("schemaRevision", 1)))
     df = store.get_dataframe(dataset_id)
 
     created_columns = []
@@ -1517,6 +1522,7 @@ def _transform_dataset(dataset_id: str, request: TransformRequest) -> dict:
     provenance_before = store.load_provenance(dataset_id)
     step = _provenance_step("transform", {"type": request.type, "source_column": request.source_column,
                                           "options": request.options}, meta, cb, "transform-2",
+                            input_schema_revision=input_schema_revision,
                             parent_operation_id=(provenance_before or {}).get("currentOperationId"))
     commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step)
     meta.pop("rowIds", None)
@@ -1543,6 +1549,8 @@ def _delete_column(dataset_id: str, column_name: str) -> dict:
         raise BizError("COLUMN_CANNOT_DELETE_ROW_ID", "ID列 '__rowId__' は削除できません。")
 
     meta = store.get_meta(dataset_id)
+    current_cb = store.load_codebook(dataset_id) or {}
+    input_schema_revision = int(current_cb.get("schemaRevision", meta.get("schemaRevision", 1)))
     df = store.get_dataframe(dataset_id)
 
     if column_name not in df.columns:
@@ -1563,7 +1571,7 @@ def _delete_column(dataset_id: str, column_name: str) -> dict:
     dropped = [e for e in mask_doc.get("entries", []) if e.get("columnId") == column_name]
     step = _provenance_step("delete_column", {"column_name": column_name,
                                               "droppedMaskEntries": len(dropped)}, meta, cb,
-                            "delete-column-1",
+                            "delete-column-1", input_schema_revision=input_schema_revision,
                             parent_operation_id=(provenance_before or {}).get("currentOperationId"))
     kept = [e for e in mask_doc.get("entries", []) if e.get("columnId") != column_name]
     commit = store.commit_data_change(dataset_id, meta, df, codebook=cb, step=step,
@@ -1756,6 +1764,8 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
                      for c in plan.targetColumns if c in imputed_df.columns}
 
     if request.inPlace:
+        current_cb = store.load_codebook(dataset_id) or {}
+        input_schema_revision = int(current_cb.get("schemaRevision", meta.get("schemaRevision", 1)))
         schema_payload = _derive_dataset_schema(imputed_df, meta.get("schema", []))
         cb = _sync_codebook(dataset_id, imputed_df, source_schema=meta.get("schema", []))
         schema_revision = cb.get("schemaRevision", 1)
@@ -1772,7 +1782,7 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         provenance_before = store.load_provenance(dataset_id)
         mask_before = store.load_mask(dataset_id) or {"maskRevision": 0}
         step = _provenance_step("impute", _impute_step_params(plan, in_place=True), meta, cb,
-                                f"impute-{plan.strategy}-1",
+                                f"impute-{plan.strategy}-1", input_schema_revision=input_schema_revision,
                                 parent_operation_id=(provenance_before or {}).get("currentOperationId"))
         mask_entries = _mask_entries_for_impute(
             masked, imputed_df, plan.targetColumns,
@@ -1897,6 +1907,7 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
 
     meta = store.get_meta(dataset_id)
     codebook = store.load_codebook(dataset_id)
+    input_schema_revision = int((codebook or {}).get("schemaRevision", meta.get("schemaRevision", 1)))
     check_revisions(collect_revisions(meta, codebook),
                     request.expectedSchemaRevision, request.expectedDataRevision)
     df = store.get_dataframe(dataset_id)
@@ -1924,7 +1935,7 @@ def _calculate_dataset_variable(dataset_id: str, request: CalculateRequest) -> d
     provenance_before = store.load_provenance(dataset_id)
     step = _provenance_step("calculate", {"expression": request.expression,
                                           "columnName": column, "mode": request.mode}, meta, cb,
-                            "calculate-1",
+                            "calculate-1", input_schema_revision=input_schema_revision,
                             parent_operation_id=(provenance_before or {}).get("currentOperationId"))
     commit = store.commit_data_change(dataset_id, meta, updated_df, codebook=cb, step=step)
     meta.pop("rowIds", None)
@@ -2185,7 +2196,8 @@ def _restore_revision(dataset_id: str, target_revision: int, operation: str,
                      "rowCount": snapshot.height,
                      "columnCount": max(snapshot.width - 1, 0)}
     step = _provenance_step(operation, params, restored_meta, restored_codebook,
-                            f"{operation}-1", parent_operation_id=cursor_before)
+                            f"{operation}-1", input_schema_revision=revisions["schemaRevision"],
+                            parent_operation_id=cursor_before)
     commit = store.commit_data_change(
         dataset_id, restored_meta, snapshot, codebook=restored_codebook, step=step,
         mask_entries=restored_mask, replace_mask=True,
@@ -2576,7 +2588,8 @@ async def import_package(file: UploadFile = File(...)) -> dict:
             step = _provenance_step("import", {"packageVersion": PACKAGE_VERSION,
                                                "sourceDatasetId": source_dataset_id,
                                                "sourceDataRevision": manifest.get("dataRevision")},
-                                    meta, codebook, "import-package-1")
+                                    meta, codebook, "import-package-1",
+                                    input_schema_revision=meta["schemaRevision"])
             provenance_import = {"datasetId": new_id_value,
                                  "operations": [{**step, "inputDataRevision": 0,
                                                  "outputDataRevision": 1}],
