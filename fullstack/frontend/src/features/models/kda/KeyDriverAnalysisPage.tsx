@@ -297,7 +297,7 @@ export default function KeyDriverAnalysisPage() {
           <Row gutter={[16, 16]} style={{ flexShrink: 0, minHeight: 0 }}>
             {/* Left: Shapley Importance Bar Chart: G32。比較表は対象外（X04） */}
             {(
-              <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Col xs={24} xxl={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
                   <GraphPanel
                     graphId="key-drivers/importance"
                     title="真のキードライバー重要度"
@@ -309,7 +309,7 @@ export default function KeyDriverAnalysisPage() {
                   <Card
                     size="small"
                     data-testid="kda-importance-chart"
-                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}
                   >
                     <EChart height={Math.max(280, result.drivers.length * 48 + 80)} ariaLabel="Shapley重要度"
                       option={{ grid: { left: 170, right: 60, top: 20, bottom: 45 },
@@ -326,32 +326,37 @@ export default function KeyDriverAnalysisPage() {
 
             {/* Right: Correlation vs True Impact Contrast Table: X04 対象外。拡大なし・表維持 */}
             {(
-              <Col xs={24} lg={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Col xs={24} xxl={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
                   <Card
                     size="small"
                     title="相関 (見かけ) vs Shapley (真のインパクト) 乖離分析"
                     data-testid="kda-contrast-table"
-                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+                    style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}
                   >
                     <Table
                       size="small"
                       pagination={false}
+                      tableLayout="fixed"
+                      scroll={{ x: 760 }}
                       dataSource={result.drivers.map((d, idx) => ({ ...d, key: idx }))}
                       columns={[
-                        { title: '要因名', dataIndex: 'label' },
+                        { title: '要因名', dataIndex: 'label', width: 240, onCell: () => ({ style: { whiteSpace: 'normal', overflowWrap: 'anywhere' } }) },
                         {
                           title: 'Shapley %',
                           dataIndex: 'importance_pct',
+                          width: 96,
                           render: (v: number) => <strong>{v.toFixed(1)}%</strong>,
                         },
                         {
                           title: '単相関 r',
                           dataIndex: 'pearson_r',
+                          width: 120,
                           render: (v: number | null, driver: DriverItem) => v == null ? (driver.kind === 'nominal' ? '—（対象外）' : '—（算出不可）') : `r = ${v.toFixed(2)}`,
                         },
                         {
                           title: 'VIF',
                           dataIndex: 'vif',
+                          width: 80,
                           render: (v: number | null, driver: DriverItem) => (
                             <span title={driver.kind === 'nominal' ? '名義尺度の単一VIFは対象外です' : vifDisplay(v).label} style={{ color: vifDisplay(v).color }}>{vifDisplay(v).text}</span>
                           ),
@@ -359,9 +364,10 @@ export default function KeyDriverAnalysisPage() {
                         {
                           title: '乖離評価',
                           dataIndex: 'note',
+                          width: 224,
                           render: (note: string) => {
                             const color = note.includes('見かけ') ? 'orange' : (note.includes('隠れた') ? 'purple' : 'default')
-                            return <Tag color={color}>{note}</Tag>
+                            return <Tag color={color} style={{ whiteSpace: 'normal', maxWidth: '100%', overflowWrap: 'anywhere', marginInlineEnd: 0 }}>{note}</Tag>
                           },
                         },
                       ]}
