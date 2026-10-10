@@ -77,6 +77,11 @@ describe('saved codebook display', () => {
     await waitFor(() => expect(screen.getByText('Q — 変更後の設問')).toBeInTheDocument())
   })
   it('uses ordinal categories, missing mask and codebook order instead of numeric histograms', async () => {
+    // Unweighted categorical Statistics transport; raw display assertions stay unchanged.
+    vi.spyOn(api, 'post').mockImplementation(async (_path, body: any) => ({
+      datasetId: body.datasetId, dataRevision: body.expectedDataRevision, schemaRevision: body.expectedSchemaRevision,
+      weightStatus: 'omitted', columns: {},
+    }) as any)
     render(<Provider store={setup()}><MemoryRouter><StatisticsPage /></MemoryRouter></Provider>)
     const card = await screen.findByTestId('question-card-Q')
     expect(within(card).getByText('順序尺度')).toBeInTheDocument()
@@ -89,6 +94,11 @@ describe('saved codebook display', () => {
     expect(within(card).getByTestId('denominators-bar')).toHaveTextContent('無回答: 2')
   })
   it('masks missing codes for numeric summaries and responds to a saved scale change', async () => {
+    // Unweighted Statistics /summaries transport; display assertions stay unchanged.
+    vi.spyOn(api, 'post').mockImplementation(async (_path, body: any) => ({
+      datasetId: body.datasetId, dataRevision: body.expectedDataRevision, schemaRevision: body.expectedSchemaRevision,
+      weightStatus: 'omitted', columns: {},
+    }) as any)
     const testStore = setup('ratio')
     render(<Provider store={testStore}><MemoryRouter><StatisticsPage /></MemoryRouter></Provider>)
     await screen.findByTestId('histogram-Q')
@@ -98,6 +108,11 @@ describe('saved codebook display', () => {
     expect(screen.queryByTestId('histogram-Q')).toBeNull()
   })
   it('opens a histogram in the shared expansion dialog and removes the temporary host when closed', async () => {
+    // Unweighted Statistics /summaries transport; display assertions stay unchanged.
+    vi.spyOn(api, 'post').mockImplementation(async (_path, body: any) => ({
+      datasetId: body.datasetId, dataRevision: body.expectedDataRevision, schemaRevision: body.expectedSchemaRevision,
+      weightStatus: 'omitted', columns: {},
+    }) as any)
     const testStore = setup('ratio')
     render(
       <Provider store={testStore}>

@@ -1,6 +1,7 @@
 import React from 'react'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { api } from '../src/api/client'
 import { configureStore } from '@reduxjs/toolkit'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
@@ -17,7 +18,12 @@ vi.mock('../src/features/dataset/MultiResponseStatistics',()=>({default:()=>null
 vi.mock('../src/features/common/GraphPanel',()=>({default:({children}:any)=><div>{children}</div>,useGraphPopupContainer:()=>undefined}))
 vi.mock('../src/features/common/GraphExpansion',()=>({useGraphExpansion:()=>({openWhenAvailable:()=>{},session:null})}))
 function localStore(){const base=store.getState();const initial={...base,selection:{...base.selection,datasetId:'d',allRowIds:fixture.rowIds,activeRowIds:fixture.rowIds,selectedRowIds:[]},globalVariables:{...base.globalVariables,activeEntities:[{kind:'column',columnId:'x'}]},codebook:{...base.codebook,datasetId:'d',columns:[{columnId:'x',name:'X',label:'X',role:'question',scaleType:'ratio',missingCodes:[],missingReasons:{},valueLabels:{},categoryOrder:[],isReversed:false,multiResponseGroup:null}]}};return configureStore({reducer:(state=initial,a:any)=>a.type==='test/scope'?{...state,selection:{...state.selection,activeRowIds:a.payload}}:state,middleware:g=>g({serializableCheck:false})})}
-afterEach(()=>{cleanup();vi.clearAllMocks()})
+// Explicit unweighted transport mock for the independent numeric companion.
+beforeEach(() => { vi.spyOn(api, 'post').mockImplementation(async (_path, body: any) => ({
+  datasetId: body.datasetId, dataRevision: body.expectedDataRevision, schemaRevision: body.expectedSchemaRevision,
+  weightStatus: 'omitted', columns: {},
+}) as any) })
+afterEach(()=>{cleanup();vi.clearAllMocks();vi.restoreAllMocks()})
 it('WF-02 clears old-scope values, explains failure and retries the current input', async () => {
   const call = vi.mocked(graphEngine.describeNumeric)
   call.mockResolvedValueOnce([2,0,50,56.57,10,10,50,90,90])

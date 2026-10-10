@@ -23,7 +23,8 @@ import GraphPanel from '../common/GraphPanel'
 import { useGraphExpansion } from '../common/GraphExpansion'
 import { getSvgPoint } from '../../utils/svgCoordinates'
 import { normalizeCode, useCodebook } from './useCodebookColumn'
-import { QuestionCard } from '../distribution/QuestionCard'
+import { QuestionCard, type QuestionSummaryData, type WeightedSummary, type WeightMeta } from '../distribution/QuestionCard'
+import { api } from '../../api/client'
 import MultiResponseStatistics from './MultiResponseStatistics'
 
 interface StatsRow {
@@ -43,6 +44,79 @@ interface StatsRow {
   unique?: string
 }
 
+type ColumnSummary = Pick<QuestionSummaryData, 'denominators' | 'distribution' | 'weighted'>
+
+interface StatisticsSummaryResponse {
+  datasetId: string
+  dataRevision: number
+  schemaRevision: number
+  weightStatus: WeightMeta['status']
+  warnings?: WeightedSummary['warnings']
+  columns: Record<string, ColumnSummary>
+}
+
+interface NumericWeightRow {
+  key: string
+  column: string
+  valid?: number
+  weighted?: WeightedSummary | null
+}
+
+const finiteValue = (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value)
+const weightMass = (weighted: WeightedSummary | null | undefined) => weighted?.weightedNStatus === 'out_of_range'
+  ? '範囲外' : finiteValue(weighted?.weightedN) ? weighted!.weightedN!.toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : '—'
+const weightedMean = (weighted: WeightedSummary | null | undefined) => {
+  if (!weighted) return '—（加重データを取得できません）'
+  if (finiteValue(weighted.weightedMean)) return weighted.weightedMean!.toFixed(3)
+  return weighted.weightedN === 0 ? '—（この変数の有効回答に正のウェイトがありません）' : '—（加重平均を取得できません）'
+}
+
+function CategoricalWeightTable({ name, label, summary }: { name: string; label?: string; summary?: ColumnSummary }) {
+  const denominators = summary?.denominators
+  const distribution = summary?.distribution
+  const weighted = summary?.weighted
+  const weightedByCode = new Map((weighted?.distribution ?? []).map(item => [normalizeCode(item.code), item]))
+  const unavailable = '—（取得できません）'
+  const count = (value: number | undefined) => finiteValue(value) ? value : unavailable
+  return <Card size="small" title={label && label !== name ? `${name} — ${label}` : name}
+    data-testid={`statistics-category-weight-${name}`}>
+    {!denominators || !distribution ? <Typography.Text>この変数の集計データを取得できません。</Typography.Text> : <>
+      <Space wrap data-testid={`statistics-category-denominators-${name}`}>
+        <span>全対象 n: {count(denominators.total)}</span><span>設問対象 n: {count(denominators.target)}</span>
+        <span>有効回答 n: {count(denominators.valid)}</span><span>無回答 n: {count(denominators.missing)}</span>
+        <span>非該当 n: {count(denominators.notApplicable)}</span><span>無効 n: {count(denominators.invalid === undefined ? 0 : denominators.invalid)}</span>
+      </Space>
+      <Typography.Paragraph>
+        有効回答の加重対象 Σw: {weightMass(weighted)} ／ 有効回答内のウェイト欠損: {finiteValue(weighted?.weightMissingCount) ? weighted!.weightMissingCount : '—'}
+      </Typography.Paragraph>
+      {!weighted && <Typography.Paragraph>この変数の加重データを取得できません。</Typography.Paragraph>}
+      {weighted?.weightedN === 0 && <Typography.Paragraph>この変数の有効回答に正のウェイトがありません。加重割合は利用できません。</Typography.Paragraph>}
+      <Table size="small" pagination={false} dataSource={distribution}
+        rowKey={item => JSON.stringify([normalizeCode(item.code), !!item.isMissing, !!item.isInvalid])} columns={[
+        { title: 'コード・ラベル', key: 'category', render: (_, item) => <Space wrap>
+          <span>{item.code === null ? '空欄' : String(item.code)}{item.label && item.label !== String(item.code) ? ` — ${item.label}` : ''}</span>
+          {item.isInvalid ? <Tag>無効</Tag> : item.isMissing ? <Tag>{item.missingReason === 'not_applicable' ? '非該当'
+            : item.missingReason === 'missing' ? '無回答' : item.missingReason || '無回答'}</Tag> : null}
+        </Space> },
+        { title: '非加重 n', dataIndex: 'count', key: 'count', render: value => finiteValue(value) ? value : unavailable },
+        { title: '加重度数 Σw', key: 'weightedCount', render: (_, item) => {
+          if (item.isMissing || item.isInvalid) return '対象外'
+          const entry = weightedByCode.get(normalizeCode(item.code))
+          return entry?.weightedCountStatus === 'out_of_range' ? '範囲外'
+            : finiteValue(entry?.weightedCount) ? entry!.weightedCount!.toLocaleString('ja-JP', { maximumFractionDigits: 2 }) : unavailable
+        } },
+        { title: '加重割合（有効回答ベース）', key: 'weightedPct', render: (_, item) => {
+          if (item.isMissing || item.isInvalid) return '対象外'
+          if (weighted?.weightedN === 0) return '—（正のウェイトなし）'
+          const entry = weightedByCode.get(normalizeCode(item.code))
+          return finiteValue(entry?.weightedPct) ? `${entry!.weightedPct!.toFixed(1)}%` : unavailable
+        } },
+      ]} scroll={{ x: 'max-content' }} />
+    </>}
+    {weighted?.warnings?.map(warning => <Typography.Paragraph type="warning" key={warning.code}>{warning.message}</Typography.Paragraph>)}
+  </Card>
+}
+
 /** Descriptive statistics page: per-axis summary table + histogram per axis. */
 export default function StatisticsPage() {
   const questionText = useQuestionText()
@@ -53,8 +127,17 @@ export default function StatisticsPage() {
   const entities = useSelector(selectVariableEntities)
   const maCount = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key)).length
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
-  const data = useColumnarData(selection.datasetId, [...globalVars.activeVariableIds, ...(pcpColorBy ? [pcpColorBy] : [])])
-  const { getColumn, formatValueLabel, getOrderedCategories } = useCodebook()
+  // The shared selector recreates this array on weight changes. Keep ordinary
+  // membership stable locally so a header toggle cannot clear/recompute raw stats.
+  const ordinaryNamesKey = JSON.stringify(globalVars.activeVariableIds)
+  const ordinaryNames = useMemo<string[]>(() => JSON.parse(ordinaryNamesKey), [ordinaryNamesKey])
+  const data = useColumnarData(selection.datasetId, [...ordinaryNames, ...(pcpColorBy ? [pcpColorBy] : [])])
+  const { columns: codebookColumns, schemaRevision, isLoading: isCodebookLoading,
+    getColumn, formatValueLabel, getOrderedCategories } = useCodebook()
+  const codebookDatasetId = useSelector((s: RootState) => s.codebook.datasetId)
+  const weightColumnId = useSelector((s: RootState) => s.globalVariables.weightColumnId)
+  const weightColumn = codebookColumns.find(column => column.columnId === weightColumnId)?.name
+  const codebookReady = codebookDatasetId === selection.datasetId && !isCodebookLoading
   const theme = vizTheme(false)
   const { getColor } = useRowColorResolver()
   const { openWhenAvailable, session } = useGraphExpansion()
@@ -133,9 +216,9 @@ export default function StatisticsPage() {
 
   const targetSchema = useMemo(() => {
     if (!data) return []
-    const activeVarSet = new Set(globalVars.activeVariableIds)
-    return activeVarSet ? data.schema.filter((c) => activeVarSet.has(c.name)) : data.schema
-  }, [data, globalVars?.activeVariableIds])
+    const activeVarSet = new Set(ordinaryNames)
+    return data.schema.filter((c) => activeVarSet.has(c.name))
+  }, [data, ordinaryNames])
 
   const columnValues = useMemo(() => Object.fromEntries(targetSchema.map(column => {
     const spec = getColumn(column.name)
@@ -238,6 +321,54 @@ export default function StatisticsPage() {
     }).map((c) => c.name),
     [targetSchema, columnValues, getColumn],
   )
+  const summaryColumns = useMemo(() => {
+    const eligible = new Set([...numericColumns, ...categoricalColumns])
+    return targetSchema.filter(column => eligible.has(column.name)).map(column => column.name)
+  }, [targetSchema, numericColumns, categoricalColumns])
+  const [weightAttempt, setWeightAttempt] = useState(0)
+  // Independent ownership: weight changes replace only the weighted companions.
+  // Codebook definitions and unresolved weight IDs are part of this identity too.
+  const weightInput = useMemo(() => ({
+    scopeKey: analysisScope.scopeKey, datasetId: selection.datasetId,
+    dataRevision: selection.dataRevision, schemaRevision, rowIds: [...effectiveRowIds],
+    columns: summaryColumns, codebookColumns, codebookReady, weightColumnId,
+    weightColumn, weightMode: weightColumnId ? 'column' as const : 'none' as const,
+    weightAttempt, viewActive,
+  }), [analysisScope.scopeKey, selection.datasetId, selection.dataRevision, schemaRevision,
+    effectiveRowIds, summaryColumns, codebookColumns, codebookReady, weightColumnId, weightColumn, weightAttempt, viewActive])
+  const [weightResult, setWeightResult] = useState<{
+    input: typeof weightInput; value: StatisticsSummaryResponse | null; error: string | null; pending: boolean
+  } | null>(null)
+  const hasNumericScope = effectiveRowIds.length > 0 && numericColumns.length > 0
+  const hasSummaryScope = effectiveRowIds.length > 0 && summaryColumns.length > 0
+  const currentWeight = viewActive && hasSummaryScope && weightResult?.input === weightInput ? weightResult : null
+  const weightResponse = currentWeight?.value
+  const unresolvedWeight = !!weightColumnId && !weightColumn
+  useEffect(() => {
+    if (!viewActive || !weightInput.datasetId || !hasSummaryScope || !codebookReady || unresolvedWeight) return
+    let cancelled = false
+    setWeightResult({ input: weightInput, value: null, error: null, pending: true })
+    void api.post<StatisticsSummaryResponse>('/summaries', {
+      datasetId: weightInput.datasetId, rowIds: weightInput.rowIds, columns: weightInput.columns,
+      expectedDataRevision: weightInput.dataRevision, expectedSchemaRevision: weightInput.schemaRevision,
+      weightMode: weightInput.weightMode,
+      ...(weightInput.weightMode === 'column' ? { weightColumn: weightInput.weightColumn } : {}),
+    }).then(value => {
+      if (cancelled) return
+      if (value.datasetId !== weightInput.datasetId || value.dataRevision !== weightInput.dataRevision
+        || value.schemaRevision !== weightInput.schemaRevision) throw new Error('現在のデータと集計結果の版が一致しません')
+      setWeightResult({ input: weightInput, value, error: null, pending: false })
+    }).catch(error => {
+      if (!cancelled) setWeightResult({ input: weightInput, value: null, pending: false,
+        error: typeof error?.message === 'string' && error.message.trim() ? error.message : '原因を確認できませんでした' })
+    })
+    return () => { cancelled = true }
+  }, [viewActive, weightInput, hasSummaryScope, codebookReady, unresolvedWeight])
+  const weightRows: NumericWeightRow[] = weightResponse && weightColumnId && weightResponse.weightStatus !== 'omitted'
+    ? numericColumns.map(column => ({ key: column, column,
+      valid: weightResponse.columns[column]?.denominators?.valid, weighted: weightResponse.columns[column]?.weighted })) : []
+  const weightWarnings = [...new Set([...(weightResponse?.warnings ?? []),
+    ...weightRows.flatMap(row => row.weighted?.warnings ?? [])].map(warning => warning.message))]
   // Column-group pagination: render one slice of cards + histograms at a
   // time so hundreds of columns never mount simultaneously (max-depth guard).
   const PAGE_SIZE = 12
@@ -373,8 +504,9 @@ export default function StatisticsPage() {
             </Card>
           )}
           <Card
+              data-testid="statistics-raw-summary"
               size="small"
-              title={<span style={{ fontSize: 13, fontWeight: 600 }}>記述統計量サマリー（{analysisScope.label}）</span>}
+              title={<span style={{ fontSize: 13, fontWeight: 600 }}>記述統計量サマリー（非加重・{analysisScope.label}）</span>}
               style={{ boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03)' }}
             >
               <Table<StatsRow>
@@ -401,6 +533,48 @@ export default function StatisticsPage() {
               />
             </Card>
 
+          <Typography.Text type="secondary" data-testid="statistics-raw-basis">
+            記述統計量とヒストグラムは非加重の観測値です。欠損コードを除外し、定義域による除外・逆転得点化は行いません。
+            カテゴリカードも非加重です。標準偏差・分位点・ヒストグラムへのウェイト適用はありません。
+            コードブック基準の加重カテゴリ集計は、非加重カテゴリカードの下に別枠で表示します。
+          </Typography.Text>
+          {hasNumericScope && viewActive && <Card size="small" title="数値変数の加重集計" data-testid="statistics-weight-companion">
+            {!codebookReady ? <Typography.Text role="status">現在のコードブックを読み込み中...</Typography.Text>
+              : unresolvedWeight ? <Alert type="warning" showIcon message="選択したウェイト列を確認できません"
+                description="上部のウェイト選択を確認してください。数値加重集計は表示していません。" />
+              : currentWeight?.error ? <Alert type="error" showIcon message="数値加重集計に失敗しました"
+                description={`非加重の統計量は引き続き利用できます。詳細: ${currentWeight.error}`}
+                action={<Button onClick={() => setWeightAttempt(attempt => attempt + 1)}>加重集計を再試行</Button>} />
+              : !currentWeight || currentWeight.pending ? <Space role="status"><Spin size="small" />数値加重集計を確認中...</Space>
+              : <>
+                <Typography.Paragraph data-testid="statistics-weight-status">
+                  {!weightColumnId ? '数値加重集計: ウェイト未選択（非加重）'
+                    : weightResponse?.weightStatus === 'applied' ? `数値加重集計: ウェイト適用中（${weightColumn}）`
+                    : weightResponse?.weightStatus === 'no_positive_weight' ? `数値加重集計: 正のウェイトがありません（${weightColumn}）`
+                    : '数値加重集計: ウェイトが適用されていません。加重値は利用できません。'}
+                </Typography.Paragraph>
+                {weightRows.length > 0 && <>
+                  <Table<NumericWeightRow> size="small" pagination={false} dataSource={weightRows} columns={[
+                    { title: '列', dataIndex: 'column', key: 'column' },
+                    { title: '加重平均', key: 'weightedMean', render: (_, row) => weightedMean(row.weighted) },
+                    { title: '有効回答 n', dataIndex: 'valid', key: 'valid', render: value => finiteValue(value) ? value : '—' },
+                    { title: '加重対象 Σw', key: 'weightedN', render: (_, row) => weightMass(row.weighted) },
+                    { title: '有効回答内のウェイト欠損', key: 'weightMissingCount', render: (_, row) => finiteValue(row.weighted?.weightMissingCount) ? row.weighted!.weightMissingCount : '—' },
+                    { title: '集計基準', key: 'basis', render: (_, row) => {
+                      const spec = getColumn(row.column)
+                      return `${spec?.categoryOrder.length ? '定義域外を除外' : '有効回答'}${spec?.isReversed ? '・逆転得点化' : ''}`
+                    } },
+                  ]} scroll={{ x: 'max-content' }} />
+                  <Typography.Paragraph type="secondary">
+                    有効回答 n はゼロ・欠損ウェイトの回答を含みます。加重対象 Σw は変数ごとの有効回答の正のウェイト合計で、人数ではありません。
+                    加重平均はコードブックの定義域・逆転得点化を適用します。非加重の観測値とは集計基準が異なる場合があります。
+                  </Typography.Paragraph>
+                  <Typography.Paragraph type="secondary">標準誤差は非加重n基準。母集団推論には調査設計情報が必要。</Typography.Paragraph>
+                </>}
+                {weightWarnings.map(warning => <Typography.Paragraph type="warning" key={warning}>{warning}</Typography.Paragraph>)}
+              </>}
+          </Card>}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {visibleCategoricalColumns.map((name) => targetSchema.find((c) => c.name === name)!).filter(Boolean).map(column => {
               const values = columnValues[column.name].values
@@ -425,6 +599,38 @@ export default function StatisticsPage() {
               </div>
             })}
           </div>
+          {visibleCategoricalColumns.length > 0 && viewActive && <Card size="small" title="コードブック基準の加重カテゴリ集計"
+            data-testid="statistics-categorical-weight-companion">
+            <Typography.Paragraph type="secondary">
+              コードブックの非該当・欠損・定義域に基づく集計です。上の非加重カテゴリカードとは有効回答の範囲が異なる場合があります。
+            </Typography.Paragraph>
+            {!codebookReady ? <Typography.Text role="status">現在のコードブックを読み込み中...</Typography.Text>
+              : unresolvedWeight ? <Alert type="warning" showIcon message="選択したウェイト列を確認できません"
+                description="上部のウェイト選択を確認してください。カテゴリ加重集計は表示していません。" />
+              : currentWeight?.error ? <Alert type="error" showIcon message="カテゴリ加重集計に失敗しました"
+                description={`非加重の統計量は引き続き利用できます。詳細: ${currentWeight.error}`}
+                action={<Button onClick={() => setWeightAttempt(attempt => attempt + 1)}>加重集計を再試行</Button>} />
+              : !currentWeight || currentWeight.pending ? <Space role="status"><Spin size="small" />カテゴリ加重集計を確認中...</Space>
+              : <>
+                <Typography.Paragraph data-testid="statistics-categorical-weight-status">
+                  {!weightColumnId ? 'カテゴリ加重集計: ウェイト未選択（非加重）'
+                    : weightResponse?.weightStatus === 'applied' ? `カテゴリ加重集計: ウェイト適用中（${weightColumn}）`
+                    : weightResponse?.weightStatus === 'no_positive_weight' ? `カテゴリ加重集計: 正のウェイトがありません（${weightColumn}）`
+                    : 'カテゴリ加重集計: ウェイトが適用されていません。加重値は利用できません。'}
+                </Typography.Paragraph>
+                {weightColumnId && weightResponse && weightResponse.weightStatus !== 'omitted' &&
+                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    {visibleCategoricalColumns.map(name => <CategoricalWeightTable key={name} name={name}
+                      label={getColumn(name)?.label} summary={weightResponse.columns[name]} />)}
+                  </Space>}
+                {weightResponse?.warnings?.map(warning => <Typography.Paragraph type="warning" key={warning.code}>{warning.message}</Typography.Paragraph>)}
+              </>}
+            <Typography.Paragraph type="secondary">
+              加重割合は、この変数の有効回答のうち正のウェイトを持つ回答のΣwを分母にします。非加重nにはゼロ・欠損ウェイトの有効回答も含みます。Σwは人数ではありません。
+            </Typography.Paragraph>
+            <Typography.Paragraph type="secondary">非加重カテゴリカードの分母切替は、この加重割合を変更しません。</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">標準誤差は非加重n基準。母集団推論には調査設計情報が必要。</Typography.Paragraph>
+          </Card>}
           {(() => {
             const renderHistCard = (column: string) => {
               const rows = scopedIndexes
