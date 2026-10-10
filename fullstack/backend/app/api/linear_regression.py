@@ -1854,6 +1854,7 @@ def lr_materialize(result_id, manifest, req):
             raise BizError("ANALYSIS_INPUT_STALE",
                            "書込時にデータ版が更新されています。再実行してください。",
                            status_code=409)
+        input_schema_revision = cur_rev["schemaRevision"]
         codebook = cur_code
         existing = {c.get("name") for c in
                     (codebook.get("columns", []) or [])}
@@ -1918,7 +1919,7 @@ def lr_materialize(result_id, manifest, req):
                            "lrPayload": payload_norm},
                 "targetRowIds": sorted(scope_ids),
                 "targetCells": [],
-                "inputSchemaRevision": int(cb.get("schemaRevision", 1)),
+                "inputSchemaRevision": input_schema_revision,
                 "outputSchemaRevision": int(cb.get("schemaRevision", 1)),
                 "algorithmVersion": ALGORITHM_VERSION,
                 "timestamp": now_iso(), "createdBy": "local-session"}
