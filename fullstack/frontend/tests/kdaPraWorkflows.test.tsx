@@ -4,26 +4,43 @@ import { Provider } from 'react-redux'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
-import KeyDriverAnalysisPage from '../src/features/models/kda/KeyDriverAnalysisPage'
+import KeyDriverAnalysisPage, { type KdaResponse } from '../src/features/models/kda/KeyDriverAnalysisPage'
 import PenaltyRewardPage from '../src/features/pra/PenaltyRewardPage'
 import { AnalysisViewActivityContext, createScopeSnapshot } from '../src/features/selection/analysisScope'
 import { captureKdaPraHandoff, readKdaPraHandoff, type KdaPraHandoff } from '../src/features/pra/kdaHandoff'
 import { store, selectionReducer, globalObservationsSlice, globalVariablesSlice, datasetLoaded, variablesInitialized, datasetValuesUpdated, activeEntitiesSet, selectOrdinaryVariables, selectionApplied } from '../src/app/store'
 import { codebookSlice, fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), getCodebook: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), getCodebook: vi.fn(), chart: vi.fn() }))
 vi.mock('../src/api/client', () => ({ api: mocks, getCodebook: mocks.getCodebook }))
 // Pages, Redux, real AntD/ColumnSelect and navigation remain real. Only charts are doubled.
-vi.mock('../src/features/charts/EChart', () => ({ default: () => null }))
+vi.mock('../src/features/charts/EChart', () => ({ default: (props: any) => { mocks.chart(props); return null } }))
 vi.mock('../src/features/common/GraphPanel', () => ({ default: ({ children }: any) => <div>{children}</div>, useGraphPopupContainer: () => undefined }))
 const names = ['x', 'y', 'z', 'extra'], rows = ['r1', 'r2', 'r3']
 function book(ns = names, revision = 1) { return { datasetId: 'd', schemaRevision: revision, columns: ns.map(name => ({ columnId: name, name, label: name, scaleType: 'ratio', role: 'question', valueLabels: {}, categoryOrder: [], missingCodes: [], isReversed: false })), multiResponseGroups: [] } }
 function metadata(ns = names) { return { schema: ns.map(name => ({ name, semanticType: 'numeric', physicalType: 'float' })) } }
-function localStore() {
+function localStore(ns = names) {
   const base = store.getState()
   const local = configureStore({ reducer: (s = base, a: any) => ({ ...s, selection: selectionReducer(s.selection, a), globalVariables: globalVariablesSlice.reducer(s.globalVariables, a), globalObservations: globalObservationsSlice.reducer(s.globalObservations, a), codebook: codebookSlice.reducer(s.codebook, a) }), middleware: get => get({ serializableCheck: false }) })
-  local.dispatch(datasetLoaded({ datasetId: 'd', name: 'test', rowIds: rows, dataRevision: 1 })); local.dispatch(variablesInitialized({ datasetId: 'd', variables: names })); return local
+  local.dispatch(datasetLoaded({ datasetId: 'd', name: 'test', rowIds: rows, dataRevision: 1 })); local.dispatch(variablesInitialized({ datasetId: 'd', variables: ns })); return local
 }
-function kdaResponse(body: any) { return { run_id: 'kda-run-1', method: 'shapley_lmg', outcome: { name: body.outcome, label: body.outcome, type: 'numeric' }, model: { r_squared: .84, n_valid: body.rowIds.length, vif_max: 1, warnings: [] }, drivers: body.drivers.map((name: string) => ({ name, label: name, importance_raw: .42, importance_pct: 50, direction: 1, standardized_coef: .4, raw_slope: .5, pearson_r: .4, vif: 1, note: '' })), what_if_baseline: { outcome_mean: 5, driver_means: {}, raw_slopes: {} } } }
+function kdaResponse(body: any): KdaResponse { return { run_id: 'kda-run-1', method: 'shapley_lmg', outcome: { name: body.outcome, label: body.outcome, type: 'numeric' }, model: { r_squared: .84, n_valid: body.rowIds.length, vif_max: 1, vif_coverage: 'all_drivers', warnings: [] }, drivers: body.drivers.map((name: string) => ({ name, label: name, kind: 'numeric', importance_raw: .84 / body.drivers.length, importance_pct: 100 / body.drivers.length, direction: 1, standardized_coef: .4, raw_slope: .5, pearson_r: .4, vif: 1, note: '' })), what_if_baseline: { outcome_mean: 5, driver_means: Object.fromEntries(body.drivers.map((name: string) => [name, 3])), raw_slopes: Object.fromEntries(body.drivers.map((name: string) => [name, .5])) } } }
+function nominalResponse(body: any, nominalNames: string[], aliasedNames: string[] = []): KdaResponse {
+  const result = kdaResponse(body)
+  result.model.vif_coverage = 'numeric_drivers_only'
+  result.model.vif_max = body.drivers.every((name: string) => nominalNames.includes(name)) ? null : 1
+  result.drivers = result.drivers.map(driver => {
+    if (nominalNames.includes(driver.name)) return { ...driver, kind: 'nominal', direction: null, standardized_coef: null,
+      raw_slope: null, pearson_r: null, vif: null, note: 'カテゴリ全体の重要度',
+      encoding: { levels: [{ code: 'A', label: 'Alpha' }, { code: 'B', label: 'Beta' }], reference_code: 'A', design_column_count: 1 } }
+    if (aliasedNames.includes(driver.name)) return { ...driver, direction: null, standardized_coef: null, raw_slope: null }
+    return driver
+  })
+  for (const name of [...nominalNames, ...aliasedNames]) {
+    delete result.what_if_baseline.driver_means[name]
+    delete result.what_if_baseline.raw_slopes[name]
+  }
+  return result
+}
 function praResponse(body: any) { return { run_id: 'pra-run', outcome: { name: body.outcome, label: body.outcome, type: 'numeric' }, scale: { min: 1, max: 5, neutral: 3 }, model: { r_squared: .5, n_valid: body.rowIds.length, alpha: .05, asymmetry_alpha: .15, warnings: [] }, attributes: [], all_basic_dissatisfied_row_ids: [] } }
 function handoff(overrides: Partial<KdaPraHandoff> = {}): KdaPraHandoff { return { version: 1, kind: 'kda-to-pra', sourceRunId: 'kda-source', datasetId: 'd', dataRevision: 1, schemaRevision: 1, outcome: 'x', drivers: ['y', 'z'], scopeSnapshot: createScopeSnapshot('selected', ['r1'], 'd', 1, 1), sourceConclusion: { kind: 'shapley-importance', method: 'shapley_lmg', rSquared: .84, nValid: 1, drivers: [{ name: 'y', importancePct: 60, direction: 1 }, { name: 'z', importancePct: 40, direction: -1 }] }, ...overrides } }
 function picker(id: string) { fireEvent.click(within(screen.getByTestId(id).closest('.column-select-multi-wrap')! as HTMLElement).getByRole('button', { name: '変数を選択' })); return screen.getByRole('dialog') }
@@ -46,6 +63,108 @@ function KeptPages({ praVisited = false }: { praVisited?: boolean }) {
     <AnalysisViewActivityContext.Provider value={!praActive}><div style={{ display: praActive ? 'none' : 'block' }}><KeyDriverAnalysisPage /></div></AnalysisViewActivityContext.Provider>
     {(visited || praActive) && <AnalysisViewActivityContext.Provider value={praActive}><div style={{ display: praActive ? 'block' : 'none' }}><PenaltyRewardPage /></div></AnalysisViewActivityContext.Provider>}</>
 }
+
+describe('KDA nominal results and numeric what-if controls', () => {
+  async function prepare(ns: string[], nominalNames: string[]) {
+    mocks.get.mockResolvedValue({ schema: metadata(ns).schema.map(column => nominalNames.includes(column.name)
+      ? { ...column, semanticType: 'nominal', physicalType: 'string' } : column) })
+    const saved = book(ns)
+    saved.columns = saved.columns.map(column => nominalNames.includes(column.name) ? { ...column, scaleType: 'nominal' } : column)
+    mocks.getCodebook.mockResolvedValue(saved)
+    const local = localStore(ns)
+    await local.dispatch(fetchCodebookThunk('d'))
+    return local
+  }
+  function importanceOption() {
+    return mocks.chart.mock.calls.filter(([props]) => props.ariaLabel === 'Shapley重要度').at(-1)![0].option
+  }
+
+  it('renders original nominal importance once with unsigned chart text, null diagnostics and only identifiable numeric sliders', async () => {
+    const local = await prepare(names, ['y'])
+    mocks.post.mockImplementation(async (path: string, body: any) => path === '/models/kda'
+      ? body.drivers.includes('y') ? nominalResponse(body, ['y'], ['z']) : kdaResponse(body)
+      : praResponse(body))
+    render(tree(local, <KeptPages />, '/key-drivers'))
+    await waitFor(() => expect(screen.getByTestId('kda-run-btn')).toBeEnabled())
+    await choose('kda-outcome-select', ['x'])
+    await choose('kda-drivers-select', ['y', 'z', 'extra'], true)
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    const contrast = await screen.findByTestId('kda-contrast-table')
+    const nominalRow = within(contrast).getByText('y', { exact: true }).closest('tr')!
+    expect(within(nominalRow).getByText('—（対象外）')).toBeInTheDocument()
+    expect(within(nominalRow).getByTitle('名義尺度の単一VIFは対象外です')).toHaveTextContent('—')
+    expect(within(contrast).getAllByText('y', { exact: true })).toHaveLength(1)
+    expect(screen.getByTestId('kda-vif-coverage')).toHaveTextContent('名義尺度の共線性は評価していません')
+    const option = importanceOption()
+    expect(option.yAxis.data).toEqual(['#1 y\n名義尺度・方向なし', '#2 z\n方向を算出できません', '#3 extra\n+ 正の寄与'])
+    expect(option.series[0].data).toHaveLength(3)
+    expect(option.series[0].data[0]).toMatchObject({ value: 100 / 3, itemStyle: { color: '#8c8c8c' } })
+    expect(option.series[0].data[1].itemStyle.color).toBe('#8c8c8c')
+    expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain('名義尺度・方向なし')
+    expect(option.tooltip.formatter([{ dataIndex: 0 }])).not.toMatch(/正の寄与|負の寄与|null/)
+    expect(option.tooltip.formatter([{ dataIndex: 1 }])).toContain('方向を算出できません')
+    expect(option.tooltip.formatter([{ dataIndex: 1 }])).not.toContain('名義尺度')
+    const simulator = screen.getByTestId('kda-whatif-simulator')
+    expect(within(simulator).getAllByRole('slider')).toHaveLength(1)
+    const slider = within(simulator).getByRole('slider', { name: 'extraのスコア変動' })
+    fireEvent.keyDown(slider, { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 })
+    await waitFor(() => expect(slider).toHaveAttribute('aria-valuenow', '0.1'))
+    expect(within(simulator).getByText('予測向上幅 (Shift)').closest('.ant-statistic')).toHaveTextContent('+0.050')
+    expect(screen.getByTestId('send-pra-btn')).toBeDisabled()
+    expect(screen.getByText(/実行済みKDAに名義尺度の要因/)).toHaveTextContent('名義尺度の要因（y）')
+    expect(screen.getByText(/実行済みKDAに名義尺度の要因/)).toHaveTextContent('この分析全体を引き継げません')
+    await choose('kda-drivers-select', ['z', 'extra'], true)
+    expect(screen.getByTestId('send-pra-btn')).toBeDisabled()
+    expect(screen.getByText(/実行済みKDAに名義尺度の要因/)).toHaveTextContent('y')
+    fireEvent.click(screen.getByTestId('send-pra-btn'))
+    expect(screen.getByTestId('location-state')).toHaveTextContent('null')
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    await waitFor(() => expect(screen.getByTestId('send-pra-btn')).toBeEnabled())
+    expect(screen.queryByText(/実行済みKDAに名義尺度の要因/)).toBeNull()
+    fireEvent.click(screen.getByTestId('send-pra-btn'))
+    await waitFor(() => expect(selected('pra-attributes-select')).toEqual(['z', 'extra']))
+    expect(JSON.parse(screen.getByTestId('location-state').textContent!).kdaHandoff).toMatchObject({
+      outcome: 'x', drivers: ['z', 'extra'], dataRevision: 1, schemaRevision: 1, scopeSnapshot: { rowIds: rows },
+      sourceConclusion: { drivers: [{ name: 'z', direction: 1 }, { name: 'extra', direction: 1 }] },
+    })
+  }, 15000)
+
+  it('keeps the outcome mean but no invented prediction or VIF claim for nominal-only output', async () => {
+    const local = await prepare(['x', 'y'], ['y'])
+    mocks.post.mockImplementation(async (_path: string, body: any) => nominalResponse(body, ['y']))
+    render(tree(local, <KeyDriverAnalysisPage />, '/key-drivers'))
+    await waitFor(() => expect(screen.getByTestId('kda-run-btn')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    const simulator = await screen.findByTestId('kda-whatif-simulator')
+    expect(within(simulator).getByText('現在のアウトカム全体平均').closest('.ant-statistic')).toHaveTextContent('5.000')
+    expect(within(simulator).queryByRole('slider')).toBeNull()
+    expect(within(simulator).queryByText('施策適用後の予測値')).toBeNull()
+    expect(within(simulator).queryByText('予測向上幅 (Shift)')).toBeNull()
+    expect(simulator).toHaveTextContent('名義尺度には点数の大小がないため')
+    expect(simulator).toHaveTextContent('予測値・予測向上幅は算出できません')
+    expect(screen.getByText('最大共線性 (Max VIF)').closest('.ant-card')).toHaveTextContent('算出不可')
+    expect(screen.getByText('最大共線性 (Max VIF)').closest('.ant-card')).not.toHaveTextContent('VIF ≤ 5')
+    expect(screen.getByTestId('send-pra-btn')).toBeDisabled()
+    expect(importanceOption().yAxis.data).toEqual(['#1 y\n名義尺度・方向なし'])
+    expect(importanceOption().series[0].data).toEqual([{ value: 100, itemStyle: { color: '#8c8c8c' } }])
+  })
+
+  it('filters nominal and unavailable drivers before selecting the first six numeric sliders', async () => {
+    const nominal = ['g1', 'g2', 'g3', 'g4', 'g5', 'g6']
+    const numeric = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7']
+    const local = await prepare(['x', ...nominal, 'alias', ...numeric], nominal)
+    mocks.post.mockImplementation(async (_path: string, body: any) => nominalResponse(body, nominal, ['alias']))
+    render(tree(local, <KeyDriverAnalysisPage />, '/key-drivers'))
+    await waitFor(() => expect(screen.getByTestId('kda-run-btn')).toBeEnabled())
+    await choose('kda-outcome-select', ['x'])
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    const simulator = await screen.findByTestId('kda-whatif-simulator')
+    const sliders = within(simulator).getAllByRole('slider')
+    expect(sliders.map(slider => slider.getAttribute('aria-label'))).toEqual(numeric.slice(0, 6).map(name => `${name}のスコア変動`))
+    expect(within(simulator).queryByRole('slider', { name: 'n7のスコア変動' })).toBeNull()
+  })
+})
+
 describe('WF-01 executed KDA handoff', () => {
   it.each([false, true])('preserves executed inputs, revisions, conclusion and population (PRA visited=%s)', async praVisited => {
     const local = localStore(); await local.dispatch(fetchCodebookThunk('d')); render(tree(local, <KeptPages praVisited={praVisited} />, '/key-drivers'))
@@ -130,6 +249,6 @@ for (const [name, Page, prefix, predictorId] of [['KDA', KeyDriverAnalysisPage, 
     act(() => { local.dispatch(selectionApplied({ rowIds: ['r1'], operation: 'replace', label: 'recover' })) }); expect(screen.getByTestId(`${prefix}-run-btn`)).toBeEnabled(); fireEvent.click(screen.getByTestId(`${prefix}-run-btn`)); await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(prefix === 'kda' ? '/models/kda' : '/pra/evaluate', expect.objectContaining({ rowIds: ['r1'] })))
   })
   it('shows metadata failure and supports an explicit retry', async () => {
-    const local = localStore(); await local.dispatch(fetchCodebookThunk('d')); mocks.get.mockRejectedValueOnce(new Error('network failure')); render(tree(local, <Page />)); await screen.findByText(/数値列の読込みに失敗/); expect(screen.getByTestId(`${prefix}-run-btn`)).toBeDisabled(); fireEvent.click(screen.getByRole('button', { name: '列を再読込み' })); await waitFor(() => expect(screen.getByTestId(`${prefix}-run-btn`)).toBeEnabled())
+    const local = localStore(); await local.dispatch(fetchCodebookThunk('d')); mocks.get.mockRejectedValueOnce(new Error('network failure')); render(tree(local, <Page />)); await screen.findByText(prefix === 'kda' ? /分析列の読込みに失敗/ : /数値列の読込みに失敗/); expect(screen.getByTestId(`${prefix}-run-btn`)).toBeDisabled(); fireEvent.click(screen.getByRole('button', { name: '列を再読込み' })); await waitFor(() => expect(screen.getByTestId(`${prefix}-run-btn`)).toBeEnabled())
   })
 })

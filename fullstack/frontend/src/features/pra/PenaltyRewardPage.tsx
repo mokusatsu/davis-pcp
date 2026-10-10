@@ -67,6 +67,7 @@ export default function PenaltyRewardPage() {
   const runScope = useScopedRun(JSON.stringify([outcome, attributes]))
   const dataRevision = useSelector((s: RootState) => s.selection.dataRevision)
   const schemaRevision = useSelector((s: RootState) => s.codebook.schemaRevision)
+  const codebookColumns = useSelector((s: RootState) => s.codebook.columns)
   const [runError, setRunError] = useState<string | null>(null)
   useEffect(() => { setResult(null); setResultInputKey(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null)
@@ -75,7 +76,13 @@ export default function PenaltyRewardPage() {
   // local controls must not turn an invalid handoff into an executable subset.
   const handoffInputError = handoff && columnsReady ? numericModelInputError(datasetId, columnsReady,
     outcomeColumns, predictorColumns, handoff.outcome, handoff.drivers, handoff.scopeSnapshot.count, '評価属性 (Attributes)') : null
+  const nominalSourceDrivers = handoff && columnsReady ? handoff.drivers.filter(name =>
+    codebookColumns.some(column => column.name === name && column.scaleType === 'nominal')) : []
+  const nominalSourceError = nominalSourceDrivers.length
+    ? `元のKDAに名義尺度の要因（${nominalSourceDrivers.join(', ')}）が含まれるため、この分析全体を引き継げません。Penalty-Rewardには低評価・高評価の順序を持つ評価尺度が必要です。変数設定を編集しても元の引継ぎは利用できません。元のKDAから送り直すか、引継ぎを解除してください。`
+    : null
   const sourceError = handoffError ?? (handoff ? kdaHandoffError(handoff, { datasetId, dataRevision, schemaRevision, rowIds: allRowIds })
+    ?? nominalSourceError
     ?? (handoffInputError ? `KDAの引継ぎ変数を利用できません。${handoffInputError}元のKDAから送り直すか、引継ぎを解除してください。` : null) : null)
   const effectiveScope = handoff?.scopeSnapshot ?? runScope.scope
   const currentInputKey = JSON.stringify([outcome, attributes, effectiveScope.scopeKey, handoff?.sourceRunId])

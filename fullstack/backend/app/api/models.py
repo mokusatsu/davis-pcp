@@ -419,6 +419,36 @@ def calculate_kda(req: KdaRequest) -> dict[str, Any]:
     if cb:
         schema = [{**c, "semanticType": "numeric" if c.get("scaleType") in ("ordinal", "interval", "ratio") else "categorical"} for c in cb["columns"]]
 
+    selected = req.drivers
+    if not selected:
+        selected = [name for name in df.columns
+                    if name != req.outcome and name not in ("__rowId__", "id", "ID", "row_id", "rowId")
+                    and df[name].dtype in (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)][:10]
+    saved = {column.get("name"): column for column in cb.get("columns", [])}
+    # Recognize saved IDs only for rejecting invalid explicit nominal selections;
+    # KDA still accepts real original names, never generated contrasts or IDs.
+    saved_ids = {column.get("columnId"): column for column in cb.get("columns", [])}
+    nominal_request = any((saved.get(name) or saved_ids.get(name) or {}).get("scaleType") == "nominal"
+                          for name in [req.outcome, *selected])
+    if nominal_request:
+        if (req.outcome not in df.columns or req.outcome == "__rowId__"
+                or (req.drivers is not None and (
+                    not req.drivers or len(set(req.drivers)) != len(req.drivers)
+                    or any(name not in df.columns or name in (req.outcome, "__rowId__") for name in req.drivers)))):
+            raise BizError("KDA_INPUT_INVALID", "目的変数とドライバーには実在する元の列名を重複せず指定してください。", status_code=422)
+        score_scales = {"numeric", "ordinal", "interval", "ratio"}
+        target = saved.get(req.outcome, {})
+        if target.get("role") != "question" or target.get("scaleType") not in score_scales or target.get("multiResponseGroup"):
+            raise BizError("KDA_INPUT_INVALID", "目的変数には保存済みの数値・順序尺度で役割が「質問」の通常列を指定してください。", status_code=422)
+        invalid = [name for name in selected if saved.get(name, {}).get("role") not in ("question", "attribute")
+                   or saved.get(name, {}).get("scaleType") not in score_scales | {"nominal"}
+                   or saved.get(name, {}).get("multiResponseGroup")]
+        if invalid:
+            raise BizError("KDA_INPUT_INVALID", "ドライバーには保存済みの数値・順序尺度または名義尺度で役割が「質問」か「属性」の通常列を指定してください。",
+                           status_code=422, details={"invalidDrivers": invalid})
+        if req.method != "shapley_lmg":
+            raise BizError("KDA_METHOD_UNSUPPORTED", "名義尺度を含むKDAでは shapley_lmg のみ対応しています。他の手法は未対応です。", status_code=422)
+
     try:
         result = run_kda(
             df=df,

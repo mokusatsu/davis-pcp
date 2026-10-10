@@ -36,12 +36,12 @@ const mixedColumns = [
   column('MA1', 'question', { multiResponseGroup: 'ma' }), column('text', 'question', { scaleType: 'text' }),
 ]
 const mixedNames = [...mixedColumns.map(c => c.name), 'absent']
-function metadata(names: string[]) {
-  // Physical metadata deliberately has no role. F1 stays physically numeric
-  // despite its nominal scale; this patch does not add categorical coding.
+function metadata(names: string[], stringNames: string[] = []) {
+  // Physical metadata deliberately has no role. Saved scale distinguishes
+  // numeric-coded nominal F1 from measured numeric scores.
   return { schema: names.map(name => ({ name,
-    semanticType: name === 'text' ? 'text' : name === 'F1' ? 'nominal' : name === 'source_excel_row' ? 'identifier' : 'numeric',
-    physicalType: name === 'text' ? 'string' : ['F1', 'source_excel_row'].includes(name) ? 'int' : 'float',
+    semanticType: name === 'text' || stringNames.includes(name) ? 'text' : name === 'F1' ? 'nominal' : name === 'source_excel_row' ? 'identifier' : 'numeric',
+    physicalType: name === 'text' || stringNames.includes(name) ? 'string' : ['F1', 'source_excel_row'].includes(name) ? 'int' : 'float',
   })) }
 }
 function book(columns: CodebookColumn[], schemaRevision = 1) {
@@ -63,15 +63,15 @@ function localStore(names: string[]) {
   local.dispatch(activeEntitiesSet(names.filter(name => name !== 'inactive').map(columnId => ({ kind: 'column', columnId }))))
   return local
 }
-async function mount(page: ReactNode, columns = mixedColumns, names = mixedNames, state?: unknown) {
-  mocks.get.mockResolvedValue(metadata(names))
+async function mount(page: ReactNode, columns = mixedColumns, names = mixedNames, state?: unknown, stringNames: string[] = []) {
+  mocks.get.mockResolvedValue(metadata(names, stringNames))
   mocks.getCodebook.mockResolvedValue(book(columns))
   const local = localStore(names)
   await local.dispatch(fetchCodebookThunk('d'))
   render(<ConfigProvider theme={{ token: { motion: false } }}><Provider store={local}>
     <MemoryRouter initialEntries={[{ pathname: '/penalty-reward', state }]}>{page}</MemoryRouter>
   </Provider></ConfigProvider>)
-  await waitFor(() => expect(screen.queryByText('数値列を読み込んでから実行してください。')).toBeNull())
+  await waitFor(() => expect(screen.queryByText(/(?:数値列|分析列)を読み込んでから実行してください。/)).toBeNull())
   return local
 }
 function picker(id: string) {
@@ -104,8 +104,8 @@ function candidateNames(dialog: HTMLElement, multiple = false) {
 }
 function kdaResponse(body: any) {
   return { run_id: 'role-kda', method: 'shapley_lmg', outcome: { name: body.outcome, label: body.outcome, type: 'numeric' },
-    model: { r_squared: .8, n_valid: body.rowIds.length, vif_max: 1, warnings: [] },
-    drivers: body.drivers.map((name: string) => ({ name, label: name, importance_raw: .4, importance_pct: 50,
+    model: { r_squared: .8, n_valid: body.rowIds.length, vif_max: 1, vif_coverage: 'all_drivers', warnings: [] },
+    drivers: body.drivers.map((name: string) => ({ name, label: name, kind: 'numeric', importance_raw: .4, importance_pct: 50,
       direction: 1, standardized_coef: .4, raw_slope: .5, pearson_r: .4, vif: 1, note: '' })),
     what_if_baseline: { outcome_mean: 3, driver_means: {}, raw_slopes: {} },
   }
@@ -283,6 +283,76 @@ for (const [name, Page, prefix, predictorId, predictorKey, endpoint] of [
   })
 })
 
+describe('KDA saved analysis scale eligibility', () => {
+  const columns = [column('Q1', 'question'), column('Q2', 'question', { scaleType: 'ordinal' }),
+    column('Q6', 'question', { scaleType: 'nominal' }),
+    column('F1', 'attribute', { scaleType: 'nominal' }),
+    column('string_attribute', 'attribute', { scaleType: 'nominal' }),
+    column('string_question', 'question', { scaleType: 'nominal' }),
+    column('coded_text', 'question', { scaleType: 'text' }), column('coded_id', 'question', { scaleType: 'id' }),
+    column('nominal_weight', 'weight', { scaleType: 'nominal' }), column('nominal_other', 'other', { scaleType: 'nominal' }),
+    column('nominal_id', 'id', { scaleType: 'nominal' }), column('inactive', 'question', { scaleType: 'nominal' }),
+    column('MA1', 'question', { scaleType: 'nominal', multiResponseGroup: 'ma' })]
+  const names = [...columns.map(c => c.name), 'absent']
+  const strings = ['string_attribute', 'string_question', 'nominal_other']
+
+  it('admits numeric and string nominal drivers but excludes nominal outcomes and saved text/id scales', async () => {
+    await mount(<KeyDriverAnalysisPage />, columns, names, undefined, strings)
+    expect(selected('kda-outcome-select')).toEqual(['Q2'])
+    expect(selected('kda-drivers-select')).toEqual(['Q1', 'Q6', 'F1', 'string_attribute', 'string_question'])
+    const outcomes = picker('kda-outcome-select')
+    expect(candidateNames(outcomes)).toEqual(['Q1', 'Q2'])
+    await closePicker(outcomes)
+    const predictors = picker('kda-drivers-select')
+    expect(candidateNames(predictors, true)).toEqual(['Q1', 'Q6', 'F1', 'string_attribute', 'string_question'])
+    await closePicker(predictors)
+    await choose('kda-drivers-select', ['F1', 'string_attribute', 'string_question'], true)
+    expect(screen.queryByTestId('kda-input-error')).toBeNull()
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/models/kda', {
+      datasetId: 'd', rowIds: rows, expectedDataRevision: 1, expectedSchemaRevision: 1,
+      outcome: 'Q2', drivers: ['F1', 'string_attribute', 'string_question'],
+    }))
+  })
+
+  it('keeps the PRA standalone physical numeric candidates and copy unchanged', async () => {
+    await mount(<PenaltyRewardPage />, columns, names, undefined, strings)
+    const predictors = picker('pra-attributes-select')
+    expect(candidateNames(predictors, true)).toEqual(['Q1', 'Q2', 'Q6', 'F1', 'coded_text'])
+    expect(within(predictors).queryByRole('checkbox', { name: 'string_attribute', exact: true })).toBeNull()
+    await closePicker(predictors)
+    // Existing standalone eligibility remains physical-numeric and role-based.
+    expect(selected('pra-outcome-select')).toEqual(['coded_id'])
+  })
+
+  it('ignores scale drafts and prunes saved scale revisions without selecting newly eligible drivers', async () => {
+    const initial = [column('Q1', 'question'), column('F1', 'attribute', { scaleType: 'nominal' }),
+      column('string_attribute', 'attribute', { scaleType: 'nominal' }), column('later', 'attribute', { scaleType: 'text' })]
+    const ns = initial.map(c => c.name)
+    const local = await mount(<KeyDriverAnalysisPage />, initial, ns, undefined, ['string_attribute', 'later'])
+    expect(selected('kda-drivers-select')).toEqual(['F1', 'string_attribute'])
+    act(() => { local.dispatch(draftColumnUpdated({ columnId: 'string_attribute', patch: { scaleType: 'text' } })) })
+    expect(selected('kda-drivers-select')).toEqual(['F1', 'string_attribute'])
+    let finishMetadata!: (value: ReturnType<typeof metadata>) => void
+    mocks.get.mockReturnValueOnce(new Promise(resolve => { finishMetadata = resolve }))
+    mocks.getCodebook.mockResolvedValue(book(initial.map(c => c.name === 'string_attribute' ? { ...c, scaleType: 'text' }
+      : c.name === 'later' ? { ...c, scaleType: 'nominal' } : c) as CodebookColumn[], 2))
+    await act(async () => { await local.dispatch(fetchCodebookThunk('d')) })
+    expect(screen.getByTestId('kda-run-btn')).toBeDisabled()
+    expect(screen.getByTestId('kda-input-error')).toHaveTextContent('分析列を読み込んでから')
+    await act(async () => { finishMetadata(metadata(ns, ['string_attribute', 'later'])) })
+    await waitFor(() => expect(selected('kda-drivers-select')).toEqual(['F1']))
+    expect(selected('kda-outcome-select')).toEqual(['Q1'])
+    const candidates = picker('kda-drivers-select')
+    expect(candidateNames(candidates, true)).toEqual(['F1', 'later'])
+    await closePicker(candidates)
+    fireEvent.click(screen.getByTestId('kda-run-btn'))
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/models/kda', expect.objectContaining({
+      expectedSchemaRevision: 2, outcome: 'Q1', drivers: ['F1'],
+    })))
+  })
+})
+
 function handoff(outcome = 'Q7', drivers = ['Q8'], sourceRunId = 'valid-source'): KdaPraHandoff {
   return { version: 1, kind: 'kda-to-pra', sourceRunId, datasetId: 'd', dataRevision: 1, schemaRevision: 1,
     outcome, drivers, scopeSnapshot: createScopeSnapshot('selected', ['r1'], 'd', 1, 1),
@@ -334,5 +404,45 @@ describe('PRA original handoff role validation', () => {
     await waitFor(() => expect(mocks.post.mock.calls).toEqual([['/pra/evaluate', {
       datasetId: 'd', rowIds: rows, expectedDataRevision: 1, expectedSchemaRevision: 1, outcome: 'Q7', attributes: ['Q8'],
     }]]))
+  })
+})
+
+describe('PRA original handoff nominal compatibility', () => {
+  it.each([
+    ['F1', false], ['F1', true], ['string_nominal', false], ['string_nominal', true],
+  ] as const)('blocks the whole %s source after local repair (already mounted=%s)', async (nominalName, mounted) => {
+    const columns = [...mixedColumns, column('string_nominal', 'attribute', { scaleType: 'nominal' })]
+    const names = [...mixedNames, 'string_nominal']
+    const source = handoff('Q7', ['Q8', nominalName], 'legacy-nominal-source')
+    // Old history may contain a numeric direction for a saved nominal column.
+    expect(readKdaPraHandoff(source)).not.toBeNull()
+    function Receiver() {
+      const navigate = useNavigate()
+      return <><button onClick={() => navigate('/penalty-reward', { state: { kdaHandoff: source } })}>receive nominal source</button><PenaltyRewardPage /></>
+    }
+    const local = await mount(<Receiver />, columns, names, { kdaHandoff: mounted ? handoff() : source }, ['string_nominal'])
+    if (mounted) {
+      await waitFor(() => expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent('valid-source'))
+      expect(screen.getByTestId('pra-run-btn')).toBeEnabled()
+      fireEvent.click(screen.getByRole('button', { name: 'receive nominal source' }))
+    }
+    await waitFor(() => expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent('この分析全体を引き継げません'))
+    expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent(`名義尺度の要因（${nominalName}）`)
+    expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent('低評価・高評価の順序')
+    expect(screen.getByTestId('pra-run-btn')).toBeDisabled()
+    act(() => { local.dispatch(draftColumnUpdated({ columnId: nominalName, patch: { scaleType: 'ordinal' } })) })
+    await choose('pra-outcome-select', ['Q7'])
+    await choose('pra-attributes-select', ['Q8'], true)
+    expect(selected('pra-attributes-select')).toEqual(['Q8'])
+    expect(screen.getByTestId('pra-kda-handoff')).toHaveTextContent('変数設定を編集しても元の引継ぎは利用できません')
+    expect(screen.getByTestId('pra-run-btn')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('pra-run-btn'))
+    expect(mocks.post).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '引継ぎを解除して共通対象を使う' }))
+    expect(screen.getByTestId('pra-run-btn')).toBeEnabled()
+    fireEvent.click(screen.getByTestId('pra-run-btn'))
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/pra/evaluate', {
+      datasetId: 'd', rowIds: rows, expectedDataRevision: 1, expectedSchemaRevision: 1, outcome: 'Q7', attributes: ['Q8'],
+    }))
   })
 })

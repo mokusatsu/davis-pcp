@@ -26,13 +26,19 @@ import { numericModelInputError, useNumericModelInputs } from './useNumericModel
 export interface DriverItem {
   name: string
   label: string
+  kind: 'numeric' | 'nominal'
+  encoding?: {
+    levels: Array<{ code: string; label: string }>
+    reference_code: string
+    design_column_count: number
+  }
   importance_raw: number
   importance_pct: number
-  direction: number
-  standardized_coef: number
-  raw_slope: number
-  pearson_r: number
-  vif: number
+  direction: number | null
+  standardized_coef: number | null
+  raw_slope: number | null
+  pearson_r: number | null
+  vif: number | null
   note: string
 }
 
@@ -43,7 +49,8 @@ export interface KdaResponse {
   model: {
     r_squared: number
     n_valid: number
-    vif_max: number
+    vif_max: number | null
+    vif_coverage: 'all_drivers' | 'numeric_drivers_only'
     warnings: string[]
   }
   drivers: DriverItem[]
@@ -54,13 +61,26 @@ export interface KdaResponse {
   }
 }
 
+function driverDirection(driver: DriverItem) {
+  if (driver.kind === 'nominal') return '名義尺度・方向なし'
+  if (driver.direction == null) return '方向を算出できません'
+  return driver.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'
+}
+
+function whatIfDrivers(result: KdaResponse) {
+  return result.drivers.filter(driver => driver.kind === 'numeric'
+    && driver.raw_slope != null && Number.isFinite(driver.raw_slope)
+    && Number.isFinite(result.what_if_baseline.driver_means[driver.name])
+    && Number.isFinite(result.what_if_baseline.raw_slopes[driver.name]))
+}
+
 export default function KeyDriverAnalysisPage() {
   const questionText = useQuestionText()
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
-  const { outcomeColumns, predictorColumns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
+  const { outcomeColumns, predictorColumns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs('kda')
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<KdaResponse | null>(null)
   const runScope = useScopedRun(JSON.stringify([outcome, drivers]))
@@ -71,7 +91,9 @@ export default function KeyDriverAnalysisPage() {
   useEffect(() => { setResult(null); setResultHandoff(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [whatIfDeltas, setWhatIfDeltas] = useState<Record<string, number>>({})
 
-  const inputError = numericModelInputError(datasetId, columnsReady, outcomeColumns, predictorColumns, outcome, drivers, runScope.scope.count, '説明変数 (Drivers)')
+  const inputError = numericModelInputError(datasetId, columnsReady, outcomeColumns, predictorColumns, outcome, drivers, runScope.scope.count, '説明変数 (Drivers)', 'kda')
+  const nominalDrivers = result?.drivers.filter(driver => driver.kind === 'nominal') ?? []
+  const eligibleWhatIfDrivers = useMemo(() => result ? whatIfDrivers(result) : [], [result])
 
   const calculateKda = async () => {
     if (loading || inputError || !datasetId) return
@@ -92,15 +114,17 @@ export default function KeyDriverAnalysisPage() {
       if (!ticket.isCurrent()) return
       ticket.commit()
       setResult(res)
-      setResultHandoff(captureKdaPraHandoff({
+      const handoffDrivers = res.drivers.flatMap(driver => driver.direction != null && Number.isFinite(driver.direction)
+        ? [{ name: driver.name, importancePct: driver.importance_pct, direction: driver.direction }] : [])
+      setResultHandoff(res.drivers.some(driver => driver.kind === 'nominal') || handoffDrivers.length !== res.drivers.length ? null : captureKdaPraHandoff({
         version: 1, kind: 'kda-to-pra', sourceRunId: res.run_id, datasetId, dataRevision, schemaRevision,
         outcome: o, drivers: d, scopeSnapshot: ticket.scope,
         sourceConclusion: { kind: 'shapley-importance', method: res.method, rSquared: res.model.r_squared, nValid: res.model.n_valid,
-          drivers: res.drivers.map(driver => ({ name: driver.name, importancePct: driver.importance_pct, direction: driver.direction })) },
+          drivers: handoffDrivers },
       }))
       // reset what-if deltas
       const initialDeltas: Record<string, number> = {}
-      res.drivers.forEach((drv) => {
+      whatIfDrivers(res).forEach((drv) => {
         initialDeltas[drv.name] = 0.0
       })
       setWhatIfDeltas(initialDeltas)
@@ -113,19 +137,18 @@ export default function KeyDriverAnalysisPage() {
 
   // Compute what-if predicted change
   const predictedOutcome = useMemo(() => {
-    if (!result?.what_if_baseline) return null
+    if (!result?.what_if_baseline || !eligibleWhatIfDrivers.length) return null
     const baseMean = result.what_if_baseline.outcome_mean
     let deltaSum = 0.0
-    for (const [drvName, delta] of Object.entries(whatIfDeltas)) {
-      const slope = result.what_if_baseline.raw_slopes[drvName] || 0.0
-      deltaSum += slope * delta
+    for (const driver of eligibleWhatIfDrivers) {
+      deltaSum += result.what_if_baseline.raw_slopes[driver.name] * (whatIfDeltas[driver.name] ?? 0)
     }
     return {
       baseline: baseMean,
       predicted: baseMean + deltaSum,
       deltaTotal: deltaSum,
     }
-  }, [result, whatIfDeltas])
+  }, [result, eligibleWhatIfDrivers, whatIfDeltas])
 
   const handleProjectPcp = () => {
     if (!result || result.drivers.length === 0) return
@@ -235,13 +258,16 @@ export default function KeyDriverAnalysisPage() {
                 <Card size="small">
                   <Statistic
                     title="最大共線性 (Max VIF)"
-                    value={result.model.vif_max}
+                    value={result.model.vif_max ?? '—'}
                     formatter={() => vifDisplay(result.model.vif_max).text}
                     valueStyle={{ color: vifDisplay(result.model.vif_max).color }}
                   />
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                     {vifDisplay(result.model.vif_max).label}。5超: 注意 / 10超: 強い共線性
                   </Typography.Text>
+                  {result.model.vif_coverage === 'numeric_drivers_only' && <Typography.Text type="secondary" data-testid="kda-vif-coverage" style={{ display: 'block', fontSize: 11 }}>
+                    VIFは算出可能な数値・順序尺度の要因のみが対象です。名義尺度の共線性は評価していません。
+                  </Typography.Text>}
                 </Card>
               </Col>
               <Col xs={12} sm={6}>
@@ -287,11 +313,11 @@ export default function KeyDriverAnalysisPage() {
                   >
                     <EChart height={Math.max(280, result.drivers.length * 48 + 80)} ariaLabel="Shapley重要度"
                       option={{ grid: { left: 170, right: 60, top: 20, bottom: 45 },
-                        tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; const d = p && result.drivers[p.dataIndex]; return d ? `${questionText(d.name)}\n重要度: ${d.importance_pct}%\n方向: ${d.direction}` : '' } },
+                        tooltip: { trigger: 'axis', renderMode: 'richText', formatter: (params: any) => { const p = params[0]; const d = p && result.drivers[p.dataIndex]; return d ? `${questionText(d.name)}\n重要度: ${d.importance_pct}%\n${driverDirection(d)}` : '' } },
                         xAxis: { type: 'value', min: 0, max: 100, name: '重要度 (%)', nameLocation: 'middle', nameGap: 28 },
-                        yAxis: { type: 'category', inverse: true, data: result.drivers.map((d,i) => `#${i+1} ${d.label}\n${d.direction >= 0 ? '+ 正の寄与' : '- 負の寄与'}`) },
+                        yAxis: { type: 'category', inverse: true, data: result.drivers.map((d,i) => `#${i+1} ${d.label}\n${driverDirection(d)}`) },
                         series: [{ type: 'bar', data: result.drivers.map((d,i) => ({ value: d.importance_pct,
-                          itemStyle: { color: i === 0 ? '#faad14' : d.direction >= 0 ? '#1677ff' : '#ff4d4f' } })),
+                          itemStyle: { color: d.kind === 'nominal' || d.direction == null ? '#8c8c8c' : i === 0 ? '#faad14' : d.direction >= 0 ? '#1677ff' : '#ff4d4f' } })),
                           label: { show: true, position: 'right', color: '#333', formatter: (p:any) => `${Number(p.value).toFixed(1)}%` } }] }} />
                   </Card>
                   </GraphPanel>
@@ -321,13 +347,13 @@ export default function KeyDriverAnalysisPage() {
                         {
                           title: '単相関 r',
                           dataIndex: 'pearson_r',
-                          render: (v: number) => `r = ${v.toFixed(2)}`,
+                          render: (v: number | null, driver: DriverItem) => v == null ? (driver.kind === 'nominal' ? '—（対象外）' : '—（算出不可）') : `r = ${v.toFixed(2)}`,
                         },
                         {
                           title: 'VIF',
                           dataIndex: 'vif',
-                          render: (v: number) => (
-                            <span title={vifDisplay(v).label} style={{ color: vifDisplay(v).color }}>{vifDisplay(v).text}</span>
+                          render: (v: number | null, driver: DriverItem) => (
+                            <span title={driver.kind === 'nominal' ? '名義尺度の単一VIFは対象外です' : vifDisplay(v).label} style={{ color: vifDisplay(v).color }}>{vifDisplay(v).text}</span>
                           ),
                         },
                         {
@@ -369,6 +395,8 @@ export default function KeyDriverAnalysisPage() {
                     </Button>
                     <Button
                       icon={<RocketOutlined />}
+                      disabled={!resultHandoff}
+                      aria-describedby={nominalDrivers.length ? 'kda-pra-nominal-unavailable' : undefined}
                       onClick={handleSendToPenaltyReward}
                       data-testid="send-pra-btn"
                     >
@@ -384,12 +412,15 @@ export default function KeyDriverAnalysisPage() {
                     </Button>
                   </Space>
                   <Typography.Text type="secondary">実行済みKDAの目的変数・説明変数・要求対象行をPenalty-Rewardへ引き継ぎ、低評価側と高評価側の非対称性を別途分析します。</Typography.Text>
+                  {nominalDrivers.length > 0 && <Typography.Text type="secondary" id="kda-pra-nominal-unavailable">
+                    実行済みKDAに名義尺度の要因（{nominalDrivers.map(driver => driver.name).join(', ')}）が含まれるため、この分析全体を引き継げません。Penalty-Rewardには低評価・高評価の順序を持つ評価尺度が必要です。
+                  </Typography.Text>}
                   <Typography.Text type="secondary" id="kda-robustness-unavailable">KDAのShapley重要度の頑健性検証には未対応です。Robustnessの平均値検証では代用できません。</Typography.Text>
                 </div>
               }
               data-testid="kda-whatif-simulator"
             >
-              {predictedOutcome && (
+              {predictedOutcome ? (
                 <Row gutter={[16, 16]} align="middle" style={{ marginBottom: 12 }}>
                   <Col xs={24} md={8}>
                     <Statistic
@@ -419,16 +450,17 @@ export default function KeyDriverAnalysisPage() {
                     />
                   </Col>
                 </Row>
-              )}
+              ) : <Statistic title="現在のアウトカム全体平均" value={result.what_if_baseline.outcome_mean} precision={3} />}
 
               <Divider style={{ margin: '8px 0 16px 0' }} />
 
               <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                各要因のスコアを改善（または変動）させた場合の予測満足度変化をリアルタイム計算します：
+                {eligibleWhatIfDrivers.length ? '利用可能な数値・順序尺度の要因のスコアを変動させた場合の予測満足度変化をリアルタイム計算します。' : '利用可能な数値・順序尺度の傾きがないため、予測値・予測向上幅は算出できません。'}
+                {nominalDrivers.length > 0 && '名義尺度には点数の大小がないため、平均値やポイント変動のスライダーは表示しません。'}
               </Typography.Text>
 
               <Row gutter={[16, 12]}>
-                {result.drivers.slice(0, 6).map((d) => {
+                {eligibleWhatIfDrivers.slice(0, 6).map((d) => {
                   const currentDelta = whatIfDeltas[d.name] || 0.0
                   return (
                     <Col xs={24} sm={12} md={8} key={d.name}>
@@ -437,6 +469,7 @@ export default function KeyDriverAnalysisPage() {
                         <span>{currentDelta > 0 ? `+${currentDelta.toFixed(2)}` : currentDelta.toFixed(2)} pt</span>
                       </div>
                       <Slider
+                        ariaLabelForHandle={`${d.label}のスコア変動`}
                         min={-2.0}
                         max={2.0}
                         step={0.1}
