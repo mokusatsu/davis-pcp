@@ -57,7 +57,7 @@ export default function PenaltyRewardPage() {
   const allRowIds = useSelector((s: RootState) => s.selection.allRowIds)
   const selectedRowIds = useSelector((s: RootState) => s.selection.selectedRowIds)
 
-  const { columns, outcome, setOutcome, predictors: attributes, setPredictors: setAttributes, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
+  const { outcomeColumns, predictorColumns, outcome, setOutcome, predictors: attributes, setPredictors: setAttributes, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
   const [handoff, setHandoff] = useState<KdaPraHandoff | null>(null)
   const [handoffError, setHandoffError] = useState<string | null>(null)
   const handledNavigation = useRef<string | null>(null)
@@ -71,11 +71,16 @@ export default function PenaltyRewardPage() {
   useEffect(() => { setResult(null); setResultInputKey(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [selectedAttribute, setSelectedAttribute] = useState<string | null>(null)
 
-  const sourceError = handoffError ?? (handoff ? kdaHandoffError(handoff, { datasetId, dataRevision, schemaRevision, rowIds: allRowIds }) : null)
+  // Check the original source inputs too: pruning an ineligible driver from the
+  // local controls must not turn an invalid handoff into an executable subset.
+  const handoffInputError = handoff && columnsReady ? numericModelInputError(datasetId, columnsReady,
+    outcomeColumns, predictorColumns, handoff.outcome, handoff.drivers, handoff.scopeSnapshot.count, '評価属性 (Attributes)') : null
+  const sourceError = handoffError ?? (handoff ? kdaHandoffError(handoff, { datasetId, dataRevision, schemaRevision, rowIds: allRowIds })
+    ?? (handoffInputError ? `KDAの引継ぎ変数を利用できません。${handoffInputError}元のKDAから送り直すか、引継ぎを解除してください。` : null) : null)
   const effectiveScope = handoff?.scopeSnapshot ?? runScope.scope
   const currentInputKey = JSON.stringify([outcome, attributes, effectiveScope.scopeKey, handoff?.sourceRunId])
   const dirty = !!result && resultInputKey !== currentInputKey
-  const inputError = sourceError ?? numericModelInputError(datasetId, columnsReady, columns, outcome, attributes, effectiveScope.count, '評価属性 (Attributes)')
+  const inputError = sourceError ?? numericModelInputError(datasetId, columnsReady, outcomeColumns, predictorColumns, outcome, attributes, effectiveScope.count, '評価属性 (Attributes)')
 
   // A navigation is a new handoff even if KeepAlive has mounted PRA before.
   // Waiting for metadata prevents its initial defaults overwriting source inputs.
@@ -240,10 +245,10 @@ export default function PenaltyRewardPage() {
                 value={outcome || undefined}
                 onChange={(val) => {
                   setOutcome(val)
-                  const newA = columns.filter((c) => c !== val)
+                  const newA = predictorColumns.filter((c) => c !== val)
                   setAttributes(newA)
                 }}
-                options={columns.map((c) => ({ label: c, value: c }))}
+                options={outcomeColumns.map((c) => ({ label: c, value: c }))}
               />
             </div>
             <div style={{ flex: '3 1 260px', minWidth: 0, maxWidth: '100%' }}>
@@ -256,7 +261,7 @@ export default function PenaltyRewardPage() {
                 onChange={(vals) => {
                   setAttributes(vals)
                 }}
-                options={columns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
+                options={predictorColumns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
               />
             </div>
             <div style={{ flex: '1 1 180px', minWidth: 0, maxWidth: '100%', textAlign: 'right' }}>

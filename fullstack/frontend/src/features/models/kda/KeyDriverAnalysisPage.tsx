@@ -60,7 +60,7 @@ export default function KeyDriverAnalysisPage() {
   const navigate = useNavigate()
   const datasetId = useSelector((s: RootState) => s.selection.datasetId)
 
-  const { columns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
+  const { outcomeColumns, predictorColumns, outcome, setOutcome, predictors: drivers, setPredictors: setDrivers, ready: columnsReady, error: columnsError, retry: retryColumns } = useNumericModelInputs()
   const [loading, setLoading] = useState<boolean>(false)
   const [result, setResult] = useState<KdaResponse | null>(null)
   const runScope = useScopedRun(JSON.stringify([outcome, drivers]))
@@ -71,7 +71,7 @@ export default function KeyDriverAnalysisPage() {
   useEffect(() => { setResult(null); setResultHandoff(null); setLoading(false); setRunError(null) }, [runScope.identity])
   const [whatIfDeltas, setWhatIfDeltas] = useState<Record<string, number>>({})
 
-  const inputError = numericModelInputError(datasetId, columnsReady, columns, outcome, drivers, runScope.scope.count, '説明変数 (Drivers)')
+  const inputError = numericModelInputError(datasetId, columnsReady, outcomeColumns, predictorColumns, outcome, drivers, runScope.scope.count, '説明変数 (Drivers)')
 
   const calculateKda = async () => {
     if (loading || inputError || !datasetId) return
@@ -172,10 +172,10 @@ export default function KeyDriverAnalysisPage() {
                 value={outcome || undefined}
                 onChange={(val) => {
                   setOutcome(val)
-                  const newD = columns.filter((c) => c !== val)
+                  const newD = predictorColumns.filter((c) => c !== val)
                   setDrivers(newD)
                 }}
-                options={columns.map((c) => ({ label: c, value: c }))}
+                options={outcomeColumns.map((c) => ({ label: c, value: c }))}
               />
             </Col>
             <Col xs={24} md={12}>
@@ -188,7 +188,7 @@ export default function KeyDriverAnalysisPage() {
                 onChange={(vals) => {
                   setDrivers(vals)
                 }}
-                options={columns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
+                options={predictorColumns.filter((c) => c !== outcome).map((c) => ({ label: c, value: c }))}
               />
             </Col>
             <Col xs={24} md={4} style={{ textAlign: 'right' }}>

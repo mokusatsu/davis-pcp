@@ -164,16 +164,24 @@ describe('Statistics categorical weighted companion', () => {
       numeric: {}, minMax: {}, categories: { migration_msa: ['?', 'Nonmover', 'MSA to MSA', 'MSA to nonMSA', 'NonMSA to nonMSA'] } }
     const requests = transport(body => body.weightMode === 'none' ? capture.responses.unweighted : capture.responses.weighted)
     const { local } = mount(localStore(book, [question.name], capture.request.expectedDataRevision), true)
-    await ready(question.name, '40.8%')
+    const readyCapturedCategory = async () => {
+      await waitFor(() => {
+        const row = category(question.name).getByText('MSA to MSA', { selector: 'span', exact: true }).closest('tr')!
+        expect(within(row).getByRole('cell', { name: '40.8%', exact: true })).toBeInTheDocument()
+      })
+    }
+    await readyCapturedCategory()
     const weighted = category(question.name)
     const raw = within(screen.getByTestId(`question-card-${question.name}`))
     const rawValues = rawSnapshot()
     expect(root().getByText('コードブック基準の加重カテゴリ集計')).toBeInTheDocument()
     expect(screen.getByTestId('statistics-categorical-weight-companion')).toHaveTextContent('カテゴリ加重集計: ウェイト適用中（MARSUPWT）')
     expectDenominators(question.name, [8, 8, 6, 2, 0, 0])
-    expect(values(weighted, 2)).toEqual(['2', '5,520.57', '40.8%'])
-    expect(values(weighted, 0)).toEqual(['0', '0', '0.0%'])
-    expect(values(weighted, 7)).toEqual(['2', '対象外', '対象外'])
+    const initialRows = dataRows(weighted)
+    const initialValues = (index: number) => within(initialRows[index]).getAllByRole('cell').slice(1).map(cell => cell.textContent)
+    expect(initialValues(2)).toEqual(['2', '5,520.57', '40.8%'])
+    expect(initialValues(0)).toEqual(['0', '0', '0.0%'])
+    expect(initialValues(7)).toEqual(['2', '対象外', '対象外'])
     expect(screen.getByTestId(`statistics-category-weight-${question.name}`)).toHaveTextContent(/有効回答の加重対象 Σw\s*[:：]?\s*13,539.87/)
     expect(screen.getByTestId(`statistics-category-weight-${question.name}`)).not.toHaveTextContent('18,155.39')
     expect(weighted.getAllByRole('columnheader').map(cell => cell.textContent)).toEqual([
@@ -183,7 +191,7 @@ describe('Statistics categorical weighted companion', () => {
     expect(weighted.queryByTestId('question-denominator-toggle')).toBeNull()
     expect(raw.getByTestId('category-migration_msa-MSA to MSA')).toHaveTextContent('33.3% (2)')
     expect(raw.queryByTestId('weight-note')).toBeNull()
-    fireEvent.click(raw.getByRole('button', { name: 'MSA to MSAの回答者を選択', exact: true }))
+    fireEvent.click(within(raw.getByTestId('category-migration_msa-MSA to MSA')).getByRole('button', { name: 'MSA to MSAの回答者を選択', exact: true }))
     const assertMembership = () => {
       expect(local.getState().selection.selectedRowIds).toEqual(['ROW-000019', 'ROW-000032'])
       expect(local.getState().selection.activeRowIds).toEqual(capture.request.rowIds)
@@ -209,7 +217,7 @@ describe('Statistics categorical weighted companion', () => {
     expect(root().queryByText('40.8%')).toBeNull()
     assertMembership()
     await chooseWeight(true)
-    await ready(question.name, '40.8%')
+    await readyCapturedCategory()
     assertMembership()
     fireEvent.click(screen.getByText('有効回答ベース'))
     expect(raw.getByTestId('category-migration_msa-MSA to MSA')).toHaveTextContent('33.3% (2)')
