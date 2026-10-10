@@ -63,7 +63,7 @@ jobs:
 
       - name: Run frontend regression tests (including WASM parity)
         working-directory: fullstack/frontend
-        run: npm test
+        run: npm test -- --maxWorkers=1 --minWorkers=1
 
       - name: Build static site into dist/static
         run: python scripts/build_static.py --out-dir dist/static
