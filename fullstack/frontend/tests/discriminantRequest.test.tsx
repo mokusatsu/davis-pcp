@@ -99,6 +99,7 @@ it.each([0.5, 1, 2].flatMap(scale => [1, 2].map(dimensions => ({ scale, dimensio
   vi.stubGlobal('PointerEvent', MouseEvent)
   vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
   vi.spyOn(api, 'post').mockResolvedValue({ target: 'y', classes: ['0', '1'], features: ['x'], excludedRowCount: 0,
+    targetDtype: 'Int64', classCategories: { '0': [{ rawValue: '0', code: '0', label: '0' }], '1': [{ rawValue: '1', code: '1', label: '1' }] },
     axes: Array.from({ length: dimensions }, (_, i) => ({ axisIndex: i + 1, explainedVarianceRatio: 1 / dimensions, canonicalCorrelation: 0.8 })), loadings: [],
     misclassifiedRowIds: [], accuracy: 1, wilksLambdaOverall: 0.2, pOverall: 0.01,
     samples: [0, 1, 2].map(index => ({ rowId: `r${index + 1}`, actualClass: `${index % 2}`, predictedClass: `${index % 2}`,

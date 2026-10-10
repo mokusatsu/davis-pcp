@@ -53,6 +53,7 @@ function openSettings() { act(() => { settings().open = true }) }
 function result(page: Page): any {
   if (page === 'discriminant') return {
     target: 'y', classes: ['0', '1'], features: ['x'], method: 'lda', excludedRowCount: 0,
+    targetDtype: 'Int64', classCategories: { '0': [{ rawValue: '0', code: '0', label: '0' }], '1': [{ rawValue: '1', code: '1', label: '1' }] },
     axes: [{ axisIndex: 1, eigenvalue: 1, explainedVarianceRatio: 1, canonicalCorrelation: 0.8 }], loadings: [],
     samples: [{ rowId: 'r1', actualClass: '0', predictedClass: '0', ld1: 0, ld2: 0, isMisclassified: false, posteriorProbabilities: {}, mahalanobisDistance: 1 }],
     misclassifiedRowIds: [], accuracy: 1, wilksLambdaOverall: 0.2, pOverall: 0.01,

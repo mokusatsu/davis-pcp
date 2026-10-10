@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from ..algorithms.models.discriminant import run_discriminant_analysis
 from ..domain.errors import BizError
 from ..domain.analysis_columns import resolve_analysis_columns
-from ..domain.codebook_adapter import CodebookAdapter
+from ..domain.codebook_adapter import CodebookAdapter, normalize_code
 from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
 
@@ -72,6 +72,9 @@ def _fit_discriminant(dataset_id, target_column, feature_columns, req):
     if active_rows is not None:
         df = df.filter(pl.col('__rowId__').is_in(active_rows))
     scope_count, scope_hash = df.height, _scope_hash(df['__rowId__'].to_list())
+    raw_target = df[target.names[0]]
+    target_dtype = str(raw_target.dtype)
+    raw_target_by_row_id = dict(zip(df['__rowId__'].to_list(), raw_target.to_list()))
     df, excluded = plan.prepare(df)
     ma_names = {column['name'] for group in plan.groups for column in group['columns']}
     adapter = CodebookAdapter(df, codebook)
@@ -96,7 +99,23 @@ def _fit_discriminant(dataset_id, target_column, feature_columns, req):
         priors=req.priors,
         stepwise_config=stepwise_dict,
     )
+    # Join fitted membership to values captured before scoring or MA projection.
+    # Raw scalar text is identity; normalized codes are only for label lookup.
+    class_categories = {class_key: {} for class_key in result['classes']}
+    for sample in result['samples']:
+        raw = raw_target_by_row_id[sample['rowId']]
+        raw_value = str(raw)
+        categories = class_categories[sample['actualClass']]
+        if raw_value not in categories:
+            categories[raw_value] = {
+                'rawValue': raw_value,
+                'code': normalize_code(raw),
+                'label': adapter.label_for_value(target.names[0], raw),
+            }
     return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
+            'targetDtype': target_dtype,
+            'classCategories': {class_key: [categories[raw] for raw in sorted(categories)]
+                                for class_key, categories in class_categories.items()},
             'scopeCount': scope_count, 'usedRows': df.height, 'usedColumns': plan.names,
             'excludedRowCount': scope_count - df.height,
             'excludedCounts': {**excluded, 'ordinaryMissing': before_ordinary - df.height},

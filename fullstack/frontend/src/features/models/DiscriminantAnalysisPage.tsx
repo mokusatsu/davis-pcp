@@ -84,9 +84,27 @@ export interface BoundaryMesh {
   gridClassIndices: number[][]
 }
 
+export interface DiscriminantClassCategory {
+  rawValue: string
+  code: string
+  label: string
+}
+
+/** Describe each analysis key using only the fitted raw-category snapshot. */
+function formatDiscriminantClass(result: DiscriminantResponse, classKey: string): string {
+  const stringTarget = /^(String|Categorical|Enum)($|\()/i.test(result.targetDtype)
+  const categories = result.classCategories[classKey].map(category => {
+    const raw = stringTarget ? JSON.stringify(category.rawValue) : category.rawValue
+    return category.label === category.code ? raw : `${raw}（${category.label}）`
+  })
+  return `${classKey}: ${categories.join('、')}`
+}
+
 export interface DiscriminantResponse {
   diagnostics: DiscriminantDiagnosticsData
   target: string
+  targetDtype: string
+  classCategories: Record<string, DiscriminantClassCategory[]>
   classes: string[]
   features: string[]
   method: 'lda' | 'qda' | 'stepwise'
@@ -266,6 +284,10 @@ export default function DiscriminantAnalysisPage() {
     return map
   }, [result?.classes])
 
+  const classDisplay = useMemo<Record<string, string>>(() => result
+    ? Object.fromEntries(result.classes.map(classKey => [classKey, formatDiscriminantClass(result, classKey)]))
+    : {}, [result])
+
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
       <Card title="判別分析の設定" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
@@ -369,7 +391,14 @@ export default function DiscriminantAnalysisPage() {
         )}
       </Card>}
 
-      {result?.diagnostics && <Card size="small" style={{ marginBottom: 16 }}><DiscriminantDiagnostics value={result.diagnostics} /></Card>}
+      {result && <Card size="small" style={{ marginBottom: 16 }}>
+        <div role="group" aria-label="表示中の判別分析のクラス" style={{ overflowWrap: 'anywhere' }}>
+          <Typography.Text strong>目的変数 {result.target} のクラス（学習時）</Typography.Text>
+          {result.classes.map(classKey => <div key={classKey}>解析クラス {classDisplay[classKey]}</div>)}
+        </div>
+      </Card>}
+      {result?.diagnostics && <Card size="small" style={{ marginBottom: 16 }}><DiscriminantDiagnostics
+        value={result.diagnostics} classes={result.classes} classDisplay={classDisplay} /></Card>}
       {/* Main Content */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -394,7 +423,7 @@ export default function DiscriminantAnalysisPage() {
                   <ModelScatter testId="discriminant-map-svg" svgRef={svgRef} height={mapHeight}
                     points={result.samples.map(s => ({ id: s.rowId, rowId:s.rowId, x: s.ld1, y: s.ld2,
                       selected: selectedRowIdSet.has(s.rowId), selectionColor, color: getColor(s.rowId), misclassified: s.isMisclassified,
-                      title: `Row: ${s.rowId}\nActual: ${s.actualClass}\nPred: ${s.predictedClass}\nLD1: ${s.ld1}\nLD2: ${s.ld2}\nDist: ${s.mahalanobisDistance}` }))}
+                      title: `Row: ${s.rowId}\nActual: ${classDisplay[s.actualClass]}\nPred: ${classDisplay[s.predictedClass]}\nLD1: ${s.ld1}\nLD2: ${s.ld2}\nDist: ${s.mahalanobisDistance}` }))}
                     oneDimensional={result.axes.length < 2} xLabel="LD1 (第1正準判別軸)" yLabel="LD2 (第2正準判別軸)"
                     xExtent={[mapExtents.xMin, mapExtents.xMax]} yExtent={[mapExtents.yMin, mapExtents.yMax]}
                     extraSeries={discriminantBackground(result, classColorMap)}
@@ -405,19 +434,20 @@ export default function DiscriminantAnalysisPage() {
 
                 <L1Legend />
                 {/* Class legend */}
-                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap', overflowWrap: 'anywhere' }}>
                   {result.boundaryMesh && <Typography.Text type="secondary" style={{ fontSize: 11 }}>背景の予測クラス:</Typography.Text>}
                   {result.boundaryMesh && result.classes.map((cls) => (
-                    <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' }}>
                       <div
                         style={{
                           width: 10,
                           height: 10,
+                          flexShrink: 0,
                           borderRadius: '50%',
                           background: classColorMap[cls],
                         }}
                       />
-                      <Typography.Text style={{ fontSize: 11 }}>{cls}</Typography.Text>
+                      <Typography.Text style={{ fontSize: 11 }}>{classDisplay[cls]}</Typography.Text>
                     </div>
                   ))}
                   <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>
