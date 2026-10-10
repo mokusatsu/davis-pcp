@@ -156,9 +156,11 @@ for (const [name, Page, prefix, predictorId, predictorKey, endpoint] of [
 
   it('defaults to the last eligible question and all other eligible predictors in metadata order', async () => {
     await mount(<Page />)
-    expect(selected(outcomeId)).toEqual(['Q8'])
-    expect(selected(predictorId)).toEqual(['F1', 'Q7'])
-    expect(screen.getByTestId(runId)).toBeEnabled()
+    await waitFor(() => {
+      expect(selected(outcomeId)).toEqual(['Q8'])
+      expect(selected(predictorId)).toEqual(['F1', 'Q7'])
+      expect(screen.getByTestId(runId)).toBeEnabled()
+    })
     expect(mocks.post).not.toHaveBeenCalled()
   })
 
