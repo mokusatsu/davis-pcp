@@ -96,6 +96,7 @@ it.each(['available', 'unavailable'] as const)('renders %s inference without los
     exponentiationStatus: { oddsRatio: 'finite', ciLower: available ? 'finite' : 'unavailable', ciUpper: available ? 'finite' : 'unavailable' } }
   vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
   vi.spyOn(api, 'post').mockResolvedValue({ target: 'A', classes: ['0', '1'], features: ['score'], excludedRowCount: 0,
+    targetDtype: 'Int64', classCategories: [[{ rawValue: '0', code: '0', label: '0' }], [{ rawValue: '1', code: '1', label: '1' }]],
     diagnostics: { completeSeparation: false, inferenceStatus }, coefficients: [coefficient], curves: {},
     fitMetrics: { logLikelihood: -1, nullLogLikelihood: -2, aic: 4, bic: 4, pseudoR2: 0.5, converged: true },
     samples: [{ rowId: 'r1', actual: 0, predictedProb: 0.1, featureValues: { score: 0 }, predictedClass: 0, residual: 0.1, isMisclassified: false }],
@@ -127,6 +128,7 @@ it.each([0.5, 1, 2])('selects points and rectangles at display scale %s', async 
   vi.stubGlobal('PointerEvent', MouseEvent)
   vi.spyOn(message, 'success').mockImplementation(() => (() => {}) as any)
   vi.spyOn(api, 'post').mockResolvedValue({ target: 'A', classes: ['0', '1'], features: ['score'], excludedRowCount: 0,
+    targetDtype: 'Int64', classCategories: [[{ rawValue: '0', code: '0', label: '0' }], [{ rawValue: '1', code: '1', label: '1' }]],
     diagnostics: { completeSeparation: false }, coefficients: [], curves: {},
     fitMetrics: { logLikelihood: -1, nullLogLikelihood: -2, aic: 4, bic: 4, pseudoR2: 0.5, converged: true },
     samples: [0, 1, 2].map(index => ({ rowId: `r${index + 1}`, actual: index % 2, predictedProb: index % 2 ? 0.9 : 0.1,

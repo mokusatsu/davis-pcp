@@ -104,10 +104,28 @@ export interface ConfusionMatrix {
   f1Score: number
 }
 
+export interface LogisticClassCategory {
+  rawValue: string
+  code: string
+  label: string
+}
+
+/** Describe the fitted raw categories, never the current codebook or analysis scores. */
+function formatLogisticClass(result: LogisticResponse, index: number): string {
+  const stringTarget = /^(String|Categorical|Enum)($|\()/i.test(result.targetDtype)
+  const categories = result.classCategories[index].map(category => {
+    const raw = stringTarget ? JSON.stringify(category.rawValue) : category.rawValue
+    return category.label === category.code ? raw : `${raw}（${category.label}）`
+  })
+  return `${index}: ${categories.join('、')}`
+}
+
 export interface LogisticResponse {
   warnings?: { code: string; message: string }[]
   diagnostics: { completeSeparation: boolean | null; inferenceStatus: 'available' | 'unavailable' }
   target: string
+  targetDtype: string
+  classCategories: [LogisticClassCategory[], LogisticClassCategory[]]
   classes: string[]
   features: string[]
   excludedRowCount: number
@@ -457,6 +475,14 @@ export default function LogisticRegressionPage() {
 
       {result && <Card title="表示中の結果の操作" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
         <div className="analysis-form-stack">
+          <div role="group" aria-label="表示中のモデルのクラス" style={{ overflowWrap: 'anywhere' }}>
+            <Typography.Text strong>目的変数 {result.target} のクラス（学習時）</Typography.Text>
+            <div>クラス {formatLogisticClass(result, 0)}</div>
+            <div>クラス {formatLogisticClass(result, 1)}</div>
+          </div>
+          <Typography.Text style={{ overflowWrap: 'anywhere' }}>
+            予測確率はクラス1に属する確率です。予測確率 ≥ Cutoff（{cutoff.toFixed(2)}）なら1、それ未満なら0と分類します。
+          </Typography.Text>
           <AnalysisField label="分類閾値 (Cutoff)" help="表示中の学習済み予測確率にすぐ反映されます。モデルの再学習は行いません。">
             <div className="analysis-inline-fields">
               <Slider ariaLabelForHandle="表示中の結果の分類閾値" min={0.01} max={0.99} step={0.01}
@@ -524,13 +550,16 @@ export default function LogisticRegressionPage() {
                   </Space>
                 }
               >
+                <Typography.Paragraph style={{ overflowWrap: 'anywhere' }}>
+                  予測確率の対象: {result.target} のクラス {formatLogisticClass(result, 1)}
+                </Typography.Paragraph>
                 <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
                   <L1Legend />
                   <ModelScatter testId="logistic-sigmoid-svg" svgRef={svgRef} height={chartHeight}
                     points={samplePointsWithCoord.map(p => ({ id: p.rowId, rowId:p.rowId, x: p.xVal, y: p.jitterY,
                       selected: selectedRowIdSet.has(p.rowId), selectionColor, color: getColor(p.rowId),
                       misclassified: (p.predictedProb >= cutoff ? 1 : 0) !== p.actual,
-                      title: `Row: ${p.rowId}\n${questionText(focusAxis)}: ${p.xVal}\nActual: ${p.actual} (${result.classes[p.actual]})\nProb: ${p.predictedProb}` }))}
+                      title: `Row: ${p.rowId}\n${questionText(focusAxis)}: ${p.xVal}\nActual: ${formatLogisticClass(result, p.actual)}\nProb (class 1): ${p.predictedProb}` }))}
                     xLabel={questionText(focusAxis)} yLabel="P(Y = 1 | X)" xExtent={[axisMinMax.min, axisMinMax.max]} yExtent={[0, 1]}
                     extraSeries={logisticCurveSeries(axisCurve, cutoff)}
                     onToggle={id => dispatch(selectionApplied({ rowIds: [id], operation: 'toggle', label: 'ロジスティック回帰の点選択' }))}
@@ -555,6 +584,10 @@ export default function LogisticRegressionPage() {
                 normalWidth="viewport"
               >
               <Card size="small">
+                <Typography.Paragraph style={{ overflowWrap: 'anywhere' }}>
+                  オッズ比の対象: {result.target} のクラス {formatLogisticClass(result, 1)}。
+                  オッズ比は、他の説明変数を一定にして、説明変数が解析上の尺度（例: 順序尺度のスコア）で1単位増えたときの、オッズ P(クラス1) / P(クラス0) の倍率です。
+                </Typography.Paragraph>
                 <OddsRatioForest items={forestData} />
               </Card>
               </GraphPanel>
@@ -566,22 +599,22 @@ export default function LogisticRegressionPage() {
             <Col xs={24} md={12}>
               <Card size="small" title="▼ 混同行列 (Confusion Matrix)">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+                  <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', textAlign: 'center', overflowWrap: 'anywhere' }}>
                     <thead>
                       <tr>
                         <th style={{ padding: 6 }}></th>
                         <th style={{ padding: 6, background: '#f5f5f5', border: '1px solid #d9d9d9' }}>
-                          予測: 0 ({result.classes[0]})
+                          予測: {formatLogisticClass(result, 0)}
                         </th>
                         <th style={{ padding: 6, background: '#f5f5f5', border: '1px solid #d9d9d9' }}>
-                          予測: 1 ({result.classes[1]})
+                          予測: {formatLogisticClass(result, 1)}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
                         <td style={{ padding: 6, fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #d9d9d9' }}>
-                          実測: 0 ({result.classes[0]})
+                          実測: {formatLogisticClass(result, 0)}
                         </td>
                         <td
                           style={{
@@ -618,7 +651,7 @@ export default function LogisticRegressionPage() {
                       </tr>
                       <tr>
                         <td style={{ padding: 6, fontWeight: 'bold', background: '#f5f5f5', border: '1px solid #d9d9d9' }}>
-                          実測: 1 ({result.classes[1]})
+                          実測: {formatLogisticClass(result, 1)}
                         </td>
                         <td
                           style={{

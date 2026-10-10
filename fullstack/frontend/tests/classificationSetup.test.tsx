@@ -59,6 +59,7 @@ function result(page: Page): any {
   }
   return {
     target: 'y', classes: ['0', '1'], features: ['x'], excludedRowCount: 0, coefficients: [],
+    targetDtype: 'Int64', classCategories: [[{ rawValue: '0', code: '0', label: '0' }], [{ rawValue: '1', code: '1', label: '1' }]],
     diagnostics: { completeSeparation: false, inferenceStatus: 'available' },
     fitMetrics: { logLikelihood: -1, nullLogLikelihood: -2, aic: 4, bic: 5, pseudoR2: 0.5, converged: true },
     samples: [
