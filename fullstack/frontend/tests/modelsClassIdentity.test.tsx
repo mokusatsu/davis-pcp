@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { getInstanceByDom, type ECharts } from 'echarts'
@@ -56,6 +56,43 @@ const transformedBox = (element: any) => {
   const box = element.getBoundingRect().clone()
   box.applyTransform(element.transform)
   return box
+}
+const renderedNode = (chart: ECharts, nodeId: number) => {
+  const data = (chart as any).getModel().getSeriesByIndex(0).getData()
+  const index = nodes(chart).findIndex(node => node.nodeId === nodeId)
+  return data.getItemGraphicEl(index).getSymbolPath()
+}
+const hoverNode = async (chart: ECharts, nodeId: number, hovered: boolean) => {
+  const target = renderedNode(chart, nodeId), box = transformedBox(target)
+  const type = hovered ? 'mouseover' : 'mouseout'
+  // Exercise ZRender event routing on the actual graphic and real ECharts
+  // graph emphasis/blur. DOM pointer hit testing belongs to native acceptance.
+  act(() => chart.getZr().handler.dispatchToElement({ target, topTarget: target }, type,
+    Object.assign(new MouseEvent(type), { zrX: box.x + box.width / 2, zrY: box.y + box.height / 2 })))
+  await waitFor(() => {
+    chart.getZr().flush()
+    expect(renderedNode(chart, nodeId).currentStates.includes('emphasis')).toBe(hovered)
+  })
+}
+const expectReadableSelection = (chart: ECharts, nodeId: number) => {
+  chart.getZr().flush()
+  const shape = renderedNode(chart, nodeId), label = shape.getTextContent()
+  expect(shape.style.opacity ?? 1).toBe(1)
+  expect(label.style.opacity ?? 1).toBe(1)
+  expect(shape.style.stroke).toBe('#2a78d6')
+  expect(shape.style.lineWidth).toBe(3)
+  expect(label.style.text).toContain(' ✓')
+  const svg = exportedSvg(chart)
+  const selectedPath = svg.querySelector('path[stroke="#2a78d6"]')!
+  expect(selectedPath).not.toBeNull()
+  expect(Number(selectedPath.getAttribute('fill-opacity') ?? 1)).toBe(1)
+  expect(Number(selectedPath.getAttribute('stroke-opacity') ?? 1)).toBe(1)
+  const labelLines = label.style.text.split('\n')
+  for (const line of labelLines) {
+    const text = Array.from(svg.querySelectorAll('text')).find(node => node.textContent === line)!
+    expect(text).toBeTruthy()
+    expect(Number(text.getAttribute('fill-opacity') ?? 1)).toBe(1)
+  }
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -116,6 +153,91 @@ it('keeps duplicate labels distinct in SVG, colors, full descriptions and row se
   rerender({ selectedRowIds: ['r3'] })
   expect(view.getByTestId('tree-leaf-0-20')).toHaveAttribute('aria-pressed', 'false')
 })
+
+it('announces forest membership count while preserving training count and exact per-tree selection', () => {
+  const rowIds = ['r8', 'r2', 'r9']
+  const { view, chart, onLeafSelect } = mountTree({ treeIndex: 4,
+    leafMembership: [
+      { treeIndex: 0, nodeId: 10, rowIds: ['other-tree'] },
+      { treeIndex: 4, nodeId: 10, rowIds },
+      { treeIndex: 4, nodeId: 20, rowIds: ['r3', 'r4', 'r5'] },
+    ] })
+  const button = view.getByTestId('tree-leaf-4-10')
+  expect(button).toHaveAccessibleName('葉10の3行を選択: C1: 10（同じ）')
+  expect(button).toBeEnabled()
+  expect(button).toHaveTextContent('(学習時n=2)')
+  const leaf = nodes(chart).find(node => node.nodeId === 10)
+  expect(svgText(chart)).toContain('n=2 · 100%')
+  expect(leaf.description).toContain('学習時n=2')
+  // Ordinary equal-count leaves keep their existing action count.
+  expect(view.getByTestId('tree-leaf-4-20')).toHaveAccessibleName('葉20の3行を選択: C2: 20（同じ）')
+  const actions = [
+    () => fireEvent.keyDown(button, { key: 'Enter' }),
+    () => fireEvent.keyDown(button, { key: ' ' }),
+    () => fireEvent.click(button),
+    () => (chart as any).trigger('click', { dataType: 'node', data: leaf }),
+  ]
+  for (const action of actions) {
+    onLeafSelect.mockClear()
+    action()
+    expect(onLeafSelect).toHaveBeenCalledTimes(1)
+    expect(onLeafSelect.mock.calls[0][0]).toBe(rowIds)
+    expect(onLeafSelect).toHaveBeenCalledWith(['r8', 'r2', 'r9'])
+  }
+})
+
+it.each(['missing', 'empty'] as const)('does not offer training rows when this tree has %s membership', kind => {
+  const leafMembership = [{ treeIndex: 1, nodeId: 10, rowIds: ['other-tree'] },
+    ...(kind === 'empty' ? [{ treeIndex: 0, nodeId: 10, rowIds: [] }] : [])]
+  const { view, chart, onLeafSelect } = mountTree({ leafMembership })
+  const button = view.getByTestId('tree-leaf-0-10')
+  expect(button).toHaveAccessibleName('葉10の0行を選択: C1: 10（同じ）')
+  expect(button).toBeDisabled()
+  expect(button).toHaveTextContent('(学習時n=2)')
+  expect(svgText(chart)).toContain('n=2 · 100%')
+  fireEvent.click(button)
+  fireEvent.keyDown(button, { key: 'Enter' })
+  fireEvent.keyDown(button, { key: ' ' })
+  ;(chart as any).trigger('click', { dataType: 'node', data: nodes(chart).find(node => node.nodeId === 10) })
+  expect(onLeafSelect).not.toHaveBeenCalled()
+})
+
+it.each([[10, 20, 'Enter'], [20, 10, ' ']] as const)(
+  'keeps selected leaf %s readable while sibling %s is hovered, across rerender and clearing',
+  async (selectedId, siblingId, key) => {
+    const { view, chart, props, onLeafSelect, rerender } = mountTree()
+    const selectedButton = view.getByTestId(`tree-leaf-0-${selectedId}`)
+    fireEvent.keyDown(selectedButton, { key })
+    const rowIds = props.leafMembership.find(leaf => leaf.nodeId === selectedId)!.rowIds
+    expect(onLeafSelect).toHaveBeenCalledTimes(1)
+    expect(onLeafSelect.mock.calls[0][0]).toBe(rowIds)
+    rerender({ selectedRowIds: onLeafSelect.mock.calls[0][0] })
+    expect(selectedButton).toHaveAttribute('aria-pressed', 'true')
+    expectReadableSelection(chart, selectedId)
+    await hoverNode(chart, siblingId, true)
+    // A real sibling emphasis transition must leave the selected shape, both
+    // rendered label lines and the SVG export fully readable.
+    expectReadableSelection(chart, selectedId)
+    rerender({ selectedRowIds: [...rowIds] })
+    await waitFor(() => {
+      expect(renderedNode(chart, siblingId).currentStates).toContain('emphasis')
+      expectReadableSelection(chart, selectedId)
+    })
+    await hoverNode(chart, siblingId, false)
+    expectReadableSelection(chart, selectedId)
+    rerender({ selectedRowIds: [] })
+    for (const nodeId of [selectedId, siblingId]) {
+      expect(view.getByTestId(`tree-leaf-0-${nodeId}`)).toHaveAttribute('aria-pressed', 'false')
+      const shape = renderedNode(chart, nodeId)
+      expect(shape.style.opacity ?? 1).toBe(1)
+      expect(shape.getTextContent().style.opacity ?? 1).toBe(1)
+      expect(shape.style.stroke).toBe('#94a3b8')
+      expect(shape.style.lineWidth).toBe(1)
+    }
+    expect(svgText(chart)).not.toContain(' ✓')
+    expect(exportedSvg(chart).querySelector('path[stroke="#2a78d6"]')).toBeNull()
+  },
+)
 
 it.each([
   ['Int64', ['1', '2'], ['1', '2'], ['C1: 1', 'C2: 2']],

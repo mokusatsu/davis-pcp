@@ -528,9 +528,10 @@ export function TreeDiagram({ root, targetDtype, classCategories, treeIndex, lea
   const leafDescription = (node: TreeNode) => classCategories === null
     ? node.majority ?? 'leaf' : mapping[classIndexOf(node)].description
 
+  const membershipByNode = (nodeId: number) => leafMembership.find((l) => l.treeIndex === treeIndex && l.nodeId === nodeId)
   const selectByNode = (nodeId: number) => {
-    const membership = leafMembership.find((l) => l.treeIndex === treeIndex && l.nodeId === nodeId)
-    if (membership) onLeafSelect(membership.rowIds)
+    const membership = membershipByNode(nodeId)
+    if (membership?.rowIds.length) onLeafSelect(membership.rowIds)
   }
 
   return (
@@ -571,15 +572,18 @@ export function TreeDiagram({ root, targetDtype, classCategories, treeIndex, lea
               links: [...positions.values()].flatMap(({node}) => (node.children ?? []).map((child, i) => ({
                 source: String(node.nodeId), target: String(child.nodeId), name: i === 0 ? 'yes' : 'no' }))),
               edgeLabel: { show: true, formatter: (p: any) => p.data.name, fontSize: 10 },
-              lineStyle: { color: '#b5b5ae', width: 1.3 }, emphasis: { focus: 'adjacency' },
+              lineStyle: { color: '#b5b5ae', width: 1.3 }, emphasis: { focus: 'none' },
             }] }} onEvents={{ click: p => { if (p.dataType === 'node' && p.data.isLeaf) selectByNode(p.data.nodeId) } }} />
         <details open style={{ padding: '4px 12px' }}><summary>葉をキーボードで選択</summary>
-          {[...positions.values()].filter(p => p.node.isLeaf).map(({node}) => <button key={node.nodeId}
+          {[...positions.values()].filter(p => p.node.isLeaf).map(({node}) => {
+            const selectionCount = membershipByNode(node.nodeId)?.rowIds.length ?? 0
+            return <button key={node.nodeId} disabled={selectionCount === 0}
             data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`} aria-pressed={node.nodeId === activeLeafNodeId}
-            aria-label={`葉${node.nodeId}の${node.count}行を選択${classCategories === null ? '' : `: ${leafDescription(node)}`}`}
+            aria-label={`葉${node.nodeId}の${selectionCount}行を選択${classCategories === null ? '' : `: ${leafDescription(node)}`}`}
             title={leafDescription(node)}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectByNode(node.nodeId) } }}
-            onClick={() => selectByNode(node.nodeId)}>葉{node.nodeId}: {classCategories === null ? node.majority ?? 'leaf' : leafBadge(node)} (学習時n={node.count})</button>)}
+            onClick={() => selectByNode(node.nodeId)}>葉{node.nodeId}: {classCategories === null ? node.majority ?? 'leaf' : leafBadge(node)} (学習時n={node.count})</button>
+          })}
         </details>
       </div>
     </div>
