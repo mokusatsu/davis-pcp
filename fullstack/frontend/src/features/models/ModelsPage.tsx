@@ -5,6 +5,7 @@ import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { editorModalOpened } from '../dataset/codebookSlice'
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
@@ -143,6 +144,7 @@ export default function ModelsPage() {
   const globalVariables = useSelector(selectOrdinaryVariables)
   const entities = useSelector(selectVariableEntities)
   const { columns: codebookColumns, schemaRevision } = useCodebook()
+  const weightColumnName = codebookColumns.find(column => column.columnId === globalVariables.weightColumnId)?.name
   const [modelType, setModelType] = useState<'decision_tree' | 'random_forest'>('decision_tree')
   const [target, setTarget] = useState<string | null>(null)
   const [chosen, setChosen] = useState<{ datasetId: string; names: string[]; children: string[] } | null>(null)
@@ -245,6 +247,7 @@ export default function ModelsPage() {
 
   return (
     <div data-testid="models-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: '100%' }}>
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
 

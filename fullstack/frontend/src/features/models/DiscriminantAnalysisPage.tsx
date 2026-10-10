@@ -8,6 +8,7 @@ import Table from '../common/ColumnTable'
 import ColumnQuestionTooltip, { useQuestionText } from '../common/ColumnQuestionTooltip'
 import Select from '../common/ColumnSelect'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { editorModalOpened } from '../dataset/codebookSlice'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
@@ -141,6 +142,7 @@ export default function DiscriminantAnalysisPage() {
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const { schemaRevision, columns: definitions } = useCodebook()
+  const weightColumnName = definitions.find(column => column.columnId === globalVars.weightColumnId)?.name
 
   const entities = useSelector(selectVariableEntities)
   const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
@@ -290,6 +292,7 @@ export default function DiscriminantAnalysisPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="discriminant-analysis-page">
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <Card title="判別分析の設定" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
         <div className="analysis-form-stack">
           <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />

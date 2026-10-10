@@ -8,6 +8,7 @@ import Table from '../common/ColumnTable'
 import GraphPanel from '../common/GraphPanel'
 import Select from '../common/ColumnSelect'
 import { AnalysisField, AnalysisRunRow, AnalysisSettings } from '../common/AnalysisSetup'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { editorModalOpened } from '../dataset/codebookSlice'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
@@ -152,6 +153,7 @@ export default function LogisticRegressionPage() {
   const globalVars = useSelector(selectOrdinaryVariables)
   const effectiveRowIds = useSelector(selectEffectiveRowIds)
   const { schemaRevision, columns: definitions } = useCodebook()
+  const weightColumnName = definitions.find(column => column.columnId === globalVars.weightColumnId)?.name
   const entities = useSelector(selectVariableEntities)
   const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
   const groups = entities.items.filter(item => item.entity.kind === 'ma' && entities.selected.has(item.key))
@@ -408,6 +410,7 @@ export default function LogisticRegressionPage() {
 
   return (
     <div style={{ padding: 16, height: '100%', overflowY: 'auto' }} data-testid="logistic-regression-page">
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <Card title="ロジスティック回帰の設定" size="small" className="analysis-setup" style={{ marginBottom: 16 }}>
         <div className="analysis-form-stack">
           <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />
