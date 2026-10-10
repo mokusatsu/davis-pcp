@@ -43,6 +43,8 @@ import './features/common/graphPanel.css'
 import { WasmLoadingScreen } from './app/WasmLoadingScreen'
 import { pyodideClient } from './engine/pyodideClient'
 import './theme/viz.css'
+import DavisBridgeHost from './integrations/siwc/DavisBridgeHost'
+import type { DavisRouterPort } from './integrations/siwc/davisAdapter'
 
 const routeChildren = [
   { index: true, element: <PcpPage /> },
@@ -95,6 +97,12 @@ const router = IS_STATIC_BUILD
       },
     ])
 
+const bridgeRouter: DavisRouterPort = {
+  getPath: () => router.state.location.pathname,
+  subscribe: listener => router.subscribe(() => listener()),
+  navigate: path => router.navigate(path),
+}
+
 const AppRoot: React.FC = () => {
   const [isReady, setIsReady] = useState(!IS_STATIC_BUILD)
 
@@ -115,6 +123,7 @@ const AppRoot: React.FC = () => {
       <ConfigProvider locale={jaJP} theme={{ algorithm: antdTheme.defaultAlgorithm }}>
         <GraphExpansionProvider>
           <RouterProvider router={router} />
+          <DavisBridgeHost store={store} router={bridgeRouter} enabled={isReady} />
         </GraphExpansionProvider>
       </ConfigProvider>
     </Provider>

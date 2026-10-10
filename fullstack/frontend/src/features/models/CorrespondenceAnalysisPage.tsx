@@ -2,21 +2,20 @@ import { useAnalysisResultLifecycle } from './useAnalysisResultLifecycle'
 import AsyncExportButton from '../common/AsyncExportButton'
 import { AnalysisField, AnalysisSettings, AnalysisRunRow } from '../common/AnalysisSetup'
 import { editorModalOpened } from '../dataset/codebookSlice'
-import { useAnalysisScope, AnalysisScopeSummary, captureAnalysisRunContext, type AnalysisScopeSnapshot } from '../selection/analysisScope'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnalysisScopeSummary } from '../selection/analysisScope'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Alert, Button, Card, Radio, Select, Space, Spin, Tag, Typography, message,
 } from 'antd'
 import type { AppDispatch, RootState } from '../../app/store'
-import { selectionApplied, selectOrdinaryVariables } from '../../app/store'
-import { useCodebook } from '../dataset/useCodebookColumn'
+import { selectionApplied } from '../../app/store'
 import GraphPanel from '../common/GraphPanel'
 import { getBrushOp } from '../selection/SelectionMenu'
 import SelectColumn from '../common/ColumnSelect'
-import type { CAResponse } from './caTypes'
-import type { MapScaling } from './caMap'
-import { runCa, selectCaCategories, type CAContext } from './caApi'
+import { selectCaCategories } from './caApi'
+import { useCorrespondenceController } from './useCorrespondenceController'
+import type { CorrespondenceSetup } from './caControllerBridge'
 import CaHelp from './caHelp'
 import CaFigure from './caFigure'
 import { CategoryTable, EigenvalueTable } from './caTables'
@@ -30,109 +29,43 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 
 export default function CorrespondenceAnalysisPage(): JSX.Element {
   const dispatch = useDispatch<AppDispatch>()
+  const ca = useCorrespondenceController()
   const selection = useSelector((s: RootState) => s.selection)
-  const analysisScope = useAnalysisScope()
-  const codebook = useCodebook()
-  const { columns, schemaRevision } = codebook
-  const datasetId = selection.datasetId
-
-  const globalVars = useSelector(selectOrdinaryVariables)
-  const hasGlobalSignal = globalVars.allVariables.length > 0
-  const activeSet = useMemo(() => new Set(globalVars.activeVariableIds), [globalVars.activeVariableIds])
-  const weightConfig = codebook.weightConfig
-  const categoricalOptions = useMemo(
-    () => columns
-      .filter((c) => ['nominal', 'ordinal', 'binary'].includes(c.scaleType) && !c.multiResponseGroup
-        && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.name, label: c.name, name: c.name, questionName: c.name, questionText: c.label })),
-    [columns, activeSet, hasGlobalSignal],
-  )
-  const rowLabelOptions = useMemo(
-    () => columns
-      .filter((c) => ['nominal', 'ordinal', 'binary', 'text', 'id'].includes(c.scaleType) && !c.multiResponseGroup)
-      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
-    [columns],
-  )
-  const numericOptions = useMemo(
-    () => columns
-      .filter((c) => ['interval', 'ratio'].includes(c.scaleType) && !c.multiResponseGroup
-        && (!hasGlobalSignal || activeSet.has(c.name)))
-      .map((c) => ({ value: c.name, label: c.name, questionName: c.name, questionText: c.label })),
-    [columns, activeSet, hasGlobalSignal],
-  )
-
-  const [inputKind, setInputKind] = useState<'respondents' | 'contingency'>('respondents')
-  const [rowVar, setRowVar] = useState<string | null>(null)
-  const [colVar, setColVar] = useState<string | null>(null)
-  const [rowLabelCol, setRowLabelCol] = useState<string | null>(null)
-  const [valueCols, setValueCols] = useState<string[]>([])
-  const [cellSemantics, setCellSemantics] = useState<'frequency' | 'mass'>('frequency')
-  const [ack, setAck] = useState(false)
-  const [mapScaling, setMapScaling] = useState<MapScaling>('symmetric')
-  const [missingPolicy, setMissingPolicy] = useState('exclude')
-  const [weightChoice, setWeightChoice] = useState<'dataset' | 'none'>('dataset')
-
-  const savedWeightColumnId = weightConfig?.weightColumnId ?? null
-  const savedWeightType = weightConfig?.weightType ?? null
-  const effectiveMissing = inputKind === 'contingency' ? 'exclude' : missingPolicy
-
-  const [completed, setCompleted] = useState<{ result: CAResponse; context: CAContext; snapshot: AnalysisScopeSnapshot } | null>(null)
+  const { schemaRevision, datasetId, completed, loading, error, dirty, controller,
+    categoricalOptions, rowLabelOptions, numericOptions, unavailableVariables, canRun,
+    savedWeightColumnId, savedWeightType, effectiveMissing, weightConflict } = ca
+  const { inputKind, rowVar, colVar, rowLabelCol, valueCols, cellSemantics, ack, mapScaling, weightChoice } = ca.setup
+  const setInputKind = (value: CorrespondenceSetup['inputKind']) => controller.configure({ inputKind: value })
+  const setRowVar = (value: string | null) => controller.configure({ rowVar: value || null })
+  const setColVar = (value: string | null) => controller.configure({ colVar: value || null })
+  const setRowLabelCol = (value: string | null) => controller.configure({ rowLabelCol: value || null })
+  const setValueCols = (value: string[]) => controller.configure({ valueCols: value })
+  const setCellSemantics = (value: CorrespondenceSetup['cellSemantics']) => controller.configure({ cellSemantics: value })
+  const setMapScaling = (value: CorrespondenceSetup['mapScaling']) => controller.configure({ mapScaling: value })
+  const setMissingPolicy = (value: CorrespondenceSetup['missingPolicy']) => controller.configure({ missingPolicy: value })
+  const setWeightChoice = (value: CorrespondenceSetup['weightChoice']) => controller.configure({ weightChoice: value })
   const result = completed?.result ?? null
   const resultContext = completed?.context
   const resultRef = useRef(result)
   resultRef.current = result
-  const [submittedKey, setSubmittedKey] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set())
   const [between, setBetween] = useState<'and' | 'or'>('and')
   const [selecting, setSelecting] = useState(false)
   const [selectInfo, setSelectInfo] = useState<string | null>(null)
-  const runSequence = useRef(0)
   const selectionSequence = useRef(0)
   useEffect(() => () => {
-    runSequence.current += 1
     selectionSequence.current += 1
   }, [])
   const svgRef = useRef<SVGSVGElement | null>(null)
 
-  const unavailableVariables = inputKind === 'respondents'
-    ? [rowVar, colVar].filter((id): id is string => Boolean(id) && !categoricalOptions.some(option => option.value === id))
-    : valueCols.filter(id => !numericOptions.some(option => option.value === id))
-  const draftKey = JSON.stringify([datasetId, inputKind, rowVar, colVar, rowLabelCol, valueCols,
-    cellSemantics, ack, analysisScope.scopeKey, effectiveMissing, weightChoice,
-    selection.dataRevision, schemaRevision, unavailableVariables])
-  const dirty = result !== null && submittedKey !== '' && draftKey !== submittedKey
-
-  useEffect(() => {
-    runSequence.current += 1
+  useLayoutEffect(() => {
     selectionSequence.current += 1
-    setCompleted(null)
-    setSubmittedKey('')
-    setError(null)
-    setLoading(false)
     setSelecting(false)
+  }, [ca.runVersion, datasetId])
+  useLayoutEffect(() => {
     setSelectedCats(new Set())
     setSelectInfo(null)
-    setWeightChoice('dataset')
-    setMissingPolicy('exclude')
-  }, [datasetId])
-
-  const buildContext = (): CAContext => ({
-    datasetId: datasetId ?? '',
-    expectedDataRevision: selection.dataRevision,
-    expectedSchemaRevision: schemaRevision,
-    ...analysisScope.contextRows,
-    weightMode: weightChoice,
-    missingPolicy: effectiveMissing,
-  })
-
-  const weightConflict = inputKind === 'contingency' && weightChoice === 'dataset' && Boolean(savedWeightColumnId)
-  const canRun = !weightConflict && unavailableVariables.length === 0 && (inputKind === 'respondents'
-    ? Boolean(datasetId && rowVar && colVar && rowVar !== colVar)
-    : Boolean(datasetId && rowLabelCol && valueCols.length >= 2
-      && rowLabelOptions.some(option => option.value === rowLabelCol)
-      && !valueCols.includes(rowLabelCol ?? '') && (cellSemantics === 'mass' || ack)))
+  }, [completed, datasetId])
 
   const selectionRef = useRef(selection)
   selectionRef.current = selection
@@ -141,46 +74,10 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
 
   const handleRun = async (): Promise<void> => {
     if (!datasetId || !canRun) return
-    const seq = ++runSequence.current
-    const startedDataset = datasetId
-    const startedContext = captureAnalysisRunContext(buildContext())
-    const startedScope = analysisScope
-    selectionSequence.current += 1
-    setSelecting(false)
-    const startedDataRev = selectionRef.current.dataRevision
-    const startedSchemaRev = schemaRef.current
-    const startedKey = draftKey
-    setLoading(true)
-    setError(null)
     try {
-      const input = inputKind === 'respondents'
-        ? { kind: 'respondents' as const, rowVariable: rowVar ?? '', columnVariable: colVar ?? '' }
-        : {
-            kind: 'contingency' as const,
-            rowLabelColumn: rowLabelCol ?? '',
-            valueColumns: valueCols,
-            cellSemantics,
-            independentCountsAcknowledged: cellSemantics === 'frequency' ? ack : false,
-          }
-      const res = await runCa(startedContext, input, mapScaling)
-      if (seq !== runSequence.current) return
-      if (selectionRef.current.datasetId !== startedDataset
-        || selectionRef.current.dataRevision !== startedDataRev
-        || schemaRef.current !== startedSchemaRev) return
-      setCompleted({ result: res, context: startedContext, snapshot: startedScope })
-      setSubmittedKey(startedKey)
-      setSelectedCats(new Set())
-      setSelectInfo(null)
+      await controller.run()
       message.success('コレスポンデンス分析を実行しました。')
-    } catch (err) {
-      if (seq !== runSequence.current) return
-      if (selectionRef.current.datasetId !== startedDataset
-        || selectionRef.current.dataRevision !== startedDataRev
-        || schemaRef.current !== startedSchemaRev) return
-      setError(apiErrorMessage(err, '分析に失敗しました。'))
-    } finally {
-      if (seq === runSequence.current) setLoading(false)
-    }
+    } catch { /* The shared controller owns current errors and stale/cancelled receipts. */ }
   }
 
   const toggleCat = (id: string): void => {
@@ -325,7 +222,7 @@ export default function CorrespondenceAnalysisPage(): JSX.Element {
               </Radio.Group>
             </AnalysisField>
             {cellSemantics === 'frequency' && <label>
-              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+              <input type="checkbox" checked={ack} onChange={(e) => ca.setAcknowledged(e.target.checked)} />
               セルが独立した観測の度数であることを確認する
             </label>}
             <Typography.Text type="secondary">分割表の対象件数はカテゴリ行数です（回答者数ではありません）。</Typography.Text>
