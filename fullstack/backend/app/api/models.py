@@ -125,7 +125,7 @@ def _tree_structure(tree: Any, feature_names: list[str], class_labels: list[str]
         for i, c in enumerate(counts):
             proportion = float(c) / total if total > 0 else 0.0
             label = class_labels[i] if class_labels and i < len(class_labels) else str(i)
-            out.append({"label": label, "count": round(proportion * node_n),
+            out.append({"classIndex": i, "label": label, "count": round(proportion * node_n),
                         "ratio": round(proportion, 3)})
         return sorted(out, key=lambda x: -x["count"])
 
@@ -199,6 +199,10 @@ def _create_model(req: ModelRequest) -> dict:
     if req.rowIds is not None:
         df = df.filter(pl.col('__rowId__').is_in(req.rowIds))
     scope_hash, scope_count = _scope_hash(df['__rowId__'].to_list()), df.height
+    raw_target = df[req.target]
+    target_dtype = str(raw_target.dtype)
+    raw_target_by_row_id = dict(zip(df['__rowId__'].to_list(), raw_target.to_list()))
+    original_adapter = CodebookAdapter(df, codebook)
     df, excluded = plan.prepare(df)
     normalized_columns = []
     for column in codebook.get('columns', []):
@@ -262,8 +266,24 @@ def _create_model(req: ModelRequest) -> dict:
     trees = model.estimators_ if req.modelType == "random_forest" else [model]
     # Class labels for value display (needed before representative-tree scoring).
     class_labels: list[str] | None = None
+    class_categories: list[list[dict[str, str]]] | None = None
     if task == "classification" and hasattr(model, "classes_"):
         class_labels = [str(c) for c in model.classes_]
+        # Scalar equality joins Python/NumPy fitted values without string coercion.
+        class_indexes = {value: i for i, value in enumerate(model.classes_)}
+        categories_by_class = [{} for _ in model.classes_]
+        for row_id, fitted_value in zip(row_ids, y):
+            raw = raw_target_by_row_id[row_id]
+            raw_value = str(raw)
+            categories = categories_by_class[class_indexes[fitted_value]]
+            if raw_value not in categories:
+                categories[raw_value] = {
+                    'rawValue': raw_value,
+                    'code': normalize_code(raw),
+                    'label': original_adapter.label_for_value(req.target, raw),
+                }
+        class_categories = [[categories[raw] for raw in sorted(categories)]
+                            for categories in categories_by_class]
 
     # Representative tree: the tree whose predictions agree most with the whole
     # forest (agreement rate on training data). Shown as THE forest view.
@@ -331,6 +351,8 @@ def _create_model(req: ModelRequest) -> dict:
         "algorithmVersion": f"sklearn-{type(model).__name__}",
         "features": req.features,
         "target": req.target,
+        "targetDtype": target_dtype,
+        "classCategories": class_categories,
         "trainedRows": len(X),
         "rowIds": row_ids,
         "featureImportance": {c: round(sum(float(v) for source, v in zip(feature_sources, model.feature_importances_) if source == c), 6) for c in req.features},

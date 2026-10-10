@@ -17,6 +17,7 @@ vi.mock('../src/features/pcp/useDatasetColumns', () => ({ useColumnarData: () =>
 const rows = ['r1', 'r2', 'r3', 'r4']
 const result = {
   resultId: 'model-result', modelType: 'decision_tree', taskType: 'regression', evidenceClass: 'test',
+  targetDtype: 'Float64', classCategories: null,
   features: ['x'], target: 'outcome', trainedRows: 2, scopeCount: 4, ordinaryMissingExcluded: 1,
   featureImportance: { x: 1 }, diagnostics: {}, leafCount: 1,
   leafMembership: [{ treeIndex: 0, nodeId: 7, rowIds: ['r2', 'r4'] }],

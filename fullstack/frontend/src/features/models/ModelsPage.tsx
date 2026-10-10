@@ -20,6 +20,7 @@ import { useCodebook } from '../dataset/useCodebookColumn'
 import { getBrushOp } from '../selection/SelectionMenu'
 import GraphPanel from '../common/GraphPanel'
 import { truncateText } from '../../utils/textUtils'
+import { wrapChartLabel } from '../../utils/chartLabelLayout'
 
 interface LeafMembership {
   nodeId: number
@@ -31,15 +32,35 @@ interface TreeNode {
   nodeId: number
   isLeaf: boolean
   count: number
-  values?: { label: string; count: number; ratio: number }[]
+  values?: { label: string; count: number; ratio: number; classIndex: number }[]
   feature?: string
   threshold?: number
   majority?: string | null
   children?: TreeNode[]
 }
 
-/** Intrinsic dimensions preserve readable leaf spacing instead of squashing graph symbols. */
-export function treeDiagramDimensions(root: TreeNode): { width: number; height: number } {
+interface ClassCategory { rawValue: string; code: string; label: string }
+interface TreeClassMetadata {
+  targetDtype: string
+  classCategories: ClassCategory[][] | null
+}
+
+const CLASS_COLORS = ['#eb6834', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4']
+const CLASS_LINE_HEIGHT = 18
+const classColorOf = (classIndex: number) => CLASS_COLORS[classIndex % CLASS_COLORS.length]
+
+/** Use frozen fitted descriptors; display labels never identify a class. */
+function describeTreeClass(categories: ClassCategory[], classIndex: number, targetDtype: string): string {
+  const stringTarget = /^(String|Categorical|Enum)($|\()/i.test(targetDtype)
+  const values = categories.map(category => {
+    const raw = stringTarget ? JSON.stringify(category.rawValue) : category.rawValue
+    const label = category.label === category.code ? '' : `（${category.label}）`
+    return `${raw}${label}`
+  })
+  return `C${classIndex + 1}${categories.length > 1 ? '（複数の元の値）' : ''}: ${values.join('、')}`
+}
+
+function treeDiagramLayout(root: TreeNode, targetDtype: string, classCategories: ClassCategory[][] | null) {
   let leaves = 0, maxDepth = 0
   const visit = (node: TreeNode, depth: number) => {
     maxDepth = Math.max(maxDepth, depth)
@@ -48,7 +69,25 @@ export function treeDiagramDimensions(root: TreeNode): { width: number; height: 
   }
   visit(root, 0)
   const rowHeight = Math.max(56, Math.min(92, Math.floor(520 / (maxDepth + 1))))
-  return { width: Math.max(760, leaves * 104 + 40), height: (maxDepth + 1) * rowHeight + 30 }
+  const width = Math.max(760, leaves * 104 + 40), treeHeight = (maxDepth + 1) * rowHeight + 30
+  const mappingTitle = classCategories === null ? '' : 'クラス対応（元の値・値ラベル）'
+  let bottom = treeHeight + 32
+  const mapping = classCategories === null ? [] : classCategories.map((categories, classIndex) => {
+    const description = describeTreeClass(categories, classIndex, targetDtype)
+    // Every line belongs to the SVG. Grow its logical height instead of clipping
+    // long labels or relying on HTML/hover content outside the exported chart.
+    const lines = wrapChartLabel(description, width - 58, Infinity, 12)
+    const y = bottom
+    bottom += lines.length * CLASS_LINE_HEIGHT + 8
+    return { classIndex, description, lines, y }
+  })
+  return { width, height: classCategories === null ? treeHeight : bottom + 12, treeHeight, mappingTitle, mapping }
+}
+
+/** Intrinsic dimensions include full class mapping and preserve readable leaf spacing. */
+export function treeDiagramDimensions(root: TreeNode, targetDtype: string, classCategories: ClassCategory[][] | null): { width: number; height: number } {
+  const { width, height } = treeDiagramLayout(root, targetDtype, classCategories)
+  return { width, height }
 }
 
 interface ModelResponse {
@@ -60,6 +99,8 @@ interface ModelResponse {
   evidenceClass: string
   features: string[]
   target: string
+  targetDtype: string
+  classCategories: ClassCategory[][] | null
   trainedRows: number
   featureImportance: Record<string, number>
   leafMembership?: LeafMembership[]
@@ -188,6 +229,9 @@ export default function ModelsPage() {
 
   const selectLeaf = (rowIds: string[]) =>
     dispatch(selectionApplied({ rowIds, operation: getBrushOp(), label: 'tree leaf選択' }))
+
+  const treeSize = result?.treeStructures?.[0]
+    ? treeDiagramDimensions(result.treeStructures[0], result.targetDtype, result.classCategories) : null
 
   const topFeature = useMemo(() => {
     if (!result?.featureImportance) return null
@@ -378,10 +422,12 @@ export default function ModelsPage() {
             </GraphPanel>
           )}
           {result.treeStructures?.[0] && (
-            <GraphPanel graphId="models/tree" title="決定木ダイアグラム" available sizing="intrinsic" intrinsicSize={{ width: treeDiagramDimensions(result.treeStructures[0]).width + 28, height: treeDiagramDimensions(result.treeStructures[0]).height + 150 }}>
+            <GraphPanel graphId="models/tree" title="決定木ダイアグラム" available sizing="intrinsic" intrinsicSize={{ width: treeSize!.width + 28, height: treeSize!.height + 150 }}>
             <div style={{ maxWidth: '100%', overflow: 'visible', padding: 14, userSelect: 'none' }}>
             <TreeDiagram
               root={result.treeStructures[0]}
+              targetDtype={result.targetDtype}
+              classCategories={result.classCategories}
               treeIndex={0}
               leafMembership={result.leafMembership ?? []}
               selectedRowIds={selection.selectedRowIds}
@@ -429,7 +475,7 @@ export default function ModelsPage() {
 /** Decision-tree diagram: split nodes show the rule + sample count,
  *  leaves are clickable and select their row cohort across all views.
  *  Leaf color = majority class (validated categorical palette). */
-export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, onLeafSelect, headerNote }: {
+export function TreeDiagram({ root, targetDtype, classCategories, treeIndex, leafMembership, selectedRowIds, onLeafSelect, headerNote }: TreeClassMetadata & {
   root: TreeNode
   treeIndex: number
   leafMembership: LeafMembership[]
@@ -438,7 +484,6 @@ export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, o
   headerNote?: string
 }) {
   const questionText = useQuestionText()
-  const CLASS_COLORS = ['#eb6834', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4']
   const MIN_LEAF_W = 96
   const MAX_TREE_HEIGHT = 520
   const positions = new Map<number, { x: number; y: number; node: TreeNode }>()
@@ -460,7 +505,7 @@ export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, o
   const colW = MIN_LEAF_W + 8
   const maxDepth = Math.max(...[...positions.values()].map((p) => p.y))
   const rowH = Math.max(56, Math.min(92, Math.floor(MAX_TREE_HEIGHT / (maxDepth + 1))))
-  const { width, height } = treeDiagramDimensions(root)
+  const { width, height, treeHeight, mappingTitle, mapping } = treeDiagramLayout(root, targetDtype, classCategories)
   // The active leaf is the one whose membership equals the current selection.
   const selectedSet = new Set(selectedRowIds)
   let activeLeafNodeId: number | null = null
@@ -475,12 +520,13 @@ export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, o
   const px = (x: number) => 20 + x * colW + colW / 2
   const py = (y: number) => 26 + y * rowH
 
-  const classColorOf = (label: string | null): string => {
-    if (!label) return '#898781'
-    const labels = [...new Set(collectLabels(root))].sort()
-    const idx = labels.indexOf(label)
-    return CLASS_COLORS[(idx + 1) % CLASS_COLORS.length]
-  }
+  // Keep the API's existing sorted winner, including rounded-count ties.
+  const classIndexOf = (node: TreeNode) => node.values![0].classIndex
+  const leafBadge = (node: TreeNode) => classCategories === null
+    ? truncateText(node.majority ?? 'leaf', 12)
+    : `C${classIndexOf(node) + 1}: ${truncateText(node.majority ?? '', 8)}`
+  const leafDescription = (node: TreeNode) => classCategories === null
+    ? node.majority ?? 'leaf' : mapping[classIndexOf(node)].description
 
   const selectByNode = (nodeId: number) => {
     const membership = leafMembership.find((l) => l.treeIndex === treeIndex && l.nodeId === nodeId)
@@ -495,19 +541,30 @@ export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, o
         </Typography.Title>
       </Space>
       <div style={{ flex: 1, overflow: 'visible', minHeight: 0 }}>
-        <EChart width={width} height={height} ariaLabel="決定木構造"
+        <EChart width={width} height={height} exportFileName="決定木構造"
+          ariaLabel={['決定木構造', mappingTitle, ...mapping.map(entry => entry.description)].filter(Boolean).join('。')}
           option={{ grid: { left: 0, right: 0, top: 0, bottom: 0, outerBoundsMode: 'none' },
             xAxis: { type: 'value', min: 0, max: width, show: false },
             yAxis: { type: 'value', min: 0, max: height, inverse: true, show: false },
             tooltip: { renderMode: 'richText', formatter: (p: any) => p.data?.description ?? p.name },
+            graphic: classCategories === null ? [] : [
+              { type: 'text', x: 20, y: treeHeight + 8, silent: true,
+                style: { text: mappingTitle, font: '12px sans-serif', lineHeight: CLASS_LINE_HEIGHT, fill: '#111' } },
+              ...mapping.flatMap(entry => [
+                { id: `class-${entry.classIndex}-color`, type: 'rect' as const, x: 20, y: entry.y + 4, silent: true,
+                  shape: { width: 10, height: 10 }, style: { fill: classColorOf(entry.classIndex) } },
+                { id: `class-${entry.classIndex}-description`, type: 'text' as const, x: 38, y: entry.y, silent: true,
+                  style: { text: entry.lines.join('\n'), font: '12px sans-serif', lineHeight: CLASS_LINE_HEIGHT, fill: '#111' } },
+              ]),
+            ],
             series: [{ type: 'graph', coordinateSystem: 'cartesian2d', layout: 'none', roam: false, edgeSymbol: ['none', 'none'],
               data: [...positions.values()].map(({x, y, node}) => ({ id: String(node.nodeId), value: [px(x), py(y)],
                 nodeId: node.nodeId, isLeaf: node.isLeaf, symbol: 'roundRect', symbolSize: node.isLeaf ? [84, 38] : [100, 38],
-                name: node.isLeaf ? `${truncateText(node.majority ?? 'leaf', 12)}${node.nodeId === activeLeafNodeId ? ' ✓' : ''}\nn=${node.count}${node.values?.[0] ? ` · ${Math.round(node.values[0].ratio * 100)}%` : ''}`
+                name: node.isLeaf ? `${leafBadge(node)}${node.nodeId === activeLeafNodeId ? ' ✓' : ''}\nn=${node.count}${node.values?.[0] ? ` · ${Math.round(node.values[0].ratio * 100)}%` : ''}`
                   : `${truncateText(`${node.feature ?? ''} ≤ ${node.threshold}`, 14)}\nn=${node.count}`,
-                description: node.isLeaf ? `${node.majority ?? 'leaf'}\n葉${node.nodeId} 学習時n=${node.count}\nクリックで所属行を選択`
+                description: node.isLeaf ? `${leafDescription(node)}\n葉${node.nodeId} 学習時n=${node.count}\nクリックで所属行を選択`
                   : `${questionText(node.feature ?? '')} ≤ ${node.threshold}\n学習時n=${node.count}`,
-                itemStyle: { color: node.isLeaf ? classColorOf(node.majority ?? null) : '#f8fafc',
+                itemStyle: { color: node.isLeaf ? classCategories === null ? node.majority ? CLASS_COLORS[0] : '#898781' : classColorOf(classIndexOf(node)) : '#f8fafc',
                   borderColor: node.nodeId === activeLeafNodeId ? '#2a78d6' : '#94a3b8', borderWidth: node.nodeId === activeLeafNodeId ? 3 : 1 },
                 label: { show: true, fontSize: 10, color: '#111' },
               })),
@@ -518,25 +575,13 @@ export function TreeDiagram({ root, treeIndex, leafMembership, selectedRowIds, o
             }] }} onEvents={{ click: p => { if (p.dataType === 'node' && p.data.isLeaf) selectByNode(p.data.nodeId) } }} />
         <details open style={{ padding: '4px 12px' }}><summary>葉をキーボードで選択</summary>
           {[...positions.values()].filter(p => p.node.isLeaf).map(({node}) => <button key={node.nodeId}
-            data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`} aria-pressed={node.nodeId === activeLeafNodeId} aria-label={`葉${node.nodeId}の${node.count}行を選択`}
+            data-testid={`tree-leaf-${treeIndex}-${node.nodeId}`} aria-pressed={node.nodeId === activeLeafNodeId}
+            aria-label={`葉${node.nodeId}の${node.count}行を選択${classCategories === null ? '' : `: ${leafDescription(node)}`}`}
+            title={leafDescription(node)}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectByNode(node.nodeId) } }}
-            onClick={() => selectByNode(node.nodeId)}>葉{node.nodeId}: {node.majority ?? 'leaf'} (学習時n={node.count})</button>)}
+            onClick={() => selectByNode(node.nodeId)}>葉{node.nodeId}: {classCategories === null ? node.majority ?? 'leaf' : leafBadge(node)} (学習時n={node.count})</button>)}
         </details>
-      </div>
-      <div style={{ display: 'flex', gap: 12, marginTop: 4, padding: '0 12px 8px' }}>
-        {[...new Set(collectLabels(root))].sort().map((label) => (
-          <span key={label} style={{ fontSize: 11 }}>
-            <span style={{ display: 'inline-block', width: 10, height: 10, background: classColorOf(label), borderRadius: 2, marginRight: 4 }} />
-            {label}
-          </span>
-        ))}
       </div>
     </div>
   )
-}
-
-function collectLabels(node: TreeNode, acc: string[] = []): string[] {
-  for (const v of node.values ?? []) acc.push(v.label)
-  node.children?.forEach((child) => collectLabels(child, acc))
-  return acc
 }

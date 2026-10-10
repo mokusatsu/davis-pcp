@@ -35,6 +35,7 @@ it('sends only the explicit MA child and exact scope on manual execution', async
     rowIds: [], expectedSchemaRevision: 2, expectedDataRevision: 3 })))
   await view.findByText('学習対象がありません。')
   post.mockResolvedValue({ resultId: 'm', modelType: 'decision_tree', taskType: 'regression', features: ['a'], target: 'score',
+    targetDtype: 'Float64', classCategories: null,
     trainedRows: 2, scopeCount: 2, ordinaryMissingExcluded: 0, featureImportance: { a: 1 }, diagnostics: {},
     leafMembership: [{ treeIndex: 0, nodeId: 7, rowIds: ['r2', 'r8'] }],
     treeStructures: [{ nodeId: 7, isLeaf: true, count: 2, majority: '12.5', values: [] }],

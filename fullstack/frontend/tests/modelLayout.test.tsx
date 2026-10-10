@@ -49,16 +49,17 @@ describe('model chart layout', () => {
     const makeTree=(depth:number):any=> {
       const nodeId=nextId++
       return {nodeId,isLeaf:depth===4,count:16>>depth,majority:'A',feature:'X',threshold:.5,
-        values:[{label:'A',count:16>>depth,ratio:1}],...(depth<4?{children:[makeTree(depth+1),makeTree(depth+1)]}:{})}
+        values:[{label:'A',count:16>>depth,ratio:1,classIndex:0}],...(depth<4?{children:[makeTree(depth+1),makeTree(depth+1)]}:{})}
     }
-    const root=makeTree(0), size=treeDiagramDimensions(root)
+    const classCategories=[[{rawValue:'A',code:'A',label:'A'}]]
+    const root=makeTree(0), size=treeDiagramDimensions(root,'String',classCategories)
     expect(size.width).toBe(16*104+40)
     const w=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'clientWidth'),h=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'clientHeight')
     Object.defineProperty(HTMLElement.prototype,'clientWidth',{configurable:true,get:()=>size.width})
     Object.defineProperty(HTMLElement.prototype,'clientHeight',{configurable:true,get:()=>size.height})
     const select=vi.fn(),leaf=root.children[0].children[0].children[0].children[0]
     try {
-      const view=render(<Provider store={store}><TreeDiagram root={root} treeIndex={0} leafMembership={[{treeIndex:0,nodeId:leaf.nodeId,rowIds:['R1']}]} selectedRowIds={['R1']} onLeafSelect={select} /></Provider>)
+      const view=render(<Provider store={store}><TreeDiagram root={root} targetDtype="String" classCategories={classCategories} treeIndex={0} leafMembership={[{treeIndex:0,nodeId:leaf.nodeId,rowIds:['R1']}]} selectedRowIds={['R1']} onLeafSelect={select} /></Provider>)
       const chart=getInstanceByDom(view.container.querySelector('[data-chart-renderer="echarts"]') as HTMLElement)!
       const series=(chart as any).getModel().getSeriesByIndex(0),data=series.getData()
       expect(series.get('coordinateSystem')).toBe('cartesian2d')
