@@ -1,6 +1,7 @@
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import Select from '../common/ColumnSelect'
 import { AnalysisField, AnalysisRunRow } from '../common/AnalysisSetup'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { editorModalOpened } from '../dataset/codebookSlice'
 import { useCallback, useEffect, useId, useState } from 'react'
 
@@ -26,6 +27,7 @@ export default function OrdinaryPcaPanel() {
   const rowIds = useSelector(selectEffectiveRowIds)
   const globalVariables = useSelector(selectOrdinaryVariables)
   const { columns, schemaRevision } = useCodebook()
+  const weightColumnName = columns.find(column => column.columnId === globalVariables.weightColumnId)?.name
   const candidates = columns.filter(c => !c.multiResponseGroup && ['question', 'attribute'].includes(c.role)
     && ['interval', 'ratio', 'ordinal'].includes(c.scaleType) && globalVariables.activeVariableIds.includes(c.name))
   const numericColumns = candidates.map(c => c.name)
@@ -97,6 +99,7 @@ export default function OrdinaryPcaPanel() {
       data-testid="pca-page"
       style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 4, minWidth: 0, height: 'auto', minHeight: '100%', flex: 'none', flexShrink: 0 }}
     >
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <div className="analysis-setup analysis-form-stack" data-testid="pca-setup"
         style={{ background: '#fff', padding: '10px 14px', borderRadius: 6, border: '1px solid #f0f0f0' }}>
         <div className="analysis-variable-grid">

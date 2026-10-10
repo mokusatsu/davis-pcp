@@ -12,6 +12,7 @@ import { ProjectionCircle } from './ProjectionCircle'
 import { TgtControlPanel } from './TgtControlPanel'
 import GraphPanel from '../common/GraphPanel'
 import EmptyStatePanel from '../common/EmptyStatePanel'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { useCodebook } from '../dataset/useCodebookColumn'
 import { touringAnalysisValues } from './touringProjection'
 
@@ -21,6 +22,7 @@ export default function TgtPage() {
   const activeVarIds = globalVars?.activeVariableIds
   const data = useColumnarData(selection.datasetId)
   const { columns, getColumn } = useCodebook()
+  const weightColumnName = columns.find(column => column.columnId === globalVars.weightColumnId)?.name
 
   const candidates = useMemo(() => {
     if (!data) return []
@@ -135,10 +137,13 @@ export default function TgtPage() {
 
   if (numericColumns.length < 3) {
     return (
+      <>
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <EmptyStatePanel
         message="Grand Tour には3つ以上の分析可能な変数（間隔・比率・明示選択する順序尺度）が必要です。上部の変数セレクタから追加してください。"
         minVariables={3}
       />
+      </>
     )
   }
 
@@ -147,6 +152,7 @@ export default function TgtPage() {
       data-testid="tgt-page"
       style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 4, minHeight: 0 }}
     >
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       {/* Control Toolbar */}
         <TgtControlPanel
           columns={numericColumns}

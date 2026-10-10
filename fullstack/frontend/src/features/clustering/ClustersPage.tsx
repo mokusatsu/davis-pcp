@@ -1,5 +1,6 @@
 import { SELECTION_LABELS } from '../selection/selectionLabels'
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
+import WeightUnsupportedAlert from '../common/WeightUnsupportedAlert'
 import { pointRadius } from '../charts/markerStyle'
 import EChartSurface from '../charts/EChartSurface'
 import { Select as AntSelect } from 'antd'
@@ -105,6 +106,7 @@ export default function ClustersPage() {
   const entities = useSelector(selectVariableEntities)
   const [added, setAdded] = useState<{ datasetId: string | null; names: string[] }>({ datasetId: null, names: [] })
   const { columns: definitions, schemaRevision } = useCodebook()
+  const weightColumnName = definitions.find(column => column.columnId === variables.weightColumnId)?.name
   const [method, setMethod] = useState('kmeans')
   const [k, setK] = useState<number | null>(3)
   const [seed, setSeed] = useState<number | null>(42)
@@ -242,6 +244,7 @@ export default function ClustersPage() {
       data-testid="clusters-page"
       style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowX: 'hidden' }}
     >
+      <WeightUnsupportedAlert weightColumnName={weightColumnName} />
       <AnalysisScopeSummary snapshot={runScope.snapshot} />
       {runScope.dirty && <Typography.Text type="warning">現在の入力と異なる実行済み結果です。再実行すると更新されます。</Typography.Text>}
 
