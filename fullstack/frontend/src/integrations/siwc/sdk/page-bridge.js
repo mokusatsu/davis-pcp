@@ -2,6 +2,7 @@
 // Locally amended from siwc-bridge 0.1.1; see ../UPSTREAM.md.
 import { assert, randomId, digest, boundedJSON, publicError, throwIfAborted, isObject } from '../extension/core/common.js';
 import { normalizeCommands, planSchema, validatePlan } from '../extension/core/schema.js';
+import { validateWorkflow, commandRole, assertWorkflowPlan, assertWorkflowPrecondition } from '../extension/core/workflow.js';
 
 export const CHANNEL = 'siwc-page-commands/1';
 
@@ -10,10 +11,11 @@ export const CHANNEL = 'siwc-page-commands/1';
  * No tokens, inference API or remotely supplied JavaScript are accepted here.
  * Same-window/origin checks are a transport boundary, not extension authentication.
  */
-export function createPageAdapter({appId, appName, commands, getContext, getRevision, handlers, authorize = async () => true, lockName = null, clock = () => Date.now()}) {
+export function createPageAdapter({appId, appName, commands, getContext, getWorkflow, getRevision, handlers, authorize = async () => true, lockName = null, clock = () => Date.now()}) {
   assert(/^[a-z][a-z0-9.-]{0,79}$/.test(appId), 'INVALID_APP_ID');
   assert(typeof appName === 'string' && appName.length <= 120, 'INVALID_APP_NAME');
   assert(typeof getContext === 'function' && typeof getRevision === 'function', 'INVALID_ADAPTER');
+  assert(getWorkflow === undefined || typeof getWorkflow === 'function', 'INVALID_ADAPTER');
   const snapshots = new Map(), plans = new Map(), cancelled = new Set(), running = new Map();
   let chain = Promise.resolve(), disposed = false;
   const active = () => assert(!disposed, 'ADAPTER_DISPOSED');
@@ -30,6 +32,12 @@ export function createPageAdapter({appId, appName, commands, getContext, getRevi
     assert(typeof value === 'string' && value.length <= 2048, 'INVALID_REVISION');
     return value;
   };
+  const workflow = async () => {
+    active();
+    const value = getWorkflow ? await getWorkflow() : null;
+    active();
+    return value === null || value === undefined ? null : validateWorkflow(value);
+  };
   // A reporting failure must never discard receipts for operations already completed.
   const reportedRevision = async () => {
     try { return {revision: await revision()}; } catch { return {}; }
@@ -43,6 +51,8 @@ export function createPageAdapter({appId, appName, commands, getContext, getRevi
     const rawContext = await getContext();
     active();
     const context = boundedJSON(rawContext);
+    const currentWorkflow = await workflow();
+    active();
     const schemaHash = await digest(defs);
     active();
     const after = await revision();
@@ -52,7 +62,7 @@ export function createPageAdapter({appId, appName, commands, getContext, getRevi
     // Check capacity after the awaits so concurrent snapshots cannot overfill the cache.
     assert(snapshots.size < 128, 'TOO_MANY_SNAPSHOTS');
     const id = randomId(16), expiresAt = clock() + 300000;
-    const result = boundedJSON({protocol: 1, app: {id: appId, name: appName}, snapshotId: id, schemaHash, revision: after, expiresAt, commands: defs, context});
+    const result = boundedJSON({protocol: 1, contractRevision: 2, app: {id: appId, name: appName}, snapshotId: id, schemaHash, revision: after, expiresAt, commands: defs, context, workflow: currentWorkflow});
     snapshots.set(id, {revision: after, schemaHash, defs, expiresAt});
     return result;
   }
@@ -77,6 +87,7 @@ export function createPageAdapter({appId, appName, commands, getContext, getRevi
     assert(currentSchemaHash === snap.schemaHash, 'SCHEMA_CHANGED');
     const checked = validatePlan(planSchema(snap.defs), plan);
     assert(checked.kind === 'commands', 'NO_COMMANDS');
+    assertWorkflowPlan(checked, snap.defs);
     const allowed = await authorize(checked.commands, {runId, revision: snap.revision});
     check();
     assert(allowed, 'APP_PERMISSION_DENIED');
@@ -95,6 +106,17 @@ export function createPageAdapter({appId, appName, commands, getContext, getRevi
         check();
         throwIfAborted(controller.signal);
         const command = checked.commands[index];
+        if (commandRole(command, snap.defs)) {
+          const currentWorkflow = await workflow();
+          check();
+          throwIfAborted(controller.signal);
+          // A workflow read can await application state. Never let its stale
+          // binding outlive a generation change, cancellation or disposal.
+          assert(await revision() === expectedRevision, 'STATE_CHANGED_DURING_PLAN');
+          check();
+          throwIfAborted(controller.signal);
+          assertWorkflowPrecondition(command, {commands: snap.defs, workflow: currentWorkflow}, clock);
+        }
         assert(Object.hasOwn(handlers, command.op) && typeof handlers[command.op] === 'function', 'NO_COMMAND_HANDLER');
         let result;
         try {

@@ -25,6 +25,7 @@ type WorkflowState = {
   workflow: string; status: string; requestId: string; draftRevision: number; expiresAt: number
   questions: Array<{ id: string; type: string; requiresPageAction?: boolean; options?: Array<{ value: string; label: string }>; minItems?: number; maxItems?: number }>
   preview: Record<string, JSONValue>; summary: Record<string, JSONValue> | null; running: boolean; reason: string | null
+  resume?: { command: string }; run?: { command: string }; cancel?: { command: string }
 }
 type Answer = { questionId: string; value: string | string[] | boolean }
 const rows = ['PRIVATE_ROW_A', 'PRIVATE_ROW_B', 'PRIVATE_ROW_C', 'PRIVATE_ROW_D']
@@ -164,6 +165,7 @@ afterEach(() => { cleanups.splice(0).reverse().forEach(cleanup => cleanup()); vi
 describe('correspondence intent, questions and bounded answers', () => {
   it('advertises four closed schemas with integer draft bindings and bounded answers', () => {
     expect(CORRESPONDENCE_COMMANDS.map(c => c.name)).toEqual(['analysis.prepare', 'analysis.resume', 'analysis.run', 'analysis.cancel'])
+    expect(CORRESPONDENCE_COMMANDS.map(c => c.workflowRole)).toEqual(['prepare', 'resume', 'run', 'cancel'])
     for (const command of CORRESPONDENCE_COMMANDS) expect(() => checkSchema(command.inputSchema)).not.toThrow()
     const prepare = CORRESPONDENCE_COMMANDS[0].inputSchema, resume = CORRESPONDENCE_COMMANDS[1].inputSchema
     expect(() => validate(prepare, { method: 'pca', answers: [] })).toThrow('SCHEMA_VALIDATION_FAILED')
@@ -180,7 +182,7 @@ describe('correspondence intent, questions and bounded answers', () => {
     expect(f.workflow.getContext()).toBeNull()
     const before = store.getState()
     const draft = await f.prepare()
-    expect(draft).toMatchObject({ workflow: 'davis-analysis/1', status: 'needs_input',
+    expect(draft).toMatchObject({ workflow: 'page-workflow/1', status: 'needs_input',
       preview: { view: '/models/ca', inputKind: 'respondents', missingPolicy: 'include_missing', mapScaling: 'row_principal',
         weightMode: 'dataset', savedWeightColumnId: 'id-weight', scope: 'active', scopeCount: 4 } })
     expect(draft.questions.map(q => q.id)).toEqual(['rowColumnId', 'columnColumnId'])
@@ -188,7 +190,8 @@ describe('correspondence intent, questions and bounded answers', () => {
     expect(f.router.getPath()).toBe('/models/ca')
     expect(f.run).not.toHaveBeenCalled()
     expect(store.getState()).toBe(before)
-    expect(f.options.getContext()).toMatchObject({ pendingAnalysis: { requestId: draft.requestId, draftRevision: draft.draftRevision } })
+    expect(f.options.getWorkflow!()).toMatchObject({ requestId: draft.requestId, draftRevision: draft.draftRevision })
+    expect(f.options.getContext()).not.toHaveProperty('pendingAnalysis')
   })
 
   it('resumes authoritative questions with stable IDs without choosing the first pair', async () => {
@@ -518,7 +521,7 @@ describe('normal-page completion and minimized receipts', () => {
     await f.call('analysis.run', f.binding())
     store.dispatch(datasetValuesUpdated({ datasetId: 'dataset', dataRevision: 8 }))
     expect(f.state()).toMatchObject({ status: 'invalidated', summary: null, preview: {} })
-    expect(JSON.stringify(f.options.getContext())).not.toContain('normal-ca-result')
+    expect(JSON.stringify(f.options.getWorkflow!())).not.toContain('normal-ca-result')
   })
 
   it('invalidates an old completed reference after a manual run replaces the same setup result', async () => {
@@ -558,8 +561,123 @@ describe('normal-page completion and minimized receipts', () => {
     await f.prepare(respondentAnswers)
     f.onCommitted(() => store.dispatch(datasetValuesUpdated({ datasetId: 'dataset', dataRevision: 8 })))
     const receipt = await f.call('analysis.run', f.binding())
-    expect(receipt).toMatchObject({ status: 'invalidated', committed: true, summary: null })
+    expect(receipt).toMatchObject({ workflow: 'page-workflow/1', status: 'invalidated', committed: true, summary: null })
+    expect(receipt).not.toHaveProperty('cancel')
     expect(f.published).not.toBeNull()
     expect(f.state()).toMatchObject({ status: 'invalidated', summary: null })
+  })
+})
+
+describe('revision-two DAVIS workflow over the real page adapter', () => {
+  type Snapshot = { contractRevision: number; snapshotId: string; schemaHash: string; revision: string;
+    context: Record<string, unknown>; workflow: WorkflowState | null }
+  type Receipt = { status: string; results: Array<{ status: string; result: WorkflowState }>; error?: { code: string } }
+  let sequence = 0
+  const connect = (f: ReturnType<typeof fixture>) => {
+    const adapter = createPageAdapter(f.options)
+    cleanups.push(adapter.dispose)
+    const snapshot = () => adapter.snapshot() as Promise<Snapshot>
+    const bind = (s: Snapshot) => ({ requestId: s.workflow!.requestId, draftRevision: s.workflow!.draftRevision })
+    const envelope = (s: Snapshot, commands: Array<{ op: string; args: Record<string, JSONValue> }>) => ({
+      snapshotId: s.snapshotId, schemaHash: s.schemaHash, revision: s.revision,
+      planId: `davis_protocol_plan_${++sequence}`, runId: `davis_protocol_run_${sequence}`, expiresAt: Date.now() + 10000,
+      plan: { kind: 'commands', message: 'Apply the requested correspondence workflow step', commands },
+    })
+    const execute = async (op: string, args?: Record<string, JSONValue>) => {
+      const s = await snapshot(), e = envelope(s, [{ op, args: args ?? bind(s) }])
+      return { snapshot: s, envelope: e, receipt: await adapter.execute(e) as Receipt }
+    }
+    return { adapter, snapshot, bind, envelope, execute }
+  }
+
+  it('rejects prepare plus run before changing route, draft, settings or results', async () => {
+    const f = fixture(), p = connect(f), before = store.getState(), s = await p.snapshot()
+    const result = await p.adapter.execute(p.envelope(s, [
+      { op: 'analysis.prepare', args: { method: 'correspondence', answers: respondentAnswers } },
+      { op: 'analysis.run', args: { requestId: 'not-created', draftRevision: 1 } },
+    ]))
+    expect(result).toMatchObject({ status: 'failed', results: [], error: { code: 'WORKFLOW_PLAN_MUST_BE_SINGLE' } })
+    expect(f.router.getPath()).toBe('/pcp')
+    expect(f.configure).not.toHaveBeenCalled()
+    expect(f.run).not.toHaveBeenCalled()
+    expect(f.state()).toBeNull()
+    expect(store.getState()).toBe(before)
+  })
+
+  it('publishes a top-level workflow and completes current-draft replay and cancel with one fit', async () => {
+    const f = fixture(), p = connect(f)
+    const prepared = await p.execute('analysis.prepare', { method: 'correspondence', answers: [] })
+    expect(prepared.snapshot).toMatchObject({ contractRevision: 2, workflow: null })
+    expect(prepared.snapshot.context).not.toHaveProperty('pendingAnalysis')
+    expect(prepared.receipt).toMatchObject({ status: 'completed', results: [{ result: {
+      workflow: 'page-workflow/1', status: 'needs_input', resume: { command: 'analysis.resume' }, cancel: { command: 'analysis.cancel' },
+    } }] })
+    const waiting = await p.snapshot()
+    expect(waiting.workflow).toEqual(prepared.receipt.results[0].result)
+    expect(waiting.context).toMatchObject({ analysis: { workflow: 'page-workflow/1', availableMethods: ['correspondence'] } })
+    const resumed = await p.execute('analysis.resume', { ...p.bind(waiting), answers: respondentAnswers })
+    expect(resumed.receipt).toMatchObject({ status: 'completed', results: [{ result: {
+      status: 'ready', run: { command: 'analysis.run' }, cancel: { command: 'analysis.cancel' },
+    } }] })
+    const completed = await p.execute('analysis.run')
+    expect(completed.receipt).toMatchObject({ status: 'completed', results: [{ result: {
+      workflow: 'page-workflow/1', status: 'completed', resultId: 'normal-ca-result', cancel: { command: 'analysis.cancel' },
+    } }] })
+    expect(await p.adapter.execute(completed.envelope)).toEqual(completed.receipt)
+    const stale = await p.execute('analysis.run', p.bind(completed.snapshot))
+    expect(stale.receipt).toMatchObject({ status: 'failed', results: [], error: { code: 'STALE_DRAFT' } })
+    const replay = await p.execute('analysis.run')
+    expect(replay.receipt.results).toEqual(completed.receipt.results)
+    const cancelled = await p.execute('analysis.cancel')
+    expect(cancelled.receipt.status).toBe('completed')
+    expect(cancelled.receipt.results).toHaveLength(1)
+    expect(cancelled.receipt.results[0].result).toEqual(completed.receipt.results[0].result)
+    expect(f.run).toHaveBeenCalledTimes(1)
+    expect(f.published?.result.resultId).toBe('normal-ca-result')
+  })
+
+  it('blocks independence answers until the normal page action and a fresh snapshot', async () => {
+    const f = fixture(), p = connect(f)
+    const prepared = await p.execute('analysis.prepare', { method: 'correspondence',
+      answers: [...tableAnswers, { questionId: 'cellSemantics', value: 'frequency' }] })
+    expect(prepared.receipt.results[0].result.questions).toEqual([expect.objectContaining({ id: 'independentCounts', requiresPageAction: true })])
+    for (const answers of [[], [{ questionId: 'independentCounts', value: true }]]) {
+      const waiting = await p.snapshot()
+      const attempt = await p.execute('analysis.resume', { ...p.bind(waiting), answers })
+      expect(attempt.receipt).toMatchObject({ status: 'failed', results: [], error: {
+        code: answers.length ? 'SCHEMA_VALIDATION_FAILED' : 'INVALID_USER_ANSWERS',
+      } })
+    }
+    expect(f.controller.inspect().setup.ack).toBe(false)
+    expect(f.run).not.toHaveBeenCalled()
+    const waiting = await p.snapshot(), old = p.envelope(waiting, [{ op: 'analysis.run', args: p.bind(waiting) }])
+    f.pageEdit({ ack: true })
+    expect(await p.adapter.execute(old)).toMatchObject({ status: 'failed', results: [], error: { code: 'STALE_STATE' } })
+    const completed = await p.execute('analysis.run')
+    expect(completed.snapshot.workflow?.status).toBe('ready')
+    expect(completed.receipt).toMatchObject({ status: 'completed', results: [{ result: { status: 'completed' } }] })
+    expect(f.run).toHaveBeenCalledOnce()
+  })
+
+  it.each(['needs_input', 'ready'])('cancels a current %s draft and removes its cancel hint', async status => {
+    const f = fixture(), p = connect(f)
+    await p.execute('analysis.prepare', { method: 'correspondence', answers: status === 'ready' ? respondentAnswers : [] })
+    const result = await p.execute('analysis.cancel')
+    expect(result.snapshot.workflow).toMatchObject({ status, cancel: { command: 'analysis.cancel' } })
+    expect(result.receipt).toMatchObject({ status: 'completed', results: [{ result: { workflow: 'page-workflow/1', status: 'cancelled' } }] })
+    expect(result.receipt.results[0].result).not.toHaveProperty('cancel')
+    expect((await p.execute('analysis.cancel')).receipt).toMatchObject({ results: [], error: { code: 'UNSUPPORTED_WORKFLOW_COMMAND' } })
+    expect(f.run).not.toHaveBeenCalled()
+  })
+
+  it('exposes an expired draft as invalidated without a cancel hint or reusable result', async () => {
+    const f = fixture(), p = connect(f)
+    await p.execute('analysis.prepare', { method: 'correspondence', answers: respondentAnswers })
+    f.advanceTime(15 * 60 * 1000)
+    expect(f.state()).toMatchObject({ workflow: 'page-workflow/1', status: 'invalidated', reason: 'DRAFT_EXPIRED', summary: null })
+    const current = await p.snapshot()
+    expect(current.workflow).not.toHaveProperty('cancel')
+    expect((await p.execute('analysis.run')).receipt).toMatchObject({ results: [], error: { code: 'WORKFLOW_NOT_READY' } })
+    expect(f.run).not.toHaveBeenCalled()
   })
 })

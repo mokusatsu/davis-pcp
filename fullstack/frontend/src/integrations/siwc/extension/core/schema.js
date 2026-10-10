@@ -80,7 +80,9 @@ export function normalizeCommands(raw) {
     assert(typeof c.description === 'string' && c.description.length <= 4000, 'INVALID_COMMAND_DESCRIPTION');
     assert(['read','write','external'].includes(c.effect), 'INVALID_COMMAND_EFFECT');
     assert(c.inputSchema?.type === 'object', 'COMMAND_ARGUMENTS_MUST_BE_OBJECT');
-    return { name:c.name, description:c.description, effect:c.effect, inputSchema:checkSchema(c.inputSchema) };
+    if(c.workflowRole!==undefined)assert(['prepare','resume','run','cancel'].includes(c.workflowRole),'INVALID_WORKFLOW_ROLE');
+    return { name:c.name, description:c.description, effect:c.effect, inputSchema:checkSchema(c.inputSchema),
+      ...(c.workflowRole!==undefined?{workflowRole:c.workflowRole}:{}) };
   });
 }
 export function planSchema(commands) {

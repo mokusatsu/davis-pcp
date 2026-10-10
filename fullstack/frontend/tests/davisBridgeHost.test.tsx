@@ -72,7 +72,10 @@ describe('DAVIS bridge app lifecycle', () => {
     expect(router.listeners.size).toBe(1)
     send('ready')
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
-    expect(post.mock.calls[0][0]).toMatchObject({ id: 'ready', ok: true, value: { protocol: 1, context: { pendingAnalysis: null } } })
+    expect(post.mock.calls[0][0]).toMatchObject({ id: 'ready', ok: true, value: { protocol: 1, contractRevision: 2, workflow: null } })
+    expect(post.mock.calls[0][0].value.context).not.toHaveProperty('pendingAnalysis')
+    expect(post.mock.calls[0][0].value.commands.filter((command: { workflowRole?: string }) => command.workflowRole)
+      .map((command: { workflowRole: string }) => command.workflowRole)).toEqual(['prepare', 'resume', 'run', 'cancel'])
     view.rerender(<DavisBridgeHost store={store} router={router} enabled={false} />)
     expect(meta()).toHaveLength(0)
     expect(storeListeners.size).toBe(0)
@@ -152,7 +155,8 @@ describe('DAVIS bridge app lifecycle', () => {
     await act(async () => { window.dispatchEvent(new Event('pageshow')); await Promise.resolve() })
     send('fresh-snapshot')
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
-    expect(post.mock.calls[1][0]).toMatchObject({ id: 'fresh-snapshot', value: { context: { pendingAnalysis: null } } })
+    expect(post.mock.calls[1][0]).toMatchObject({ id: 'fresh-snapshot', value: { contractRevision: 2, workflow: null } })
+    expect(post.mock.calls[1][0].value.context).not.toHaveProperty('pendingAnalysis')
   })
 
   it('cleans subscriptions if protocol registration fails and allows a later clean install', () => {

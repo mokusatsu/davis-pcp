@@ -228,8 +228,7 @@ export function createDavisOptions({ store, router, monitor, workflow }: DavisAd
       } : null,
       view: router.getPath(),
       pcp: { orientation: pcp.orientation, showContext: pcp.showContext, lineOpacity: pcp.lineOpacity },
-      pendingAnalysis: workflow?.getContext() ?? null,
-      ...(workflow ? { analysis: { workflow: 'davis-analysis/1', availableMethods: ['correspondence'] } } : {}),
+      ...(workflow ? { analysis: { workflow: 'page-workflow/1', availableMethods: ['correspondence'] } } : {}),
     }
   }
   const handlers: PageBridgeOptions['handlers'] = {
@@ -298,6 +297,7 @@ export function createDavisOptions({ store, router, monitor, workflow }: DavisAd
   }
   return {
     appId: 'davis-pcp', appName: 'DAVIS-PCP', commands, handlers, getContext,
+    getWorkflow: () => workflow?.getContext() ?? null,
     getRevision: monitor.getRevision, lockName: 'davis-pcp-bridge-operations',
   }
 }

@@ -31,12 +31,12 @@ const answersSchema: JSONSchema = { type: 'array', maxItems: 12, items: { anyOf:
 ] } }
 const binding = { requestId: str(100), draftRevision: { type: 'integer', minimum: 1 } }
 export const CORRESPONDENCE_COMMANDS: CommandDefinition[] = [
-  { name: 'analysis.prepare', effect: 'write', description: 'コレスポンデンス分析の通常画面を開き、対象や入力形式を確認する。未指定の条件は質問として返し、計算はしない。',
+  { name: 'analysis.prepare', workflowRole: 'prepare', effect: 'write', description: 'コレスポンデンス分析の通常画面を開き、対象や入力形式を確認する。未指定の条件は質問として返し、計算はしない。',
     inputSchema: object({ method: { type: 'string', enum: ['correspondence'] }, answers: answersSchema }) },
-  { name: 'analysis.resume', effect: 'write', description: '現在の質問への明示的な回答で分析準備を更新する。独立度数の確認は通常画面での操作が必要。',
+  { name: 'analysis.resume', workflowRole: 'resume', effect: 'write', description: '現在の質問への明示的な回答で分析準備を更新する。独立度数の確認は通常画面での操作が必要。',
     inputSchema: object({ ...binding, answers: answersSchema }) },
-  { name: 'analysis.run', effect: 'write', description: '質問が解決した現在の準備内容で分析し、通常のコレスポンデンス分析画面に結果を表示する。', inputSchema: object(binding) },
-  { name: 'analysis.cancel', effect: 'write', description: '準備または進行中の結果公開を中止する。完了済みの操作を取り消すものではない。', inputSchema: object(binding) },
+  { name: 'analysis.run', workflowRole: 'run', effect: 'write', description: '質問が解決した現在の準備内容で分析し、通常のコレスポンデンス分析画面に結果を表示する。', inputSchema: object(binding) },
+  { name: 'analysis.cancel', workflowRole: 'cancel', effect: 'write', description: '準備または進行中の結果公開を中止する。完了済みの操作を取り消すものではない。', inputSchema: object(binding) },
 ]
 
 type Status = 'needs_input' | 'ready' | 'completed' | 'invalidated' | 'cancelled'
@@ -234,7 +234,7 @@ export function createCorrespondenceWorkflow({ store, router, monitor, clock = D
       invalidated: '対象または結果が変更されたため、改めて分析を準備してください。',
       cancelled: '分析の準備を中止しました。完了済みの処理は取り消していません。',
     }
-    return boundedJSON({ workflow: 'davis-analysis/1', method: 'correspondence',
+    return boundedJSON({ workflow: 'page-workflow/1', method: 'correspondence',
       status: draft.status, requestId: draft.requestId, draftRevision: draft.draftRevision, expiresAt: draft.expiresAt,
       message: messages[draft.status],
       questions: draft.questions, preview: draft.preview, running: Boolean(draft.running),
@@ -243,6 +243,7 @@ export function createCorrespondenceWorkflow({ store, router, monitor, clock = D
         ? { resultId: draft.summary.resultId, view: ROUTE } : {}),
       ...(draft.status === 'needs_input' ? { resume: { command: 'analysis.resume' } } : {}),
       ...(draft.status === 'ready' ? { run: { command: 'analysis.run' } } : {}),
+      ...(['needs_input', 'ready', 'completed'].includes(draft.status) ? { cancel: { command: 'analysis.cancel' } } : {}),
     }, 128 * 1024) as JSONValue
   }
   const guard = (context: OperationContext) => {
@@ -408,9 +409,9 @@ export function createCorrespondenceWorkflow({ store, router, monitor, clock = D
         assert(summary, 'INVALID_ANALYSIS_RESULT')
         // run() resolves only after the page committed. A later cancel cannot undo
         // that effect or turn its receipt into failure. A new source still must
-        // never receive the old summary through snapshot.context.
+        // never receive the old summary through snapshot.workflow.
         if (draft !== current || !sourceCurrent() || current.draftRevision !== revision) {
-          return { workflow: 'davis-analysis/1', method: 'correspondence', status: 'invalidated',
+          return { workflow: 'page-workflow/1', method: 'correspondence', status: 'invalidated',
             requestId: current.requestId, draftRevision: current.draftRevision, expiresAt: current.expiresAt,
             reason: 'DRAFT_CHANGED_AFTER_COMPLETION', committed: true, summary: null }
         }

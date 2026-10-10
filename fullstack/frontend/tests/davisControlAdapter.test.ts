@@ -72,7 +72,8 @@ describe('DAVIS foundation commands against the maintained Redux store', () => {
     expect(new Set(DAVIS_ROUTES).size).toBe(31)
     for (const command of DAVIS_FOUNDATION_COMMANDS) expect(() => checkSchema(command.inputSchema)).not.toThrow()
     expect(options.handlers['analysis.pca']).toBeUndefined()
-    expect(options.getContext()).toHaveProperty('pendingAnalysis', null)
+    expect(options.getContext()).not.toHaveProperty('pendingAnalysis')
+    expect(options.getWorkflow!()).toBeNull()
     expect(options.getContext()).not.toHaveProperty('analysis')
   })
 
@@ -330,19 +331,22 @@ describe('synchronous DAVIS generation and internal mutation guards', () => {
   })
 
   it('injects only the approved typed workflow commands and protects their entry', () => {
-    const run = vi.fn(() => ({ workflow: 'davis-analysis/1', status: 'ready' }))
+    const run = vi.fn(() => ({ workflow: 'page-workflow/1', status: 'ready' }))
     const workflow: DavisWorkflowPort = {
-      commands: [{ name: 'analysis.prepare', description: 'Prepare CA', effect: 'write',
+      commands: [{ name: 'analysis.prepare', workflowRole: 'prepare', description: 'Prepare CA', effect: 'write',
         inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false } }],
       handlers: { 'analysis.prepare': run }, getContext: () => ({ requestId: 'request', status: 'needs_input' }),
     }
     const { call, options, monitor, context } = setup(workflow)
     const snapshotContext = options.getContext() as Record<string, JSONValue>
-    expect(snapshotContext.pendingAnalysis).toEqual({ requestId: 'request', status: 'needs_input' })
-    expect(snapshotContext.analysis).toEqual({ workflow: 'davis-analysis/1', availableMethods: ['correspondence'] })
+    expect(snapshotContext).not.toHaveProperty('pendingAnalysis')
+    expect(options.getWorkflow!()).toEqual({ requestId: 'request', status: 'needs_input' })
+    expect(snapshotContext.analysis).toEqual({ workflow: 'page-workflow/1', availableMethods: ['correspondence'] })
     const emptyWorkflow = setup({ ...workflow, getContext: () => null })
-    expect(emptyWorkflow.options.getContext()).toMatchObject({ pendingAnalysis: null,
-      analysis: { workflow: 'davis-analysis/1', availableMethods: ['correspondence'] } })
+    expect(emptyWorkflow.options.getWorkflow!()).toBeNull()
+    expect(emptyWorkflow.options.getContext()).not.toHaveProperty('pendingAnalysis')
+    expect(emptyWorkflow.options.getContext()).toMatchObject({
+      analysis: { workflow: 'page-workflow/1', availableMethods: ['correspondence'] } })
     call('analysis.prepare')
     expect(run).toHaveBeenCalledOnce()
     const stale = context(); monitor.bump()

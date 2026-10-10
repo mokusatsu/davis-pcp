@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHANNEL, createPageAdapter, registerPageBridge } from '../src/integrations/siwc/sdk/page-bridge.js'
 import type { CommandDefinition, JSONSchema, OperationContext, PageBridgeOptions } from '../src/integrations/siwc/sdk/page-bridge.js'
 
-type Snapshot = { protocol: number; snapshotId: string; schemaHash: string; revision: string; expiresAt: number; commands: CommandDefinition[]; context: unknown }
+type Snapshot = { protocol: number; contractRevision: number; workflow: unknown; snapshotId: string; schemaHash: string; revision: string; expiresAt: number; commands: CommandDefinition[]; context: unknown }
 type Command = { op: string; args: Record<string, unknown> }
 type Receipt = { index: number; op: string; status: string; result?: unknown; error?: { code: string } }
 type Result = { status: string; results: Receipt[]; revision?: string; error?: { code: string } }
@@ -74,6 +74,7 @@ afterEach(() => {
 describe('vendored page-command schema and envelope boundaries', () => {
   it('binds each command to its closed schema and passes the current expected revision', async () => {
     const f = fixture()
+    expect(await f.adapter.snapshot()).toMatchObject({ protocol: 1, contractRevision: 2, workflow: null })
     const e = await envelope(f, [{ op: 'add', args: { n: 2 } }, { op: 'add', args: { n: 3 } }])
     const result = await f.adapter.execute(e) as Result
     expect(result).toMatchObject({ status: 'completed', revision: '2', results: [{ result: { value: 2 } }, { result: { value: 5 } }] })
