@@ -20,6 +20,7 @@ from ..domain.errors import BizError
 from ..domain.analysis_columns import resolve_analysis_columns
 from .multi_response import _collect_revisions, _check_revisions, _scope_hash
 from ..domain.codebook_adapter import CodebookAdapter, normalize_code
+from ..domain.weight_unsupported import weight_unsupported_block
 from ..services.dataset_service import now_iso
 from ..storage.dataset_store import DatasetStore
 
@@ -29,6 +30,7 @@ _results: dict[str, dict] = {}
 
 
 class PcaRequest(BaseModel):
+    weightColumn: str | None = None
     expectedSchemaRevision: int | None = None
     expectedDataRevision: int | None = None
     datasetId: str | None = None
@@ -71,6 +73,7 @@ def _run_pca(dataset_id, req):
     adapter = CodebookAdapter(df, codebook)
     df = df.with_columns([adapter.analysis_series(name) for name in plan.names])
 
+    weight_info = weight_unsupported_block(codebook, req.weightColumn)
     result = compute_pca(
         df=df,
         columns=plan.names,
@@ -78,13 +81,15 @@ def _run_pca(dataset_id, req):
         n_components=n_comp,
         row_ids=None,
     )
-    return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
+    return {**result, **weight_info, 'warnings': [*result['warnings'], *weight_info['warnings']],
+            'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
             'scopeCount': scope_count, 'usedRows': result['nSamples'], 'usedColumns': result['columns'],
             'excludedCounts': {'ordinaryMissing': scope_count - result['nSamples']}, 'method': 'pca-ordinary-columns'}
 
 
 
 class ModelRequest(BaseModel):
+    weightColumn: str | None = None
     rowIds: list[str] | None = None
     expectedSchemaRevision: int | None = None
     expectedDataRevision: int | None = None
@@ -247,6 +252,7 @@ def _create_model(req: ModelRequest) -> dict:
     row_ids = [r for r, keep in zip(df["__rowId__"], mask) if keep]
     if not y:
         raise BizError("MODEL_NO_VALID_ROWS", "欠損値を除くと学習対象がありません。")
+    weight_info = weight_unsupported_block(codebook, req.weightColumn)
     started = time.perf_counter()
     if req.modelType == "decision_tree":
         model = (DecisionTreeClassifier(max_depth=req.maxDepth, random_state=req.seed)
@@ -337,6 +343,7 @@ def _create_model(req: ModelRequest) -> dict:
 
     result_id = f"mdl-{int(time.time() * 1000):x}"
     payload = {
+        **weight_info,
         **revisions, 'scopeHash': scope_hash, 'scopeCount': scope_count,
         'usedColumns': plan.names, 'usedRows': len(X), 'excludedCounts': excluded,
         'ordinaryMissingExcluded': df.height - len(X), 'method': 'model-valid-ma-population',
