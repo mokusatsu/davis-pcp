@@ -10,6 +10,7 @@ from ..algorithms.models.logistic import run_logistic_regression
 from ..domain.errors import BizError
 from ..domain.analysis_columns import resolve_analysis_columns
 from ..domain.codebook_adapter import CodebookAdapter, normalize_code
+from ..domain.weight_unsupported import weight_unsupported_block
 from .multi_response import _check_revisions, _collect_revisions, _scope_hash
 from ..storage.dataset_store import DatasetStore
 
@@ -32,6 +33,7 @@ class LogisticRequestSchema(BaseModel):
     regularization: str = "none"
     cValue: float = 1.0
     cutoff: float = Field(0.5, ge=0.0, le=1.0)
+    weightColumn: str | None = None
 
 
 @router.post("/models/logistic")
@@ -80,6 +82,7 @@ def _fit_logistic(dataset_id, target_column, feature_columns, req):
         .then(pl.col(name)).otherwise(None).alias(name) for name in numeric_names])
     before_ordinary = df.height
     df = df.drop_nulls(plan.names)
+    weight_info = weight_unsupported_block(codebook, req.weightColumn)
 
     result = run_logistic_regression(
         df=df,
@@ -107,7 +110,8 @@ def _fit_logistic(dataset_id, target_column, feature_columns, req):
                 'code': normalize_code(raw),
                 'label': adapter.label_for_value(target.names[0], raw),
             }
-    return {**result, 'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
+    return {**result, **weight_info, 'warnings': [*result['warnings'], *weight_info['warnings']],
+            'datasetId': dataset_id, **revisions, 'scopeHash': scope_hash,
             'targetDtype': target_dtype,
             'classCategories': [[categories[raw] for raw in sorted(categories)] for categories in class_categories],
             'scopeCount': scope_count, 'usedRows': df.height, 'usedColumns': plan.names,

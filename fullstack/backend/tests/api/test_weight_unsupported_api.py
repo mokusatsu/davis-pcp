@@ -353,3 +353,151 @@ def test_models_reject_invalid_weight_reference(weighted_ds, model_type, weight_
         "taskType": "classification", "nEstimators": 10, "seed": 42, "weightColumn": weight_column,
     })
     assert response.status_code == 422 and response.json()["error"]["code"] == code
+
+
+@pytest.fixture
+def logistic_weighted_ds():
+    # The ordinary grouped-binomial oracle also used by test_logistic_class_identity.
+    # Both x groups contain both outcomes; these unequal weights would change a fit.
+    text = ("x,x_copy,answer,wt\n0.0,0.0,10,1\n0.0,0.0,10,2\n0.0,0.0,10,3\n0.0,0.0,20,7\n"
+            "1.0,1.0,10,1\n1.0,1.0,20,2\n1.0,1.0,20,4\n1.0,1.0,20,6\n")
+    with TestClient(app) as client:
+        response = client.post("/api/v1/datasets/import", files={"file": (
+            "logistic-weight.csv", text, "text/csv")})
+        assert response.status_code == 200, response.text
+        ds = response.json()["datasetId"]
+        try:
+            response = client.get(f"/api/v1/datasets/{ds}/codebook")
+            assert response.status_code == 200
+            by_name = {column["name"]: column for column in response.json()["columns"]}
+            by_name["x"].update(role="attribute", scaleType="ratio")
+            by_name["x_copy"].update(role="attribute", scaleType="ratio")
+            by_name["answer"].update(role="question", scaleType="nominal",
+                                     valueLabels={"10": "Low", "20": "High"})
+            by_name["wt"].update(role="weight", scaleType="ratio")
+            response = client.put(f"/api/v1/datasets/{ds}/codebook",
+                                  json={"columns": list(by_name.values())})
+            assert response.status_code == 200, response.text
+            codebook = client.get(f"/api/v1/datasets/{ds}/codebook")
+            meta = client.get(f"/api/v1/datasets/{ds}")
+            view = client.post(f"/api/v1/datasets/{ds}/view", json={"columns": ["x", "x_copy", "answer", "wt"]})
+            assert codebook.status_code == meta.status_code == view.status_code == 200
+            codebook, meta = codebook.json(), meta.json()
+            assert codebook.get("weightConfig") is None
+            specs = {column["name"]: column for column in codebook["columns"]}
+            assert specs["wt"]["role"] == "weight" and specs["wt"]["scaleType"] == "ratio"
+            assert all(spec["columnId"] and spec["columnId"] != name for name, spec in specs.items())
+            frame = pl.read_ipc_stream(io.BytesIO(view.content))
+            assert frame.select("x", "x_copy", "answer", "wt").to_dict(as_series=False) == {
+                "x": [0.0] * 4 + [1.0] * 4, "x_copy": [0.0] * 4 + [1.0] * 4,
+                "answer": [10, 10, 10, 20, 10, 20, 20, 20],
+                "wt": [1, 2, 3, 7, 1, 2, 4, 6],
+            }
+            row_ids = frame["__rowId__"].to_list()
+            assert len(row_ids) == len(set(row_ids)) == meta["rowCount"] == 8
+            assert all(isinstance(row_id, str) and row_id for row_id in row_ids)
+            revisions = {"schemaRevision": codebook["schemaRevision"], "dataRevision": meta["dataRevision"]}
+            assert revisions["schemaRevision"] == meta["schemaRevision"]
+            assert all(revision >= 1 for revision in revisions.values())
+            yield client, ds, frame, specs, revisions
+        finally:
+            client.delete(f"/api/v1/datasets/{ds}")
+
+
+def _assert_logistic_output(result, ds, frame, revisions, features, ordinary_warnings):
+    row_ids = frame["__rowId__"].to_list()
+    _assert_scope(result, ds, row_ids, revisions)
+    assert result["target"] == "answer" and result["features"] == features
+    assert result["usedColumns"] == [*features, "answer"]
+    assert result["targetDtype"] == "Int64" and result["classes"] == ["10", "20"]
+    assert result["classCategories"] == [
+        [{"rawValue": "10", "code": "10", "label": "Low"}],
+        [{"rawValue": "20", "code": "20", "label": "High"}],
+    ]
+    assert result["excludedRowCount"] == 0 and result["excludedCounts"] == {"ordinaryMissing": 0}
+    assert result["method"] == "logistic-explicit-columns" and result["evidenceClass"] == "JAR-INITIAL"
+    assert result["diagnostics"] == {"completeSeparation": False, "fallbackUsed": False,
+                                     "inferenceStatus": "unavailable" if ordinary_warnings else "available",
+                                     "separationMethod": "strict-margin-linear-feasibility"}
+    assert [warning for warning in result["warnings"] if warning["code"] != "WEIGHT_UNSUPPORTED"] == ordinary_warnings
+    # Closed-form MLE: full p=(1/4,3/4); scoped p=(1/3,2/3).
+    ratio = 3 if len(row_ids) == 8 else 2
+    coefficients = {item["name"]: item for item in result["coefficients"]}
+    assert set(coefficients) == {"Intercept", *features}
+    if ordinary_warnings:
+        for item in coefficients.values():
+            assert math.isfinite(item["coefficient"])
+            assert item["inferenceStatus"] == "unavailable" and item["inferenceReason"] == "SINGULAR_INFORMATION"
+            assert all(item[key] is None for key in ("stdError", "zValue", "pValue", "ciLower", "ciUpper"))
+    else:
+        assert coefficients["Intercept"]["coefficient"] == pytest.approx(-math.log(ratio), abs=2e-5)
+        assert coefficients["x"]["coefficient"] == pytest.approx(2 * math.log(ratio), abs=2e-5)
+        assert coefficients["x"]["oddsRatio"] == pytest.approx(ratio ** 2, rel=2e-5)
+    assert [sample["rowId"] for sample in result["samples"]] == row_ids
+    cells, log_likelihood = {name: [] for name in ("tn", "fp", "fn", "tp")}, 0.0
+    for row, sample in zip(frame.to_dicts(), result["samples"], strict=True):
+        actual, predicted = int(row["answer"] == 20), int(row["x"] == 1)
+        probability = (ratio if predicted else 1) / (ratio + 1)
+        log_likelihood += math.log(probability if actual else 1 - probability)
+        assert sample["actual"] == actual and sample["predictedClass"] == predicted
+        assert sample["predictedProb"] == pytest.approx(probability, abs=1e-5)
+        assert sample["residual"] == pytest.approx(actual - probability, abs=1e-5)
+        assert sample["isMisclassified"] is (actual != predicted)
+        assert sample["featureValues"] == {feature: row[feature] for feature in features}
+        cells[("tn", "fp", "fn", "tp")[2 * actual + predicted]].append(row["__rowId__"])
+    for name, members in cells.items():
+        assert result["confusionMatrix"][name] == len(members)
+        assert result["confusionMatrix"][name + "RowIds"] == members
+    metrics = result["fitMetrics"]
+    assert metrics["converged"] is True
+    assert metrics["logLikelihood"] == pytest.approx(log_likelihood, abs=1e-4)
+    assert all(math.isfinite(value) for value in metrics.values())
+    assert set(result["curves"]) == set(features)
+    assert all(len(curve) == 80 and all(math.isfinite(point["x"]) and 0 < point["probability"] < 1
+               for point in curve) for curve in result["curves"].values())
+    assert "resultId" not in result  # Logistic returns a direct fit; there is no stored-result route.
+
+
+@pytest.mark.parametrize("case", ["full", "scoped", "inference-warning"])
+def test_logistic_discloses_unsupported_weight_without_changing_results(logistic_weighted_ds, case):
+    client, ds, frame, specs, revisions = logistic_weighted_ds
+    features = ["x", "x_copy"] if case == "inference-warning" else ["x"]
+    ordinary_warnings = [{"code": "LOGISTIC_INFERENCE_UNAVAILABLE",
+                          "message": "情報行列のランクが不足しているため、係数の標準誤差・Wald検定・信頼区間を計算できません。",
+                          "details": {"reason": "SINGULAR_INFORMATION"}}] if case == "inference-warning" else []
+    request = {"datasetId": ds, "targetColumn": specs["answer"]["columnId"],
+               "featureColumns": [specs[feature]["columnId"] for feature in features], "intercept": True,
+               "regularization": "none", "cutoff": 0.5,
+               "expectedSchemaRevision": revisions["schemaRevision"],
+               "expectedDataRevision": revisions["dataRevision"]}
+    if case == "scoped":
+        full = _post_success(client, "/api/v1/models/logistic", request)
+        _assert_logistic_output(full, ds, frame, revisions, features, ordinary_warnings)
+        frame = frame.slice(1, 6)  # Remove one correctly classified row from each x group.
+        request["activeRowIds"] = list(reversed(frame["__rowId__"].to_list()))
+    weight_id, results = specs["wt"]["columnId"], []
+    for fields in ({}, {"weightColumn": None}, {"weightColumn": "wt"}, {"weightColumn": weight_id}):
+        result = _post_success(client, "/api/v1/models/logistic", {**request, **fields})
+        _assert_logistic_output(result, ds, frame, revisions, features, ordinary_warnings)
+        if case == "scoped":
+            assert result["scopeHash"] != full["scopeHash"]
+            assert result["coefficients"] != full["coefficients"]
+        if results:
+            # Logistic has no volatile fields: retain every numerical/identity/diagnostic field.
+            assert _stable_unweighted(result) == _stable_unweighted(results[0])
+        results.append(result)
+    _assert_weight_metadata(results, weight_id, ordinary_warnings)
+
+
+@pytest.mark.parametrize("reference,code", [
+    ("unknown", "WEIGHT_COLUMN_NOT_FOUND"), ("wrong-name", "WEIGHT_ROLE_INVALID"),
+    ("wrong-id", "WEIGHT_ROLE_INVALID"),
+])
+def test_logistic_rejects_invalid_weight_reference(logistic_weighted_ds, reference, code):
+    client, ds, _, specs, _ = logistic_weighted_ds
+    weight_column = {"unknown": "nope", "wrong-name": "x", "wrong-id": specs["x"]["columnId"]}[reference]
+    response = client.post("/api/v1/models/logistic", json={
+        "datasetId": ds, "targetColumn": "answer", "featureColumns": ["x"],
+        "regularization": "none", "weightColumn": weight_column,
+    })
+    assert response.status_code == 422 and response.json()["error"]["code"] == code
