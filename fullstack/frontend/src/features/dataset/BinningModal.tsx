@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import Modal from '../common/ActiveModal'
 import MutationProgress from '../common/MutationProgress'
 import { useRequestIdentity } from '../common/useRequestIdentity'
+import { useBinningMutationLock } from './useBinningMutationLock'
 import { useAnalysisViewActive } from '../selection/analysisScope'
 import { Alert, Button, ConfigProvider, Input, Radio, Slider, Space, Typography, notification } from 'antd'
 import { api } from '../../api/client'
@@ -49,7 +50,9 @@ export default function BinningModal({ open, datasetId, columnName, dataRevision
   const [outputName, setOutputName] = useState('')
   const [previewResult, setPreview] = useState<PreviewResponse | null>(null)
   const [loading, setLoading] = useState(false)
-  const [applying, setApplying] = useState(false)
+  const [ownApplying, setApplying] = useState(false)
+  const sharedLock = useBinningMutationLock(datasetId, columnName)
+  const applying = ownApplying || sharedLock.pending
 
   const active = useAnalysisViewActive()
   const busy = useRef(false)
@@ -103,6 +106,8 @@ export default function BinningModal({ open, datasetId, columnName, dataRevision
 
   const handleApply = async () => {
     if (busy.current || !open || !active || !datasetId || !columnName || !preview || loading || error) return
+    const release = sharedLock.acquire()
+    if (!release) return
     busy.current = true
     const current = saveRequest.begin()
     setApplying(true)
@@ -124,6 +129,7 @@ export default function BinningModal({ open, datasetId, columnName, dataRevision
     } finally {
       busy.current = false
       setApplying(false)
+      release()
     }
   }
 
@@ -131,7 +137,7 @@ export default function BinningModal({ open, datasetId, columnName, dataRevision
     <Modal
       title={<>連続変数のビン分割: <ColumnQuestionTooltip nameOrId={columnName} /></>}
       open={open}
-      onCancel={() => { if (!busy.current) onClose() }}
+      onCancel={() => { if (!busy.current && !applying) onClose() }}
       onDeactivate={onClose}
       closable={!applying}
       keyboard={!applying}
