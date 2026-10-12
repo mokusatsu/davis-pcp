@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Modal from '../common/ActiveModal'
 import MutationProgress from '../common/MutationProgress'
 import { useRequestIdentity } from '../common/useRequestIdentity'
+import { useOneHotMutationLock } from './useOneHotMutationLock'
 import { Checkbox, ConfigProvider, Input, Space, Tag, Typography, notification } from 'antd'
 import { api } from '../../api/client'
 
@@ -28,7 +29,9 @@ export default function OneHotModal({
 }: OneHotModalProps) {
   const [dropFirst, setDropFirst] = useState(false)
   const [prefix, setPrefix] = useState(columnName)
-  const [applying, setApplying] = useState(false)
+  const [ownApplying, setApplying] = useState(false)
+  const sharedLock = useOneHotMutationLock(datasetId, columnName)
+  const applying = ownApplying || sharedLock.pending
 
   const busy = useRef(false)
   const request = useRequestIdentity(JSON.stringify([datasetId, columnName, open]))
@@ -45,6 +48,8 @@ export default function OneHotModal({
 
   const handleApply = async () => {
     if (busy.current || !open || !datasetId || !columnName || noEligibleCategories) return
+    const release = sharedLock.acquire()
+    if (!release) return
     busy.current = true
     const current = request.begin()
     setApplying(true)
@@ -69,6 +74,7 @@ export default function OneHotModal({
     } finally {
       busy.current = false
       setApplying(false)
+      release()
     }
   }
 
@@ -76,7 +82,7 @@ export default function OneHotModal({
     <Modal
       title={<>カテゴリ変数の二値化 (One-Hot): <ColumnQuestionTooltip nameOrId={columnName} /></>}
       open={open}
-      onCancel={() => { if (!busy.current) onClose() }}
+      onCancel={() => { if (!busy.current && !applying) onClose() }}
       onDeactivate={onClose}
       closable={!applying}
       keyboard={!applying}
