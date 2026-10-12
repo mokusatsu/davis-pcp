@@ -26,6 +26,7 @@ import {
 import { api } from '../../api/client'
 import SelectColumn from '../common/ColumnSelect'
 import { useCodebook } from './useCodebookColumn'
+import { useImputationMutationLock } from './useImputationMutationLock'
 
 export interface ColumnMissingInfo {
   name: string
@@ -171,7 +172,9 @@ export default function ImputationModal({
   const [previewedSettings, setPreviewedSettings] = useState<string | null>(null)
 
   // Execution state
-  const [executing, setExecuting] = useState<boolean>(false)
+  const [ownExecuting, setExecuting] = useState<boolean>(false)
+  const sharedLock = useImputationMutationLock(datasetId)
+  const executing = ownExecuting || sharedLock.pending
   const busy = useRef(false)
   const active = useAnalysisViewActive()
   const mutationRequest = useRequestIdentity(JSON.stringify([datasetId, open, active]))
@@ -274,6 +277,8 @@ export default function ImputationModal({
       message.warning(`設定を確認してください: ${invalidSettings.join('、')}`)
       return
     }
+    const release = sharedLock.acquire()
+    if (!release) return
     busy.current = true
     const current = mutationRequest.begin()
     previewRequest.invalidate()
@@ -301,6 +306,7 @@ export default function ImputationModal({
     } finally {
       busy.current = false
       setExecuting(false)
+      release()
     }
   }
 
@@ -323,7 +329,7 @@ export default function ImputationModal({
         </div>
       }
       width={840}
-      onCancel={() => { if (!busy.current) onClose() }}
+      onCancel={() => { if (!busy.current && !executing) onClose() }}
       closable={!executing}
       keyboard={!executing}
       maskClosable={!executing}
