@@ -709,7 +709,7 @@ export default function DistributionPage() {
       {viewMode === 'qqplot' ? (
         <QQPlotView />
       ) : viewMode === 'cards' ? (
-        loadingSummaries && !summaryData ? (
+        isCodebookLoading || (loadingSummaries && !summaryData) ? (
           <div style={{ textAlign: 'center', padding: 48 }} data-testid="cards-loading">
             <Spin tip="設問分布データを集計中..."><div style={{ height: 80 }} /></Spin>
           </div>
