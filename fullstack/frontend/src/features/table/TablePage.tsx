@@ -14,6 +14,7 @@ import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
 
 type Entity = { kind: 'column' | 'ma' | 'maOption' | 'maCount'; columnId?: string; groupId?: string }
+type MaskEntry = { rowId: string; columnId: string; methodLabel: string }
 type Cell = { value?: unknown; text?: string; isMissing?: boolean; status?: string; selectedCount?: number; labels?: string[] }
 type TableResult = { rows: { rowId: string; cells: Cell[] }[]; total: number; entities: (Entity & { label: string; sortable: boolean })[] }
 
@@ -32,7 +33,11 @@ export default function TablePage() {
   const provenance = useSelector((s: RootState) => s.provenance)
   const maskFilter = provenance.maskFilter
   const groups = useSelector((s: RootState) => s.codebook.multiResponseGroups)
-  const [maskEntries, setMaskEntries] = useState<{ rowId: string; columnId: string; methodLabel: string }[]>([])
+  const maskKey = JSON.stringify([selection.datasetId, selection.dataRevision])
+  const [mask, setMask] = useState<{ key: string; entries: MaskEntry[]; error: string | null } | null>(null)
+  const maskReady = mask?.key === maskKey && !mask.error
+  const maskError = mask?.key === maskKey ? mask.error : null
+  const maskEntries = useMemo(() => mask?.key === maskKey ? mask.entries : [], [mask, maskKey])
   const [entityPage, setEntityPage] = useState(1)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(100)
@@ -59,43 +64,57 @@ export default function TablePage() {
   }, [columns, groups, entitySelection, expanded])
   const currentEntityPage = Math.min(entityPage, Math.max(1, Math.ceil(entities.length / 12)))
   const visibleEntities = entities.slice((currentEntityPage - 1) * 12, currentEntityPage * 12)
-  const scopedRows = scopeFilter === 'selected'
-    ? effectiveRowIds.filter(id => selection.selectedRowIds.includes(id)) : effectiveRowIds
-  const scopeKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision, scopedRows, search, valueDisplayMode, visibleEntities])
-  const [pageScope, setPageScope] = useState(scopeKey)
-  const currentPage = pageScope === scopeKey ? page : 1
-  const currentSort = pageScope === scopeKey ? sort : undefined
-  const requestKey = JSON.stringify([scopeKey, currentPage, pageSize, currentSort, currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : null])
   useEffect(() => {
     if (!selection.datasetId) return
     let current = true
-    api.get<{ maskRevision: number; entries: { rowId: string; columnId: string; methodLabel: string }[] }>(
+    api.get<{ maskRevision: number; entries: MaskEntry[] }>(
       `/datasets/${selection.datasetId}/imputation-mask?expectedDataRevision=${selection.dataRevision}`,
-    ).then((mask) => { if (current) setMaskEntries(mask.entries) })
-      .catch(() => { if (current) setMaskEntries([]) })
+    ).then(value => { if (current) setMask({ key: maskKey, entries: value.entries, error: null }) })
+      .catch(reason => { if (current) setMask({ key: maskKey, entries: [],
+        error: reason?.message || '補完情報を取得できませんでした。' }) })
     return () => { current = false }
-  }, [selection.datasetId, selection.dataRevision])
+  }, [maskKey])
   const imputedByCell = useMemo(() => {
     const map = new Map<string, string>()
     for (const entry of maskEntries) map.set(`${entry.rowId}::${entry.columnId}`, entry.methodLabel)
     return map
   }, [maskEntries])
   const imputedRowIds = useMemo(() => new Set(maskEntries.map((e) => e.rowId)), [maskEntries])
-  const displayRows = useMemo(() => {
-    const base = (result?.rows ?? []).map(row => ({ key: row.rowId, __rowId__: row.rowId, cells: row.cells }))
-    if (maskFilter === 'all') return base
-    return base.filter((row) =>
-      maskFilter === 'hasImputed' ? imputedRowIds.has(row.__rowId__ as string) : !imputedRowIds.has(row.__rowId__ as string))
-  }, [result, maskFilter, imputedRowIds])
+  // Narrow the full shared scope before the API applies search, sort and pagination.
+  // Filtering result.rows would lose matching rows on other pages and keep stale totals.
+  const scopedRows = scopeFilter === 'selected'
+    ? effectiveRowIds.filter(id => selection.selectedRowIds.includes(id)) : effectiveRowIds
+  const filteredRows = maskFilter === 'all' ? scopedRows : scopedRows.filter(id =>
+    maskFilter === 'hasImputed' ? imputedRowIds.has(id) : !imputedRowIds.has(id))
+  const scopeKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision,
+    scopeFilter, maskFilter, filteredRows, search, valueDisplayMode, visibleEntities])
+  const [pageScope, setPageScope] = useState(scopeKey)
+  const currentPage = pageScope === scopeKey ? page : 1
+  const currentSort = pageScope === scopeKey ? sort : undefined
+  useEffect(() => {
+    // Adopt every scope, including empty filters, so toggling back cannot revive an old page.
+    setPageScope(scopeKey)
+    setPage(1)
+    setSort(undefined)
+  }, [scopeKey])
+  const requestKey = JSON.stringify([scopeKey, currentPage, pageSize, currentSort,
+    currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : null,
+    maskFilter === 'all' ? null : [maskReady, maskError]])
+  const displayRows = useMemo(() => (result?.rows ?? []).map(row =>
+    ({ key: row.rowId, __rowId__: row.rowId, cells: row.cells })), [result])
   useEffect(() => {
     if (!viewActive) return
     if (!selection.datasetId || !columns.length) return
     let current = true
-    setLoading(true)
     setError(null)
     setResult(null)
+    if (maskFilter !== 'all' && !maskReady) {
+      setLoading(!maskError)
+      return
+    }
+    setLoading(true)
     api.post<TableResult>(`/datasets/${selection.datasetId}/table-view`, {
-      entityIds: visibleEntities, rowIds: scopedRows, offset: (currentPage - 1) * pageSize,
+      entityIds: visibleEntities, rowIds: filteredRows, offset: (currentPage - 1) * pageSize,
       limit: pageSize, displayMode: valueDisplayMode, search, sort: currentSort,
       expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision,
       rowWeights: currentSort?.entityIndex === -1 ? obs.sampling.sampledRowWeights : undefined,
@@ -263,7 +282,7 @@ export default function TablePage() {
             </Typography.Text>
           </Space>
         </div>
-      {error && <Alert type="error" message={error} />}
+      {(error || (maskFilter !== 'all' && maskError)) && <Alert type="error" message={error || maskError} />}
       {entities.length > 12 && <Space><Typography.Text>表示項目</Typography.Text><Pagination size="small" current={currentEntityPage} pageSize={12} total={entities.length} showSizeChanger={false} onChange={setEntityPage} /></Space>}
         <Dropdown menu={{ items: contextMenuItems }} trigger={['contextMenu']}>
           <div
