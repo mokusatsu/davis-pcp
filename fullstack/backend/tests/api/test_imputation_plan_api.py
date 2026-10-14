@@ -196,3 +196,46 @@ def test_derived_dataset_inherits_the_source_mask(plan_ds):
         assert {e["columnId"] for e in entries if not e.get("inheritedFromDatasetId")} == {"z"}
     finally:
         client.delete(f"/api/v1/datasets/{new_id_}")
+
+
+@pytest.mark.parametrize("in_place", [True, False])
+@pytest.mark.parametrize("neighbors", [1, 5, 50])
+def test_knn_preview_matches_apply_in_both_storage_modes(plan_ds, in_place, neighbors):
+    """Storage choice must not change the shared KNN computation or donor inputs."""
+    client, ds, store = plan_ds
+    before = store.get_dataframe(ds)
+    source_revision = store.get_meta(ds)["dataRevision"]
+    source_mask = _mask(store, ds)
+    body = {"columns": ["y", "z"], "predictorColumns": ["x"], "strategy": "knn",
+            "options": {"knn_neighbors": neighbors}}
+    preview_response = client.post(f"/api/v1/datasets/{ds}/impute/preview", json=body)
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()
+    assert store.get_dataframe(ds).to_dict(as_series=False) == before.to_dict(as_series=False)
+
+    apply = client.post(f"/api/v1/datasets/{ds}/impute",
+                        json={**body, "inPlace": in_place, "planHash": preview["planHash"]})
+    assert apply.status_code == 200, apply.text
+    output_id = apply.json()["datasetId"]
+    try:
+        assert (output_id == ds) is in_place
+        result = store.get_dataframe(output_id)
+        for entry in preview["perColumn"]:
+            name = entry["column"]
+            assert column_values_hash(result[name]) == entry["valuesHash"]
+            assert apply.json()["outputHashes"][name] == entry["valuesHash"]
+            assert result[name].null_count() == 0
+            # Original observations remain donors, never rewritten predictions.
+            for old, new in zip(before[name].to_list(), result[name].to_list()):
+                if old is not None:
+                    assert new == old
+        for name in ("__rowId__", "x", "grp"):
+            assert result[name].to_list() == before[name].to_list()
+        assert len(_mask(store, output_id)["entries"]) == before["y"].null_count() + before["z"].null_count()
+        if not in_place:
+            assert store.get_dataframe(ds).to_dict(as_series=False) == before.to_dict(as_series=False)
+            assert store.get_meta(ds)["dataRevision"] == source_revision
+            assert _mask(store, ds) == source_mask
+    finally:
+        if output_id != ds:
+            client.delete(f"/api/v1/datasets/{output_id}")

@@ -44,9 +44,10 @@ def _knn_impute_series(target_arr: np.ndarray, feature_mat: np.ndarray, k: int =
     norm_features = np.nan_to_num((feature_mat - col_means) / col_stds, nan=0.0)
 
     imputed_arr = target_arr.copy()
+    # Normalized features and donor membership stay fixed while filling the output.
+    obs_features = norm_features[obs_indices]
     for m_idx in mis_indices:
         query_vec = norm_features[m_idx]
-        obs_features = norm_features[obs_indices]
         # Euclidean distance to all observed rows
         dists = np.linalg.norm(obs_features - query_vec, axis=1)
         k_actual = min(k, len(obs_indices))
