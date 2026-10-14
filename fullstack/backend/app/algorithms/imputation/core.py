@@ -10,6 +10,7 @@ import polars as pl
 from ...domain.errors import BizError
 from .plan import ImputationPlan, build_imputation_plan, plan_warnings
 from .tabdiff import tabdiff_impute
+from .categories import deterministic_mode
 
 
 def column_values_hash(series: pl.Series) -> str:
@@ -161,7 +162,7 @@ def impute_dataframe(
             if is_float:
                 clean_s = clean_s.filter(~clean_s.is_nan())
             if clean_s.len() > 0:
-                mode_val = clean_s.mode()[0]
+                mode_val = deterministic_mode(clean_s)
             else:
                 mode_val = 0 if is_numeric else "UNKNOWN"
             new_s = s.fill_nan(mode_val).fill_null(mode_val) if is_float else s.fill_null(mode_val)
@@ -192,7 +193,7 @@ def impute_dataframe(
         elif strategy == "knn":
             if not is_numeric:
                 clean_s = s.drop_nulls()
-                mode_val = clean_s.mode()[0] if clean_s.len() > 0 else "UNKNOWN"
+                mode_val = deterministic_mode(clean_s) if clean_s.len() > 0 else "UNKNOWN"
                 new_series_map[c] = s.fill_null(mode_val)
                 col_diagnostics[c] = {"imputedCount": null_count, "fallbackMode": str(mode_val)}
             else:
@@ -260,22 +261,76 @@ def preview_imputation(
     }
 
 
-def preview_imputation_plan(df: pl.DataFrame, plan: ImputationPlan) -> dict[str, Any]:
+def impute_plan_dataframe(df: pl.DataFrame, plan: ImputationPlan, codebook: dict[str, Any] | None = None):
+    """One computation for preview/apply, retaining raw protected cells.
+
+    Returns output, diagnostics, the ordinary-missing view for provenance, and
+    protected-cell masks for preview statistics. Donors never see skip codes.
+    """
+    if codebook is None:
+        masked, protected = df, {}
+    else:
+        from .semantics import prepare_imputation_frame
+        masked, protected = prepare_imputation_frame(df, codebook)
+    eligible = {}
+    for name in plan.targetColumns:
+        missing = masked[name].is_null()
+        if masked[name].dtype in (pl.Float32, pl.Float64):
+            missing = missing | masked[name].is_nan().fill_null(False)
+        eligible[name] = missing & ~protected.get(name, pl.Series([False] * df.height))
+    # A column containing only protected missing cells requires no donor and
+    # must not turn a no-op into IMPUTATION_NO_DONOR / NO_PREDICTORS.
+    active = [name for name in plan.targetColumns if eligible[name].any()]
+    if active:
+        predictors = list(plan.predictorColumns)
+        if plan.strategy == 'tabdiff':
+            # Observed targets remain conditioning inputs even when no write
+            # is needed in that column, matching the existing diffusion plan.
+            predictors += [name for name in plan.targetColumns if name not in active]
+        generated, diag = impute_dataframe(masked, columns=active, strategy=plan.strategy,
+            options=plan.options, predictors=predictors, plan_hash=plan.planHash)
+    else:
+        generated = masked
+        diag = {'method': plan.strategy, 'algorithmVersion': '2.0.0',
+                'evidenceClass': 'DIFFUSION_GENERATIVE' if plan.strategy == 'tabdiff' else 'STATISTICAL_IMPUTATION',
+                'planHash': plan.planHash,
+                'predictorColumns': plan.predictorColumns, 'conditioningColumns': [], 'columns': {}}
+    columns = []
+    missing_columns = []
+    for name in df.columns:
+        if name in eligible:
+            columns.append(generated[name].zip_with(eligible[name], df[name]).alias(name))
+            # Only ordinary missing is NULL in the provenance comparison.
+            missing_columns.append(masked[name].zip_with(~protected.get(name, pl.Series([False] * df.height)), df[name]).alias(name))
+        else:
+            columns.append(df[name])
+            missing_columns.append(df[name])
+    result = pl.DataFrame(columns)
+    diag['predictorColumns'] = list(plan.predictorColumns)
+    diag['outputColumns'] = list(plan.targetColumns)
+    diag['imputedCounts'] = {name: int(mask.sum()) for name, mask in eligible.items()}
+    diag['protectedCounts'] = {name: int(protected[name].sum()) if name in protected else 0 for name in plan.targetColumns}
+    for name, count in diag['imputedCounts'].items():
+        details = diag.setdefault('columns', {}).setdefault(name, {})
+        details['imputedCount'] = count
+        if 'imputedMean' in details:
+            values = result[name].filter(eligible[name]).cast(pl.Float64).to_numpy()
+            observed = masked[name].drop_nulls().cast(pl.Float64).to_numpy()
+            details.update(imputedMean=float(np.mean(values)) if len(values) else None,
+                           imputedStd=float(np.std(values)) if len(values) else None,
+                           absoluteMeanDifference=float(abs(np.mean(values)-np.mean(observed))) if len(values) and len(observed) else 0.)
+    return result, diag, pl.DataFrame(missing_columns), protected
+
+
+def preview_imputation_plan(df: pl.DataFrame, plan: ImputationPlan, codebook: dict[str, Any] | None = None) -> dict[str, Any]:
     """Before/after comparison for every target of ``plan``.
 
     The whole target set is imputed in a single pass, exactly as the apply
     endpoint will, so the previewed values *are* the applied values.
     """
-    imputed_df, diag = impute_dataframe(
-        df,
-        columns=plan.targetColumns,
-        strategy=plan.strategy,
-        options=plan.options,
-        predictors=plan.predictorColumns,
-        plan_hash=plan.planHash,
-    )
-
-    per_column = [_column_preview(df, imputed_df, column) for column in plan.targetColumns]
+    imputed_df, diag, missing_frame, protected = impute_plan_dataframe(df, plan, codebook)
+    per_column = [_column_preview(missing_frame, imputed_df, column, protected.get(column))
+                  for column in plan.targetColumns]
     payload: dict[str, Any] = {
         "planHash": plan.planHash,
         "datasetId": plan.datasetId,
@@ -300,27 +355,32 @@ def preview_imputation_plan(df: pl.DataFrame, plan: ImputationPlan) -> dict[str,
     return payload
 
 
-def _column_preview(df: pl.DataFrame, imputed_df: pl.DataFrame, column: str) -> dict[str, Any]:
+def _column_preview(df: pl.DataFrame, imputed_df: pl.DataFrame, column: str, protected: pl.Series | None = None) -> dict[str, Any]:
     """Before-and-after comparison stats and distribution bins for one column."""
     s = df[column]
     total_count = s.len()
+    output_hash = column_values_hash(imputed_df[column])
+    imp_s = imputed_df[column]
+    if protected is not None:
+        s = s.filter(~protected)
+        imp_s = imp_s.filter(~protected)
     null_count = s.null_count()
     is_numeric = s.dtype in (
         pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64
     )
 
-    imp_s = imputed_df[column]
-
     orig_non_null = s.drop_nulls()
     before_stats: dict[str, Any] = {
         "totalCount": total_count,
+        "notApplicableCount": int(protected.sum()) if protected is not None else 0,
         "missingCount": null_count,
         "missingPercent": round(null_count / max(1, total_count) * 100, 2),
     }
     after_stats: dict[str, Any] = {
-        "totalCount": imp_s.len(),
+        "totalCount": total_count,
+        "notApplicableCount": int(protected.sum()) if protected is not None else 0,
         "missingCount": imp_s.null_count(),
-        "missingPercent": round(imp_s.null_count() / max(1, imp_s.len()) * 100, 2),
+        "missingPercent": round(imp_s.null_count() / max(1, total_count) * 100, 2),
     }
 
     histogram_comparison: list[dict[str, Any]] = []
@@ -381,5 +441,5 @@ def _column_preview(df: pl.DataFrame, imputed_df: pl.DataFrame, column: str) -> 
         "beforeStats": before_stats,
         "afterStats": after_stats,
         "histogram": histogram_comparison,
-        "valuesHash": column_values_hash(imp_s),
+        "valuesHash": output_hash,
     }

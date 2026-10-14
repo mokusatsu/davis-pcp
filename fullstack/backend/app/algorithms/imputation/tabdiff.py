@@ -11,6 +11,7 @@ import numpy as np
 import polars as pl
 
 from ...domain.errors import BizError
+from .categories import ordered_frequencies
 
 
 def _compute_linear_schedule(num_steps: int = 20, beta_start: float = 1e-4, beta_end: float = 0.02) -> dict[str, np.ndarray]:
@@ -273,11 +274,7 @@ def tabdiff_impute(
         else:
             # Frequency-descending with code-string tie-break so the mode is
             # deterministic even though Polars value_counts order is not.
-            vc = non_null_s.value_counts()
-            pairs = sorted(
-                zip(vc[c].to_list(), vc["count"].to_list()),
-                key=lambda kv: (-int(kv[1]), str(kv[0])),
-            )
+            pairs = ordered_frequencies(non_null_s)
             unique_cats = [v for v, _ in pairs]
             counts = np.array([float(n) for _, n in pairs], dtype=np.float64)
             cat_probs = counts / np.sum(counts)

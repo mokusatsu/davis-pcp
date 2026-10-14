@@ -1639,23 +1639,8 @@ def _build_impute_plan(dataset_id: str, meta: dict[str, Any], df: pl.DataFrame,
         columns = [c for c in df.columns if c != "__rowId__"]
     codebook = store.load_codebook(dataset_id)
     mask = store.load_mask(dataset_id) or {}
-    # Ordinary-missing codes are missing cells for the imputation engine too:
-    # mask them before building donor statistics (IM01).
-    try:
-        from ..domain.codebook_adapter import CodebookAdapter
-        adapter = CodebookAdapter(df, codebook or {})
-        masked_cols = []
-        for _c in df.columns:
-            if _c == "__rowId__":
-                continue
-            try:
-                masked_cols.append(adapter.mask_missing_values(_c).alias(_c))
-            except KeyError:
-                continue
-        if masked_cols:
-            df = df.with_columns(masked_cols)
-    except Exception:
-        pass
+    from ..algorithms.imputation.semantics import prepare_imputation_frame
+    df, _ = prepare_imputation_frame(df, codebook or {})
     plan = build_imputation_plan(
         df,
         codebook,
@@ -1695,7 +1680,7 @@ def preview_dataset_imputation(dataset_id: str, request: ImputePreviewRequest) -
         meta = store.get_meta(dataset_id)
         df = store.get_dataframe(dataset_id)
         plan = _build_impute_plan(dataset_id, meta, df, request)
-        return preview_imputation_plan(_masked_impute_frame(dataset_id, df), plan)
+        return preview_imputation_plan(df, plan, store.load_codebook(dataset_id) or {})
 
 
 @router.post("/datasets/{dataset_id}/impute")
@@ -1704,29 +1689,8 @@ def impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
         return _impute_dataset(dataset_id, request)
 
 
-def _masked_impute_frame(dataset_id: str, df: pl.DataFrame) -> pl.DataFrame:
-    """Mask ordinary-missing codes so donors/predictors never use them (IM01)."""
-    codebook = store.load_codebook(dataset_id)
-    try:
-        from ..domain.codebook_adapter import CodebookAdapter
-        adapter = CodebookAdapter(df, codebook or {})
-        masked_cols = []
-        for _c in df.columns:
-            if _c == "__rowId__":
-                continue
-            try:
-                masked_cols.append(adapter.mask_missing_values(_c).alias(_c))
-            except KeyError:
-                continue
-        if masked_cols:
-            return df.with_columns(masked_cols)
-    except Exception:
-        pass
-    return df
-
-
 def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
-    from ..algorithms.imputation.core import column_values_hash, impute_dataframe
+    from ..algorithms.imputation.core import column_values_hash, impute_plan_dataframe
 
     meta = store.get_meta(dataset_id)
     df = store.get_dataframe(dataset_id)
@@ -1745,20 +1709,8 @@ def _impute_dataset(dataset_id: str, request: ImputeRequest) -> dict:
             details={"expected": request.planHash, "actual": plan.planHash},
         )
 
-    masked = _masked_impute_frame(dataset_id, df)
-    imputed_df, diagnostics = impute_dataframe(
-        masked,
-        columns=plan.targetColumns,
-        strategy=plan.strategy,
-        options=plan.options,
-        predictors=plan.predictorColumns,
-        plan_hash=plan.planHash,
-    )
-    # Restore non-target columns untouched (masking was engine-internal).
-    for _c in df.columns:
-        if _c not in plan.targetColumns and _c in imputed_df.columns:
-            imputed_df = imputed_df.with_columns(df[_c].alias(_c))
-    imputed_df = imputed_df.select(df.columns)
+    imputed_df, diagnostics, masked, _ = impute_plan_dataframe(
+        df, plan, store.load_codebook(dataset_id) or {})
     # Lets a client confirm the applied values are the previewed ones.
     output_hashes = {c: column_values_hash(imputed_df[c])
                      for c in plan.targetColumns if c in imputed_df.columns}
