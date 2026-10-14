@@ -361,3 +361,15 @@ describe('validated numeric drafts', () => {
     expect(screen.getByRole('button', { name: 'プレビュー更新' })).toBeDisabled()
   })
 })
+
+it.each(['プレビュー更新', '補完を適用'])('surfaces KNN missing-predictor errors for %s', async button => {
+  const error = { code: 'IMPUTATION_NO_PREDICTORS', message: 'KNN補完には目的列以外の数値の説明変数が必要です。' }
+  vi.spyOn(api, 'post').mockRejectedValue(error)
+  const view = mount()
+  chooseStrategy('KNN (k近傍)')
+  fireEvent.click(screen.getByRole('button', { name: button, exact: true }))
+  await waitFor(() => expect(message.error).toHaveBeenCalledWith(expect.stringContaining(`${error.code}: ${error.message}`)))
+  expect(view.success).not.toHaveBeenCalled()
+  expect(view.close).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: button, exact: true })).not.toBeDisabled()
+})

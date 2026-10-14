@@ -71,8 +71,9 @@ def impute_dataframe(
     """Impute missing values across specified columns in a dataframe.
 
     ``predictors`` are conditioning columns: they inform the imputation of
-    ``columns`` but never receive values themselves.  ``None`` keeps the
-    historical behaviour (the engine picks its own feature set).
+    ``columns`` but never receive values themselves.  For KNN, ``None``
+    selects every eligible non-target numeric column through the plan resolver.
+    Other strategies retain their own default feature selection.
     """
     opts = options or {}
     if columns is not None:
@@ -99,22 +100,18 @@ def impute_dataframe(
 
     # The API masks ordinary-missing codes before calling the engine (IM01),
     # so df already carries masked cells here. No second masking pass.
-    effective_df = df
 
-    numeric_cols = [c for c in effective_df.columns if c != "__rowId__" and effective_df[c].dtype in (
-        pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64
-    )]
-
-    # If KNN is chosen, extract numeric feature matrix.  With explicit
-    # predictors the target is never one of its own neighbours in feature
-    # space; without them the historical "all numeric columns" set is kept.
+    # KNN distances use only the resolved non-target predictors.  Unlike the
+    # diffusion model, a target's observed values must not influence its own
+    # donor ranking through the mean-filled missing feature value.
     feature_mat = None
-    if strategy == "knn" and numeric_cols:
-        if predictors is None:
-            feature_names = list(numeric_cols)
-        else:
-            wanted = set(predictors) | {c for c in valid_cols if c in numeric_cols}
-            feature_names = [c for c in df.columns if c in wanted and c != "__rowId__"]
+    feature_names: list[str] = []
+    if strategy == "knn":
+        knn_plan = build_imputation_plan(
+            df, target_columns=valid_cols, predictor_columns=predictors, strategy="knn",
+        )
+        predictors = knn_plan.predictorColumns
+        feature_names = list(predictors)
         if feature_names:
             raw_cols = [df[c].to_numpy().astype(np.float64) for c in feature_names]
             feature_mat = np.column_stack(raw_cols)
@@ -199,6 +196,12 @@ def impute_dataframe(
                 new_series_map[c] = s.fill_null(mode_val)
                 col_diagnostics[c] = {"imputedCount": null_count, "fallbackMode": str(mode_val)}
             else:
+                if feature_mat is None:
+                    raise BizError(
+                        "IMPUTATION_NO_PREDICTORS",
+                        "KNN補完には目的列以外の数値の説明変数が必要です。説明変数を選択するか、平均値・中央値など別の補完方法を選んでください。",
+                        status_code=422,
+                    )
                 arr = s.to_numpy().astype(np.float64)
                 k_val = int(opts.get("knn_neighbors", 5))
                 imputed_arr = _knn_impute_series(arr, feature_mat, k=k_val)
@@ -244,7 +247,7 @@ def preview_imputation(
     if column not in df.columns:
         raise BizError("COLUMN_NOT_FOUND", f"列 '{column}' が見つかりません。")
 
-    plan = build_imputation_plan(df, None, [column], [], strategy, options)
+    plan = build_imputation_plan(df, None, [column], None if strategy == "knn" else [], strategy, options)
     result = preview_imputation_plan(df, plan)
     per_column = result["perColumn"][0]
     return {

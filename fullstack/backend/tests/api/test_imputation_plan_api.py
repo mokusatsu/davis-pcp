@@ -239,3 +239,60 @@ def test_knn_preview_matches_apply_in_both_storage_modes(plan_ds, in_place, neig
     finally:
         if output_id != ds:
             client.delete(f"/api/v1/datasets/{output_id}")
+
+
+@pytest.mark.parametrize('in_place', [True, False])
+def test_knn_predictor_counterexample_preview_apply_and_undo(plan_ds, in_place):
+    client, _, store = plan_ds
+    response = client.post('/api/v1/datasets/import', files={
+        'file': ('geometry.csv', 'x,y\n0,100\n1,0\n100,0\n0,\n', 'text/csv')})
+    assert response.status_code == 200, response.text
+    ds = response.json()['datasetId']
+    before = store.get_dataframe(ds)
+    body = {'columns': ['y'], 'predictorColumns': ['x'], 'strategy': 'knn', 'options': {'knn_neighbors': 1}}
+    preview = client.post(f'/api/v1/datasets/{ds}/impute/preview', json=body)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['diagnostics']['conditioningColumns'] == ['x']
+    assert preview.json()['perColumn'][0]['afterStats']['mean'] == 50.
+    applied = client.post(f'/api/v1/datasets/{ds}/impute', json={
+        **body, 'inPlace': in_place, 'planHash': preview.json()['planHash']})
+    assert applied.status_code == 200, applied.text
+    output = applied.json()['datasetId']
+    assert store.get_dataframe(output)['y'].to_list() == [100., 0., 0., 100.]
+    assert applied.json()['outputHashes']['y'] == preview.json()['perColumn'][0]['valuesHash']
+    if in_place:
+        undo = client.post(f'/api/v1/datasets/{ds}/undo', json={})
+        assert undo.status_code == 200, undo.text
+        assert store.get_dataframe(ds).to_dict(as_series=False) == before.to_dict(as_series=False)
+        assert _mask(store, ds)['entries'] == []
+    else:
+        assert store.get_dataframe(ds).to_dict(as_series=False) == before.to_dict(as_series=False)
+        assert not client.get(f'/api/v1/datasets/{output}/provenance').json()['canUndo']
+        client.delete(f'/api/v1/datasets/{output}')
+    client.delete(f'/api/v1/datasets/{ds}')
+
+
+@pytest.mark.parametrize('predictors', [[], ['grp']])
+@pytest.mark.parametrize('in_place', [True, False])
+def test_knn_no_predictors_rejected_by_preview_and_apply_without_mutation(plan_ds, predictors, in_place):
+    client, ds, store = plan_ds
+    before, meta, mask = store.get_dataframe(ds), store.get_meta(ds), _mask(store, ds)
+    body = {'columns': ['y'], 'predictorColumns': predictors, 'strategy': 'knn', 'inPlace': in_place}
+    for endpoint in ['impute/preview', 'impute']:
+        response = client.post(f'/api/v1/datasets/{ds}/{endpoint}', json=body)
+        assert response.status_code == 422, response.text
+        assert response.json()['error']['code'] == 'IMPUTATION_NO_PREDICTORS'
+        assert store.get_dataframe(ds).to_dict(as_series=False) == before.to_dict(as_series=False)
+        assert store.get_meta(ds) == meta
+        assert _mask(store, ds) == mask
+
+
+def test_knn_auto_with_all_columns_targeted_rejects_in_preview_and_apply(plan_ds):
+    client, ds, store = plan_ds
+    before = store.get_dataframe(ds).to_dict(as_series=False)
+    body = {'columns': ['x', 'y', 'z', 'grp'], 'strategy': 'knn'}
+    for endpoint in ['impute/preview', 'impute']:
+        response = client.post(f'/api/v1/datasets/{ds}/{endpoint}', json=body)
+        assert response.status_code == 422, response.text
+        assert response.json()['error']['code'] == 'IMPUTATION_NO_PREDICTORS'
+        assert store.get_dataframe(ds).to_dict(as_series=False) == before
