@@ -12,6 +12,7 @@ import { selectionApplied, selectionCleared, focusSelected, deleteSelected, rese
 import { maskFilterChanged } from '../dataset/provenanceSlice'
 import { api } from '../../api/client'
 import { useCodebook } from '../dataset/useCodebookColumn'
+import { projectTableRowIds } from './tableRowScope'
 
 type Entity = { kind: 'column' | 'ma' | 'maOption' | 'maCount'; columnId?: string; groupId?: string }
 type MaskEntry = { rowId: string; columnId: string; methodLabel: string }
@@ -82,10 +83,10 @@ export default function TablePage() {
   const imputedRowIds = useMemo(() => new Set(maskEntries.map((e) => e.rowId)), [maskEntries])
   // Narrow the full shared scope before the API applies search, sort and pagination.
   // Filtering result.rows would lose matching rows on other pages and keep stale totals.
-  const scopedRows = scopeFilter === 'selected'
-    ? effectiveRowIds.filter(id => selection.selectedRowIds.includes(id)) : effectiveRowIds
-  const filteredRows = maskFilter === 'all' ? scopedRows : scopedRows.filter(id =>
-    maskFilter === 'hasImputed' ? imputedRowIds.has(id) : !imputedRowIds.has(id))
+  const selectedRowIdSet = useMemo(() => new Set(selection.selectedRowIds), [selection.selectedRowIds])
+  const filteredRows = useMemo(() => projectTableRowIds(
+    effectiveRowIds, selectedRowIdSet, scopeFilter, imputedRowIds, maskFilter,
+  ), [effectiveRowIds, selectedRowIdSet, scopeFilter, imputedRowIds, maskFilter])
   const scopeKey = JSON.stringify([selection.datasetId, selection.dataRevision, schemaRevision,
     scopeFilter, maskFilter, filteredRows, search, valueDisplayMode, visibleEntities])
   const [pageScope, setPageScope] = useState(scopeKey)
@@ -204,7 +205,7 @@ export default function TablePage() {
         <Checkbox
           data-testid={`select-${row.__rowId__}`}
           aria-label={`${row.__rowId__}を選択`}
-          checked={selection.selectedRowIds.includes(row.__rowId__ as string)}
+          checked={selectedRowIdSet.has(row.__rowId__ as string)}
           onChange={(e) => dispatch(selectionApplied({
             rowIds: [row.__rowId__ as string],
             operation: e.target.checked ? 'add' : 'subtract',
