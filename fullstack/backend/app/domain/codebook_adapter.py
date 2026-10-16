@@ -157,10 +157,13 @@ class CodebookAdapter:
             )
 
         if col_name in self.df.columns:
+            # Membership must not rescan all labels for every observed row.
+            # Keep the list as the ordering authority; the set is lookup-only.
+            ordered_set = set(ordered)
             observed = [
                 v
                 for v in [normalize_code(v) for v in self.mask_missing_values(col_name).drop_nulls().to_list()]
-                if v is not None and v not in ordered and v not in missing_codes
+                if v is not None and v not in ordered_set and v not in missing_codes
             ]
             ordered.extend(_iter_unique(observed))
 
