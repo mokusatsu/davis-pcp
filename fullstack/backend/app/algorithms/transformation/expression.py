@@ -14,6 +14,56 @@ import polars as pl
 from ...domain.errors import BizError
 
 
+# This evaluator uses Float64 arithmetic. Integer-domain values must stay below
+# this boundary until an explicit floating operation (division/math function).
+# Reject rather than silently rounding a source, literal, or intermediate.
+_INTEGER_PRECISION_LIMIT = 1 << 53
+_INTEGER_DTYPES = (pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+                   pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64)
+
+
+def _integer_precision_error() -> BizError:
+    return BizError(
+        "EXPRESSION_INTEGER_PRECISION",
+        "整数の入力・定数・計算途中の値が安全な計算範囲を超えています。"
+        "整数の絶対値を 9007199254740992 未満にしたデータまたは式を使用してください。"
+        "値を丸めずに処理を中止しました。",
+        status_code=422,
+    )
+
+
+def _guard_integer_values(values: Any) -> None:
+    # Integer literals can exceed NumPy's integer types; check them before
+    # np.asarray. Input Series are likewise checked before nullable to_numpy
+    # can silently promote them to Float64.
+    if isinstance(values, (int, np.integer)):
+        if abs(int(values)) >= _INTEGER_PRECISION_LIMIT:
+            raise _integer_precision_error()
+        return
+    array = np.asarray(values)
+    if array.dtype.kind in "iuf":
+        # Compare both signs without abs(signed-min), which can overflow.
+        if np.any(array >= _INTEGER_PRECISION_LIMIT) or np.any(array <= -_INTEGER_PRECISION_LIMIT):
+            raise _integer_precision_error()
+    elif array.dtype.kind == "O":
+        for value in array.flat:
+            if isinstance(value, (int, float, np.integer, np.floating)):
+                _guard_integer_values(value)
+
+
+def _validate_integer_sources(df: pl.DataFrame, parsed: ast.AST) -> set[str]:
+    referenced = {node.id for node in ast.walk(parsed) if isinstance(node, ast.Name)}
+    integer_names = {name for name in referenced.intersection(df.columns)
+                     if df[name].dtype in (*_INTEGER_DTYPES, pl.Boolean)}
+    for name in integer_names:
+        series = df[name]
+        low, high = series.min(), series.max()
+        for value in (low, high):
+            if value is not None:
+                _guard_integer_values(value)
+    return integer_names
+
+
 def _safe_zscore(arr: np.ndarray) -> np.ndarray:
     # Standardize bounded coordinates so small/large measurement units cannot
     # underflow/overflow the population variance or an absolute cutoff.
@@ -151,8 +201,54 @@ FUNCTIONS: dict[str, Callable[..., Any]] = {
 
 
 class SafeEvaluator(ast.NodeVisitor):
-    def __init__(self, variables: dict[str, np.ndarray]):
+    def __init__(self, variables: dict[str, np.ndarray], integer_names: set[str] | None = None):
         self.variables = variables
+        self.integer_names = integer_names or set()
+        self.integer_nodes: dict[int, bool] = {}
+        self.floating_power_nodes: set[int] = set()
+
+    def _integer_domain(self, node: ast.AST) -> bool:
+        def integer(child: ast.AST) -> bool:
+            return self.integer_nodes.get(id(child), False)
+
+        def nullable_integer(child: ast.AST) -> bool:
+            return integer(child) or isinstance(child, ast.Constant) and child.value is None
+
+        if isinstance(node, ast.Name):
+            return node.id in self.integer_names
+        if isinstance(node, ast.Constant):
+            return isinstance(node.value, int)
+        if isinstance(node, (ast.Compare, ast.BoolOp)):
+            return True  # Boolean results are exact 0/1 in numeric expressions.
+        if isinstance(node, ast.Expression):
+            return integer(node.body)
+        if isinstance(node, ast.UnaryOp):
+            return isinstance(node.op, ast.Not) or integer(node.operand) and isinstance(node.op, (ast.UAdd, ast.USub, ast.Invert))
+        if isinstance(node, ast.BinOp):
+            if isinstance(node.op, (ast.BitAnd, ast.BitOr)):
+                return True  # Evaluated as logical_and/logical_or, hence 0/1.
+            return (integer(node.left) and integer(node.right)
+                    and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.Mod, ast.Pow))
+                    and id(node) not in self.floating_power_nodes)
+        if isinstance(node, ast.IfExp):
+            return nullable_integer(node.body) and nullable_integer(node.orelse)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            args = list(node.args)
+            keywords = {kw.arg: kw.value for kw in node.keywords}
+            if node.func.id in ("where", "ifelse"):
+                left = args[1] if len(args) > 1 else keywords.get("a")
+                right = args[2] if len(args) > 2 else keywords.get("b")
+                return left is not None and right is not None and nullable_integer(left) and nullable_integer(right)
+            if node.func.id == "clip":
+                operands = [args[index] if len(args) > index else keywords.get(name)
+                            for index, name in enumerate(("a", "lo", "hi"))]
+                return all(value is not None and integer(value) for value in operands)
+            if node.func.id in ("abs", "round"):
+                first = args[0] if args else keywords.get("a")
+                return first is not None and integer(first)
+        # True division, mixed floating operands and transcendental/statistical
+        # functions have the established floating-point precision contract.
+        return False
 
     def visit(self, node: ast.AST) -> Any:
         method = getattr(self, f"visit_{node.__class__.__name__}", None)
@@ -161,7 +257,12 @@ class SafeEvaluator(ast.NodeVisitor):
                 "EXPRESSION_UNSUPPORTED_SYNTAX",
                 f"数式内に未サポートの構文 '{node.__class__.__name__}' が含まれています。",
             )
-        return method(node)
+        result = method(node)
+        integer_domain = self._integer_domain(node)
+        self.integer_nodes[id(node)] = integer_domain
+        if integer_domain:
+            _guard_integer_values(result)
+        return result
 
     def visit_Expression(self, node: ast.Expression) -> Any:
         return self.visit(node.body)
@@ -197,6 +298,20 @@ class SafeEvaluator(ast.NodeVisitor):
         left = self.visit(node.left)
         right = self.visit(node.right)
         op = node.op
+        integer_operands = (self.integer_nodes.get(id(node.left), False)
+                            and self.integer_nodes.get(id(node.right), False))
+        if integer_operands and not isinstance(op, (ast.BitAnd, ast.BitOr)):
+            # Helpers such as abs/round/where may return fixed-width NumPy ints.
+            # Promote those *before* arithmetic can wrap; every operand has
+            # already passed the exact (<2**53) integer-value guard. Python
+            # integers retain their arbitrary-precision arithmetic.
+            def promote(value: Any) -> Any:
+                if isinstance(value, np.ndarray) and value.dtype.kind in "biu":
+                    return value.astype(np.float64)
+                if isinstance(value, (np.integer, np.bool_)):
+                    return float(value)
+                return value
+            left, right = promote(left), promote(right)
         if isinstance(op, ast.Add):
             return left + right
         elif isinstance(op, ast.Sub):
@@ -215,7 +330,15 @@ class SafeEvaluator(ast.NodeVisitor):
                 return left % right
         elif isinstance(op, ast.Pow):
             with np.errstate(all="ignore"):
-                return left ** right
+                result = left ** right
+            if integer_operands and np.any(np.asarray(right) < 0):
+                # A negative exponent explicitly enters floating arithmetic.
+                # Still guard nonnegative-exponent rows in a mixed array before
+                # that transition can hide their integer-domain overflow.
+                self.floating_power_nodes.add(id(node))
+                values, exponents = np.broadcast_arrays(result, right)
+                _guard_integer_values(values[exponents >= 0])
+            return result
         elif isinstance(op, ast.BitAnd):
             return np.logical_and(left, right)
         elif isinstance(op, ast.BitOr):
@@ -299,6 +422,8 @@ def evaluate_expression(
     except SyntaxError as exc:
         raise BizError("EXPRESSION_SYNTAX_ERROR", f"数式の構文エラーです (行 {exc.lineno}, 列 {exc.offset}): {exc.msg}") from exc
 
+    integer_names = _validate_integer_sources(df, parsed)
+
     # Prepare variable bindings
     n_rows = df.height
     var_map: dict[str, np.ndarray] = {}
@@ -313,7 +438,7 @@ def evaluate_expression(
         else:
             var_map[col] = np.array(series.to_list())
 
-    evaluator = SafeEvaluator(var_map)
+    evaluator = SafeEvaluator(var_map, integer_names)
     raw_res = evaluator.visit(parsed)
 
     # Convert scalar or array result to Polars Series
@@ -366,6 +491,14 @@ def preview_expression(
 ) -> dict[str, Any]:
     """Safely validate and preview expression evaluation without modifying dataset."""
     try:
+        # Validate the complete integer inputs even though the displayed preview
+        # evaluates only its documented first-100-row sample.
+        try:
+            parsed = ast.parse(expression.strip(), mode="eval")
+        except SyntaxError:
+            parsed = None  # evaluate_expression supplies the standard error.
+        if parsed is not None:
+            _validate_integer_sources(df, parsed)
         sample_df = df.head(min(100, df.height))
         _, series, meta = evaluate_expression(sample_df, expression, new_column_name)
 
