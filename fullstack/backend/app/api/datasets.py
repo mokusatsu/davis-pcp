@@ -2503,9 +2503,15 @@ async def import_package(file: UploadFile = File(...)) -> dict:
     except Exception as exc:
         raise BizError("PROVENANCE_PACKAGE_INVALID", f"パッケージ内容を読み込めません: {exc}",
                        status_code=422) from exc
-    if "__rowId__" not in current_df.columns or current_df["__rowId__"].n_unique() != current_df.height:
-        raise BizError("PROVENANCE_PACKAGE_INVALID", "__rowId__ の一意性を確認できません。",
-                       status_code=422)
+    # Package restoration must preserve usable identities in both snapshots.
+    # Polars counts null as a unique value, so uniqueness alone is insufficient.
+    # Validate before locking/creating any dataset; never regenerate archived IDs.
+    for frame in (current_df, raw_df):
+        if ("__rowId__" not in frame.columns
+                or frame["__rowId__"].null_count() != 0
+                or frame["__rowId__"].n_unique() != frame.height):
+            raise BizError("PROVENANCE_PACKAGE_INVALID", "__rowId__ の非欠損・一意性を確認できません。",
+                           status_code=422)
     schema_payload = _derive_package_schema(current_df, codebook)
     new_id_value = new_id("ds")
     # PK03: rebind every active reference to the new id; keep the source id as

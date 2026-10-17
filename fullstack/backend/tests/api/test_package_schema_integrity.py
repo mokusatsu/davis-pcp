@@ -506,3 +506,70 @@ def test_package_member_fallback_failure_rejects_before_publication(api, monkeyp
         attempted.append(files[member])
     assert calls["polars"] == calls["arrow"] == attempted
     assert file_state(store) == before
+
+
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+@pytest.mark.parametrize("member", ["data/current.parquet", "data/raw.parquet", "data/raw.csv"])
+@pytest.mark.parametrize("invalid_identity", ["null", "duplicate", "missing"])
+def test_package_invalid_row_identity_rejects_before_publication(
+        api, monkeypatch, member, reader_mode, invalid_identity):
+    client, store = api
+    did = upload(api, pl.DataFrame({"q": [1, 2], "id": ["a", "b"]}))
+    files = unpack(export_package(client, did))
+    if member.endswith(".csv"):
+        files.pop("data/raw.parquet")  # Exercise the supported CSV raw snapshot.
+        frame = pl.read_csv(io.BytesIO(files[member]))
+    else:
+        frame = pl.read_parquet(io.BytesIO(files[member]))
+    if invalid_identity == "missing":
+        frame = frame.drop("__rowId__")
+    else:
+        ids = ["ROW-000001", None if invalid_identity == "null" else "ROW-000001"]
+        frame = frame.with_columns(pl.Series("__rowId__", ids, dtype=pl.String))
+    buffer = io.BytesIO()
+    if member.endswith(".csv"):
+        frame.write_csv(buffer)
+    else:
+        frame.write_parquet(buffer)
+    files[member] = buffer.getvalue()
+    payload = pack(files)
+    before = file_state(store)
+    calls = track_package_readers(monkeypatch, reader_mode)
+
+    def forbid_publication(*_args, **_kwargs):
+        pytest.fail("Invalid package row IDs must be rejected before locking or publication")
+
+    monkeypatch.setattr(store, "lock", forbid_publication)
+    monkeypatch.setattr(store, "commit_data_change", forbid_publication)
+    response = import_package(client, payload)
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "PROVENANCE_PACKAGE_INVALID"
+    assert file_state(store) == before
+    if member.endswith(".csv"):
+        assert calls["polars"] == [files["data/current.parquet"]]
+        assert calls["arrow"] == (calls["polars"] if reader_mode == "fallback" else [])
+    else:
+        assert_package_reader_calls(calls, payload, reader_mode)
+
+
+@pytest.mark.parametrize("reader_mode", ["native", "fallback"])
+@pytest.mark.parametrize("raw_csv", [False, True])
+def test_package_row_identity_is_preserved_without_regeneration(api, monkeypatch, reader_mode, raw_csv):
+    client, store = api
+    did = upload(api, pl.DataFrame({"q": [1, 2], "id": ["a", "b"]}))
+    files = unpack(export_package(client, did))
+    identities = ["custom-second", "custom-first"]
+    for member in ("data/current.parquet", "data/raw.parquet"):
+        frame = pl.read_parquet(io.BytesIO(files[member])).with_columns(
+            pl.Series("__rowId__", identities, dtype=pl.String))
+        buffer = io.BytesIO()
+        frame.write_parquet(buffer)
+        files[member] = buffer.getvalue()
+        if raw_csv and member == "data/raw.parquet":
+            files.pop(member)
+            files["data/raw.csv"] = frame.write_csv().encode()
+    track_package_readers(monkeypatch, reader_mode)
+    restored_id = ok(import_package(client, pack(files)))["datasetId"]
+    assert store.get_dataframe(restored_id)["__rowId__"].to_list() == identities
+    assert store.read_raw(restored_id)["__rowId__"].to_list() == identities
+    assert store.get_meta(restored_id)["rowIds"] == identities
