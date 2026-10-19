@@ -5,6 +5,7 @@ import io
 import json
 import math
 import numbers
+import re
 import urllib.parse
 import zipfile
 from typing import Any, Literal
@@ -75,6 +76,19 @@ def _to_xml_bytes(element: ET.Element) -> bytes:
     tree = ET.ElementTree(element)
     tree.write(buffer, encoding="utf-8", xml_declaration=True, method="xml")
     return buffer.getvalue()
+
+
+_XLSX_TEXT_ESCAPE = re.compile(r"_(?=x[0-9A-Fa-f]{4}_)|[\x00-\x08\x0b-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _xlsx_text(value: str) -> str:
+    """Encode ST_Xstring text without losing controls or literal escape strings.
+
+    CR must be escaped to avoid XML newline normalization; TAB/LF remain literal.
+    Protect existing _xHHHH_ sequences in the same pass so newly encoded controls
+    are not escaped again. See MS-OI29500 section 2.1.1747 (ST_Xstring).
+    """
+    return _XLSX_TEXT_ESCAPE.sub(lambda match: f"_x{ord(match[0]):04X}_", value)
 
 
 def _apply_value_label(
@@ -148,7 +162,8 @@ def _build_xlsx_response(
         cell_ref = _cell_ref(col_idx, 1)
         c = ET.SubElement(header_row, "c", {"r": cell_ref, "t": "inlineStr"})
         t = ET.SubElement(ET.SubElement(c, "is"), "t")
-        t.text = str(column)
+        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        t.text = _xlsx_text(str(column))
 
     for row_idx, row_values in enumerate(rows, start=2):
         row_el = ET.SubElement(sheet_data, "row", {"r": str(row_idx)})
@@ -179,7 +194,7 @@ def _build_xlsx_response(
             c = ET.SubElement(row_el, "c", {"r": ref, "t": "inlineStr"})
             t = ET.SubElement(ET.SubElement(c, "is"), "t")
             t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-            t.text = val
+            t.text = _xlsx_text(val)
 
     workbook = ET.Element("workbook", attrib={"xmlns": "http://schemas.openxmlformats.org/spreadsheetml/2006/main", "xmlns:r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"})
     ET.SubElement(

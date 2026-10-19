@@ -1,4 +1,4 @@
-import { configureStore, createAction, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { configureStore, createAction, createSelector, createSlice, current as currentSnapshot, isDraft, original, PayloadAction } from '@reduxjs/toolkit'
 import { retainColumnarCacheScope } from '../features/pcp/columnarCache'
 import { entityKey, reconcileEntities, variableCatalog, type VariableEntity } from '../features/selection/variableEntities'
 
@@ -113,7 +113,12 @@ const selectionSlice = createSlice({
     },
     selectionApplied(state, action: PayloadAction<{ rowIds: string[]; operation: 'add' | 'replace' | 'subtract' | 'toggle'; label: string }>) {
       const { rowIds, operation, label } = action.payload
-      const active = new Set(state.activeRowIds)
+      // Read the existing index without drafting a Set (MapSet is not enabled).
+      // A surrounding producer may already have changed the working set.
+      const base = original(state)!
+      const rows = state.activeRowIds
+      const currentRows = isDraft(rows) ? currentSnapshot(rows) : rows
+      const active = currentRows === base.activeRowIds ? base.activeRowIdSet : new Set(currentRows)
       const hits = new Set(rowIds.filter((id) => active.has(id)))
       const current = new Set(state.selectedRowIds)
       if (operation === 'replace') state.selectedRowIds = [...hits]
