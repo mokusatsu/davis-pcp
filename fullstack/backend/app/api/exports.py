@@ -170,6 +170,11 @@ def _build_xlsx_response(
         for col_idx, value in enumerate(row_values):
             col_name = columns[col_idx]
             out_value = _apply_value_label(col_name, value, label_maps, adapter)
+            # Excel only preserves 15 decimal digits in numeric cells. Keep
+            # longer integer identifiers exact by writing them as text instead.
+            # Do not reinterpret floats, whose precision was already determined.
+            if isinstance(out_value, numbers.Integral) and not isinstance(out_value, bool) and abs(out_value) >= 10**15:
+                out_value = str(out_value)
             ref = _cell_ref(col_idx, row_idx)
             if out_value is None or (isinstance(out_value, float) and not math.isfinite(out_value)):
                 ET.SubElement(row_el, "c", {"r": ref})

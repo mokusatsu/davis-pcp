@@ -24,6 +24,12 @@ API の PUT /sessions/{id} は直前の GET/POST/PUT で返された versionToke
 - Grand Tour は選択した全投影列で観測された有限値のある行を使う完全ケース方式。欠損コードを含む欠損・非数値・無限値の行は除外し、投影行数・除外行数を示す。欠損を実測 0 に置き換えない
 - Sampling の seed は 0 以上 9007199254740991 以下の整数（空欄は新しい乱数）とし、不正な入力は欄の近くに理由を表示する。API も同じ境界を検証する
 
+## Excel 出力の整数精度
+
+Excel の数値セルは 15 桁までの精度に制限されるため、データの Excel（.xlsx）出力では **16 桁以上の整数（負数は符号を除く）を文字列セルとして保存**する。回答者 ID などの桁を丸めず保持するための処理であり、出力後の Excel では数値セルではなく文字列になる。15 桁以下の整数と浮動小数点数の出力は従来どおり。値ラベル出力を選んだ場合はラベル置換が優先される。CSV・Parquet・Arrow 出力はこの処理の対象外。
+
+参考：[Microsoft「数値を文字列として書式設定する」](https://support.microsoft.com/en-us/excel/format-numbers-as-text)。
+
 ## 検証
 
 通常のフロントエンド・バックエンド試験に加え、scripts/check_workflow_runtime.py は隔離した組込み Iris で HTTP/SQLite の保存整合性、競合、seed 検証と修正後の再現性を確認する。
