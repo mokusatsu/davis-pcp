@@ -10,6 +10,7 @@ import io
 import json
 import re
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -130,31 +131,36 @@ def _split_arff_line(line: str) -> list[str]:
     return fields
 
 
-def _parse_value(token: str, options: ImportOptions | None = None) -> Any:
-    token = token.strip()
+def _make_value_parser(options: ImportOptions | None = None) -> Callable[[str], Any]:
+    """Prepare invariant token/decimal settings once, not once per cell."""
     missing_tokens = set(options.missingTokens) if (options and options.missingTokens is not None) else MISSING_TOKENS
     missing_lower = {t.lower() for t in missing_tokens}
-    if token in missing_tokens or token.lower() in missing_lower:
-        return None
-
     dec_sep = options.decimalSeparator if options and options.decimalSeparator else "."
-    check_val = token[1:] if token.startswith("-") or token.startswith("+") else token
-    # Preserve leading zeros as strings (codes like "001", "01"), except "0", "0.xxx", "0,xxx"
-    if check_val.startswith("0") and len(check_val) > 1 and not check_val.startswith(f"0{dec_sep}"):
-        return token
 
-    num_token = token
-    if dec_sep != ".":
-        num_token = token.replace(dec_sep, ".")
+    def parse_value(token: str) -> Any:
+        token = token.strip()
+        if token in missing_tokens or token.lower() in missing_lower:
+            return None
 
-    try:
-        return int(num_token)
-    except ValueError:
-        pass
-    try:
-        return float(num_token)
-    except ValueError:
-        return token
+        check_val = token[1:] if token.startswith("-") or token.startswith("+") else token
+        # Preserve leading zeros as strings (codes like "001", "01"), except "0", "0.xxx", "0,xxx"
+        if check_val.startswith("0") and len(check_val) > 1 and not check_val.startswith(f"0{dec_sep}"):
+            return token
+
+        num_token = token
+        if dec_sep != ".":
+            num_token = token.replace(dec_sep, ".")
+
+        try:
+            return int(num_token)
+        except ValueError:
+            pass
+        try:
+            return float(num_token)
+        except ValueError:
+            return token
+
+    return parse_value
 
 
 def probe_table(
@@ -282,6 +288,7 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
 
     width = len(final_header)
     normalized = []
+    parse_value = _make_value_parser(options)
     for row in data_rows:
         if len(row) != width:
             raise BizError(
@@ -290,7 +297,7 @@ def read_delimited(raw: bytes, fmt: str, options: ImportOptions | None = None) -
                 details={"row": row[:5]},
                 suggested_actions=["引用符や区切り文字を確認してください"],
             )
-        normalized.append([_parse_value(cell, options=options) for cell in row])
+        normalized.append([parse_value(cell) for cell in row])
     series_list = []
     for i, name in enumerate(final_header):
         col_vals = [row[i] for row in normalized]
@@ -347,7 +354,8 @@ def load_dataframe_from_upload(filename: str, raw: bytes, options: ImportOptions
     elif fmt == "arff":
         encoding = _sniff_encoding(raw)
         names, rows, _types = parse_arff(raw.decode(encoding, errors="replace"))
-        parsed = [[_parse_value(c) for c in row] for row in rows]
+        parse_value = _make_value_parser()
+        parsed = [[parse_value(c) for c in row] for row in rows]
         columns = {}
         for i, name in enumerate(names):
             col_vals = [row[i] if i < len(row) else None for row in parsed]
