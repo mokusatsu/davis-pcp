@@ -38,7 +38,9 @@ export function buildAxes(data: ColumnarData, columns: CodebookColumn[] = []): P
       return { ...shared, type: 'numeric' as const, min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max }
     }
     const defined = spec?.categoryOrder?.length ? spec.categoryOrder : Object.keys(spec?.valueLabels ?? {})
-    const observed = [...new Set(valid.map(v => normalizeCode(v)!))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    // Reuse collation setup across comparisons, retaining default-locale numeric order.
+    const categoryCollator = new Intl.Collator(undefined, { numeric: true })
+    const observed = [...new Set(valid.map(v => normalizeCode(v)!))].sort(categoryCollator.compare)
     const categories = [...new Set([...defined, ...observed])].filter(c => !missing.has(c))
     return {
       ...shared,

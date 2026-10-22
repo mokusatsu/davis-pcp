@@ -306,3 +306,28 @@ def test_large_constant_and_adjacent_bins_preview_apply_and_json_roundtrip(api, 
     ok(client.post(f"/api/v1/datasets/{did}/codebook/import", files={"file": (
         "finite-resolution.json", exported.content, "application/json")}))
     assert next(c for c in store.load_codebook(did)["columns"] if c["name"] == "exact_bin") == spec
+
+
+@pytest.mark.parametrize("values,arrow_type", [
+    ([2**53, 2**53 + 1, None], pa.int64()),
+    ([-2**53 - 1, -2**53, None], pa.int64()),
+    ([2**64 - 2, 2**64 - 1, None], pa.uint64()),
+])
+@pytest.mark.parametrize("method", ["equal_width", "quantile", "custom"])
+@pytest.mark.parametrize("endpoint", ["preview", "apply"])
+def test_binning_rejects_unsafe_integers_before_rounding_or_publishing(api, values, arrow_type, method, endpoint):
+    client, store = api
+    buffer = io.BytesIO()
+    pq.write_table(pa.table({"q": pa.array(values, type=arrow_type)}), buffer)
+    did, original = upload(api, buffer.getvalue(), "exact-integers.parquet")
+    before = all_files(store)
+    options = {"method": method, "num_bins": 2, "custom_cuts": [0.]}
+    if endpoint == "preview":
+        response = client.post(f"/api/v1/datasets/{did}/transform/preview", json={"column": "q", **options})
+    else:
+        response = client.post(f"/api/v1/datasets/{did}/transform", json={
+            "type": "binning", "source_column": "q", "options": options})
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "TRANSFORM_INTEGER_PRECISION"
+    assert all_files(store) == before
+    unchanged_source(store.get_dataframe(did), original)

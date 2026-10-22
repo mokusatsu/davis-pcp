@@ -92,6 +92,24 @@ def nominal_to_binary(
     return updated_df, new_col_names
 
 
+def _binning_values(series: pl.Series) -> np.ndarray:
+    """Do not silently round integer observations when entering Float64 bins."""
+    if (series.dtype.is_integer() and len(series)
+            and (series.min() < -(1 << 53) or series.max() > (1 << 53))):
+        # Check Python integers before NumPy conversion (including nullable and
+        # unsigned columns). Large endpoints can be exact while interior values
+        # are not; an extrema-only check would miss those observations.
+        if any(int(float(value)) != value for value in series.to_list()):
+            raise BizError(
+                "TRANSFORM_INTEGER_PRECISION",
+                "ビン分割で使用する倍精度浮動小数点数では正確に表せない整数が含まれています。"
+                "値を丸めずに処理を中止しました。元データを保持したまま、"
+                "外部で共通の整数オフセットを引いた列を作成するか、カテゴリ変換を使用してください。",
+                status_code=422,
+            )
+    return series.to_numpy().astype(float)
+
+
 def _equal_width_edges(lower: float, upper: float, num_bins: int) -> list[float]:
     """Collapse only identical cuts when the requested resolution is unavailable."""
     edges: list[float] = []
@@ -203,7 +221,7 @@ def bin_numeric(
     if len(non_null) == 0:
         raise BizError("TRANSFORM_EMPTY_COLUMN", f"列 '{column}' に有効な数値データがありません。")
 
-    vals = non_null.to_numpy().astype(float)
+    vals = _binning_values(non_null)
     edges = compute_bin_edges(vals, method=method, num_bins=num_bins, custom_cuts=custom_cuts)
     n_bins = len(edges) - 1
     bin_summaries = _bin_summaries(vals, edges, labels_format)
@@ -238,7 +256,7 @@ def preview_binning(
     if len(series) == 0:
         raise BizError("TRANSFORM_EMPTY_COLUMN", f"列 '{column}' に有効な数値がありません。")
 
-    vals = series.to_numpy().astype(float)
+    vals = _binning_values(series)
     edges = compute_bin_edges(vals, method=method, num_bins=num_bins, custom_cuts=custom_cuts)
 
     hist_min, hist_max = float(np.min(vals)), float(np.max(vals))

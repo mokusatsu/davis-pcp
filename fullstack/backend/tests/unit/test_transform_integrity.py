@@ -211,3 +211,48 @@ def test_ordinary_preview_histogram_bounds_shape_and_counts_are_preserved(values
     histogram = preview["histogram"]
     assert histogram["edges"] == pytest.approx([lower + (upper - lower) * i / 10 for i in range(11)])
     assert histogram["counts"] == expected_counts
+
+
+@pytest.mark.parametrize("values,dtype", [
+    ([2**53, 2**53 + 1, 2**53 + 2], pl.Int64),
+    ([-2**53 - 2, -2**53 - 1, -2**53], pl.Int64),
+])
+def test_binning_checks_interior_integer_values_not_only_extrema(values, dtype):
+    original = frame(values, dtype)
+    for operation in (core.preview_binning, core.bin_numeric):
+        with pytest.raises(BizError) as error:
+            operation(original, "q")
+        assert error.value.code == "TRANSFORM_INTEGER_PRECISION"
+
+
+@pytest.mark.parametrize("values,dtype", [
+    ([2**53 - 2, 2**53 - 1, None], pl.Int64),
+    ([-2**53 + 1, -2**53 + 2, None], pl.Int64),
+    ([2**60, 2**60 + 512, None], pl.Int64),
+    ([2**63, 2**63 + 4096, None], pl.UInt64),
+])
+def test_binning_keeps_exactly_representable_integers_supported(values, dtype):
+    original = frame(values, dtype)
+    preview = core.preview_binning(original, "q", num_bins=2)
+    result, name, bins = core.bin_numeric(original, "q", num_bins=2)
+    assert preview["bins"] == bins
+    assert preview["min"] == values[0]
+    assert preview["max"] == values[1]
+    assert sum(item["count"] for item in bins) == 2
+    assert result[name].null_count() == 1
+    assert_source(result, original)
+
+
+def test_binning_masks_large_integer_missing_code_before_precision_validation():
+    missing = 2**53 + 1
+    original = frame([1, 2, missing, None], pl.Int64)
+    book = {"columns": [{"name": "q", "missingCodes": [str(missing)]}]}
+    preview = core.preview_binning(original, "q", num_bins=2, codebook=book)
+    result, name, bins = core.bin_numeric(original, "q", num_bins=2, codebook=book)
+    assert preview["bins"] == bins
+    assert result[name].to_list() == [1, 2, None, None]
+    assert_source(result, original)
+    # Exact categorical comparisons must not inherit the numeric binning limit.
+    encoded, names = core.nominal_to_binary(original, "q")
+    assert encoded[f"q_{missing}"].to_list() == [0, 0, 1, None]
+    assert len(names) == 3
