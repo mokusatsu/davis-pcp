@@ -4,6 +4,7 @@
  * All dependencies and wheels are loaded from local static assets.
  */
 
+import type { PersistenceState } from './persistence'
 import { createSerialQueue } from './serialQueue'
 import { consumePythonResponse } from './pythonResponse'
 import { loadRequiredPackages } from './pyodidePackages'
@@ -31,10 +32,37 @@ interface WorkerApiRequest {
   }
 }
 
-type WorkerIncomingMessage = WorkerInitMessage | WorkerApiRequest
+type WorkerIncomingMessage = WorkerInitMessage | WorkerApiRequest | { type: 'FLUSH'; id: number }
 
 let pyodideInstance: any = null
 let pyDispatchFn: any = null
+let persistence: PersistenceState = { mode: 'persistent', pending: false, error: null }
+
+function updatePersistence(update: Partial<PersistenceState>) {
+  persistence = { ...persistence, ...update }
+  self.postMessage({ type: 'PERSISTENCE', persistence })
+}
+
+// Never populate/remount an active tree: it may contain the only copy of work.
+// If initial hydration was incomplete, even an outbound flush could delete
+// unseen IndexedDB files, so this worker remains temporary for its lifetime.
+async function flushPersistence(): Promise<PersistenceState> {
+  if (persistence.mode === 'temporary') return persistence
+  try {
+    await new Promise<void>((resolve, reject) => {
+      pyodideInstance.FS.syncfs(false, (error: unknown) => error ? reject(error) : resolve())
+    })
+    updatePersistence({ pending: false, error: null })
+  } catch (error) {
+    updatePersistence({ pending: true, error: (error as Error)?.message || String(error) })
+  }
+  return persistence
+}
+
+function isExplicitSessionSave(method: string, path: string) {
+  return (method === 'POST' && path === '/sessions')
+    || (method === 'PUT' && /^\/sessions\/[^/?#]+$/.test(path))
+}
 
 function postStatus(stage: string, progress: number, message: string) {
   self.postMessage({ type: 'STATUS', stage, progress, message })
@@ -61,12 +89,15 @@ async function initPyodide(baseUrl: string) {
     if (FS.filesystems?.IDBFS) {
       try {
         FS.mount(FS.filesystems.IDBFS, {}, '/workspace')
-        await new Promise<void>((resolve) => {
-          FS.syncfs(true, () => resolve())
+        await new Promise<void>((resolve, reject) => {
+          FS.syncfs(true, (error: unknown) => error ? reject(error) : resolve())
         })
       } catch (err) {
-        console.warn('IDBFS mount warning, falling back to MEMFS:', err)
+        console.warn('Workspace hydration failed; outbound persistence disabled:', err)
+        updatePersistence({ mode: 'temporary', error: (err as Error)?.message || String(err) })
       }
+    } else {
+      updatePersistence({ mode: 'temporary', error: 'IndexedDB ストレージを利用できません。' })
     }
 
     postStatus('loading_packages', 0.3, '分析ライブラリ (NumPy, SciPy, Polars, scikit-learn, PyArrow) を読み込み中...')
@@ -196,6 +227,7 @@ async def _dispatch_asgi(method, path, headers_json, body_bytes, upload_meta_jso
     }
 `)
 
+    updatePersistence({ pending: true })
     pyDispatchFn = pyodideInstance.globals.get('_dispatch_asgi')
     postStatus('ready', 1.0, 'DAVIS-PCP WASM 環境の準備が完了しました')
   } catch (err: any) {
@@ -222,6 +254,12 @@ async function handleApiRequest(msg: WorkerApiRequest) {
     return
   }
 
+  if (persistence.mode === 'temporary' && isExplicitSessionSave(method, path)) {
+    self.postMessage({ type: 'RESPONSE', id, status: 503, headers: {}, persistence,
+      error: { code: 'PERSISTENCE_UNAVAILABLE', message: '一時モードのためセッション保存を開始できません。現在の作業はこのタブ内にのみ保持されています。' } })
+    return
+  }
+
   try {
     const headersJson = headers ? JSON.stringify(headers) : '{}'
     let bodyBytes: Uint8Array | null = null
@@ -245,6 +283,9 @@ async function handleApiRequest(msg: WorkerApiRequest) {
       uploadBytes = new Uint8Array(filePayload.data)
     }
 
+    // Reads may lazily migrate metadata, and failed dispatches may follow writes.
+    // Only a successful outbound sync may clear pending work.
+    updatePersistence({ pending: true })
     const pyResult = await pyDispatchFn(
       method,
       path,
@@ -256,14 +297,13 @@ async function handleApiRequest(msg: WorkerApiRequest) {
 
     const { statusCode, resHeaders, isBinary, rawBytes, text } = consumePythonResponse(pyResult)
 
-    // Sync filesystem if mutative operation
+    // These two computations can lazily migrate legacy metadata. Defer their
+    // flush, but do not call them read-only or clear earlier persistence errors.
+    // Unknown mutative endpoints remain conservative and attempt persistence.
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      const FS = pyodideInstance.FS
-      if (FS.filesystems?.IDBFS) {
-        await new Promise<void>((resolve, reject) => {
-          FS.syncfs(false, (error: unknown) => error ? reject(error) : resolve())
-        })
-      }
+      const defer = method === 'POST'
+        && (path === '/summaries' || path === '/statistics/covariance')
+      if (!defer) await flushPersistence()
     }
 
     let data: any = null
@@ -287,6 +327,7 @@ async function handleApiRequest(msg: WorkerApiRequest) {
         status: statusCode,
         headers: resHeaders,
         data,
+        persistence,
       },
       transfer as any,
     )
@@ -308,6 +349,9 @@ self.onmessage = (e: MessageEvent<WorkerIncomingMessage>) => {
   void enqueue(async () => {
     if (msg.type === 'INIT') {
       await initPyodide(msg.pyodideBaseUrl)
+    } else if (msg.type === 'FLUSH') {
+      const state = await flushPersistence()
+      self.postMessage({ type: 'RESPONSE', id: msg.id, status: 200, headers: {}, data: state, persistence: state })
     } else if (msg.type === 'REQUEST') {
       await handleApiRequest(msg)
     }

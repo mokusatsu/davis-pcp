@@ -4,6 +4,7 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import AppShell from '../src/app/AppShell'
+import { workspaceStorage } from '../src/app/workspaceStorage'
 import { store, selectionReducer, globalObservationsSlice, globalVariablesSlice, datasetLoaded, variablesInitialized, selectionApplied } from '../src/app/store'
 import { codebookSlice, fetchCodebookThunk } from '../src/features/dataset/codebookSlice'
 
@@ -282,4 +283,33 @@ it('SAMPLES: startup never mistakes a similarly named user upload for official I
  const {local}=mount(localStore(null));
  await waitFor(()=>expect(local.getState().selection.datasetId).toBe('a'));
  expect(apiMock.post).not.toHaveBeenCalled();
+})
+
+
+it('PERSISTENCE: failed durable save shows applied receipt and retries only storage, not the operation', async () => {
+ const failed = { mode: 'persistent' as const, pending: true, error: 'QUOTA_UI_TEST' };
+ const write = vi.spyOn(workspaceStorage, 'save').mockResolvedValue({data:{sessionId:'receipt-id',revision:4,versionToken:'receipt-r4'},persistence:failed});
+ const flush = vi.spyOn(workspaceStorage, 'flush').mockResolvedValue({mode:'persistent',pending:false,error:null});
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ const dialog=await save('Pending workspace');
+ expect(await within(dialog).findByText(/revision 4.*端末には未保存/)).toBeInTheDocument();
+ expect(screen.getByText('このタブの変更を保存領域へ書き込めていません')).toBeInTheDocument();
+ expect(apiMock.notification.success).not.toHaveBeenCalled();
+ expect(within(dialog).getByRole('button',{name:/^保\s*存$/})).toBeDisabled();
+ fireEvent.click(within(dialog).getByRole('button',{name:'保存のみ再試行'}));
+ await waitFor(()=>expect(apiMock.notification.success).toHaveBeenCalledTimes(1));
+ expect(write).toHaveBeenCalledTimes(1);expect(flush).toHaveBeenCalledTimes(1);
+ expect(screen.queryByText('このタブの変更を保存領域へ書き込めていません')).not.toBeInTheDocument();
+ expect(within(dialog).queryByText(/端末には未保存/)).not.toBeInTheDocument();
+})
+it('PERSISTENCE: startup temporary mode warns of incomplete data and preflights explicit save', async () => {
+ vi.spyOn(workspaceStorage, 'getState').mockReturnValue({mode:'temporary',pending:true,error:'POPULATE_UI_TEST'});
+ const write=vi.spyOn(workspaceStorage,'save');
+ const {local}=mount();await waitFor(()=>expect(local.getState().codebook.columns).toHaveLength(1));
+ expect(screen.getByText('一時モード: 保存領域の読み込みに失敗しました')).toBeInTheDocument();
+ expect(screen.getByText(/過去のデータがすべて見えているとは限りません/)).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'保存のみ再試行'})).not.toBeInTheDocument();
+ const dialog=await save('Do not write');
+ expect(await within(dialog).findByText(/セッション保存は実行していません/)).toBeInTheDocument();
+ expect(write).not.toHaveBeenCalled();expect(apiMock.post).not.toHaveBeenCalled();
 })

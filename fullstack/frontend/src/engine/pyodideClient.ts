@@ -1,3 +1,4 @@
+import type { PersistenceState, PersistenceReceipt } from './persistence'
 import { apiErrorFromResponse } from '../api/apiError'
 /**
  * Client RPC bridge to the Pyodide Web Worker.
@@ -21,6 +22,31 @@ class PyodideClient {
   private currentStatus: WasmStatus = { stage: 'idle', progress: 0, message: '初期化待機中' }
   private initPromise: Promise<void> | null = null
   private runtimeError: Error | null = null
+  private persistence: PersistenceState = { mode: 'persistent', pending: false, error: null }
+  private persistenceListeners = new Set<(state: PersistenceState) => void>()
+
+  public getPersistence(): PersistenceState { return this.persistence }
+
+  public onPersistence(listener: (state: PersistenceState) => void): () => void {
+    this.persistenceListeners.add(listener)
+    listener(this.persistence)
+    return () => { this.persistenceListeners.delete(listener) }
+  }
+
+  private notifyPersistence(state: PersistenceState) {
+    this.persistence = state
+    for (const listener of this.persistenceListeners) {
+      try { listener(state) } catch (error) { console.error('Persistence listener error:', error) }
+    }
+  }
+
+  /** One outbound flush only; never replays API operations or repopulates memory. */
+  public async flushPersistence(): Promise<PersistenceState> {
+    await this.waitForReady()
+    const id = this.nextId++
+    const receipt = await this.send<PersistenceReceipt<PersistenceState>>(id, { type: 'FLUSH', id })
+    return receipt.data
+  }
 
   constructor() {
     // Worker is lazily created on init() or first request
@@ -90,13 +116,16 @@ class PyodideClient {
               this.failRuntime(error)
               reject(error)
             }
+          } else if (msg.type === 'PERSISTENCE') {
+            this.notifyPersistence(msg.persistence)
           } else if (msg.type === 'RESPONSE') {
+            if (msg.persistence) this.notifyPersistence(msg.persistence)
             const p = this.pending.get(msg.id)
             if (!p) return
             this.pending.delete(msg.id)
 
             if (msg.status >= 200 && msg.status < 300) {
-              p.resolve(msg.data)
+              p.resolve({ data: msg.data, persistence: msg.persistence ?? this.persistence })
             } else {
               const err: ApiError = msg.error || apiErrorFromResponse(msg.data, msg.status)
               p.reject(err)
@@ -161,6 +190,10 @@ class PyodideClient {
   }
 
   public async request<T>(path: string, init?: RequestInit): Promise<T> {
+    return (await this.requestWithPersistence<T>(path, init)).data
+  }
+
+  public async requestWithPersistence<T>(path: string, init?: RequestInit): Promise<PersistenceReceipt<T>> {
     await this.waitForReady()
 
     const id = this.nextId++
@@ -186,7 +219,7 @@ class PyodideClient {
       }
     }
 
-    return this.send<T>(id, { type: 'REQUEST', id, method, path, headers, body })
+    return this.send<PersistenceReceipt<T>>(id, { type: 'REQUEST', id, method, path, headers, body })
   }
 
   public async upload<T>(path: string, file: File, extra: Record<string, string> = {}): Promise<T> {
@@ -196,10 +229,11 @@ class PyodideClient {
     const arrayBuffer = await file.arrayBuffer()
     if (this.runtimeError) throw this.runtimeError
 
-    return this.send<T>(id, {
+    const receipt = await this.send<PersistenceReceipt<T>>(id, {
       type: 'REQUEST', id, method: 'POST', path,
       filePayload: { filename: file.name, data: arrayBuffer, extra },
     }, [arrayBuffer])
+    return receipt.data
   }
 
   public async fetchArrowView(

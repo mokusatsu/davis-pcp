@@ -101,7 +101,7 @@ async function startWorker(scenario: Scenario = {}) {
   loadModule('pyodide.worker')
   self.onmessage!({ data: { type: 'INIT', pyodideBaseUrl: baseUrl } })
   await terminal
-  return { messages, stages: messages.map(message => message.stage), fetched, loadCalls, runtime, loadPyodide }
+  return { messages, stages: messages.filter(message => message.type === 'STATUS').map(message => message.stage), fetched, loadCalls, runtime, loadPyodide }
 }
 
 describe('standalone worker startup', () => {

@@ -1,3 +1,4 @@
+import { workspaceStorage } from './workspaceStorage'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch, useStore } from 'react-redux'
 import { api, fetchArrowView, getCodebook } from '../api/client'
@@ -47,6 +48,11 @@ async function prepareDataset(datasetId: string, name?: string) {
 export function useWorkspacePersistence(onSaved: (message: string) => void) {
   const dispatch = useDispatch<AppDispatch>()
   const workspace = useStore<RootState>()
+  const [storageState, setStorageState] = useState(workspaceStorage.getState)
+  const [flushBusy, setFlushBusy] = useState(false)
+  const flushing = useRef(false)
+  const [pendingSave, setPendingSave] = useState<SessionIdentity | null>(null)
+  const pendingReceipt = useRef<SessionIdentity | null>(null)
   const [identity, setIdentity] = useState<SessionIdentity | null>(null)
   const [sessionName, setSessionName] = useState('')
   const [saveModal, setSaveModal] = useState(false)
@@ -69,6 +75,32 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
   const alive = useRef(true)
   const retry = useRef<null | (() => Promise<boolean>)>(null)
   useEffect(() => { alive.current = true; return () => { alive.current = false; loadGeneration.current++; listGeneration.current++ } }, [])
+
+  const completePendingSave = useCallback(() => {
+    const receipt = pendingReceipt.current
+    if (!receipt) return
+    pendingReceipt.current = null; setPendingSave(null); setSaveError(null)
+    onSaved(`先ほど適用したセッション「${receipt.name}」を保存しました (revision ${receipt.revision})。その後の画面変更は含みません。`)
+  }, [onSaved])
+  useEffect(() => workspaceStorage.subscribe(state => {
+    setStorageState(state)
+    if (state.mode === 'persistent' && !state.pending && !state.error) completePendingSave()
+  }), [completePendingSave])
+  const retryPersistence = async () => {
+    if (flushing.current || saving.current || storageState.mode !== 'persistent') return
+    flushing.current = true; setFlushBusy(true)
+    try {
+      const state = await workspaceStorage.flush()
+      if (!alive.current) return
+      setStorageState(state)
+      if (state.mode === 'persistent' && !state.pending && !state.error) completePendingSave()
+    } catch (error) {
+      if (alive.current) setStorageState(previous => ({ ...previous, error: errorMessage(error) }))
+    } finally {
+      flushing.current = false
+      if (alive.current) setFlushBusy(false)
+    }
+  }
 
   const install = useCallback((prepared: Awaited<ReturnType<typeof prepareDataset>>, snapshot?: unknown) => {
     // Validate against prepared metadata, not the old dataset. Failed opens leave
@@ -155,23 +187,36 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
 
   const beginSave = (copy = false) => {
     if (saving.current || loadBusy) return
+    if (pendingReceipt.current) { setSaveModal(true); return }
     const sameDataset = identity?.datasetId === workspace.getState().selection.datasetId
     setSaveAs(copy); setSessionName(copy ? `${sameDataset ? identity?.name || 'Session' : 'Session'} (copy)` : sameDataset ? identity?.name || '' : '')
     setSaveError(null); setConflict(false); setSaveModal(true)
   }
   const saveSession = async (forceCopy = false) => {
-    if (saving.current || loadBusy || !workspace.getState().selection.datasetId) return
+    if (saving.current || flushing.current || pendingReceipt.current || loadBusy || !workspace.getState().selection.datasetId) return
+    if (workspaceStorage.getState().mode === 'temporary') {
+      setSaveError('保存領域を読み込めていないため、セッション保存は実行していません。このタブのデータを出力して退避してください。再読み込みでは現在の作業を失うおそれがあります。')
+      return
+    }
     saving.current = true; setSaveBusy(true); setSaveError(null)
     try {
       const state = { ...createAnalysisWorkspaceSnapshot(workspace.getState()), savedAt: new Date().toISOString() }
       const name = sessionName.trim() || `Session ${new Date().toLocaleString('ja-JP')}`
       const target = !forceCopy && !saveAs && identity?.datasetId === state.datasetId ? identity : null
-      const saved = target
-        ? await api.put<SessionRecord>(`/sessions/${target.sessionId}`, { state, name, versionToken: target.versionToken })
-        : await api.post<SessionRecord>('/sessions', { name, datasetId: state.datasetId, state })
+      const receipt = target
+        ? await workspaceStorage.save<SessionRecord>(`/sessions/${target.sessionId}`, 'PUT', { state, name, versionToken: target.versionToken })
+        : await workspaceStorage.save<SessionRecord>('/sessions', 'POST', { name, datasetId: state.datasetId, state })
+      const saved = receipt.data
       if (!alive.current) return
       // Keep enough identity even for response contracts that omit state/name.
-      setIdentity(sessionIdentity({ ...saved, datasetId: state.datasetId, name, state }))
+      const applied = sessionIdentity({ ...saved, datasetId: state.datasetId, name, state })
+      setIdentity(applied); setSaveAs(false)
+      setStorageState(receipt.persistence)
+      if (receipt.persistence.pending || receipt.persistence.error || receipt.persistence.mode === 'temporary') {
+        pendingReceipt.current = applied; setPendingSave(applied)
+        setSessionName(name); setConflict(false)
+        return
+      }
       setSessionName(name); setConflict(false); setSaveModal(false)
       onSaved(`セッション保存 (revision ${saved.revision})`)
     } catch (error) {
@@ -184,7 +229,7 @@ export function useWorkspacePersistence(onSaved: (message: string) => void) {
     }
   }
 
-  return { identity, sessionName, setSessionName, saveModal, saveBusy, saveError, conflict, beginSave, saveSession,
+  return { storageState, flushBusy, pendingSave, retryPersistence, identity, sessionName, setSessionName, saveModal, saveBusy, saveError, conflict, beginSave, saveSession,
     closeSave: () => { if (!saving.current && !loadBusy) setSaveModal(false) },
     datasetLicense, dismissDatasetLicense: () => setDatasetLicense(null),
     loadBuiltinSample: (sampleId: string, showLicense = true, selectionValue = `builtin:${sampleId}`) => loadDataset(selectionValue, undefined, showLicense, sampleId),

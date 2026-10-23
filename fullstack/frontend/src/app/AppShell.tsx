@@ -542,6 +542,13 @@ export default function AppShell() {
             </Button>
           </div>
         </div>
+        {(persistence.storageState?.error || persistence.storageState?.mode === 'temporary') && <Alert
+          type="warning" showIcon message={persistence.storageState.mode === 'temporary' ? '一時モード: 保存領域の読み込みに失敗しました' : 'このタブの変更を保存領域へ書き込めていません'}
+          description={<><div>{persistence.storageState.mode === 'temporary'
+            ? '過去のデータがすべて見えているとは限りません。既存の保存領域を上書きしないため保存を停止しています。現在のデータを出力して退避し、保存領域の問題を確認してください。'
+            : 'このまま分析を続けられます。保存の再試行は結果を再計算せず、処理で作成・更新したファイルを保存領域に書き込みます。未保存の画面設定は含みません。'} 再読み込みやタブを閉じると作業を失うおそれがあります。</div><div>{persistence.storageState.error}</div></>}
+          action={persistence.storageState.mode === 'persistent' ? <Button loading={persistence.flushBusy} disabled={persistence.saveBusy} onClick={() => void persistence.retryPersistence()}>保存のみ再試行</Button> : undefined}
+        />}
         {datasetListError && <Alert type="error" showIcon message={datasetListError} action={<Button onClick={() => { if (selection.datasetId) void refreshDatasets(); else setBootstrapAttempt(value => value + 1) }}>一覧を再試行</Button>} />}
         {persistence.loadBusy && <Typography.Text role="status">{persistence.openingSession ? 'セッションとデータセットを読み込んでいます…' : 'データセットを読み込んでいます…'}</Typography.Text>}
         {persistence.loadError && <Alert type="error" showIcon message={persistence.loadError} action={<Button disabled={persistence.loadBusy} onClick={() => void persistence.retryLoad()}>再試行</Button>} />}
@@ -626,7 +633,7 @@ export default function AppShell() {
         onOk={() => void persistence.saveSession()}
         onCancel={persistence.closeSave}
         confirmLoading={persistence.saveBusy}
-        okButtonProps={{ disabled: persistence.saveBusy || persistence.loadBusy }}
+        okButtonProps={{ disabled: persistence.saveBusy || persistence.loadBusy || !!persistence.pendingSave || persistence.flushBusy }}
         cancelButtonProps={{ disabled: persistence.saveBusy || persistence.loadBusy }}
         closable={!persistence.saveBusy && !persistence.loadBusy}
         maskClosable={!persistence.saveBusy && !persistence.loadBusy}
@@ -634,12 +641,17 @@ export default function AppShell() {
         okText="保存"
       >
         <Typography.Paragraph>共通分析対象（対象行・選択行・標本・使用変数・グループ）を保存します。各分析画面の計算結果や個別設定は含みません。</Typography.Paragraph>
-        <Input data-testid="session-name" aria-label="セッション名" placeholder="セッション名" value={persistence.sessionName} disabled={persistence.saveBusy || persistence.loadBusy} onChange={(e) => persistence.setSessionName(e.target.value)} />
+        <Input data-testid="session-name" aria-label="セッション名" placeholder="セッション名" value={persistence.sessionName} disabled={persistence.saveBusy || persistence.loadBusy || !!persistence.pendingSave} onChange={(e) => persistence.setSessionName(e.target.value)} />
         {persistence.saveBusy && <Typography.Paragraph role="status">保存処理中は閉じられません。完了までお待ちください。</Typography.Paragraph>}
+        {persistence.pendingSave && <Alert type="warning" showIcon
+          message={`セッション「${persistence.pendingSave.name}」(revision ${persistence.pendingSave.revision}) はこのタブに適用済み・端末には未保存です。`}
+          description="保存のみ再試行してください。同じセッションの作成・更新は繰り返しません。その後に画面で行った変更はこのセッションには含まれません。"
+          action={<Button loading={persistence.flushBusy} disabled={persistence.storageState?.mode !== 'persistent' || persistence.saveBusy} onClick={() => void persistence.retryPersistence()}>保存のみ再試行</Button>}
+        />}
         {persistence.saveError && <Alert type="error" showIcon message={persistence.saveError} />}
         {persistence.conflict && <Space wrap>
           <Button disabled={persistence.saveBusy || persistence.loadBusy} onClick={() => persistence.identity && void persistence.openSession(persistence.identity.sessionId)}>保存済みを開き直す</Button>
-          <Button disabled={persistence.saveBusy || persistence.loadBusy} onClick={() => void persistence.saveSession(true)}>コピーとして保存</Button>
+          <Button disabled={persistence.saveBusy || persistence.loadBusy || !!persistence.pendingSave} onClick={() => void persistence.saveSession(true)}>コピーとして保存</Button>
         </Space>}
       </Modal>
       <Modal title="保存済みセッションを開く" destroyOnClose open={persistence.sessionsModal} onCancel={persistence.closeSessions} footer={null}

@@ -3,9 +3,8 @@ import { apiErrorFromResponse } from './apiError'
 
 const BASE = '/api/v1'
 
-export const IS_STATIC_BUILD =
-  import.meta.env.VITE_STATIC_BUILD === 'true' ||
-  (typeof window !== 'undefined' && (window as any).__DAVIS_PCP_STATIC__ === true)
+import { IS_STATIC_BUILD } from '../engine/buildMode'
+export { IS_STATIC_BUILD } from '../engine/buildMode'
 
 export interface ApiError {
   code: string
