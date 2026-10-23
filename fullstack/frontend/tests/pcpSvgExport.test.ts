@@ -142,7 +142,7 @@ describe('native PCP vector export', () => {
     expect(context.getAttribute('transform')).toBe('matrix(1 0 0 1 0 -35)')
     expect(paths(svg).some(path => path.getAttribute('d') === 'M40 40 L320 40')).toBe(true)
     const texts = [...svg.querySelectorAll('text')]
-    const firstTick = texts.find(text => text.textContent === '0.0')!
+    const firstTick = texts.find(text => text.textContent === '0')!
     const layout = buildPcpLabelLayout(input)
     const tickLayout = layout.ticks[0]
     expect(Number(firstTick.getAttribute('x'))).toBe(tickLayout.x + tickLayout.width / 2)
@@ -240,6 +240,25 @@ function pageSetup(onRender?: () => void) {
 }
 
 describe('PCP SVG control lifecycle', () => {
+  it('formats Iris tick tooltips and accessible labels without changing raw hit keys', async () => {
+    const originalAxes = fixture.axes
+    fixture.axes = originalAxes.map((axis, index) => ({ ...axis,
+      min: index === 0 ? 2 : 1, max: index === 0 ? 4.4 : 6.9,
+    }))
+    try {
+      const { tree, geometry } = pageSetup()
+      fixture.geometry = geometry
+      const view = render(tree())
+      for (const [key, raw, label] of [['A', '3.8000000000000003', '3.8'], ['B', '5.425000000000001', '5.425']]) {
+        const tick = await view.findByTestId(`pcp-tick-${key}-${raw}`)
+        expect(tick).toHaveAttribute('data-code', raw)
+        expect(tick).toHaveAttribute('data-label', label)
+        expect(tick).toHaveAttribute('aria-label', `${key}: ${label}`)
+        expect(tick.querySelector('title')?.textContent).toBe(`${key}: ${label}`)
+      }
+    } finally { fixture.axes = originalAxes; fixture.geometry = null }
+  })
+
   it('downloads only a painted frame, follows expansion, and disables during dataset reset', async () => {
     const { pageStore, tree, geometry } = pageSetup()
     fixture.geometry = null

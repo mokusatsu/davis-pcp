@@ -116,7 +116,7 @@ it.each(['horizontal', 'vertical'] as const)('keeps %s numerical ticks atomic an
       expect(tick.lines).toHaveLength(1)
       expect(tick.lines[0]).not.toMatch(/[\n…]/)
       expect(Number.isFinite(Number(tick.lines[0]))).toBe(true)
-      expect(tick.fullText).toBe(tick.code)
+      expect(Number(tick.fullText)).toBeCloseTo(Number(tick.code), 14)
       expect(Math.abs(Number(tick.lines[0]) - Number(tick.code)) / (Math.abs(Number(tick.code)) || 1)).toBeLessThan(.02)
     }
     spec.labelLayout = layout
@@ -143,6 +143,6 @@ it.each(['horizontal', 'vertical'] as const)('uses unique tick labels, hit keys 
     spec.labelLayout = layout
     const svg = new DOMParser().parseFromString(pcpSvg(spec), 'image/svg+xml')
     expect(svg.querySelectorAll('path')).toHaveLength(spec.nAxes * 2)
-    expect([...svg.querySelectorAll('text')].filter(text => text.textContent === value.toFixed(1))).toHaveLength(spec.nAxes)
+    expect([...svg.querySelectorAll('text')].filter(text => text.textContent === String(value))).toHaveLength(spec.nAxes)
   }
 })

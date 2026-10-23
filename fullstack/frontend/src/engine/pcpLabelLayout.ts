@@ -30,11 +30,27 @@ export function pcpAxisTickValues(axis: LayoutInput['axes'][number]): number[] {
   return Array.from({ length: 5 }, (_, index) => axis.min + ((axis.max - axis.min) * index) / 4)
 }
 
+/** Display-only rounding removes binary interpolation noise. Keep the raw tick
+ * value/code for positions and codebook lookup; never feed this back into data.
+ * Significant digits retain small magnitudes and useful fractional ticks. */
+function numericTickText(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (Number.isInteger(value)) return String(value)
+  const rounded = Number(value.toPrecision(15))
+  return String(Number.isFinite(rounded) ? rounded : value)
+}
+
 /** Keep signs, exponents and decimal places in one atomic numeric token. */
 function numericTick(value: number, width: number, fontSize: number): string | undefined {
-  const ordinary = value !== 0 && Math.abs(value) < .05 ? String(value) : value.toFixed(1)
-  const candidates = [ordinary, String(value), ...[3, 2, 1, 0].map(precision => value.toExponential(precision))]
-  return candidates.find(candidate => chartLabelWidth(candidate, fontSize) <= width)
+  const ordinary = numericTickText(value)
+  if (chartLabelWidth(ordinary, fontSize) <= width) return ordinary
+  // Only compact a label when its gutter requires it, retaining as many digits
+  // as fit. The tooltip/accessibility text always keeps the full display value.
+  for (let precision = 14; precision >= 0; precision--) {
+    const candidate = Number(ordinary).toExponential(precision)
+    if (Number.isFinite(Number(candidate)) && chartLabelWidth(candidate, fontSize) <= width) return candidate
+  }
+  return undefined
 }
 
 /** One logical-pixel layout is reused by Canvas, the SVG hit layer and export.
@@ -73,7 +89,7 @@ export function buildPcpLabelLayout(input: LayoutInput): PcpLabelLayout {
       if (reversed[axis.key]) t = 1 - t
       const code = axis.isCategorical ? String(axis.categories?.[value] ?? value) : String(Number(value))
       const mapped = axis.valueLabels?.[code]
-      const fullText = mapped ?? (axis.isCategorical ? code : String(value))
+      const fullText = mapped ?? (axis.isCategorical ? code : numericTickText(value))
       const tickWidth = horizontal ? Math.max(12, Math.min(140, pitch - 14, anchor - 11)) : Math.max(12, Math.min(140, tickPitch - 8))
       const maxTickLines = horizontal ? Math.max(1, Math.min(3, Math.floor((tickPitch - 3) / tickLineHeight)))
         : Math.max(1, Math.min(2, Math.floor((pitch / 2 - 5) / tickLineHeight)))
