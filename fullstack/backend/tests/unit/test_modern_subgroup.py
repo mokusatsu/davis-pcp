@@ -346,3 +346,104 @@ def test_omnipresent_auto_mining_all_questions():
         elif ins.get("target_pair"):
             questions_covered.add(":".join(ins["target_pair"]))
     assert len(questions_covered) >= 2
+
+
+def _target_feedback(questions, *, values=None, mode="standard", category=None):
+    df = pl.DataFrame({"seg": ["A"] * 30 + ["B"] * 30,
+                       "score": [1.0] * 30 + [5.0] * 30, "constant": [1.0] * 60,
+                       "q3": values if values is not None else ["a", "b", "c"] * 20})
+    columns = [{"name": name, "columnId": name, "role": "attribute" if name == "seg" else "question",
+                "scaleType": "nominal" if name in ("seg", "q3") else "ratio"} for name in df.columns]
+    return run_modern_subgroup_mining(df, target_questions=questions, attribute_cols=["seg"],
+                                     column_meta=columns, mode=mode, min_group_size=10,
+                                     target_binary_category=category)
+
+
+@pytest.mark.parametrize("mode", ["auto", "standard", "emm_kendall"])
+def test_modern_nominal_only_reports_exclusion(mode):
+    result = _target_feedback(["q3"], mode=mode)
+    assert result["insights"] == []
+    assert result["summary"]["questions_evaluated_count"] == 0
+    assert result["summary"]["skippedTargets"] == [{
+        "column": "q3", "reason": "unsupported_target_type",
+        "detail": ("Kendall-EMMでは二値ではない数値の質問が必要なため、名義尺度の質問は対象外です。"
+                   if mode == "emm_kendall" else
+                   "名義尺度の質問は、有効な値が2種類の場合、または二値化するカテゴリを指定した場合に評価できます。現在の有効な値は3種類です。")}]
+
+
+def test_modern_mixed_targets_preserve_supported_insights():
+    result = _target_feedback(["score", "q3"])
+    assert result["insights"] == _target_feedback(["score"])["insights"]
+    assert result["insights"]
+    assert result["summary"]["questions_evaluated_count"] == 1
+    assert [item["column"] for item in result["summary"]["skippedTargets"]] == ["q3"]
+
+
+def test_modern_supported_no_insights_is_not_exclusion():
+    result = _target_feedback(["constant"])
+    assert result["insights"] == []
+    assert result["summary"]["questions_evaluated_count"] == 1
+    assert result["summary"]["skippedTargets"] == []
+
+
+@pytest.mark.parametrize("values, category", [(["a", "b"] * 30, None), (["a", "b", "c"] * 20, "a")])
+def test_modern_nominal_binary_targets_remain_supported(values, category):
+    result = _target_feedback(["q3"], values=values, category=category)
+    assert result["summary"]["questions_evaluated_count"] == 1
+    assert result["summary"]["skippedTargets"] == []
+
+
+@pytest.mark.parametrize("values, count", [(["a"] * 60, 1), ([None] * 60, 0)])
+def test_modern_nominal_exclusion_reports_actual_valid_categories(values, count):
+    result = _target_feedback(["q3"], values=values)
+    assert f"{count}種類" in result["summary"]["skippedTargets"][0]["detail"]
+
+
+def test_modern_empty_question_selection_is_not_scale_exclusion():
+    result = _target_feedback([])
+    assert result["summary"]["questions_evaluated_count"] == 0
+    assert result["summary"]["skippedTargets"] == []
+
+
+def test_modern_insufficient_rows_has_consistent_summary():
+    result = run_modern_subgroup_mining(pl.DataFrame({"q3": ["a"]}), target_questions=["q3"])
+    assert result["summary"]["questions_evaluated_count"] == 0
+    assert result["summary"]["total_candidates_explored"] == 0
+    assert result["summary"]["non_redundant_insights_count"] == 0
+    assert result["summary"]["skippedTargets"] == []
+
+
+def test_modern_unavailable_target_is_not_mislabeled_as_nominal():
+    result = _target_feedback(["not_a_question"])
+    assert result["summary"]["skippedTargets"] == [{
+        "column": "not_a_question", "reason": "ineligible_question",
+        "detail": "質問変数として利用できない列です。"}]
+
+
+def test_api_modern_exclusions_and_empty_selection():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.storage.dataset_store import DatasetStore
+
+    client = TestClient(app)
+    store = DatasetStore()
+    dataset_id = "test_modern_exclusion_feedback"
+    frame = pl.DataFrame({"__rowId__": [str(i) for i in range(60)],
+                          "seg": ["A"] * 30 + ["B"] * 30,
+                          "q3": ["a", "b", "c"] * 20,
+                          "score": [1.0] * 30 + [5.0] * 30})
+    columns = [{"name": name, "columnId": name, "role": "attribute" if name == "seg" else "question",
+                "scaleType": "ratio" if name == "score" else "nominal"} for name in ["seg", "q3", "score"]]
+    store.save(dataset_id, {"datasetId": dataset_id, "schema": columns}, frame)
+    store.save_codebook(dataset_id, {"datasetId": dataset_id, "schemaRevision": 1, "columns": columns})
+    payload = {"datasetId": dataset_id, "attributeCols": ["seg"], "mode": "standard", "minGroupSize": 10}
+    for questions, count in [(["q3"], 0), (["q3", "score"], 1)]:
+        response = client.post("/api/v1/mining/modern-subgroup", json={**payload, "targetQuestions": questions})
+        assert response.status_code == 200
+        summary = response.json()["summary"]
+        assert summary["questions_evaluated_count"] == count
+        assert summary["skippedTargets"][0]["column"] == "q3"
+        assert summary["skippedTargets"][0]["reason"] == "unsupported_target_type"
+    response = client.post("/api/v1/mining/modern-subgroup", json={**payload, "targetQuestions": []})
+    assert response.status_code == 422
+    assert "EMPTY_ANALYSIS_INPUT" in response.text

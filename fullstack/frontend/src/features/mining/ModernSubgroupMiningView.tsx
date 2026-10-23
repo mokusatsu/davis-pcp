@@ -108,6 +108,7 @@ export interface ModernMiningResult {
   summary: {
     total_candidates_explored: number
     non_redundant_insights_count: number
+    skippedTargets?: { column: string; reason: string; detail: string }[]
     questions_evaluated_count?: number
   }
   insights: ModernInsight[]
@@ -262,6 +263,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
     cancelVerification()
     setLoading(true)
     setError(null)
+    setResult(null)
     // A new exploration pins a new candidate set, so any previous verification
     // of the old set no longer describes the candidates on screen.
     setVerificationResult(null)
@@ -486,6 +488,19 @@ export const ModernSubgroupMiningView: React.FC = () => {
         </AnalysisField>
       </Card>}
 
+      {result && !loading && !!result.summary.skippedTargets?.length && (
+        <Alert type="warning" showIcon
+          message={`評価対象外の質問: ${result.summary.skippedTargets.length}問`}
+          description={<ul style={{ margin: 0, paddingLeft: 20 }}>
+            {result.summary.skippedTargets.map(item => {
+              const label = getColumn(item.column)?.label
+              return <li key={item.column}>{item.column}{label && label !== item.column ? `（${label}）` : ''}: {item.detail}</li>
+            })}
+          </ul>}
+          data-testid="modern-skipped-targets"
+        />
+      )}
+
       {/* Summary KPI Cards */}
       {result && (
         <Row gutter={[12, 12]}>
@@ -493,7 +508,7 @@ export const ModernSubgroupMiningView: React.FC = () => {
             <Card size="small">
               <Statistic
                 title="評価した質問数"
-                value={result.summary.questions_evaluated_count ?? targets.questions.length}
+                value={result.summary.questions_evaluated_count ?? '—'}
                 prefix={<LineChartOutlined />}
                 suffix="問"
               />
@@ -567,7 +582,9 @@ export const ModernSubgroupMiningView: React.FC = () => {
             {displayedInsights.length === 0 ? (
               <Empty description={emmDiagnosticIssue
                 ? 'Kendall-EMMで表示可能なインサイトはありません。上の理由を確認してください。'
-                : '条件に合致するインサイトはありませんでした。'} />
+                : result.summary.questions_evaluated_count === 0
+                  ? '質問は評価されていません。対象外の理由、質問変数または対象データを確認してください。'
+                  : '条件に合致するインサイトはありませんでした。'} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {displayedInsights.map((ins, idx) => {

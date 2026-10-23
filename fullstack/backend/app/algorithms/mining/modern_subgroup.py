@@ -564,8 +564,11 @@ def run_modern_subgroup_mining(
                 "top_k": top_k,
             },
             "summary": {
-                "n_candidates_evaluated": 0,
-                "n_insights_returned": 0,
+                "total_candidates_explored": 0,
+                "non_redundant_insights_count": 0,
+                "questions_evaluated_count": 0,
+                "questions_requested_count": len(target_questions or []),
+                "skippedTargets": [],
                 "effective_min_group_size": min_group_size,
             },
             "insights": [],
@@ -729,6 +732,11 @@ def run_modern_subgroup_mining(
         current_rule_beam = next_rule_beam[:beam_width * 2]
 
     # Prepare target questions arrays
+    skipped_targets = [
+        {"column": q, "reason": "ineligible_question",
+         "detail": "質問変数として利用できない列です。"}
+        for q in dict.fromkeys(target_questions or []) if q not in eval_questions
+    ]
     question_arrays: dict[str, tuple[np.ndarray, bool, float]] = {}  # col -> (array, is_binary, overall_sd)
     for q in eval_questions:
         meta = meta_by_col.get(q, {})
@@ -750,6 +758,13 @@ def run_modern_subgroup_mining(
                 if target_cat is None:
                     target_cat = non_null_unique[0]
             else:
+                skipped_targets.append({
+                    "column": q, "reason": "unsupported_target_type",
+                    "detail": ("Kendall-EMMでは二値ではない数値の質問が必要なため、名義尺度の質問は対象外です。"
+                               if mode == "emm_kendall" else
+                               "名義尺度の質問は、有効な値が2種類の場合、または二値化するカテゴリを指定した場合に評価できます。"
+                               f"現在の有効な値は{len(non_null_unique)}種類です。"),
+                })
                 continue
 
         if is_binary:
@@ -776,6 +791,8 @@ def run_modern_subgroup_mining(
                         can_convert = False
                         break
             if not can_convert:
+                skipped_targets.append({"column": q, "reason": "non_numeric_values",
+                                        "detail": "数値に変換できない値が含まれるため評価できません。"})
                 continue
             arr = np.array(converted, dtype=float)
             valid_arr = arr[~np.isnan(arr)]
@@ -1046,11 +1063,6 @@ def run_modern_subgroup_mining(
             "narrative": narrative,
         })
 
-    skipped = sorted({q for q in (target_questions or []) if q not in question_arrays}
-                     | {q for q in eval_questions if q not in question_arrays})
-    skipped_targets = [{"column": q,
-                        "reason": "unsupported_target_type",
-                        "detail": "二値化できない3値以上の名義尺度は対象外です。"} for q in skipped]
     return {
         "run_id": str(uuid.uuid4()),
         "mode": mode,
