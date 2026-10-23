@@ -8,6 +8,14 @@ import { store } from '../src/app/store'
 import { api } from '../src/api/client'
 import LogisticRegressionPage, { type CoefficientItem } from '../src/features/models/LogisticRegressionPage'
 
+// Eligibility and its asynchronous lifecycle have dedicated coverage; these tests
+// focus on model controls, result rendering and weight disclosure.
+vi.mock('../src/features/models/useLogisticTargetEligibility', () => ({
+  useLogisticTargetEligibility: (request: { targetColumns: string[] }) => ({
+    loading: false, error: null, ready: true, retry: () => {},
+    targets: request.targetColumns.map(name => ({ name, classCount: 2, eligible: true })),
+  }),
+}))
 vi.mock('../src/features/common/ColumnSelect', () => ({ default: (props: any) => <select data-testid={props['data-testid']}
   multiple={props.mode === 'multiple'} value={props.value} onChange={event => props.onChange(props.mode === 'multiple'
     ? Array.from(event.target.selectedOptions, option => option.value) : event.target.value)}>

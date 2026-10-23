@@ -101,19 +101,19 @@ async function startWorker(scenario: Scenario = {}) {
 }
 
 describe('worker persistence and computation isolation', () => {
-  it('defers only the two exact query routes and retains possibly-dirty state', async () => {
+  it('defers only the exact query routes and retains possibly-dirty state', async () => {
     const worker = await startWorker()
-    for (const path of ['/summaries', '/statistics/covariance']) {
+    for (const path of ['/summaries', '/statistics/covariance', '/models/logistic/targets']) {
       const response = await worker.request('POST', path)
       expect(response.status).toBe(200)
       expect(response.data).toEqual({ ok: true })
       expect(response.persistence.pending).toBe(true)
     }
     expect(worker.syncCalls).toEqual([true])
-    for (const [method, path] of [['POST', '/summaries/unknown'], ['POST', '/statistics/covariance/unknown'], ['PUT', '/summaries'], ['POST', '/unknown'], ['POST', '/summaries/'], ['POST', '/summaries?extra=1']]) {
+    for (const [method, path] of [['POST', '/summaries/unknown'], ['POST', '/statistics/covariance/unknown'], ['PUT', '/summaries'], ['POST', '/unknown'], ['POST', '/summaries/'], ['POST', '/summaries?extra=1'], ['POST', '/models/logistic/targets/unknown'], ['PUT', '/models/logistic/targets']]) {
       await worker.request(method, path)
     }
-    expect(worker.syncCalls).toEqual([true, false, false, false, false, false, false])
+    expect(worker.syncCalls).toEqual([true, false, false, false, false, false, false, false, false])
   })
 
   it('preserves deferred-query business errors without attempting a flush', async () => {
@@ -183,7 +183,7 @@ describe('worker persistence and computation isolation', () => {
   it('keeps failed-flush warning and pending state through GET and deferred queries', async () => {
     const worker = await startWorker({ flushErrors: [true, true, false] })
     const first = await worker.request('POST', '/mutation')
-    for (const [method, path] of [['GET', '/datasets/example'], ['POST', '/summaries'], ['POST', '/statistics/covariance']]) {
+    for (const [method, path] of [['GET', '/datasets/example'], ['POST', '/summaries'], ['POST', '/statistics/covariance'], ['POST', '/models/logistic/targets']]) {
       const response = await worker.request(method, path)
       expect(response.status).toBe(200)
       expect(response.persistence).toMatchObject({ pending: true, error: first.persistence.error })
@@ -194,7 +194,7 @@ describe('worker persistence and computation isolation', () => {
     expect(failedRetry.data.error).toBeTruthy()
     const success = await worker.flush()
     expect(success.data).toMatchObject({ pending: false, error: null })
-    expect(worker.dispatchCalls).toHaveLength(4)
+    expect(worker.dispatchCalls).toHaveLength(5)
   })
 
   it('does not turn a Python computation failure into successful data', async () => {

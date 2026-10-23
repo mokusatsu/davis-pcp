@@ -16,7 +16,13 @@ import DiscriminantAnalysisPage from '../src/features/models/DiscriminantAnalysi
 import GlobalHeaderControlBar from '../src/features/selection/GlobalHeaderControlBar'
 
 // Use the exported Redux store, real header, pages, pickers and color hooks.
-// Only dataset API reads are doubled; these setup-only cases never fit a model.
+// Dataset reads and binary-target eligibility are doubled; these cases never fit a model.
+vi.mock('../src/features/models/useLogisticTargetEligibility', () => ({
+  useLogisticTargetEligibility: (request: { targetColumns: string[] }) => ({
+    loading: false, error: null, ready: true, retry: () => {},
+    targets: request.targetColumns.map(name => ({ name, classCount: 2, eligible: true })),
+  }),
+}))
 const rows = ['r1', 'r2', 'r3', 'r4']
 const weight = { columnId: 'col-survey-weight', name: 'survey_weight', label: 'Survey expansion factor' }
 const warning = `この分析は調査ウェイト（${weight.name}）を適用しません。表示値は非加重です。`
@@ -73,8 +79,9 @@ async function choose(roleName: string, value: string, multiple = false) {
   const dialog = search.closest('[role="dialog"]') as HTMLElement
   await waitFor(() => expect(dialog).toBeVisible())
   const candidates = within(dialog).getAllByRole(multiple ? 'checkbox' : 'radio')
-  expect(candidates.map(input => input.closest('label')?.textContent)).toEqual(multiple ? ['predictor'] : ['outcome', 'predictor'])
-  fireEvent.click(within(dialog).getByRole(multiple ? 'checkbox' : 'radio', { name: value, exact: true }))
+  const targetSuffix = roleName === 'ロジスティック回帰の目的変数' ? ' — 2クラス' : ''
+  expect(candidates.map(input => input.closest('label')?.textContent)).toEqual(multiple ? ['predictor'] : ['outcome', 'predictor'].map(name => name + targetSuffix))
+  fireEvent.click(within(dialog).getByRole(multiple ? 'checkbox' : 'radio', { name: value + targetSuffix, exact: true }))
   fireEvent.click(within(dialog).getByRole('button', { name: /決\s*定/ }))
   await waitFor(() => expect(dialog).not.toBeVisible())
 }

@@ -297,12 +297,12 @@ async function handleApiRequest(msg: WorkerApiRequest) {
 
     const { statusCode, resHeaders, isBinary, rawBytes, text } = consumePythonResponse(pyResult)
 
-    // These two computations can lazily migrate legacy metadata. Defer their
+    // These query computations can lazily migrate legacy metadata. Defer their
     // flush, but do not call them read-only or clear earlier persistence errors.
     // Unknown mutative endpoints remain conservative and attempt persistence.
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       const defer = method === 'POST'
-        && (path === '/summaries' || path === '/statistics/covariance')
+        && (path === '/summaries' || path === '/statistics/covariance' || path === '/models/logistic/targets')
       if (!defer) await flushPersistence()
     }
 

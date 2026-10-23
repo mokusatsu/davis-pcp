@@ -11,6 +11,14 @@ import DiscriminantAnalysisPage from '../src/features/models/DiscriminantAnalysi
 
 // Keep real fields, pickers, disclosures, radios and the keyboard-operated slider.
 // Charts have separate interaction tests.
+// Eligibility and its asynchronous lifecycle have dedicated coverage; these tests
+// focus on model controls, result rendering and weight disclosure.
+vi.mock('../src/features/models/useLogisticTargetEligibility', () => ({
+  useLogisticTargetEligibility: (request: { targetColumns: string[] }) => ({
+    loading: false, error: null, ready: true, retry: () => {},
+    targets: request.targetColumns.map(name => ({ name, classCount: 2, eligible: true })),
+  }),
+}))
 vi.mock('../src/theme/useRowColor', () => ({ useRowColorResolver: () => ({ getColor: () => '#123456', selectionColor: '#abcdef' }) }))
 vi.mock('../src/features/common/L1Legend', () => ({ default: () => null }))
 vi.mock('../src/features/common/GraphPanel', () => ({ default: ({ children }: any) => <div>{children}</div>, useGraphPopupContainer: () => undefined, useGraphViewport: () => ({ scale: 1, zoom: null }) }))
@@ -40,7 +48,7 @@ async function choose(page: Page, field: 'target' | 'features', value: string) {
   fireEvent.click(input.closest('.analysis-field')!.querySelector('button')!)
   const dialog = await screen.findByRole('dialog')
   await waitFor(() => expect(dialog).toBeVisible())
-  fireEvent.click(within(dialog).getByRole(field === 'features' ? 'checkbox' : 'radio', { name: value, exact: true }))
+  fireEvent.click(within(dialog).getByRole(field === 'features' ? 'checkbox' : 'radio', { name: page === 'logistic' && field === 'target' ? `${value} — 2クラス` : value, exact: true }))
   fireEvent.click(within(dialog).getByRole('button', { name: /決\s*定/ }))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 }

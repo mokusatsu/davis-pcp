@@ -1,5 +1,6 @@
 import { useScopedRun, AnalysisScopeSummary } from '../selection/analysisScope'
 import ModelScatter from './ModelScatter'
+import { useLogisticTargetEligibility } from './useLogisticTargetEligibility'
 import type { SeriesOption } from 'echarts'
 import OddsRatioForest, { formatOdds, formatOddsInterval, inferenceUnavailableReason } from './OddsRatioForest'
 import { selectOrdinaryVariables, selectVariableEntities } from '../../app/store'
@@ -166,7 +167,24 @@ export default function LogisticRegressionPage() {
   const [requestedTarget, setTargetColumn] = useState<string>('')
   const [requestedFeatures, setSelectedFeatures] = useState<string[]>([])
   const allColumns = candidates.filter(column => column.multiResponseGroup || ['nominal', 'ordinal', 'interval', 'ratio'].includes(column.scaleType)).map(column => column.name)
+  // Candidate-specific self/same-MA exclusions are applied by the eligibility endpoint.
+  // Keep these requested features independent of target eligibility to avoid a feedback loop.
+  const eligibilityFeatures = requestedFeatures.filter(name => candidates.some(column => column.name === name
+    && (column.multiResponseGroup || ['ordinal', 'interval', 'ratio'].includes(column.scaleType))))
+  const eligibility = useLogisticTargetEligibility({ datasetId: selection.datasetId,
+    targetColumns: allColumns, featureColumns: eligibilityFeatures, activeRowIds: effectiveRowIds,
+    expectedDataRevision: selection.dataRevision, expectedSchemaRevision: schemaRevision })
   const targetColumn = allColumns.includes(requestedTarget) ? requestedTarget : ''
+  const targetEligible = eligibility.ready && eligibility.targets.some(item => item.name === targetColumn && item.eligible)
+  useEffect(() => {
+    if (requestedTarget && (!targetColumn || (eligibility.ready && !targetEligible))) setTargetColumn('')
+  }, [requestedTarget, targetColumn, eligibility.ready, targetEligible])
+  const targetOptions = allColumns.map(name => {
+    const item = eligibility.targets.find(target => target.name === name)
+    const reason = eligibility.loading ? 'クラス数を確認中' : eligibility.error ? 'クラス数を確認できません'
+      : item?.eligible ? '2クラス' : item?.reason ?? `${item?.classCount ?? 0}クラス（2クラスが必要）`
+    return { value: name, label: `${name} — ${reason}`, disabled: !eligibility.ready || !item?.eligible }
+  })
   const targetGroup = candidates.find(column => column.name === targetColumn)?.multiResponseGroup
   const numericColumns = candidates.filter(column => column.name !== targetColumn && (!targetGroup || column.multiResponseGroup !== targetGroup)
     && (column.multiResponseGroup || ['ordinal', 'interval', 'ratio'].includes(column.scaleType))).map(column => column.name)
@@ -194,7 +212,7 @@ export default function LogisticRegressionPage() {
 
   // Run model
   const handleRunModel = async () => {
-    if (!selection.datasetId || !targetColumn || selectedFeatures.length === 0) {
+    if (!selection.datasetId || !targetEligible || selectedFeatures.length === 0) {
       message.warning('目的変数と1つ以上の説明変数を選択してください。')
       return
     }
@@ -416,11 +434,13 @@ export default function LogisticRegressionPage() {
           <AnalysisScopeSummary label="次回実行の対象" snapshot={result ? runScope.snapshot : null} />
           <Typography.Text type="secondary">目的変数と説明変数を選び、モデルを学習します。変数・詳細設定の変更は次回の実行に適用されます。</Typography.Text>
           <div className="analysis-variable-grid">
-            <AnalysisField label="目的変数 Y (Binary Target)" htmlFor="logistic-target" help="2クラスを持つ変数を1つ選びます。">
+            <AnalysisField label="目的変数 Y (Binary Target)" htmlFor="logistic-target" help="現在の解析対象で、欠損値・欠損コードと選択中の説明変数の欠損を除外した後に2クラスを持つ変数を1つ選びます。順序尺度のスコア・MAの選択状態も反映します。">
               <Select id="logistic-target" aria-label="ロジスティック回帰の目的変数" aria-describedby="logistic-target-help"
                 roleName="ロジスティック回帰の目的変数" style={{ width: '100%' }}
-                value={targetColumn} onChange={setTargetColumn}
-                options={allColumns.map((c) => ({ label: c, value: c }))}
+                value={targetColumn} onChange={(name: string) => {
+                  if (eligibility.ready && eligibility.targets.some(item => item.name === name && item.eligible)) setTargetColumn(name)
+                }}
+                options={targetOptions} loading={eligibility.loading}
                 emptyHint={{ roleLabel: '目的', reason: '目的変数の候補がありません。',
                   guidance: '共通の有効変数を確認してください。コードブックで質問・属性の役割と尺度を確認できます。MA選択肢は下の追加ボタンから候補に追加します。',
                   onOpenCodebook: () => dispatch(editorModalOpened()) }}
@@ -437,6 +457,8 @@ export default function LogisticRegressionPage() {
                 placeholder="説明変数を選択" maxTagCount={3} data-testid="logistic-features-select" />
             </AnalysisField>
           </div>
+          {eligibility.error && <Alert type="error" showIcon message="目的変数のクラス数を確認できません"
+            description={eligibility.error} action={<Button size="small" onClick={eligibility.retry}>再試行</Button>} />}
           <Space wrap>
             <MaAxisPicker allowCount={false} groups={groups} columns={definitions} onAdd={axes => {
               const names = definitions.filter(column => axes.some(axis => axis.columnId === column.columnId)).map(column => column.name)
@@ -469,7 +491,7 @@ export default function LogisticRegressionPage() {
           {(!targetColumn || selectedFeatures.length === 0) && <Typography.Text type="secondary" role="status">目的変数と1つ以上の説明変数を選択してください。</Typography.Text>}
           <AnalysisRunRow>
             <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleRunModel} loading={loading}
-              disabled={!selection.datasetId || !targetColumn || selectedFeatures.length === 0} data-testid="run-logistic-btn">
+              disabled={!selection.datasetId || !targetEligible || selectedFeatures.length === 0} data-testid="run-logistic-btn">
               モデル学習 (Run)
             </Button>
           </AnalysisRunRow>

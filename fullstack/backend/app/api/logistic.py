@@ -36,6 +36,83 @@ class LogisticRequestSchema(BaseModel):
     weightColumn: str | None = None
 
 
+class LogisticTargetsRequestSchema(BaseModel):
+    datasetId: str
+    targetColumns: list[str]
+    featureColumns: list[str] = Field(default_factory=list)
+    activeRowIds: list[str] | None = None
+    expectedDataRevision: int | None = None
+    expectedSchemaRevision: int | None = None
+
+
+def _prepare_logistic_frame(df, codebook, target_name, feature_names, plan):
+    """One preparation contract for eligibility and fitting (including MA/listwise deletion)."""
+    df, excluded = plan.prepare(df)
+    ma_names = {column['name'] for group in plan.groups for column in group['columns']}
+    adapter = CodebookAdapter(df, codebook)
+    df = df.with_columns([adapter.analysis_series(name) for name in plan.names if name not in ma_names])
+    numeric_names = [*feature_names]
+    if df[target_name].dtype.is_numeric():
+        numeric_names.append(target_name)
+    df = df.with_columns([pl.when(pl.col(name).cast(pl.Float64, strict=False).is_finite())
+        .then(pl.col(name)).otherwise(None).alias(name) for name in numeric_names])
+    before_ordinary = df.height
+    return df.drop_nulls(plan.names), excluded, before_ordinary, adapter
+
+
+@router.post("/models/logistic/targets")
+def logistic_targets(req: LogisticTargetsRequestSchema) -> dict[str, Any]:
+    """Report binary eligibility in the next run's scope, never fit a model.
+
+    Each candidate excludes itself and its MA siblings from the requested features,
+    just as the form does when switching targets. Read the dependency union once;
+    unrelated candidates must not impose their missingness on each other.
+    """
+    with store.lock(req.datasetId):
+        codebook = store.load_codebook(req.datasetId) or {}
+        revisions = _collect_revisions(store.get_meta(req.datasetId), codebook)
+        _check_revisions(revisions, req.expectedSchemaRevision, req.expectedDataRevision)
+        features = resolve_analysis_columns(codebook, req.featureColumns,
+            scales={'ordinal', 'interval', 'ratio'}, allow_ma_options=True)
+        specs = {column['name']: column for column in codebook.get('columns', [])}
+        plans = []
+        dependencies = ['__rowId__']
+        by_id = {column['columnId']: column for column in codebook.get('columns', [])}
+        for identifier in dict.fromkeys(req.targetColumns):
+            name = (by_id.get(identifier) or specs.get(identifier) or {}).get('name', identifier)
+            try:
+                target = resolve_analysis_columns(codebook, [identifier],
+                    scales={'nominal', 'ordinal', 'interval', 'ratio'}, allow_ma_options=True)
+                name = target.names[0]
+                group = specs[name].get('multiResponseGroup')
+                feature_names = [feature for feature in features.names if feature != name
+                    and (not group or specs[feature].get('multiResponseGroup') != group)]
+                plan = resolve_analysis_columns(codebook, [*feature_names, name],
+                    scales={'nominal', 'ordinal', 'interval', 'ratio'}, allow_ma_options=True)
+                plans.append((name, feature_names, plan, None))
+                dependencies.extend(column for column in plan.dependencies if column not in dependencies)
+            except BizError as error:
+                plans.append((name, [], None, error.message))
+        frame = store.get_dataframe(req.datasetId, columns=dependencies)
+        if req.activeRowIds is not None:
+            frame = frame.filter(pl.col('__rowId__').is_in(req.activeRowIds))
+        targets = []
+        for name, feature_names, plan, planning_error in plans:
+            if plan is None:
+                targets.append({'name': name, 'classCount': None, 'eligible': False, 'reason': planning_error})
+                continue
+            try:
+                candidate_frame = frame.select(['__rowId__', *plan.dependencies])
+                prepared, _, _, _ = _prepare_logistic_frame(candidate_frame, codebook, name, feature_names, plan)
+                # Same identity as the binary engine, not labels or normalized codes.
+                count = len({str(value) for value in prepared[name].to_list() if value is not None})
+                reason = None if count == 2 else f'有効な対象行では{count}クラスです（2クラス必要）。'
+                targets.append({'name': name, 'classCount': count, 'eligible': count == 2, 'reason': reason})
+            except BizError as error:
+                targets.append({'name': name, 'classCount': None, 'eligible': False, 'reason': error.message})
+        return {'datasetId': req.datasetId, **revisions, 'targets': targets}
+
+
 @router.post("/models/logistic")
 def fit_logistic(req: LogisticRequestSchema) -> dict[str, Any]:
     dataset_id = req.datasetId or req.dataset_id
@@ -71,17 +148,8 @@ def _fit_logistic(dataset_id, target_column, feature_columns, req):
     raw_target = df[target.names[0]]
     target_dtype = str(raw_target.dtype)
     raw_target_by_row_id = dict(zip(df['__rowId__'].to_list(), raw_target.to_list()))
-    df, excluded = plan.prepare(df)
-    ma_names = {column['name'] for group in plan.groups for column in group['columns']}
-    adapter = CodebookAdapter(df, codebook)
-    df = df.with_columns([adapter.analysis_series(name) for name in plan.names if name not in ma_names])
-    numeric_names = [*features.names]
-    if df[target.names[0]].dtype.is_numeric():
-        numeric_names.append(target.names[0])
-    df = df.with_columns([pl.when(pl.col(name).cast(pl.Float64, strict=False).is_finite())
-        .then(pl.col(name)).otherwise(None).alias(name) for name in numeric_names])
-    before_ordinary = df.height
-    df = df.drop_nulls(plan.names)
+    df, excluded, before_ordinary, adapter = _prepare_logistic_frame(
+        df, codebook, target.names[0], features.names, plan)
     weight_info = weight_unsupported_block(codebook, req.weightColumn)
 
     result = run_logistic_regression(
